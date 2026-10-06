@@ -68,6 +68,7 @@ td input.n{width:70px}td input.nn{width:56px}
     <button data-act="export">Export state</button>
     <label style="display:inline-flex"><button type="button" onclick="document.getElementById('imp').click()">Import state</button><input id="imp" type="file" accept=".json" hidden></label>
     <button class="g" data-act="clearBanner">Clear banner</button>
+    <button class="g" data-act="reset-clean">Clear state</button>
   </div>
 </div>
 
@@ -130,7 +131,6 @@ td input.n{width:70px}td input.nn{width:56px}
       <label><input type="checkbox" data-k="show.poll">Poll</label>
       <label><input type="checkbox" data-k="show.duel">1v1 duel card</label>
       <label><input type="checkbox" data-k="show.teamCompare">Team comparison</label>
-      <label><input type="checkbox" data-k="show.playerCams">Player cam frames</label>
       <label>Round recap<select id="recapSel"><option value="auto">Auto (round end)</option><option value="on">Always</option><option value="off">Off</option></select></label>
       <label>Economy<select id="ecoSel"><option value="auto">Auto (buy phase)</option><option value="on">Always</option><option value="off">Off</option></select></label>
     </div>
@@ -325,7 +325,8 @@ const A = {
   endRound: s => { const w = +$('#winT').value, l = 1 - w; s.teams[w].score++; s.teams[w].lossStreak = 0; s.teams[l].lossStreak = Math.min(4, (s.teams[l].lossStreak || 0) + 1);
     Object.assign(s.round, { phase: 'end', endsAt: 0, remaining: 0 }); s.banner = { type: 'round', team: w, player: 0, text: '', method: $('#winM').value, ts: now(), hold: 4200 };
     s.rounds = [...(s.rounds || []), { w, how: { ELIMINATION: 'elim', 'SPIKE DETONATED': 'boom', 'SPIKE DEFUSED': 'defuse', 'TIME EXPIRED': 'time' }[$('#winM').value] }]; },
-  nextRound: s => { s.round.number++; if (s.round.number === 13 || s.round.number >= 25) s.teams.forEach(t => t.side = t.side === 'ATK' ? 'DEF' : 'ATK');
+  nextRound: s => { s.prevCredits = s.players.map(t => t.map(p => +p.credits || 0));
+    s.round.number++; if (s.round.number === 13 || s.round.number >= 25) s.teams.forEach(t => t.side = t.side === 'ATK' ? 'DEF' : 'ATK');
     s.players.forEach(t => t.forEach(p => { p.alive = true; p.hp = 100; })); s.killfeed = []; Object.assign(s.round, { phase: 'buy', endsAt: now() + 30000 }); },
   finishMap: s => { const [a, b] = s.teams.map(t => t.score); if (a === b) { alert('Scores are level. Finish the map once a team is ahead.'); return false; } const w = a > b ? 0 : 1;
     s.teams[w].series++; const cur = s.series[s.map.number - 1]; if (cur) { cur.score = [a, b]; cur.winner = w; } },

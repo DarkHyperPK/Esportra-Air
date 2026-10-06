@@ -89,7 +89,7 @@
   const vis = HUD.vis = {
     economy: s => s.show.economy === true || (s.show.economy === 'auto' && s.round.phase === 'buy'),
     players: s => s.show.players && !vis.economy(s) && !s.show.scoreboard && !vis.recap(s),
-    observed: s => s.show.observed && !vis.economy(s) && !s.show.scoreboard && s.round.phase !== 'buy' && !vis.recap(s) && !s.show.playerCams,
+    observed: s => s.show.observed && !vis.economy(s) && !s.show.scoreboard && s.round.phase !== 'buy' && !vis.recap(s),
     recap: s => !s.show.scoreboard && (s.show.roundRecap === true || (s.show.roundRecap === 'auto' && s.round.phase === 'end')) && s.rounds.length > 0,
     killfeed: s => s.show.killfeed && !s.show.scoreboard,
   };
@@ -165,18 +165,23 @@
   M.players = root => {
     const m = E('div', 'mod', root); const sides = [0, 1].map(i => { const w = E('div', 'pl fx-' + (i ? 'right' : 'left') + ' ' + (i ? 'r' : 'l'), m); const hd = E('div', 'pl-head mono', w); const rows = [];
       for (let j = 0; j < 5; j++) { const r = E('div', 'pr', w); const ag = E('div', 'ag', r); const ai = E('img', '', ag); const body = E('div', 'body', r);
-        const nm = E('div', 'nm', body), gear = E('div', 'gear', body), ar = E('img', 'ar', gear), wp = E('img', 'wp', gear), hpn = E('div', 'hpn num', body), hpb = E('div', 'hpb', body), hpi = E('i', '', hpb), ult = E('div', 'ult', body);
-        const sd = E('div', 'side', r), cr = E('div', 'cr num', sd), kda = E('div', 'kda num', sd); rows.push({ r, ai, nm, ar, wp, hpn, hpi, ult, cr, kda }); }
+        const row1 = E('div', 'r1', body); const hpn = E('div', 'hpn num', row1); const arv = E('div', 'arv num', row1); const nm = E('div', 'nm', row1);
+        const row2 = E('div', 'r2', body); const wp = E('img', 'wp', row2); const ar = E('img', 'ar', row2); const cr = E('div', 'cr num', row2); const hpb = E('div', 'hpb', row2); const hpi = E('i', '', hpb);
+        const abw = E('div', 'abw', body);
+        const abSlots = [0,1,2,3].map(k => { const sl = E('div', 'ab-s' + (k === 3 ? ' ux' : ''), abw); const im = E('img', '', sl); const ch = E('div', k === 3 ? 'up' : 'cp', sl); return { sl, im, ch }; });
+        rows.push({ r, ai, nm, ar, arv, wp, hpn, hpi, abSlots, cr }); }
       return { w, hd, rows }; });
     return { update(s) {
       toggle(m, vis.players(s));
-      sides.forEach((sd, i) => { tv(sd.w, s, i); const T = s.teams[i]; sd.hd.innerHTML = `<b>${T.tag}</b><span>${T.side || ''}</span><span>BANK ${money(s.players[i].reduce((a, p) => a + (+p.credits || 0), 0))}</span>`;
+      sides.forEach((sd, i) => { tv(sd.w, s, i); const T = s.teams[i]; sd.hd.innerHTML = `<b>${T.tag}</b><span>${T.side || ''}</span>`;
         sd.rows.forEach((o, j) => { const p = s.players[i][j]; if (!p) return; const A = agent(p.agent);
           setImg(o.ai, A && A.icon); txt(o.nm, p.name); setImg(o.wp, p.alive && weapon(p.weapon) && weapon(p.weapon).kill); setImg(o.ar, p.alive && armorIcon(p.armor));
-          const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
-          const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); const uk = u + '/' + um;
-          if (o.ult.dataset.k !== uk) { o.ult.dataset.k = uk; o.ult.innerHTML = u >= um ? '<div class="ready mono">ULT</div>' : Array.from({ length: um }, (_, k) => `<i class="${k < u ? 'f' : ''}"></i>`).join(''); }
-          txt(o.cr, money(p.credits)); txt(o.kda, `${p.k}/${p.d}/${p.a}`);
+          txt(o.arv, p.alive && p.armor > 0 ? p.armor : ''); o.arv.style.display = p.alive && p.armor > 0 ? '' : 'none';
+          const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
+          o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]);
+            if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = c > 0 ? Array.from({ length: Math.min(c, 4) }, () => '<i></i>').join('') : ''; }
+            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); txt(sl.ch, u >= um ? '' : u + '/' + um); } });
+          txt(o.cr, money(p.credits));
           o.r.classList.toggle('dead', !p.alive); o.r.classList.toggle('obs', s.observed[0] === i && s.observed[1] === j && p.alive); }); });
     } };
   };
@@ -517,8 +522,7 @@
     return { update(s) { toggle(m, s.show.poll); const tc = l => (s.teams.find(t => t.tag === l) || {}).color || 'var(--red)';
       pq.innerHTML = `<div class="k mono">LIVE POLL</div><div class="q">${s.poll.question}</div>` + s.poll.options.map(o => `<div class="o" style="--c:${tc(o.label)}"><div class="l mono">${o.label}</div><div class="b"><i style="width:${o.pct}%"></i></div><div class="p num">${o.pct}%</div></div>`).join('') + `<div class="v mono">${money(s.poll.votes)} VOTES</div>`; } }; };
 
-  M.playercams = root => { const m = E('div', 'mod pc', root);
-    return { update(s) { toggle(m, s.show.playerCams); m.style.opacity = s.show.playerCams ? 1 : 0; m.innerHTML = [0, 1].map(t => s.players[t].map((p, j) => `<div class="cam" style="left:${t ? 1316 : 498}px;top:${740 + j * 64}px;--c:${s.teams[t].color};--ci:${ink(s.teams[t].color)}"><span class="mono">${p.name}</span></div>`).join('')).join(''); } }; };
+
 
   M.roundrecap = root => { const m = E('div', 'mod', root), rr = E('div', 'rr fx-rise', m);
     return { update(s) { toggle(m, vis.recap(s)); const last = s.rounds[s.rounds.length - 1]; if (!last) return; const W = s.teams[last.w];
@@ -586,7 +590,7 @@
     return { update(s) { if (same(this, s)) return; txt(hr, s.event.name); const live = s.schedule.findIndex(x => !x.done);
       box.innerHTML = s.schedule.map((x, i) => `<div class="r ${x.done ? 'done' : ''} ${i === live ? 'live' : ''}"><div class="tm">${x.time}</div><div class="m">${x.a && x.b ? `${x.a}<i>vs</i>${x.b}` : `<span style="font-size:36px">${x.label}</span>`}${i === live ? '<span class="lv">NEXT UP</span>' : ''}</div><div class="l mono">${x.a && x.b ? x.label : ''}</div></div>`).join(''); } }; };
 
-  M.ingame = root => { const parts = ['minimap', 'eventbug', 'scorebug', 'winprob', 'roundhistory', 'spiketimer', 'toast', 'killfeed', 'moments', 'poll', 'players', 'playercams', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird'].map(k => M[k](root)); return { update(s) { parts.forEach(p => p.update(s)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); } }; };
+  M.ingame = root => { const parts = ['minimap', 'eventbug', 'scorebug', 'winprob', 'roundhistory', 'spiketimer', 'toast', 'killfeed', 'moments', 'poll', 'players', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird'].map(k => M[k](root)); return { update(s) { parts.forEach(p => p.update(s)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); } }; };
 
   // ───── demo simulator (?demo=1): loops a fast round so overlays can be tested without the control panel ─────
   function demo() {
