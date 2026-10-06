@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Esportra HUD control</title>
+<link rel="stylesheet" href="core/hud.css">
+<style>
+html,body{height:auto;overflow:auto;background:#0f0e11;color:#e8e8ec;font-family:PMd,sans-serif;font-size:13px}
+body{padding:18px 20px 60px}
+h1{font-family:PBk;font-size:24px;letter-spacing:-.02em;display:flex;align-items:center;gap:12px}
+h1 img{width:26px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.top .acts{display:flex;gap:8px;flex-wrap:wrap}
+.sync{font-family:JB;font-size:11px;letter-spacing:.18em;color:#7ee0a0;display:flex;align-items:center;gap:8px}
+.sync i{width:8px;height:8px;border-radius:50%;background:#7ee0a0;display:inline-block}
+.sync.off{color:#e0445e}.sync.off i{background:#e0445e}
+.grid{columns:3 440px;column-gap:14px}
+.top label button{font-size:13px}
+.card{background:#18171b;border:1px solid rgba(255,255,255,.07);padding:14px 16px;break-inside:avoid;margin-bottom:14px}
+.card.wide{column-span:all}
+.card h2{font-family:PBd;font-size:15px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card h2 small{font-family:JB;font-size:10px;letter-spacing:.2em;color:#8a8a90;font-weight:500}
+label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#9a9aa0;min-width:0}
+.row{display:flex;gap:8px;margin-bottom:8px;align-items:flex-end;flex-wrap:wrap}
+.row>label{flex:1}
+input,select,textarea{background:#0f0e11;border:1px solid rgba(255,255,255,.12);color:#fff;font:inherit;padding:6px 8px;min-width:0;width:100%}
+input[type=color]{padding:0;height:31px}
+input[type=checkbox],input[type=radio]{width:auto;accent-color:#e0445e}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid #e0445e;outline-offset:0}
+textarea{font-family:JB;font-size:11px;min-height:120px;resize:vertical}
+button{background:#26252b;border:1px solid rgba(255,255,255,.12);color:#fff;font:inherit;font-family:PSB;padding:7px 12px;cursor:pointer;white-space:nowrap}
+button:hover{background:#312f36}
+button.p{background:#e0445e;border-color:#e0445e}button.p:hover{background:#ec5670}
+button.g{background:transparent}
+button.on{background:#e0445e;border-color:#e0445e}
+kbd{font-family:JB;font-size:10px;background:#0f0e11;border:1px solid rgba(255,255,255,.18);padding:1px 5px;letter-spacing:.06em;pointer-events:none}
+.team{border-left:4px solid var(--c);padding-left:12px;margin-bottom:12px}
+.big{font-family:PBk;font-size:30px;width:52px;text-align:center}
+.timer{font-family:JB;font-weight:700;font-size:34px;letter-spacing:.04em}
+.phase{font-family:JB;font-size:11px;letter-spacing:.2em;color:#f2cf6b}
+table{width:100%;border-collapse:collapse}
+th{font-family:JB;font-size:10px;letter-spacing:.14em;color:#8a8a90;font-weight:500;text-align:left;padding:4px 3px}
+td{padding:2px 3px}
+td input,td select{padding:4px 5px}
+td input.n{width:70px}td input.nn{width:56px}
+.tsep td{padding-top:10px;font-family:PBd;color:var(--c)}
+.links{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+.links a{color:#e8e8ec;text-decoration:none;background:#0f0e11;border:1px solid rgba(255,255,255,.08);padding:8px 10px;display:flex;justify-content:space-between;gap:8px}
+.links a:hover{border-color:#e0445e}
+.links a span{font-family:JB;font-size:10px;color:#8a8a90;letter-spacing:.1em}
+.hint{font-size:11px;color:#8a8a90;margin-top:6px;line-height:1.5}
+.toggles{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px}
+.toggles label{flex-direction:row;align-items:center;gap:8px;font-size:12px;color:#e8e8ec}
+.tab-bar{display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:16px}
+.tab{background:transparent;border:none;border-bottom:2px solid transparent;padding:8px 18px;font-family:JB;font-size:11px;letter-spacing:.2em;color:#8a8a90;cursor:pointer;margin-bottom:-1px}
+.tab:hover{color:#e8e8ec}
+.tab.active{color:#e8e8ec;border-bottom-color:#e0445e}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.danger-zone{border:1px solid rgba(224,68,94,.3);padding:14px 16px;margin-top:16px;break-inside:avoid}
+.danger-zone h3{font-family:JB;font-size:11px;letter-spacing:.2em;color:rgba(224,68,94,.8);margin-bottom:10px}
+</style></head>
+<body data-role="control">
+
+<!-- ═══ STICKY HEADER ═══ -->
+<div class="top">
+  <h1><img src="core/brand/mark-44.png" alt="">Esportra HUD control</h1>
+  <div class="sync" id="sync"><i></i><span>CHANGES GO LIVE INSTANTLY</span></div>
+  <div class="acts">
+    <button class="p" data-act="stinger">Play stinger</button>
+    <button data-act="export">Export state</button>
+    <label style="display:inline-flex"><button type="button" onclick="document.getElementById('imp').click()">Import state</button><input id="imp" type="file" accept=".json" hidden></label>
+    <button class="g" data-act="clearBanner">Clear banner</button>
+  </div>
+</div>
+
+<!-- ═══ TAB BAR ═══ -->
+<div class="tab-bar">
+  <button class="tab active" data-tab="live">LIVE</button>
+  <button class="tab" data-tab="match">MATCH</button>
+  <button class="tab" data-tab="players">PLAYERS</button>
+  <button class="tab" data-tab="scene">SCENE</button>
+</div>
+
+<!-- ═══ LIVE TAB ═══ -->
+<div id="tab-live" class="tab-content active">
+<div class="grid">
+
+  <!-- ROUND -->
+  <div class="card">
+    <h2>Round <small id="phase" class="phase"></small></h2>
+    <div class="row" style="align-items:center;gap:14px">
+      <button data-act="round-">−</button><div><div class="phase">ROUND</div><div class="timer" id="rnd"></div></div><button data-act="round+">+</button>
+      <div style="margin-left:auto;text-align:right"><div class="phase">TIMER</div><div class="timer" id="tmr"></div></div>
+    </div>
+    <div class="row"><button data-act="buy">Buy phase 0:30</button><button data-act="live">Round live 1:40</button><button data-act="plant">Spike planted 0:45</button><button data-act="pause" id="pauseBtn">Pause</button></div>
+    <div class="row"><label>Winner<select id="winT"><option value="0">A</option><option value="1">B</option></select></label>
+      <label>How<select id="winM"><option>ELIMINATION</option><option>SPIKE DETONATED</option><option>SPIKE DEFUSED</option><option>TIME EXPIRED</option></select></label>
+      <button class="p" data-act="endRound">End round</button><button data-act="nextRound">Next round</button></div>
+    <p class="hint">End round adds the point, updates loss bonus and shows the round banner. Next round revives everyone, clears the killfeed and starts the buy phase. Sides swap automatically at round 13 and every overtime round.</p>
+  </div>
+
+  <!-- BANNERS -->
+  <div class="card">
+    <h2>Banners <small>ROUND MOMENTS + PAUSES</small></h2>
+    <div class="row"><label>Team<select id="bnT"><option value="0">A</option><option value="1">B</option></select></label><label>Player<select id="bnP"></select></label><label>Clutch vs<select id="bnN"><option>2</option><option>3</option><option>4</option><option>5</option></select></label></div>
+    <div class="row"><button data-bn="ace">Ace</button><button data-bn="teamace">Team ace</button><button data-bn="clutch">Clutch</button><button data-bn="flawless">Flawless</button><button data-bn="thrifty">Thrifty</button></div>
+    <div class="row"><button data-bn="matchpoint">Match point</button><button data-bn="overtime">Overtime</button><button data-bn="techpause" id="tpBtn">Technical pause <kbd>F8</kbd></button><button data-bn="timeout" id="toBtn">Timeout <kbd>F7</kbd></button></div>
+    <div class="row"><label>Custom headline<input id="bnX" placeholder="e.g. 4K FOR KAIRO"></label><label>Custom subline<input id="bnY"></label><button data-bn="custom">Show</button></div>
+    <div class="row"><button class="g" data-act="clearBanner">Clear banner</button></div>
+    <div class="row"><label>Toast message (shows for 7 seconds)<input data-k="toast.text"></label><button data-act="toast">Send toast</button></div>
+  </div>
+
+  <!-- ON SCREEN -->
+  <div class="card">
+    <h2>On screen <small>IN-GAME LAYERS</small></h2>
+    <div class="toggles">
+      <label><input type="checkbox" data-k="show.scorebug">Scorebug</label>
+      <label><input type="checkbox" data-k="show.players">Player cards</label>
+      <label><input type="checkbox" data-k="show.killfeed">Killfeed</label>
+      <label><input type="checkbox" data-k="show.observed">Observed player</label>
+      <label><input type="checkbox" data-k="show.minimap">Minimap frame</label>
+      <label><input type="checkbox" data-k="show.scoreboard">Scoreboard</label>
+      <label><input type="checkbox" data-k="show.lowerThird">Lower third</label>
+      <label><input type="checkbox" data-k="show.replay">Replay bug</label>
+      <label><input type="checkbox" data-k="show.ticker">Ticker</label>
+      <label><input type="checkbox" data-k="show.roundHistory">Round history</label>
+      <label><input type="checkbox" data-k="show.winProb">Win probability</label>
+      <label><input type="checkbox" data-k="show.spikeTimer">Spike timer (when planted)</label>
+      <label><input type="checkbox" data-k="show.moments">Moments (first blood, 2K-ACE, clutch)</label>
+      <label><input type="checkbox" data-k="show.sponsor">Sponsor bug</label>
+      <label><input type="checkbox" data-k="show.eventBug">Event bug</label>
+      <label><input type="checkbox" data-k="show.poll">Poll</label>
+      <label><input type="checkbox" data-k="show.duel">1v1 duel card</label>
+      <label><input type="checkbox" data-k="show.teamCompare">Team comparison</label>
+      <label><input type="checkbox" data-k="show.playerCams">Player cam frames</label>
+      <label>Round recap<select id="recapSel"><option value="auto">Auto (round end)</option><option value="on">Always</option><option value="off">Off</option></select></label>
+      <label>Economy<select id="ecoSel"><option value="auto">Auto (buy phase)</option><option value="on">Always</option><option value="off">Off</option></select></label>
+    </div>
+    <div class="row" style="margin-top:12px"><label>Minimap X<input type="number" data-k="layout.minimap.x" data-t="num"></label><label>Minimap Y<input type="number" data-k="layout.minimap.y" data-t="num"></label><label>Size<input type="number" data-k="layout.minimap.size" data-t="num"></label></div>
+    <p class="hint">Match the minimap frame to where the in-game minimap sits in your observer settings.</p>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══ MATCH TAB ═══ -->
+<div id="tab-match" class="tab-content">
+<div class="grid">
+
+  <!-- MATCH -->
+  <div class="card">
+    <h2>Match <small>EVENT + MAP</small></h2>
+    <div class="row"><label>Event<input data-k="event.name"></label><label>Stage<input data-k="event.stage"></label></div>
+    <div class="row"><label>Best of<select data-k="event.bestOf" data-t="num"><option>1</option><option>3</option><option>5</option></select></label>
+      <label>Map<select data-k="map.name" id="mapSel"></select></label><label>Map no.<input data-k="map.number" data-t="num" type="number" min="1"></label></div>
+    <div class="row"><label>Handle<input data-k="event.handle"></label><label>Website<input data-k="event.site"></label></div>
+    <div id="teams"></div>
+    <div class="row"><button data-act="swap">Swap sides</button><button data-act="finishMap">Finish map (winner gets series point)</button></div>
+  </div>
+
+  <!-- HOLDING -->
+  <div class="card">
+    <h2>Holding screens <small>STARTING / BRB / ENDING</small></h2>
+    <div class="row"><label>Mode (holding.html)<select data-k="holding.mode"><option value="starting">Starting soon</option><option value="brb">Be right back</option><option value="ending">Thanks for watching</option></select></label><label>Countdown minutes<input type="number" data-k="holding.minutes" data-t="num"></label></div>
+    <div class="row"><label>Message (leave empty for the default)<input data-k="holding.message"></label></div>
+    <div class="row"><button class="p" data-act="countdown">Start countdown</button><button class="g" data-act="stopCountdown">Stop</button></div>
+    <label style="margin-top:6px">Ticker (one item per line)<textarea id="tickerTa" style="min-height:90px"></textarea></label>
+    <div class="row" style="margin-top:6px"><button data-act="applyTicker">Update ticker</button></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══ PLAYERS TAB ═══ -->
+<div id="tab-players" class="tab-content">
+<div class="grid">
+
+  <!-- PLAYERS -->
+  <div class="card wide">
+    <h2>Players <small>OBS = OBSERVED / HP / ARMOR / CREDITS / GUN / ULT / C Q E CHARGES / STATS</small></h2>
+    <table><thead><tr><th>OBS</th><th>NAME</th><th>AGENT</th><th>ALIVE</th><th>HP</th><th>ARMOR</th><th>CREDITS</th><th>WEAPON</th><th>ULT</th><th>MAX</th><th>C</th><th>Q</th><th>E</th><th>K</th><th>D</th><th>A</th><th>ACS</th><th>ADR</th><th>HS%</th><th>FK</th></tr></thead><tbody id="ptab"></tbody></table>
+    <div class="row" style="margin-top:12px"><label>Killer<select id="kK"></select></label><label>Victim<select id="kV"></select></label><label>Weapon<select id="kW"></select></label>
+      <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="kH">Headshot</label><button class="p" data-act="kill">Add kill</button><button class="g" data-act="clearKf">Clear killfeed</button></div>
+    <p class="hint">Add kill marks the victim dead, updates K/D, raises the killer's ult by one and puts the kill in the feed. It fades after 7 seconds.</p>
+  </div>
+
+  <!-- LOWER THIRD -->
+  <div class="card">
+    <h2>Lower third <button class="p" data-act="lt">Show / hide</button></h2>
+    <div class="row"><label>Type<select data-k="lowerThird.kind"><option value="generic">Headline</option><option value="caster">Casters</option><option value="player">Player spotlight</option></select></label>
+      <label>Team<select data-k="lowerThird.team" data-t="num"><option value="0">A</option><option value="1">B</option><option value="-1">None</option></select></label><label>Player<select data-k="lowerThird.player" data-t="num" id="ltP"></select></label></div>
+    <div class="row"><label>Headline<input data-k="lowerThird.title"></label></div>
+    <div class="row"><label>Subline (player spotlight uses live stats when empty)<input data-k="lowerThird.sub"></label></div>
+    <div class="row"><label>Caster 1<input data-k="casters.0.name"></label><label>Handle<input data-k="casters.0.handle"></label></div>
+    <div class="row"><label>Caster 2<input data-k="casters.1.name"></label><label>Handle<input data-k="casters.1.handle"></label></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══ SCENE TAB ═══ -->
+<div id="tab-scene" class="tab-content">
+<div class="grid">
+
+  <!-- JSON EDITORS -->
+  <div class="card wide">
+    <h2>Scene data <small>EDIT AS JSON, THEN APPLY</small></h2>
+    <div class="row" style="align-items:stretch">
+      <label>Veto<textarea data-json="veto"></textarea></label>
+      <label>Series (maps in play order)<textarea data-json="series"></textarea></label>
+      <label>Schedule<textarea data-json="schedule"></textarea></label>
+    </div>
+    <div class="row" style="align-items:stretch">
+      <label>Bracket<textarea data-json="bracket"></textarea></label>
+      <label>Standings<textarea data-json="standings"></textarea></label>
+      <label>Map pool<textarea data-json="mapPool"></textarea></label>
+    </div>
+    <div class="row" style="align-items:stretch">
+      <label>Round history (w = team, how = elim / boom / defuse / time)<textarea data-json="rounds"></textarea></label>
+      <label>Sponsors<textarea data-json="sponsors"></textarea></label>
+      <label>Poll<textarea data-json="poll"></textarea></label>
+    </div>
+    <div class="row" style="align-items:stretch">
+      <label>Duel ([team, player] each)<textarea data-json="duel"></textarea></label>
+      <label>Player spotlight<textarea data-json="spotlight"></textarea></label>
+      <label>Team stats<textarea data-json="teamStats"></textarea></label>
+    </div>
+    <div class="row"><button class="p" data-act="applyJson">Apply scene data</button><span class="hint" id="jsonMsg"></span></div>
+  </div>
+
+  <!-- LINKS -->
+  <div class="card wide">
+    <h2>Overlays <small>ADD EACH AS A 1920×1080 BROWSER SOURCE</small></h2>
+    <div class="links" id="links"></div>
+  </div>
+
+  <!-- DANGER ZONE -->
+  <div class="danger-zone">
+    <h3>DANGER ZONE</h3>
+    <div class="row">
+      <button class="g" data-act="reset-clean">Clear state</button>
+      <button class="g" data-act="reset">Reset to demo data</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script src="core/catalog.js"></script><script src="core/state.default.js"></script><script src="core/state.clean.js"></script><script src="core/hud.js"></script>
+<script>
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const get = (o, p) => p.split('.').reduce((a, k) => a == null ? a : a[k], o);
+const put = (o, p, v) => { const ks = p.split('.'); const last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
+const S = () => JSON.parse(JSON.stringify(HUD.state));
+const commit = s => HUD.commit(s);
+const now = () => Date.now();
+const opts = (arr, sel) => arr.map(([v, l]) => `<option value="${v}"${v == sel ? ' selected' : ''}>${l}</option>`).join('');
+const AG = Object.keys(VCAT.agents), WP = Object.keys(VCAT.weapons), MP = Object.keys(VCAT.maps);
+$('#mapSel').innerHTML = opts(MP.map(m => [m, VCAT.maps[m].name]));
+$('#kW').innerHTML = opts(WP.map(w => [w, VCAT.weapons[w].name]), 'VANDAL');
+
+// team cards
+$('#teams').innerHTML = [0, 1].map(i => `<div class="team" id="team${i}">
+  <div class="row"><label>Team ${i ? 'B (right)' : 'A (left)'}<input data-k="teams.${i}.name"></label><label style="flex:.4">Tag<input data-k="teams.${i}.tag"></label><label style="flex:.35">Color<input type="color" data-k="teams.${i}.color"></label></div>
+  <div class="row"><label>Logo URL (optional, square PNG)<input data-k="teams.${i}.logo" placeholder="leave empty for tag monogram"></label>
+   <label style="flex:.45">Side<select data-k="teams.${i}.side"><option>ATK</option><option>DEF</option></select></label></div>
+  <div class="row" style="align-items:center"><button data-act="s-${i}">−</button><input class="big" data-k="teams.${i}.score" data-t="num"><button data-act="s+${i}">+</button>
+   <span class="phase" style="margin-left:10px">MAPS</span><button data-act="m-${i}">−</button><input class="big" style="width:40px;font-size:22px" data-k="teams.${i}.series" data-t="num"><button data-act="m+${i}">+</button>
+   <label style="flex:.5">Timeouts<input type="number" data-k="teams.${i}.timeouts" data-t="num"></label><label style="flex:.5">Loss streak<input type="number" data-k="teams.${i}.lossStreak" data-t="num"></label></div></div>`).join('');
+
+// players table
+function buildPlayers(s) {
+  $('#ptab').innerHTML = [0, 1].map(t => `<tr class="tsep" style="--c:${s.teams[t].color}"><td colspan="20">${s.teams[t].name}</td></tr>` + s.players[t].map((p, j) => { const b = `players.${t}.${j}.`;
+    return `<tr><td><input type="radio" name="obs" data-obs="${t},${j}"></td><td><input data-k="${b}name" style="width:110px"></td><td><select data-k="${b}agent">${opts(AG.map(a => [a, VCAT.agents[a].name]))}</select></td>
+      <td><input type="checkbox" data-k="${b}alive"></td><td><input class="nn" type="number" data-t="num" data-k="${b}hp"></td><td><select data-k="${b}armor" data-t="num"><option value="0">None</option><option value="25">Light</option><option value="50">Heavy</option></select></td>
+      <td><input class="n" type="number" step="50" data-t="num" data-k="${b}credits"></td><td><select data-k="${b}weapon">${opts(WP.map(w => [w, VCAT.weapons[w].name]))}</select></td>
+      ${['ult', 'ultMax'].map(k => `<td><input class="nn" type="number" data-t="num" data-k="${b}${k}"></td>`).join('')}
+      ${[0, 1, 2].map(k => `<td><input class="nn" type="number" min="0" data-t="num" data-k="${b}charges.${k}"></td>`).join('')}
+      ${['k', 'd', 'a', 'acs', 'adr', 'hs', 'fk'].map(k => `<td><input class="nn" type="number" data-t="num" data-k="${b}${k}"></td>`).join('')}</tr>`; }).join('')).join('');
+  const plist = [0, 1].flatMap(t => s.players[t].map((p, j) => [`${t},${j}`, `${s.teams[t].tag} ${p.name}`]));
+  $('#kK').innerHTML = opts(plist); $('#kV').innerHTML = opts(plist, '0,0');
+}
+let pSig = '';
+// write any bound field
+document.addEventListener('input', e => { const el = e.target, k = el.dataset.k; if (!k) return; const s = S();
+  let v = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.t === 'num') v = Number(v);
+  put(s, k, v); commit(s); });
+document.addEventListener('change', e => { if (e.target.dataset.obs) { const s = S(); s.observed = e.target.dataset.obs.split(',').map(Number); commit(s); } });
+$('#recapSel').onchange = e => { const s = S(); s.show.roundRecap = { auto: 'auto', on: true, off: false }[e.target.value]; commit(s); };
+$('#ecoSel').onchange = e => { const s = S(); s.show.economy = { auto: 'auto', on: true, off: false }[e.target.value]; commit(s); };
+
+// reflect state into the form (skip the field being edited)
+function render(s) {
+  const sig = JSON.stringify([s.teams.map(t => [t.name, t.color, t.tag]), s.players.map(t => t.length)]); if (sig !== pSig) { pSig = sig; buildPlayers(s); }
+  $$('[data-k]').forEach(el => { if (el === document.activeElement) return; const v = get(s, el.dataset.k); if (el.type === 'checkbox') el.checked = !!v; else if (v != null && String(el.value) !== String(v)) el.value = v; });
+  $$('[data-obs]').forEach(r => r.checked = r.dataset.obs === s.observed.join(','));
+  [0, 1].forEach(i => $('#team' + i).style.setProperty('--c', s.teams[i].color));
+  ['#winT', '#bnT'].forEach(id => { const el = $(id), v = el.value; el.innerHTML = opts([[0, s.teams[0].tag], [1, s.teams[1].tag]], v); });
+  const bt = +$('#bnT').value || 0, pv = $('#bnP').value; $('#bnP').innerHTML = opts(s.players[bt].map((p, j) => [j, p.name]), pv);
+  const lt = s.lowerThird.team >= 0 ? s.lowerThird.team : 0; $('#ltP').innerHTML = opts(s.players[lt].map((p, j) => [j, p.name]), s.lowerThird.player);
+  $('#ecoSel').value = s.show.economy === 'auto' ? 'auto' : s.show.economy ? 'on' : 'off';
+  $('#recapSel').value = s.show.roundRecap === 'auto' ? 'auto' : s.show.roundRecap ? 'on' : 'off';
+  $('#rnd').textContent = s.round.number; $('#phase').textContent = s.round.phase.toUpperCase();
+  $('#pauseBtn').textContent = s.round.phase === 'paused' ? 'Resume' : 'Pause';
+  $('#tpBtn').classList.toggle('on', s.banner.type === 'techpause'); $('#toBtn').classList.toggle('on', s.banner.type === 'timeout');
+  if (document.activeElement !== $('#tickerTa')) $('#tickerTa').value = s.ticker.join('\n');
+  $$('[data-json]').forEach(t => { if (t !== document.activeElement) t.value = JSON.stringify(s[t.dataset.json], null, 1); });
+}
+HUD.on(render);
+HUD.on(() => { const el = $('#sync'), on = !HUD.match || HUD.connected; el.classList.toggle('off', !on);
+  el.querySelector('span').textContent = HUD.match ? (on ? `LIVE ON SERVER  /  MATCH ${HUD.match}` : 'SERVER DISCONNECTED  /  RECONNECTING') : 'LOCAL MODE  /  SAME COMPUTER ONLY'; });
+setInterval(() => { $('#tmr').textContent = HUD.fmt(HUD.timeLeft(HUD.state.round)); }, 200);
+$('#bnT').onchange = () => render(HUD.state);
+
+// actions
+const A = {
+  stinger: s => { s.stinger = now(); },
+  'reset-clean': () => { if (confirm('Clear all state? Demo data will be wiped — overlays will show blank fields until GEP fills them.')) HUD.resetClean(); return false; },
+  reset: () => { if (confirm('Replace everything with the demo data?')) HUD.reset(); return false; },
+  export: s => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(s, null, 2)], { type: 'application/json' })); a.download = 'esportra-hud-state.json'; a.click(); return false; },
+  swap: s => { s.teams.forEach(t => t.side = t.side === 'ATK' ? 'DEF' : 'ATK'); },
+  'round-': s => { s.round.number = Math.max(1, s.round.number - 1); }, 'round+': s => { s.round.number++; },
+  buy: s => { Object.assign(s.round, { phase: 'buy', endsAt: now() + 30000 }); },
+  live: s => { Object.assign(s.round, { phase: 'live', endsAt: now() + 100000 }); },
+  plant: s => { Object.assign(s.round, { phase: 'planted', endsAt: now() + 45000 }); },
+  pause: s => { const r = s.round; if (r.phase === 'paused') Object.assign(r, { phase: r.prev || 'live', endsAt: now() + (r.remaining || 0) * 1000 }); else Object.assign(r, { prev: r.phase, remaining: HUD.timeLeft(r), endsAt: 0, phase: 'paused' }); },
+  endRound: s => { const w = +$('#winT').value, l = 1 - w; s.teams[w].score++; s.teams[w].lossStreak = 0; s.teams[l].lossStreak = Math.min(4, (s.teams[l].lossStreak || 0) + 1);
+    Object.assign(s.round, { phase: 'end', endsAt: 0, remaining: 0 }); s.banner = { type: 'round', team: w, player: 0, text: '', method: $('#winM').value, ts: now(), hold: 4200 };
+    s.rounds = [...(s.rounds || []), { w, how: { ELIMINATION: 'elim', 'SPIKE DETONATED': 'boom', 'SPIKE DEFUSED': 'defuse', 'TIME EXPIRED': 'time' }[$('#winM').value] }]; },
+  nextRound: s => { s.round.number++; if (s.round.number === 13 || s.round.number >= 25) s.teams.forEach(t => t.side = t.side === 'ATK' ? 'DEF' : 'ATK');
+    s.players.forEach(t => t.forEach(p => { p.alive = true; p.hp = 100; })); s.killfeed = []; Object.assign(s.round, { phase: 'buy', endsAt: now() + 30000 }); },
+  finishMap: s => { const [a, b] = s.teams.map(t => t.score); if (a === b) { alert('Scores are level. Finish the map once a team is ahead.'); return false; } const w = a > b ? 0 : 1;
+    s.teams[w].series++; const cur = s.series[s.map.number - 1]; if (cur) { cur.score = [a, b]; cur.winner = w; } },
+  kill: s => { const k = $('#kK').value.split(',').map(Number), v = $('#kV').value.split(',').map(Number); if (k[0] === v[0]) { alert('Pick a victim from the other team.'); return false; }
+    const K = s.players[k[0]][k[1]], V = s.players[v[0]][v[1]]; V.alive = false; V.hp = 0; V.d++; K.k++; K.ult = Math.min(K.ultMax, K.ult + 1);
+    s.killfeed.push({ killer: k, victim: v, weapon: $('#kW').value, hs: $('#kH').checked, ts: now() }); s.killfeed = s.killfeed.slice(-12); },
+  clearKf: s => { s.killfeed = []; },
+  toast: s => { s.toast.ts = now(); },
+  clearBanner: s => { s.banner = { ...s.banner, type: '', ts: 0 }; },
+  lt: s => { s.show.lowerThird = !s.show.lowerThird; },
+  countdown: s => { s.holding.target = now() + (s.holding.minutes || 0) * 60000; },
+  stopCountdown: s => { s.holding.target = 0; },
+  applyTicker: s => { s.ticker = $('#tickerTa').value.split('\n').map(x => x.trim()).filter(Boolean); },
+  applyJson: s => { try { $$('[data-json]').forEach(t => s[t.dataset.json] = JSON.parse(t.value)); $('#jsonMsg').textContent = 'Scene data applied.'; }
+    catch (e) { $('#jsonMsg').textContent = 'Not applied: ' + e.message; return false; } },
+};
+[0, 1].forEach(i => { A['s-' + i] = s => { s.teams[i].score = Math.max(0, s.teams[i].score - 1); }; A['s+' + i] = s => { s.teams[i].score++; };
+  A['m-' + i] = s => { s.teams[i].series = Math.max(0, s.teams[i].series - 1); }; A['m+' + i] = s => { s.teams[i].series++; }; });
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act],[data-bn]'); if (!b) return; const s = S();
+  if (b.dataset.act) { if (A[b.dataset.act](s) !== false) commit(s); return; }
+  const type = b.dataset.bn, t = +$('#bnT').value, p = +$('#bnP').value;
+  if ((type === 'techpause' || type === 'timeout') && s.banner.type === type) { s.banner = { ...s.banner, type: '', ts: 0 }; return commit(s); }
+  if (type === 'timeout') s.teams[t].timeouts = Math.max(0, (s.teams[t].timeouts || 0) - 1);
+  s.banner = { type, team: t, player: p, text: type === 'clutch' ? $('#bnN').value : type === 'custom' ? $('#bnX').value : '', method: type === 'custom' ? $('#bnY').value : '', ts: now(), hold: 4200 };
+  commit(s);
+});
+$('#imp').onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { try { HUD.commit(JSON.parse(t)); } catch (err) { alert('That file is not a valid HUD state: ' + err.message); } }); };
+
+// hotkeys: F8 = techpause toggle, F7 = timeout toggle (uses currently selected team)
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.key !== 'F7' && e.key !== 'F8') return;
+  e.preventDefault();
+  const type = e.key === 'F8' ? 'techpause' : 'timeout';
+  const s = S(), t = +$('#bnT').value;
+  if (s.banner.type === type) { s.banner = { ...s.banner, type: '', ts: 0 }; }
+  else {
+    if (type === 'timeout') s.teams[t].timeouts = Math.max(0, (s.teams[t].timeouts || 0) - 1);
+    s.banner = { type, team: t, player: 0, text: '', method: '', ts: now(), hold: 4200 };
+  }
+  commit(s);
+});
+
+// overlay links
+const OV = [['ingame', 'All in-game layers'], ['scorebug', 'Scorebug'], ['player-cards', 'Player cards'], ['killfeed', 'Killfeed'], ['observed-player', 'Observed player'], ['minimap-frame', 'Minimap frame'],
+  ['banners', 'Banners + pauses'], ['replay', 'Replay bug'], ['economy', 'Economy'], ['scoreboard', 'Scoreboard'], ['lower-third', 'Lower third'], ['ticker', 'Ticker'], ['stinger', 'Stinger'],
+  ['map-veto', 'Map veto'], ['agent-select', 'Agent select'], ['match-intro', 'Match intro'], ['map-result', 'Map result'], ['series', 'Series'], ['bracket', 'Bracket'], ['standings', 'Standings'],
+  ['casters', 'Caster cams'], ['holding', 'Holding (mode above)'], ['starting-soon', 'Starting soon'], ['brb', 'Be right back'], ['ending', 'Thanks for watching'],
+  ['round-history', 'Round history'], ['win-probability', 'Win probability'], ['spike-timer', 'Spike timer'], ['moments', 'Moments'], ['toast', 'Toast'], ['sponsor', 'Sponsor bug'],
+  ['event-bug', 'Event bug'], ['poll', 'Poll'], ['player-cams', 'Player cam frames'], ['round-recap', 'Round recap'], ['duel', '1v1 duel'], ['team-compare', 'Team comparison'],
+  ['break-clock', 'Break clock'], ['player-profile', 'Player profile'], ['team-roster-a', 'Team roster A'], ['team-roster-b', 'Team roster B'], ['map-breakdown', 'Map breakdown'],
+  ['halftime', 'Halftime'], ['champion', 'Champion'], ['schedule', 'Schedule']];
+const qs = HUD.match ? `?match=${encodeURIComponent(HUD.match)}` : '?bg=1';
+$('#links').innerHTML = OV.map(([f, l]) => `<a href="overlays/${f}.html${qs}" target="_blank">${l}<span>${f}.html</span></a>`).join('');
+
+// tab switching
+document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
+  const id = btn.dataset.tab;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + id));
+  try { localStorage.setItem('esportra-hud:tab', id); } catch(e) {}
+}));
+// restore last tab
+try { const t = localStorage.getItem('esportra-hud:tab'); if (t) document.querySelector('.tab[data-tab="' + t + '"]')?.click(); } catch(e) {}
+// keyboard shortcuts: 1-4 to switch tabs when not in input
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  const i = +e.key - 1;
+  if (i >= 0 && i < 4) document.querySelectorAll('.tab')[i]?.click();
+});
+</script>
+</body></html>
