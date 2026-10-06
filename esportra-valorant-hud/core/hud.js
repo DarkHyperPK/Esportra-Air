@@ -76,7 +76,13 @@
     if (team.logo) { const im = E('img', 'lg ' + cls, parent); im.src = team.logo; im.style.width = im.style.height = size + 'px'; return im; }
     const d = E('div', 'lg mono-logo ' + cls, parent, team.tag); d.style.width = d.style.height = size + 'px'; d.style.setProperty('--c', team.color); d.style.fontSize = Math.round(size * .34) + 'px'; return d;
   }
-  const SPIKE = (c = '#e0445e', w = 24) => `<svg width="${w}" height="${w * 1.15}" viewBox="-13 -15 26 30"><path d="M0 -15 L13 -7.5 L13 7.5 L0 15 L-13 7.5 L-13 -7.5 Z" fill="${c}"/><path d="M0 -7 L6 0 L0 7 L-6 0 Z" fill="#fff"/></svg>`;
+  const SPIKE = (c = '#e0445e', w = 24) => { const h = Math.round(w * 62 / 69);
+    return `<svg width="${w}" height="${h}" viewBox="0 0 69 62" fill="none">` +
+      `<path d="M28.5 26.4V21.6a1 1 0 01.5-.87l5-2.92a1 1 0 011 0l5 2.92a1 1 0 01.5.87v4.85a1 1 0 01-.5.86l-4.96 2.9a1 1 0 01-1.06-.03c-1.75-1.12-3.96-2.34-4.95-2.88a1 1 0 01-.53-.73Z" stroke="${c}" stroke-width="3"/>` +
+      `<path fill-rule="evenodd" d="M33.5 8a1 1 0 00-1-1H14.87c-4.62 0-7.5 5-5.2 9l9.14 15.84a1 1 0 001.57.2l1.89-1.88a1 1 0 00.21-1.15A12 12 0 0121.5 24c0-6.53 4.8-11.93 11.08-12.86a1 1 0 00.92-.95V8Zm-17.37 2.5a1 1 0 011.73 0l3.04 5.25a1 1 0 01-.87 1.5h-6.06a1 1 0 01-.87-1.5l3.03-5.25Z" fill="${c}"/>` +
+      `<path fill-rule="evenodd" d="M29.3 49.99l-8.42-14.57a1 1 0 01.16-.92l1.94-1.94a1 1 0 011.57.1 12 12 0 0020.04-.6 1 1 0 011.58-.11l1.9 1.9a1 1 0 01.16.92L39.68 50c-2.31 4-8.09 4-10.39 0Zm4.33-9.49a1 1 0 011.73 0l3.46 6a1 1 0 01-.86 1.5h-6.93a1 1 0 01-.87-1.5l3.47-6Z" fill="${c}"/>` +
+      `<path fill-rule="evenodd" d="M48.71 31.82a1 1 0 001.57-.21l9-15.61c2.31-4-.56-9-5.18-9H36.5a1 1 0 00-1 1v2.11a1 1 0 00.92.95C42.67 12.07 47.5 17.47 47.5 24c0 1.68-.32 3.3-.9 4.77a1 1 0 00.22.93l1.9 2.12Zm6.3-14.57a1 1 0 01-.87 1.5h-6.06a1 1 0 01-.87-1.5l3.04-5.25a1 1 0 011.73 0l3.03 5.25Z" fill="${c}"/>` +
+      `</svg>`; };
   const HS = `<svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="#e0445e"/><path d="M12 1v5M12 18v5M1 12h5M18 12h5" stroke="#fff" stroke-width="2"/></svg>`;
   HUD.status = function (s) {                     // map point / match point / overtime
     const [a, b] = s.teams.map(t => t.score), ot = a >= 12 && b >= 12;
@@ -121,7 +127,9 @@
   const M = HUD.modules = {};
 
   M.scorebug = root => {
-    const m = E('div', 'mod', root), sb = E('div', 'sb fx-wipe', m), row = E('div', 'sb-row', sb);
+    const m = E('div', 'mod', root), seriesBar = E('div', 'sb-series mono fx-wipe', m);
+    const sb = E('div', 'sb fx-wipe', m), row = E('div', 'sb-row', sb);
+    const evLabel = E('div', 'sb-ev mono', m), spLabel = E('div', 'sb-sp', m);
     const side = i => { const n = E('div', 'sb-name ' + (i ? 'r' : 'l'), row); const sd = E('div', 'sb-side mono', n); return { n, sd }; };
     const A = side(0); const sA = E('div', 'sb-score', row); const mid = E('div', 'sb-mid notch-b', row); const sB = E('div', 'sb-score', row); const B = side(1);
     const top = E('div', 'top mono', mid), tm = E('div', 'tm', mid), bot = E('div', 'bot mono', mid);
@@ -144,13 +152,24 @@
       txt(top, `ROUND ${s.round.number}`); txt(bot, `MAP ${s.map.number}  /  ${s.map.name}`);
       const st = HUD.status(s); tag.classList.toggle('show', !!st);
       if (st) { txt(tag, st.text); tag.style.background = st.team >= 0 ? s.teams[st.team].color : 'var(--red)'; tag.style.color = st.team >= 0 ? ink(s.teams[st.team].color) : '#fff'; }
+      // map series bar
+      const hasSeries = s.series.length > 1;
+      seriesBar.style.display = hasSeries ? '' : 'none';
+      if (hasSeries) { seriesBar.innerHTML = s.series.map((x, k) => {
+        const cur = k === (s.map.number - 1), done = x.winner != null;
+        const col = x.pick >= 0 ? s.teams[x.pick].color : 'var(--red)';
+        const label = cur ? 'CURRENT' : done ? s.teams[x.winner].tag + ' ' + x.score.join('–') : 'NEXT';
+        return `<div class="sb-map${cur ? ' cur' : ''}${done ? ' done' : ''}" style="--mc:${col}"><span class="sl">${label}:</span> <span class="mn">${x.map}</span></div>`; }).join(''); }
+      // event + sponsor
+      evLabel.innerHTML = `${s.event.name}   <b>${s.event.stage}</b>`;
+      const sp = s.sponsors[0]; spLabel.innerHTML = sp ? (sp.logo ? `<img src="${sp.logo}"> ${sp.name}` : sp.name) : '';
     }, tick(s) {
       const r = s.round, t = timeLeft(r); let cls = '', html = fmt(t);
       if (r.phase === 'planted') {
         if (plantedAt === null) plantedAt = HUD.now();
         const remaining = Math.max(0, 45 - (HUD.now() - plantedAt) / 1000);
         const speed = remaining > 20 ? 1000 : remaining > 10 ? 500 : remaining > 5 ? 250 : remaining > 1 ? 125 : 0;
-        cls = 'planted'; html = SPIKE('#e0445e', 22);
+        cls = 'planted'; html = SPIKE('#e0445e', 32);
         if (speed > 0) { tm.style.setProperty('--blink', speed + 'ms'); } else { tm.style.removeProperty('--blink'); }
       } else {
         plantedAt = null; tm.style.removeProperty('--blink');
@@ -165,18 +184,24 @@
   M.players = root => {
     const m = E('div', 'mod', root); const sides = [0, 1].map(i => { const w = E('div', 'pl fx-' + (i ? 'right' : 'left') + ' ' + (i ? 'r' : 'l'), m); const hd = E('div', 'pl-head mono', w); const rows = [];
       for (let j = 0; j < 5; j++) { const r = E('div', 'pr', w); const ag = E('div', 'ag', r); const ai = E('img', '', ag); const body = E('div', 'body', r);
-        const nm = E('div', 'nm', body), gear = E('div', 'gear', body), ar = E('img', 'ar', gear), wp = E('img', 'wp', gear), hpn = E('div', 'hpn num', body), hpb = E('div', 'hpb', body), hpi = E('i', '', hpb), ult = E('div', 'ult', body);
-        const sd = E('div', 'side', r), cr = E('div', 'cr num', sd), kda = E('div', 'kda num', sd); rows.push({ r, ai, nm, ar, wp, hpn, hpi, ult, cr, kda }); }
+        const row1 = E('div', 'r1', body); const hpn = E('div', 'hpn num', row1); const ar = E('img', 'ar', row1); const arv = E('div', 'arv num', row1); const nm = E('div', 'nm', row1); const wp = E('img', 'wp', row1); const cr = E('div', 'cr num', row1);
+        const r2 = E('div', 'r2', body);
+        const abSlots = [0,1,2,3].map(k => { const sl = E('div', 'ab-s' + (k === 3 ? ' ux' : ''), r2); const im = E('img', '', sl); const ch = E('div', k === 3 ? 'up' : 'cp', sl); return { sl, im, ch }; });
+        const hpb = E('div', 'hpb', r); const hpi = E('i', '', hpb);
+        rows.push({ r, ai, nm, ar, arv, wp, hpn, hpi, abSlots, cr }); }
       return { w, hd, rows }; });
     return { update(s) {
       toggle(m, vis.players(s));
-      sides.forEach((sd, i) => { tv(sd.w, s, i); const T = s.teams[i]; sd.hd.innerHTML = `<b>${T.tag}</b><span>${T.side || ''}</span><span>BANK ${money(s.players[i].reduce((a, p) => a + (+p.credits || 0), 0))}</span>`;
+      sides.forEach((sd, i) => { tv(sd.w, s, i); const T = s.teams[i]; sd.hd.innerHTML = `<b>${T.tag}</b><span>${T.side || ''}</span>`;
         sd.rows.forEach((o, j) => { const p = s.players[i][j]; if (!p) return; const A = agent(p.agent);
           setImg(o.ai, A && A.icon); txt(o.nm, p.name); setImg(o.wp, p.alive && weapon(p.weapon) && weapon(p.weapon).kill); setImg(o.ar, p.alive && armorIcon(p.armor));
-          const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
-          const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); const uk = u + '/' + um;
-          if (o.ult.dataset.k !== uk) { o.ult.dataset.k = uk; o.ult.innerHTML = u >= um ? '<div class="ready mono">ULT</div>' : Array.from({ length: um }, (_, k) => `<i class="${k < u ? 'f' : ''}"></i>`).join(''); }
-          txt(o.cr, money(p.credits)); txt(o.kda, `${p.k}/${p.d}/${p.a}`);
+          txt(o.arv, p.alive && p.armor > 0 ? p.armor : ''); o.arv.style.display = p.alive && p.armor > 0 ? '' : 'none';
+          const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
+          o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]);
+            if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = c > 0 ? Array.from({ length: Math.min(c, 4) }, () => '<i></i>').join('') : ''; }
+            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um);
+              txt(sl.ch, u >= um ? '' : u + '/' + um); } });
+          txt(o.cr, money(p.credits));
           o.r.classList.toggle('dead', !p.alive); o.r.classList.toggle('obs', s.observed[0] === i && s.observed[1] === j && p.alive); }); });
     } };
   };
@@ -282,16 +307,27 @@
     return { update(s) { r.classList.toggle('on', !!s.show.replay); txt(b, `ROUND ${s.round.number}   /   ${s.map.name}`); } }; };
 
   M.economy = root => {
-    const m = E('div', 'mod', root), top = E('div', 'ec-top mono fx-rise', m), ec = E('div', 'ec fx-rise', m);
+    const m = E('div', 'mod', root), top = E('div', 'ec-top mono fx-rise', m), rhStrip = E('div', 'ec-rh mono fx-rise', m), ec = E('div', 'ec fx-rise', m);
     const teams = [0, 1].map(i => { const t = E('div', 'tm', ec); const hd = E('div', 'hd', t); return { t, hd, body: E('div', '', t) }; });
-    const buyType = (bank, n) => { const avg = bank / n; return avg >= 3900 ? 'FULL BUY' : avg >= 2400 ? 'HALF BUY' : avg >= 1200 ? 'FORCE' : 'ECO'; };
     return { update(s) {
       toggle(m, vis.economy(s));
+      // round history strip
+      const rds = s.rounds, rn = Math.max(24, Math.ceil((rds.length + 1) / 2) * 2);
+      let rh = `<span class="lab" style="color:${s.teams[0].color}">${s.teams[0].tag}</span>`;
+      for (let i = 0; i < rn; i++) { if (i === 12 || (i >= 24 && i % 2 === 0)) rh += '<span class="half"></span>'; const r = rds[i];
+        rh += r ? `<span class="c w" style="--c:${s.teams[r.w].color}">${RIC(r.how, '#fff', 13)}</span>` : `<span class="c ${i === rds.length ? 'now' : ''}"></span>`; }
+      rhStrip.innerHTML = rh + `<span class="lab" style="color:${s.teams[1].color}">${s.teams[1].tag}</span>`;
+      // team columns
       teams.forEach((o, i) => { tv(o.t, s, i); const T = s.teams[i], ps = s.players[i]; const bank = ps.reduce((a, p) => a + (+p.credits || 0), 0);
-        const lb = [1900, 2400, 2900, 3400, 3900][Math.min(4, T.lossStreak || 0)];
+        const lb = [1900, 2400, 2900, 3400, 3900][Math.min(4, T.lossStreak || 0)]; const prev = (s.prevCredits || [[]])[i] || [];
         o.hd.innerHTML = `<div class="n">${T.name}</div><div class="s mono">${T.side || ''}   /   LOSS BONUS ${money(lb)}</div><div class="bank"><div class="v">${money(bank)}</div><div class="l mono">TEAM BANK</div></div>`;
-        o.body.innerHTML = ps.map(p => { const A = agent(p.agent), W = weapon(p.weapon), um = +p.ultMax || 7, u = +p.ult || 0;
-          return `<div class="rw">${A ? `<img class="ag" src="${A.icon}">` : ''}<div class="n">${p.name}</div><div class="cr num">${money(p.credits)}</div><div class="wpn">${W ? `<img class="wp" src="${W.kill}">` : ''}</div>${armorIcon(p.armor) ? `<img class="ar" src="${armorIcon(p.armor)}">` : ''}<div class="u mono ${u >= um ? 'rd' : ''}">${u >= um ? 'ULT READY' : 'ULT ' + u + '/' + um}</div></div>`; }).join(''); });
+        o.body.innerHTML = ps.map((p, j) => { const A = agent(p.agent), W = weapon(p.weapon), um = +p.ultMax || 7, u = +p.ult || 0;
+          const delta = (+p.credits || 0) - (prev[j] || 0); const ds = delta === 0 ? '' : (delta > 0 ? '+' : '') + delta.toLocaleString();
+          return `<div class="rw">${A ? `<img class="ag" src="${A.icon}">` : ''}<div class="delta mono">${ds}</div><div class="n">${p.name}</div><div class="cr num">${money(p.credits)}</div><div class="wpn">${W ? `<img class="wp" src="${W.kill}">` : ''}</div>${armorIcon(p.armor) ? `<img class="ar" src="${armorIcon(p.armor)}">` : ''}<div class="abs-row">${[0,1,2,3].map(k => {
+            const ab = A && A.ab[k]; if (k < 3) { const c = +(p.charges || [])[k] || 0;
+              return `<div class="ab-c${c === 0 ? ' empty' : ''}"><img src="${ab ? ab[1] : ''}">${c > 1 ? `<span class="ch">${c}</span>` : ''}</div>`;
+            } else { return `<div class="ab-c ux${u >= um ? ' ready' : ''}"><img src="${ab ? ab[1] : ''}"><span class="ch">${u >= um ? '' : u + '/' + um}</span></div>`; }
+          }).join('')}</div></div>`; }).join(''); });
     }, tick(s) { top.innerHTML = `ROUND ${s.round.number}   /   BUY PHASE <b>${fmt(timeLeft(s.round))}</b>`; } };
   };
 
@@ -488,7 +524,7 @@
       ia.style.width = (p * 100) + '%'; ib.style.width = (100 - p * 100) + '%'; ia.style.background = s.teams[0].color; ib.style.background = s.teams[1].color;
       txt(na, Math.round(p * 100) + '%'); txt(nb, Math.round(100 - p * 100) + '%'); na.style.color = s.teams[0].color; nb.style.color = s.teams[1].color; } }; };
 
-  M.spiketimer = root => { const m = E('div', 'mod', root), sk = E('div', 'sk fx-rise', m); sk.innerHTML = SPIKE('#e0445e', 26); const v = E('div', 'v', sk), tr = E('div', 'track', sk), fi = E('i', '', tr);
+  M.spiketimer = root => { const m = E('div', 'mod', root), sk = E('div', 'sk fx-rise', m); sk.innerHTML = SPIKE('#e0445e', 34); const v = E('div', 'v', sk), tr = E('div', 'track', sk), fi = E('i', '', tr);
     [[7, 'FULL DEFUSE 7S'], [3.5, 'HALF 3.5S']].forEach(([x, l]) => { const k = E('div', 'mk', tr); k.style.left = (x / 45 * 100) + '%'; const t = E('div', 'ml mono', tr, l); t.style.left = (x / 45 * 100) + '%'; });
     return { update(s) { toggle(m, s.show.spikeTimer && s.round.phase === 'planted' && !s.show.scoreboard); }, tick(s) { if (s.round.phase !== 'planted') return; const t = timeLeft(s.round);
       txt(v, t.toFixed(1)); fi.style.width = Math.min(100, t / 45 * 100) + '%'; sk.classList.toggle('hot', t < 7); } }; };
@@ -518,7 +554,7 @@
       pq.innerHTML = `<div class="k mono">LIVE POLL</div><div class="q">${s.poll.question}</div>` + s.poll.options.map(o => `<div class="o" style="--c:${tc(o.label)}"><div class="l mono">${o.label}</div><div class="b"><i style="width:${o.pct}%"></i></div><div class="p num">${o.pct}%</div></div>`).join('') + `<div class="v mono">${money(s.poll.votes)} VOTES</div>`; } }; };
 
   M.playercams = root => { const m = E('div', 'mod pc', root);
-    return { update(s) { toggle(m, s.show.playerCams); m.style.opacity = s.show.playerCams ? 1 : 0; m.innerHTML = [0, 1].map(t => s.players[t].map((p, j) => `<div class="cam" style="left:${t ? 1316 : 498}px;top:${740 + j * 64}px;--c:${s.teams[t].color};--ci:${ink(s.teams[t].color)}"><span class="mono">${p.name}</span></div>`).join('')).join(''); } }; };
+    return { update(s) { toggle(m, s.show.playerCams); m.style.opacity = s.show.playerCams ? 1 : 0; m.innerHTML = [0, 1].map(t => s.players[t].map((p, j) => `<div class="cam" style="left:${t ? 1238 : 502}px;top:${722 + j * 63}px;--c:${s.teams[t].color};--ci:${ink(s.teams[t].color)}"><span class="mono">${p.name}</span></div>`).join('')).join(''); } }; };
 
   M.roundrecap = root => { const m = E('div', 'mod', root), rr = E('div', 'rr fx-rise', m);
     return { update(s) { toggle(m, vis.recap(s)); const last = s.rounds[s.rounds.length - 1]; if (!last) return; const W = s.teams[last.w];
@@ -586,7 +622,7 @@
     return { update(s) { if (same(this, s)) return; txt(hr, s.event.name); const live = s.schedule.findIndex(x => !x.done);
       box.innerHTML = s.schedule.map((x, i) => `<div class="r ${x.done ? 'done' : ''} ${i === live ? 'live' : ''}"><div class="tm">${x.time}</div><div class="m">${x.a && x.b ? `${x.a}<i>vs</i>${x.b}` : `<span style="font-size:36px">${x.label}</span>`}${i === live ? '<span class="lv">NEXT UP</span>' : ''}</div><div class="l mono">${x.a && x.b ? x.label : ''}</div></div>`).join(''); } }; };
 
-  M.ingame = root => { const parts = ['minimap', 'eventbug', 'scorebug', 'winprob', 'roundhistory', 'spiketimer', 'toast', 'killfeed', 'moments', 'poll', 'players', 'playercams', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird'].map(k => M[k](root)); return { update(s) { parts.forEach(p => p.update(s)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); } }; };
+  M.ingame = root => { const parts = ['minimap', 'eventbug', 'scorebug', 'winprob', 'roundhistory', 'spiketimer', 'toast', 'killfeed', 'moments', 'poll', 'players', 'playercams', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird', 'stinger'].map(k => M[k](root)); return { update(s) { parts.forEach(p => p.update(s)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); } }; };
 
   // ───── demo simulator (?demo=1): loops a fast round so overlays can be tested without the control panel ─────
   function demo() {
