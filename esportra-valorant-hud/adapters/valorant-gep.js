@@ -13,8 +13,8 @@ const AGENTS = { Clay: 'RAZE', Pandemic: 'VIPER', Wraith: 'OMEN', Hunter: 'SOVA'
   Sarge: 'BRIMSTONE', Breach: 'BREACH', Vampire: 'REYNA', Killjoy: 'KILLJOY', Guide: 'SKYE', Stealth: 'YORU', Rift: 'ASTRA', Grenadier: 'KAY/O',
   Deadeye: 'CHAMBER', Sprinter: 'NEON', BountyHunter: 'FADE', Mage: 'HARBOR', AggroBot: 'GEKKO', Cable: 'DEADLOCK', Sequoia: 'ISO', Smonk: 'CLOVE',
   Nox: 'VYSE', Cashew: 'TEJO', Terra: 'WAYLAY',
-  Miks: 'MIKS',   // codename unconfirmed — update from live GEP logs
-  Veto: 'VETO' }; // codename unconfirmed — update from live GEP logs
+  Iris: 'MIKS',
+  Pine: 'VETO' };
 const _warnedCodenames = new Set();
 const MAPS = { Infinity: 'ABYSS', Triad: 'HAVEN', Duality: 'BIND', Bonsai: 'SPLIT', Ascent: 'ASCENT', Port: 'ICEBOX', Foxtrot: 'BREEZE', Canyon: 'FRACTURE',
   Pitt: 'PEARL', Jam: 'LOTUS', Juliett: 'SUNSET', Rook: 'CORRODE', Summit: 'SUMMIT' };

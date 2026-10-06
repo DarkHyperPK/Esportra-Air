@@ -41,10 +41,10 @@ assert.deepStrictEqual(B.ctx.slots.get('x7'), [1, 0]); assert.strictEqual(s2.pla
   assert.strictEqual(KILL['tx_hud_pistol_bandit'], 'BANDIT', 'Bandit kill-feed code');
   assert.strictEqual(KILL['tx_hud_rifles_warden'], 'WARDEN', 'Warden kill-feed code'); }
 
-// ─── T1: Miks and Veto codenames ─────────────────────────────────────────────
+// ─── T1: Miks and Veto codenames (confirmed: Iris → MIKS, Pine → VETO) ───────
 { const { AGENTS } = require('./valorant-gep');
-  assert.strictEqual(AGENTS['Miks'], 'MIKS', 'Miks → MIKS');
-  assert.strictEqual(AGENTS['Veto'], 'VETO', 'Veto → VETO'); }
+  assert.strictEqual(AGENTS['Iris'], 'MIKS', 'Iris → MIKS');
+  assert.strictEqual(AGENTS['Pine'], 'VETO', 'Veto → VETO'); }
 
 // ─── T1: unknown agent codename warns exactly once ────────────────────────────
 { const warns = []; const orig = console.warn; console.warn = (...a) => warns.push(a);
