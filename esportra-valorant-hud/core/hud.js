@@ -179,7 +179,7 @@
           txt(o.arv, p.alive && p.armor > 0 ? p.armor : ''); o.arv.style.display = p.alive && p.armor > 0 ? '' : 'none';
           const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
           o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]);
-            if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = c > 0 ? Array.from({ length: Math.min(c, 4) }, () => '<i></i>').join('') : ''; }
+            if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); txt(sl.ch, c > 1 ? String(c) : ''); }
             else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); txt(sl.ch, u >= um ? '' : u + '/' + um); } });
           txt(o.cr, money(p.credits));
           o.r.classList.toggle('dead', !p.alive); o.r.classList.toggle('obs', s.observed[0] === i && s.observed[1] === j && p.alive); }); });

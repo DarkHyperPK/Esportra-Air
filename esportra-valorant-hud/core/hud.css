@@ -105,17 +105,20 @@ body.bg{background:#222 url() center/cover}
 .pr .hpb i{position:absolute;top:0;height:100%;background:#fff;transition:width .35s var(--ease)}
 .pl.l .hpb i{left:0}.pl.r .hpb i{right:0}
 .pr .hpb i.low{background:var(--red)}
-/* row 3: abilities */
-.pr .abw{display:flex;gap:6px;align-items:center}
+/* row 3: abilities — evenly distributed */
+.pr .abw{display:flex;justify-content:space-evenly;align-items:center}
 .pl.r .abw{flex-direction:row-reverse}
-.pr .ab-s{width:28px;height:28px;position:relative;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.05);border-radius:3px}
-.pr .ab-s img{width:22px;height:22px;opacity:.9}
+.pr .ab-s{width:36px;height:30px;position:relative;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.05);border-radius:3px}
+.pr .ab-s img{width:26px;height:26px;opacity:.9}
 .pr .ab-s.empty{background:rgba(255,255,255,.02)}.pr .ab-s.empty img{opacity:.2}
-.pr .ab-s .cp{position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);display:flex;gap:2px}
-.pr .ab-s .cp i{width:5px;height:5px;transform:rotate(45deg);background:var(--c)}
+/* charge count — corner badge, stays within slot bounds */
+.pr .ab-s .cp{position:absolute;bottom:2px;right:2px;font-family:JB;font-size:9px;font-weight:700;color:var(--c);line-height:1;letter-spacing:0}
+/* ult slot — dim icon + centered fraction overlay when not ready */
+.pr .ab-s.ux:not(.ready) img{opacity:.35}
 .pr .ab-s.ux.ready{background:rgba(255,255,255,.1);box-shadow:0 0 10px var(--c)}
-.pr .ab-s.ux.ready img{filter:brightness(1.4)}
-.pr .ab-s .up{position:absolute;bottom:-2px;right:-4px;font-size:10px;letter-spacing:.04em;color:#c8c8cc;background:rgba(15,14,17,.85);padding:0 3px;border-radius:2px;white-space:nowrap}
+.pr .ab-s.ux.ready img{filter:brightness(1.4);opacity:.9}
+.pr .ab-s .up{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:JB;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.4);border-radius:3px}
+.pr .ab-s.ux.ready .up{display:none}
 @keyframes glow{50%{box-shadow:0 0 14px var(--c)}}
 .pr .cr{font-size:12px;color:var(--gold);white-space:nowrap}
 .pr.dead{opacity:.5}.pr.dead .ag img{filter:grayscale(1) brightness(.6)}.pr.dead .nm{color:#9a9aa0}
