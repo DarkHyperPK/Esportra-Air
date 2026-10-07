@@ -98,8 +98,8 @@ body.bg{background:#222 url() center/cover}
 /* row 2: weapon + armor icon + credits + hp bar */
 .pr .r2{display:flex;align-items:center;gap:6px}
 .pl.r .r2{flex-direction:row-reverse}
-.pr .r2 .wp{height:26px;max-width:100px;opacity:.95;flex:none}
-.pl.l .r2 .wp{transform:scaleX(-1)}
+.pr .r2 .wp{height:26px;min-width:40px;max-width:100px;flex:none}
+.pl.l .pr .r2 .wp{transform:scaleX(-1)}
 .pr .r2 .ar{width:14px;height:14px;opacity:.85;flex:none}
 .pr .hpb{flex:1;height:5px;background:rgba(255,255,255,.08);position:relative}
 .pr .hpb i{position:absolute;top:0;height:100%;background:#fff;transition:width .35s var(--ease)}
