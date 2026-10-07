@@ -76,89 +76,80 @@ body.bg{background:#222 url() center/cover}
 .sb-tag.show{opacity:1}
 
 /* ───────── PLAYER CARDS ───────── */
-/* ───────── PLAYER LIST — Spectra VCT combat card layout ───────── */
+/* ───────── PLAYER LIST — Spectra VCT combat card ───────── */
 .pl{position:absolute;bottom:24px;display:flex;flex-direction:column;gap:6px}
 .pl.l{left:0}.pl.r{right:0}
-.pl-head{height:30px;display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:.24em;color:var(--muted);margin-bottom:4px;padding:0 28px}
+.pl-head{height:30px;display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:.24em;color:var(--muted);margin-bottom:4px;padding:0 10px}
 .pl.r .pl-head{flex-direction:row-reverse}
 .pl-head b{color:var(--c);font-weight:600}
-/* ── card shell (vh-82 = 82px) ── */
-.pr{position:relative;height:82px;display:flex;overflow:visible}
+/* ── card (82px, flex row) ── */
+.pr{position:relative;height:82px;display:flex}
 .pl.l .pr{flex-direction:row}.pl.r .pr{flex-direction:row-reverse}
-/* ── agent icon (overlapping, absolute) ── */
-.pr .ag{position:absolute;width:90px;height:56px;z-index:3}
-.pl.l .ag{left:0}.pl.r .ag{right:0}
-.pr .ag img{position:absolute;top:-4px;width:68px;height:68px;border-radius:3px;z-index:3;object-fit:cover;object-position:top}
-.pl.l .ag img{left:2px}.pl.r .ag img{right:2px}
+/* ── agent icon (flex child, 68px) ── */
+.pr .ag{width:68px;flex:none;position:relative;overflow:hidden;border-radius:3px}
+.pr .ag img{width:100%;height:100%;display:block;object-fit:cover;object-position:top}
 .pl.r .ag img{transform:scaleX(-1)}
-.pr.dead .ag img{filter:grayscale(1)}
-/* ── player info zone (vw-180 = 180px) ── */
-.pr .pi{width:180px;height:100%;position:relative;box-sizing:border-box;border:2px solid var(--c);overflow:hidden}
-.pl.l .pi{border-right:none;border-radius:6px 0 0 0}
-.pl.r .pi{border-left:none;border-radius:0 6px 0 0}
-/* alive gradient */
-.pl.l .pr:not(.dead):not(.obs) .pi{background:linear-gradient(to right,rgba(var(--c-rgb),.3),rgba(var(--c-rgb),.1)),rgba(15,25,35,.9)}
-.pl.r .pr:not(.dead):not(.obs) .pi{background:linear-gradient(to left,rgba(var(--c-rgb),.3),rgba(var(--c-rgb),.1)),rgba(15,25,35,.9)}
-/* observed — gold gradient */
+.pr.dead .ag img{filter:grayscale(1) brightness(.6)}
+/* ── player info zone (flex-1, team gradient) ── */
+.pr .pi{flex:1;min-width:0;display:flex;flex-direction:column;position:relative;box-sizing:border-box;border:2px solid var(--c)}
+.pl.l .pi{border-left:none;border-right:none}
+.pl.r .pi{border-left:none;border-right:none}
+.pl.l .pr:not(.dead):not(.obs) .pi{background:linear-gradient(to right,rgba(var(--c-rgb),.3),rgba(var(--c-rgb),.08)),rgba(15,25,35,.9)}
+.pl.r .pr:not(.dead):not(.obs) .pi{background:linear-gradient(to left,rgba(var(--c-rgb),.3),rgba(var(--c-rgb),.08)),rgba(15,25,35,.9)}
 .pl.l .pr.obs .pi{background:linear-gradient(to right,rgba(240,200,85,.5),rgba(225,181,22,.15)),rgba(15,25,35,.9);border-color:#e1b516}
 .pl.r .pr.obs .pi{background:linear-gradient(to left,rgba(240,200,85,.5),rgba(225,181,22,.15)),rgba(15,25,35,.9);border-color:#e1b516}
-/* dead — dark fade */
-.pl.l .pr.dead .pi{background:linear-gradient(to right,rgba(15,25,35,.7),rgba(15,25,35,.5) 70%,transparent);border-color:transparent}
-.pl.r .pr.dead .pi{background:linear-gradient(to left,rgba(15,25,35,.9),rgba(15,25,35,.6) 80%,transparent);border-color:transparent}
-/* ── abilities + ult wrapper (absolute inside .pi) ── */
-.pr .aw{position:absolute;width:152px;height:60px;top:0;display:flex;flex-direction:column;align-items:center;justify-content:space-around}
-.pl.l .aw{left:44px}.pl.r .aw{right:44px}
-/* abilities row — 3 icons */
-.pr .abr{width:60%;display:flex;justify-content:space-between;overflow:hidden}
+.pl.l .pr.dead .pi{background:linear-gradient(to right,rgba(15,25,35,.7),rgba(15,25,35,.4) 70%,transparent);border-color:transparent}
+.pl.r .pr.dead .pi{background:linear-gradient(to left,rgba(15,25,35,.7),rgba(15,25,35,.4) 70%,transparent);border-color:transparent}
+/* abilities + ult — fills pi top area */
+.pr .aw{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px 8px 0}
+.pr .abr{display:flex;gap:6px}
 .pr.dead .abr{display:none}
 .pr .abr img{width:22px;height:22px;opacity:.9;flex:none}
 .pr .abr img.dim{filter:brightness(.5);opacity:.5}
-/* dead info — KDA + credits replaces abilities */
 .pr .di{display:none;align-items:center;gap:8px;font-size:13px;font-weight:600;color:rgba(var(--c-rgb),.8)}
 .pr.dead .di{display:flex}
-.pr .di img{width:9px;height:9px}
 /* ult tracker */
-.pr .ut{width:100%;height:25px;position:relative;display:flex;align-items:center;justify-content:center}
+.pr .ut{height:22px;position:relative;display:flex;align-items:center;justify-content:center}
 .pr .ut .up{display:flex;align-items:center;justify-content:center;gap:2px}
 .pr .ut .up img{display:block;flex:none;width:10px;height:10px}
-.pr .ut .ui{width:25px;height:25px;display:none;position:relative;z-index:1}
+.pr .ut .ui{width:22px;height:22px;display:none;position:relative;z-index:1}
 .pr .ut .ug{width:8px;height:8px;position:absolute;border-radius:50%;display:none}
 .pr .ut.ready{transform:scale(1.25)}
 .pr .ut.ready .ui{display:block;filter:brightness(1.3)}
 .pr .ut.ready .ug{display:block;box-shadow:0 0 10px 5px rgba(255,255,255,.8);animation:ult-bg-ping 3.75s infinite alternate-reverse}
 .pr .ut.ready .up{display:none}
 @keyframes ult-bg-ping{80%,100%{transform:scale(2);opacity:0}}
-/* player name — absolute bottom of .pi */
-.pr .nm{position:absolute;bottom:0;max-width:146px;font-family:PBd;font-size:15px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
-.pl.l .nm{left:4px}.pl.r .nm{right:4px;text-align:right}
+/* player name — bottom of .pi */
+.pr .nm{padding:0 8px 3px;font-family:PBd;font-size:14px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl.r .nm{text-align:right}
 .pr.dead .nm{color:#9a9aa0}
-/* ── weapon info zone (vw-120 = 120px) ── */
-.pr .wi{width:120px;height:100%;position:relative;box-sizing:border-box;border:2px solid var(--c);overflow:visible}
+/* ── weapon zone (120px, lighter gradient) ── */
+.pr .wi{width:120px;flex:none;position:relative;box-sizing:border-box;border:2px solid var(--c)}
 .pl.l .wi{border-left:none;border-radius:0 3px 0 0}
 .pl.r .wi{border-right:none;border-radius:3px 0 0 0}
-.pl.l .pr:not(.obs) .wi{background:linear-gradient(to right,rgba(var(--c-rgb),.1),rgba(var(--c-rgb),0)),rgba(15,25,35,.9)}
-.pl.r .pr:not(.obs) .wi{background:linear-gradient(to left,rgba(var(--c-rgb),.1),rgba(var(--c-rgb),0)),rgba(15,25,35,.9)}
+.pl.l .pr:not(.dead):not(.obs) .wi{background:linear-gradient(to right,rgba(var(--c-rgb),.1),rgba(var(--c-rgb),0)),rgba(15,25,35,.9)}
+.pl.r .pr:not(.dead):not(.obs) .wi{background:linear-gradient(to left,rgba(var(--c-rgb),.1),rgba(var(--c-rgb),0)),rgba(15,25,35,.9)}
 .pl.l .pr.obs .wi{background:linear-gradient(to right,rgba(225,181,22,.15),rgba(225,181,22,0)),rgba(15,25,35,.9);border-color:#e1b516}
 .pl.r .pr.obs .wi{background:linear-gradient(to left,rgba(225,181,22,.15),rgba(225,181,22,0)),rgba(15,25,35,.9);border-color:#e1b516}
 .pr.dead .wi{display:none}
 /* weapon image */
-.pr .wp{position:absolute;top:12px;width:calc(100% - 8px);height:32px;object-fit:contain}
+.pr .wp{position:absolute;top:8px;width:calc(100% - 8px);height:32px;object-fit:contain}
 .pl.l .wp{right:4px}.pl.r .wp{left:4px}
 .pl.r .wp{transform:scaleX(-1)}
-/* shield + HP — bottom of weapon zone */
-.pr .si{position:absolute;bottom:2px;display:flex;align-items:center;gap:4px}
+/* shield + HP */
+.pr .si{position:absolute;bottom:4px;display:flex;align-items:center;gap:4px}
 .pl.l .si{right:8px}.pl.r .si{left:8px;flex-direction:row-reverse}
-.pr .si .ar{width:20px;height:20px;flex:none}
-.pr .hpn{font-family:PBd;font-weight:800;font-size:20px;color:var(--c)}
+.pr .si .ar{width:18px;height:18px;flex:none}
+.pr .hpn{font-family:PBd;font-weight:800;font-size:18px;color:var(--c)}
 .pr .hpn.low{color:var(--red)}
-/* credits — outside weapon zone edge */
-.pr .ci{position:absolute;bottom:2px;display:flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:rgba(var(--c-rgb),.8)}
-.pl.l .ci{left:-20px}.pl.r .ci{right:-20px;flex-direction:row-reverse}
+/* credits */
+.pr .ci{position:absolute;bottom:4px;display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:rgba(var(--c-rgb),.8)}
+.pl.l .ci{left:8px}.pl.r .ci{right:8px;flex-direction:row-reverse}
 .pr .ci img{width:9px;height:9px;flex:none}
-/* ── HP bar — absolute bottom, team color with glow ── */
-.pr .hpb{position:absolute;bottom:0;height:3px;background:var(--c);transition:width .35s var(--ease);box-shadow:0 4px 8px 1px rgba(var(--c-rgb),.6);z-index:1}
+/* ── HP bar — absolute bottom, team color + glow ── */
+.pr>.hpb{position:absolute;bottom:0;height:3px;background:var(--c);transition:width .35s var(--ease);box-shadow:0 4px 8px 1px rgba(var(--c-rgb),.6);z-index:1}
 .pl.l .hpb{left:0}.pl.r .hpb{right:0}
-.pr.dead .hpb{display:none}
+.pr.dead>.hpb{display:none}
 
 /* ───────── KILLFEED ───────── */
 .kf{position:absolute;right:24px;top:184px;width:600px}
