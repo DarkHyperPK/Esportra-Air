@@ -223,10 +223,10 @@ body.bg{background:#222 url() center/cover}
 .bn.on .por{animation:tIn .6s .1s var(--ease) forwards}
 .bn .lg{position:absolute;top:70px;width:90px;height:90px;opacity:0}
 .bn.on .lg{animation:tIn .5s .2s var(--ease) forwards}
-.pause{position:absolute;left:660px;top:200px;width:600px;height:96px;background:var(--ink);border-bottom:4px solid var(--red);text-align:center;opacity:0;transform:translateY(-14px);transition:all .45s var(--ease)}
+.pause{position:absolute;left:660px;top:200px;width:600px;padding:16px 0 18px;background:var(--ink);border-bottom:4px solid var(--red);text-align:center;opacity:0;transform:translateY(-14px);transition:all .45s var(--ease)}
 .pause.on{opacity:1;transform:none}
-.pause .a{font-family:PBk;font-size:40px;letter-spacing:-.02em;margin-top:12px}
-.pause .b{font-size:13px;letter-spacing:.3em;color:var(--muted);margin-top:6px}
+.pause .a{font-family:PBk;font-size:40px;letter-spacing:-.02em}
+.pause .b{font-size:13px;letter-spacing:.3em;color:var(--muted);margin-top:8px}
 
 /* ───────── REPLAY ───────── */
 .rp{position:absolute;left:48px;top:40px;height:54px;display:flex;opacity:0;transform:translateX(-30px);transition:all .45s var(--ease)}
@@ -487,7 +487,7 @@ body.bg{background:#222 url() center/cover}
 .sk .track{flex:1;height:10px;background:rgba(255,255,255,.08);position:relative}
 .sk .track i{position:absolute;left:0;top:0;height:100%;background:var(--red)}
 .sk .mk{position:absolute;top:-6px;width:2px;height:22px;background:#fff}
-.sk .ml{position:absolute;top:16px;transform:translateX(-50%);font-size:9px;letter-spacing:.16em;color:#c8c8cc;white-space:nowrap}
+.sk .ml{display:none}
 .sk.hot{animation:skp .5s steps(2) infinite}@keyframes skp{50%{border-bottom-color:#fff}}
 /* moments (first blood / multikill / clutch) */
 .mo{position:absolute;left:12px;top:460px;display:flex;flex-direction:column;gap:8px}
