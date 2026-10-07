@@ -657,16 +657,15 @@
       const isDec  = !isPast && !isLive && x.pick === -1;
       const stateClass = isPast ? 'past' : isLive ? 'live' : 'future';
       let badge = '';
-      if (isLive) badge = `<span class="bd live">LIVE</span>`;
+      if (isLive) badge = `<span class="bd live">CURRENT:</span>`;
       else if (isDec) badge = `<span class="bd dec">DECIDER:</span>`;
       else if (isNext) badge = `<span class="bd next">NEXT:</span>`;
-      else if (!isPast && x.pick >= 0) badge = `<span class="bd pick">${s.teams[x.pick].tag}:</span>`;
-      let score = '', winLogo = '';
-      if (isPast && x.score) {
-        score = `<span class="sc">${x.score[0]}-${x.score[1]}</span>`;
-        const wt = s.teams[x.winner]; winLogo = wt.logo ? `<img class="wl" src="${wt.logo}">` : '';
-      } else if (isLive) { score = `<span class="sc">${s.teams[0].score}-${s.teams[1].score}</span>`; }
-      return `<div class="tile ${stateClass}">${badge}<span class="mn">${x.map}</span>${winLogo}${score}</div>`;
+      const pickLogo = x.pick >= 0 && s.teams[x.pick].logo ? `<img class="wl" src="${s.teams[x.pick].logo}">` : '';
+      const winLogo = isPast && x.winner !== null && s.teams[x.winner].logo ? `<img class="wl" src="${s.teams[x.winner].logo}">` : '';
+      let score = '';
+      if (isPast && x.score) score = `<span class="sc">${x.score[0]}-${x.score[1]}</span>`;
+      else if (isLive) score = `<span class="sc">${s.teams[0].score}-${s.teams[1].score}</span>`;
+      return `<div class="tile ${stateClass}">${isPast ? winLogo : pickLogo}${badge}<span class="mn">${x.map}</span>${score}</div>`;
     }
     return { update(s) {
       if (s.series.length <= 1) { toggle(m, false); return; }
