@@ -164,6 +164,15 @@
   };
 
   const MAX_AB_CHARGES = { JETT:[1,2,1], RAZE:[2,1,1], SKYE:[2,3,1], SOVA:[1,2,1] };
+  const ULT_INTERNAL = {
+    ASTRA:'Rift', BREACH:'Breach', BRIMSTONE:'Sarge', CHAMBER:'Deadeye',
+    CLOVE:'Smonk', CYPHER:'Gumshoe', DEADLOCK:'Cable', FADE:'BountyHunter',
+    GEKKO:'Aggrobot', HARBOR:'Mage', ISO:'Sequoia', JETT:'Wushu',
+    'KAY/O':'Grenadier', KAYO:'Grenadier', KILLJOY:'Killjoy', NEON:'Sprinter',
+    OMEN:'Wraith', PHOENIX:'Phoenix', RAZE:'Clay', REYNA:'Vampire',
+    SAGE:'Thorne', SKYE:'Guide', SOVA:'Hunter', TEJO:'Cashew',
+    VIPER:'Pandemic', VYSE:'Nox', YORU:'Stealth',
+  };
 
   M.players = root => {
     const m = E('div', 'mod', root); const sides = [0, 1].map(i => { const w = E('div', 'pl fx-' + (i ? 'right' : 'left') + ' ' + (i ? 'r' : 'l'), m); const hd = E('div', 'pl-head mono', w); const rows = [];
@@ -180,7 +189,7 @@
         sd.rows.forEach((o, j) => { const p = s.players[i][j]; if (!p) return; const A = agent(p.agent);
           setImg(o.ai, A && A.icon); txt(o.nm, p.name); setImg(o.wp, p.alive && weapon(p.weapon) && weapon(p.weapon).kill); setImg(o.ar, p.alive && armorIcon(p.armor));
           const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
-          o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]);
+          o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; if (k === 3) { const int_ = ULT_INTERNAL[p.agent] || p.agent; sl.im.src = `../core/assets/ultimates/${int_}Ultimate.webp`; } else { setImg(sl.im, ab && ab[1]); }
             if (k < 3) { const c = +(p.charges || [])[k] || 0; const max = (MAX_AB_CHARGES[p.agent] || [])[k] || 1; const filled = Math.min(c, max); const empty = max - filled; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = Array.from({length:filled},()=>'<i></i>').join('') + Array.from({length:empty},()=>'<i class="e"></i>').join(''); }
             else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); if (u < um) { const filled = Array.from({length:u},()=>'<img src="../core/assets/misc/ultimate-pip-full.svg">').join(''); const empty = Array.from({length:um-u},()=>'<img src="../core/assets/misc/ultimate-pip.svg">').join(''); sl.ch.innerHTML = filled + empty; } else { sl.ch.innerHTML = ''; } } });
           txt(o.cr, money(p.credits));
