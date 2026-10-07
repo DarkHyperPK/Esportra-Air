@@ -551,7 +551,7 @@
       txt(na, Math.round(p * 100) + '%'); txt(nb, Math.round(100 - p * 100) + '%'); na.style.color = s.teams[0].color; nb.style.color = s.teams[1].color; } }; };
 
   M.spiketimer = root => { const m = E('div', 'mod', root), sk = E('div', 'sk fx-rise', m); sk.innerHTML = '<img class="spike-ic" src="../core/assets/misc/Spike_Icon.svg">'; const v = E('div', 'v', sk), tr = E('div', 'track', sk), fi = E('i', '', tr);
-    [[7, 'FULL DEFUSE 7S'], [3.5, 'HALF 3.5S']].forEach(([x, l]) => { const k = E('div', 'mk', tr); k.style.left = (x / 45 * 100) + '%'; const t = E('div', 'ml mono', tr, l); t.style.left = (x / 45 * 100) + '%'; });
+    [[7, 'DEFUSE 7S', 'below'], [3.5, 'HALF 3.5S', 'above']].forEach(([x, l, pos]) => { const k = E('div', 'mk', tr); k.style.left = (x / 45 * 100) + '%'; const t = E('div', 'ml mono ' + pos, tr, l); t.style.left = (x / 45 * 100) + '%'; });
     return { update(s) { toggle(m, s.show.spikeTimer && s.round.phase === 'planted' && !s.show.scoreboard); }, tick(s) { if (s.round.phase !== 'planted') return; const t = timeLeft(s.round);
       txt(v, t.toFixed(1)); fi.style.width = Math.min(100, t / 45 * 100) + '%'; sk.classList.toggle('hot', t < 7); } }; };
 
