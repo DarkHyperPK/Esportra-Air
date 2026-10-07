@@ -105,28 +105,29 @@ body.bg{background:#222 url() center/cover}
 .pr .hpb i{position:absolute;top:0;height:100%;background:#fff;transition:width .35s var(--ease)}
 .pl.l .hpb i{left:0}.pl.r .hpb i{right:0}
 .pr .hpb i.low{background:var(--red)}
-/* row 3: abilities — evenly distributed */
-.pr .abw{display:flex;justify-content:flex-start;align-items:center;gap:6px}
-.pl.r .abw{flex-direction:row-reverse}
-.pr .ab-s{width:36px;height:36px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;padding:5px 0 4px;background:rgba(255,255,255,.05);border-radius:3px}
-.pr .ab-s>img{width:20px;height:20px;opacity:.9;flex:none}
-.pr .ab-s.ux{width:88px;justify-content:center;padding:0}
-.pr .ab-s.ux>img{width:26px;height:26px}
-.pr .ab-s.empty{background:rgba(255,255,255,.02)}.pr .ab-s.empty>img{opacity:.2}
-/* charge pips — centered row below icon */
-.pr .ab-s .cp{display:flex;gap:2px;align-items:center;justify-content:center}
-.pr .ab-s .cp i{width:4px;height:4px;transform:rotate(45deg);background:var(--c);flex:none}
-.pr .ab-s .cp i.e{background:rgba(255,255,255,.15)}
-/* ult slot — pips only when not ready (matches Spectra: icon hidden, pips centered) */
-.pr .ab-s.ux:not(.ready)>img{display:none}
-.pr .ab-s.ux.ready{background:rgba(255,255,255,.1);box-shadow:0 0 10px var(--c)}
-.pr .ab-s.ux.ready>img{width:25px;height:25px;filter:brightness(1.3);opacity:.95;position:relative;z-index:1}
-.pr .ab-s.ux.ready::before{content:'';position:absolute;inset:0;border-radius:3px;background:radial-gradient(circle,rgba(255,255,255,.25) 0%,transparent 70%);animation:ult-bg-ping 3.75s ease-in-out infinite alternate-reverse}
-.pr .ab-s .up{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:2px;background:transparent;border-radius:3px}
-.pr .ab-s .up img{display:block;flex:none;width:8px;height:9px}
-.pr .ab-s.ux.ready .up{display:none}
-@keyframes glow{50%{box-shadow:0 0 14px var(--c)}}
-@keyframes ult-bg-ping{0%{opacity:.4;transform:scale(.9)}100%{opacity:.9;transform:scale(1.05)}}
+/* row 3: abilities (top) + ult tracker (bottom) — Spectra two-row layout */
+.pr .abw{display:flex;flex-direction:column;gap:2px}
+/* abilities row — 3 icons, brightness dim when unavailable */
+.pr .abr{display:flex;justify-content:space-between;align-items:center}
+.pl.r .abr{flex-direction:row-reverse}
+.pr .ab{display:flex;flex-direction:column;align-items:center;gap:1px}
+.pr .ab>img{width:22px;height:22px;opacity:.9;flex:none}
+.pr .ab.empty>img{filter:brightness(.5);opacity:.5}
+/* charge pips — small diamonds below ability icon */
+.pr .ab .cp{display:flex;gap:2px;align-items:center;justify-content:center;min-height:6px}
+.pr .ab .cp i{width:4px;height:4px;transform:rotate(45deg);background:var(--c);flex:none}
+.pr .ab .cp i.e{background:rgba(255,255,255,.15)}
+/* ult tracker row — pips or icon, centered */
+.pr .ut{height:20px;position:relative;display:flex;align-items:center;justify-content:center}
+.pr .ut .ui{width:22px;height:22px;display:none;position:relative;z-index:1}
+.pr .ut .ug{width:8px;height:8px;position:absolute;border-radius:50%;display:none}
+.pr .ut .up{display:flex;align-items:center;justify-content:center;gap:2px}
+.pr .ut .up img{display:block;flex:none;width:10px;height:10px}
+/* ult ready state — icon + glow visible, pips hidden */
+.pr .ut.ready .ui{display:block;transform:scale(1.25);filter:brightness(1.3)}
+.pr .ut.ready .ug{display:block;box-shadow:0 0 10px 5px rgba(255,255,255,.8);animation:ult-bg-ping 3.75s infinite alternate-reverse}
+.pr .ut.ready .up{display:none}
+@keyframes ult-bg-ping{80%,100%{transform:scale(2);opacity:0}}
 .pr .cr{font-size:12px;color:var(--gold);white-space:nowrap}
 .pr .r2 .cri{width:14px;height:12px;flex:none;opacity:.85}
 .pr.dead{opacity:.5}.pr.dead .ag img{filter:grayscale(1) brightness(.6)}.pr.dead .nm{color:#9a9aa0}

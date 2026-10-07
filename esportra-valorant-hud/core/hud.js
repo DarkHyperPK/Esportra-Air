@@ -180,8 +180,10 @@
         const row1 = E('div', 'r1', body); const hpn = E('div', 'hpn num', row1); const nm = E('div', 'nm', row1);
         const row2 = E('div', 'r2', body); const wp = E('img', 'wp', row2); const ar = E('img', 'ar', row2); const hpb = E('div', 'hpb', row2); const hpi = E('i', '', hpb); const cri = E('img', 'cri', row2); const cr = E('div', 'cr num', row2);
         const abw = E('div', 'abw', body);
-        const abSlots = [0,1,2,3].map(k => { const sl = E('div', 'ab-s' + (k === 3 ? ' ux' : ''), abw); const im = E('img', '', sl); const ch = E('div', k === 3 ? 'up' : 'cp', sl); return { sl, im, ch }; });
-        rows.push({ r, ai, nm, ar, wp, hpn, hpi, abSlots, cr, cri }); }
+        const abr = E('div', 'abr', abw);
+        const abs = [0,1,2].map(k => { const sl = E('div', 'ab', abr); const im = E('img', '', sl); const ch = E('div', 'cp', sl); return { sl, im, ch }; });
+        const ut = E('div', 'ut', abw); const ui = E('img', 'ui', ut); const ug = E('div', 'ug', ut); const up = E('div', 'up', ut);
+        rows.push({ r, ai, nm, ar, wp, hpn, hpi, abs, ut, ui, ug, up, cr, cri }); }
       return { w, hd, rows }; });
     return { update(s) {
       toggle(m, vis.players(s));
@@ -189,9 +191,10 @@
         sd.rows.forEach((o, j) => { const p = s.players[i][j]; if (!p) return; const A = agent(p.agent);
           setImg(o.ai, A && A.icon); txt(o.nm, p.name); setImg(o.wp, p.alive && weapon(p.weapon) && weapon(p.weapon).kill); setImg(o.ar, p.alive && armorIcon(p.armor));
           const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
-          o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; if (k === 3) { const int_ = ULT_INTERNAL[p.agent] || p.agent; sl.im.src = `../core/assets/ultimates/${int_}Ultimate.webp`; } else { setImg(sl.im, ab && ab[1]); }
-            if (k < 3) { const c = +(p.charges || [])[k] || 0; const max = (MAX_AB_CHARGES[p.agent] || [])[k] || 1; const filled = Math.min(c, max); const empty = max - filled; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = Array.from({length:filled},()=>'<i></i>').join('') + Array.from({length:empty},()=>'<i class="e"></i>').join(''); }
-            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); if (u < um) { const filled = Array.from({length:u},()=>'<img src="../core/assets/misc/ultimate-pip-full.svg">').join(''); const empty = Array.from({length:um-u},()=>'<img src="../core/assets/misc/ultimate-pip.svg">').join(''); sl.ch.innerHTML = filled + empty; } else { sl.ch.innerHTML = ''; } } });
+          o.abs.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]); const c = +(p.charges || [])[k] || 0; const max = (MAX_AB_CHARGES[p.agent] || [])[k] || 1; const filled = Math.min(c, max); const empty = max - filled; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = Array.from({length:filled},()=>'<i></i>').join('') + Array.from({length:empty},()=>'<i class="e"></i>').join(''); });
+          const int_ = ULT_INTERNAL[p.agent] || p.agent; o.ui.src = `../core/assets/ultimates/${int_}Ultimate.webp`;
+          const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); const ready = u >= um; o.ut.classList.toggle('ready', ready);
+          if (!ready) { const fh = Array.from({length:u},()=>'<img src="../core/assets/misc/ultimate-pip-full.svg">').join(''); const eh = Array.from({length:um-u},()=>'<img src="../core/assets/misc/ultimate-pip.svg">').join(''); o.up.innerHTML = fh + eh; } else { o.up.innerHTML = ''; }
           txt(o.cr, money(p.credits));
           o.cri.src = s.teams[i].side === 'ATK' ? '../core/assets/misc/ValorantCreditsRed.svg' : '../core/assets/misc/ValorantCreditsGreen.svg';
           o.r.classList.toggle('dead', !p.alive); o.r.classList.toggle('obs', s.observed[0] === i && s.observed[1] === j && p.alive); }); });
