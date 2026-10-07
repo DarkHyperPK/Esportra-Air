@@ -113,13 +113,13 @@ body.bg{background:#222 url() center/cover}
 .pr .hpb i.low{background:var(--red)}
 .pr.dead .hpb{display:none}
 /* row 2: abilities + weapon + credits (alive) or KDA + credits (dead) */
-.pr .r2{display:flex;align-items:center;gap:6px}
+.pr .r2{display:flex;align-items:center;gap:8px}
 .pl.r .r2{flex-direction:row-reverse}
 /* abilities */
-.pr .ab{display:flex;flex-direction:column;align-items:center;gap:2px}
-.pr .ab>img{width:18px;height:18px;opacity:.85;flex:none}
+.pr .ab{display:flex;flex-direction:column;align-items:center;gap:3px}
+.pr .ab>img{width:20px;height:20px;opacity:.85;flex:none}
 .pr .ab.empty>img{opacity:.2}
-.pr .ab .cp{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;max-width:16px}
+.pr .ab .cp{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;max-width:24px}
 .pr .ab .cp i{width:4px;height:4px;transform:rotate(45deg);background:var(--c);flex:none}
 .pr .ab .cp i.e{background:rgba(255,255,255,.15)}
 .pr.dead .ab{display:none}
