@@ -166,13 +166,10 @@
   M.players = root => {
     const m = E('div', 'mod', root); const sides = [0, 1].map(i => { const w = E('div', 'pl fx-' + (i ? 'right' : 'left') + ' ' + (i ? 'r' : 'l'), m); const hd = E('div', 'pl-head mono', w); const rows = [];
       for (let j = 0; j < 5; j++) { const r = E('div', 'pr', w); const ag = E('div', 'ag', r); const ai = E('img', '', ag); const body = E('div', 'body', r);
-        const row1 = E('div', 'r1', body); const hpn = E('div', 'hpn num', row1); const nm = E('div', 'nm', row1);
-        const row2 = E('div', 'r2', body);
-        const ec = E('div', 'ec', row2); const ar = E('img', 'ar', ec); const cri = E('img', 'cri', ec); const cr = E('div', 'cr num', ec);
-        const hpb = E('div', 'hpb', row2); const hpi = E('i', '', hpb);
-        const wp = E('img', 'wp', row2);
-        const abw = E('div', 'abw', body);
-        const abSlots = [0,1,2,3].map(k => { const sl = E('div', 'ab-s' + (k === 3 ? ' ux' : ''), abw); const im = E('img', '', sl); const ch = E('div', k === 3 ? 'up' : 'cp', sl); return { sl, im, ch }; });
+        const row1 = E('div', 'r1', body); const hpn = E('div', 'hpn num', row1); const ar = E('img', 'ar', row1); const nm = E('div', 'nm', row1);
+        const row2 = E('div', 'r2', body); const wp = E('img', 'wp', row2); const cri = E('img', 'cri', row2); const cr = E('div', 'cr num', row2);
+        const abSlots = [0,1,2,3].map(k => { const sl = E('div', 'ab-s' + (k === 3 ? ' ux' : ''), row2); const im = E('img', '', sl); const ch = E('div', k === 3 ? 'up' : 'cp', sl); return { sl, im, ch }; });
+        const hpb = E('div', 'hpb', r); const hpi = E('i', '', hpb);
         rows.push({ r, ai, nm, ar, wp, hpn, hpi, abSlots, cr, cri }); }
       return { w, hd, rows }; });
     return { update(s) {
