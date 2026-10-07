@@ -255,8 +255,7 @@ body.bg{background:#222 url() center/cover}
 .ec .rw .u{margin-left:auto;font-size:12px;letter-spacing:.16em;color:var(--muted)}
 .ec .rw .u.rd{color:var(--c)}
 .ec .mid{width:0}
-.ec-top{position:absolute;left:280px;bottom:442px;width:1360px;text-align:center;font-size:14px;letter-spacing:.34em;color:#c8c8cc}
-.ec-top b{color:var(--gold);font-weight:600}
+.ec-top{display:none}
 
 /* ───────── SCOREBOARD ───────── */
 .st-dim{position:absolute;inset:0;background:rgba(8,8,10,.62);backdrop-filter:blur(8px);opacity:0;transition:opacity .4s}
