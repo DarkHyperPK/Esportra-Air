@@ -168,8 +168,9 @@
       for (let j = 0; j < 5; j++) { const r = E('div', 'pr', w); const ag = E('div', 'ag', r); const ai = E('img', '', ag); const body = E('div', 'body', r);
         const row1 = E('div', 'r1', body); const hpn = E('div', 'hpn num', row1); const ar = E('img', 'ar', row1); const nm = E('div', 'nm', row1);
         const row2 = E('div', 'r2', body); const wp = E('img', 'wp', row2); const cri = E('img', 'cri', row2); const cr = E('div', 'cr num', row2);
-        const abSlots = [0,1,2,3].map(k => { const sl = E('div', 'ab-s' + (k === 3 ? ' ux' : ''), row2); const im = E('img', '', sl); const ch = E('div', k === 3 ? 'up' : 'cp', sl); return { sl, im, ch }; });
+        const abw = E('div', 'abw', body);
         const hpb = E('div', 'hpb', r); const hpi = E('i', '', hpb);
+        const abSlots = [0,1,2,3].map(k => { const sl = E('div', 'ab-s' + (k === 3 ? ' ux' : ''), abw); const im = E('img', '', sl); const ch = E('div', k === 3 ? 'up' : 'cp', sl); return { sl, im, ch }; });
         rows.push({ r, ai, nm, ar, wp, hpn, hpi, abSlots, cr, cri }); }
       return { w, hd, rows }; });
     return { update(s) {
