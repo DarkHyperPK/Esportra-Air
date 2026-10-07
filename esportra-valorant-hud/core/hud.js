@@ -650,23 +650,23 @@
   M.seriesmaps = root => {
     const m = E('div', 'mod', root), sm = E('div', 'sm fx-rise', m);
     function buildTile(s, x, i) {
-      const Mm = mapA(x.map);
       const liveIdx = s.map.number - 1;
       const isPast = x.winner !== null;
       const isLive = !isPast && i === liveIdx;
       const isNext = !isPast && !isLive && i === liveIdx + 1;
       const isDec  = !isPast && !isLive && x.pick === -1;
       const stateClass = isPast ? 'past' : isLive ? 'live' : 'future';
-      const winnerColor = isPast ? s.teams[x.winner].color : 'transparent';
       let badge = '';
-      if (isLive) badge = `<div class="bd live">LIVE</div>`;
-      else if (isNext) badge = `<div class="bd next">NEXT</div>`;
-      else if (isDec)  badge = `<div class="bd dec">DECIDER</div>`;
-      else if (!isPast && x.pick >= 0) badge = `<div class="bd pick">${s.teams[x.pick].tag} PICK</div>`;
-      let score = '';
-      if (isPast && x.score) score = `<div class="sc">${x.score[0]}–${x.score[1]}</div>`;
-      else if (isLive) score = `<div class="sc">${s.teams[0].score}–${s.teams[1].score}</div>`;
-      return `<div class="tile ${stateClass}" style="--tw:${winnerColor}">${Mm ? `<img class="bg" src="${Mm.list}">` : ''}<div class="sh"></div>${badge}${score}<div class="mn">${x.map}</div></div>`;
+      if (isLive) badge = `<span class="bd live">LIVE</span>`;
+      else if (isDec) badge = `<span class="bd dec">DECIDER:</span>`;
+      else if (isNext) badge = `<span class="bd next">NEXT:</span>`;
+      else if (!isPast && x.pick >= 0) badge = `<span class="bd pick">${s.teams[x.pick].tag}:</span>`;
+      let score = '', winLogo = '';
+      if (isPast && x.score) {
+        score = `<span class="sc">${x.score[0]}-${x.score[1]}</span>`;
+        const wt = s.teams[x.winner]; winLogo = wt.logo ? `<img class="wl" src="${wt.logo}">` : '';
+      } else if (isLive) { score = `<span class="sc">${s.teams[0].score}-${s.teams[1].score}</span>`; }
+      return `<div class="tile ${stateClass}">${badge}<span class="mn">${x.map}</span>${winLogo}${score}</div>`;
     }
     return { update(s) {
       if (s.series.length <= 1) { toggle(m, false); return; }
