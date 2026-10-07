@@ -180,7 +180,7 @@
           const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
           o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]);
             if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = c ? Array.from({ length: c }, () => '<i></i>').join('') : '<i class="e"></i>'; }
-            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); if (u < um) { const filled = Array.from({ length: u }, () => `<img src="../core/assets/misc/ultimate-pip-full.svg" width="4" height="5">`).join(''); const empty = Array.from({ length: um - u }, () => `<img src="../core/assets/misc/ultimate-pip.svg" width="4" height="5">`).join(''); sl.ch.innerHTML = filled + empty; } else { sl.ch.innerHTML = ''; } } });
+            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); sl.ch.textContent = u >= um ? '' : `${u}/${um}`; } });
           txt(o.cr, money(p.credits));
           o.cri.src = s.teams[i].side === 'ATK' ? '../core/assets/misc/ValorantCreditsRed.svg' : '../core/assets/misc/ValorantCreditsGreen.svg';
           o.r.classList.toggle('dead', !p.alive); o.r.classList.toggle('obs', s.observed[0] === i && s.observed[1] === j && p.alive); }); });

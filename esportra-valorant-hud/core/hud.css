@@ -115,12 +115,11 @@ body.bg{background:#222 url() center/cover}
 .pr .ab-s .cp{position:absolute;bottom:2px;right:2px;display:flex;gap:3px;align-items:center}
 .pr .ab-s .cp i{width:5px;height:5px;transform:rotate(45deg);background:var(--c);flex:none}
 .pr .ab-s .cp i.e{background:rgba(255,255,255,.15)}
-/* ult slot — dim icon + centered fraction overlay when not ready */
+/* ult slot */
 .pr .ab-s.ux:not(.ready) img{opacity:.35}
 .pr .ab-s.ux.ready{background:rgba(255,255,255,.1);box-shadow:0 0 10px var(--c);animation:glow 1.4s ease-in-out infinite}
 .pr .ab-s.ux.ready img{filter:brightness(1.4);opacity:.9}
-.pr .ab-s .up{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;gap:1px;background:rgba(0,0,0,.4);border-radius:3px}
-.pr .ab-s .up img{display:block;flex:none}
+.pr .ab-s .up{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:.5px;background:rgba(0,0,0,.4);border-radius:3px}
 .pr .ab-s.ux.ready .up{display:none}
 @keyframes glow{50%{box-shadow:0 0 14px var(--c)}}
 .pr .cr{font-size:12px;color:var(--gold);white-space:nowrap}
