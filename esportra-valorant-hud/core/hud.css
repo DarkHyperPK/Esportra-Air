@@ -57,10 +57,9 @@ body.bg{background:#222 url() center/cover}
 .sb-score.pop{animation:pop .5s var(--ease)}
 @keyframes pop{0%{transform:scaleY(.2);filter:brightness(2.4)}100%{transform:none;filter:none}}
 .sb-mid{width:216px;height:100px;background:var(--ink-2);position:relative;text-align:center}
-.sb-mid .top{position:absolute;left:0;right:0;top:10px;font-size:12px;letter-spacing:.24em;color:var(--red)}
-.sb-mid .tm{position:absolute;left:0;right:0;top:27px;font-family:JB;font-weight:600;font-size:40px;letter-spacing:.04em;display:flex;align-items:center;justify-content:center;gap:10px}
-.sb-mid .tm.planted{color:var(--red)} .sb-mid .tm.buy{color:var(--gold)} .sb-mid .tm.paused{animation:blink 1s steps(2) infinite}
-.sb-mid .bot{position:absolute;left:0;right:0;top:76px;font-size:11px;letter-spacing:.26em;color:var(--muted)}
+.sb-mid .top{display:none}
+.sb-mid .tm{display:none}
+.sb-mid .bot{display:none}
 @keyframes blink{50%{opacity:.35}}
 .tm.planted img.spike-tm{animation:spike-blink var(--blink,0ms) steps(1) infinite}
 @keyframes spike-blink{50%{opacity:0}}
