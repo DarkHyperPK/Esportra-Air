@@ -199,7 +199,7 @@
           setImg(o.ai, A && A.icon);
           setImg(o.uico, A && A.ab[3] && A.ab[3][1]);
           const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); o.ud.classList.toggle('ready', u >= um);
-          o.uring.innerHTML = ultRingSVG(u, um, 30);
+          o.uring.innerHTML = ultRingSVG(u, um, 38);
           txt(o.nm, p.name);
           const armor = p.alive ? +p.armor || 0 : 0; txt(o.sh, armor > 0 ? armor : ''); o.sh.style.display = armor > 0 ? '' : 'none';
           const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : ''); o.hpn.classList.toggle('low', hp > 0 && hp <= 30);
