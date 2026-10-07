@@ -466,7 +466,7 @@ body.bg{background:#222 url() center/cover}
 
 /* ═════════ EXTENDED LIBRARY ═════════ */
 /* round history strip */
-.rh{position:absolute;left:0;right:0;margin:0 auto;width:max-content;top:222px;display:flex;flex-direction:column;gap:4px;padding:6px 10px;background:var(--ink)}
+.rh{position:absolute;left:0;right:0;margin:0 auto;width:max-content;bottom:434px;display:flex;flex-direction:column;gap:4px;padding:6px 10px;background:var(--ink)}
 .rh-row{display:flex;align-items:center;gap:3px}
 .rh .rh-lab{font-family:JB,monospace;font-size:9px;font-weight:600;letter-spacing:.16em;color:var(--c);min-width:30px;text-align:center;flex:none}
 .rh .c{width:22px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.05);position:relative}
