@@ -81,9 +81,7 @@ body.bg{background:#222 url() center/cover}
 /* All dimensions are authored on the existing 1920 x 1080 canvas. */
 .pl{--rose:#e0445e;--card-width:320px;--card-height:92px;position:absolute;bottom:24px;width:var(--card-width);display:flex;flex-direction:column;gap:12px}
 .pl.l{left:12px}.pl.r{right:12px}
-.pl-head{height:22px;display:flex;align-items:center;gap:10px;padding:0 3px;margin:0;font-family:EsportraMontserrat,sans-serif;font-size:10px;font-weight:600;letter-spacing:.15em;color:#99999f;white-space:nowrap}
-.pl.r .pl-head{flex-direction:row-reverse}
-.pl-head b{color:var(--c);font-weight:600}
+.pl-head{display:none}
 .pr{position:relative;width:100%;height:var(--card-height);flex:none;display:flex;background:rgba(13,13,15,.93);overflow:hidden;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%);box-shadow:inset 0 -1px rgba(255,255,255,.1);transition:background-color .18s}
 .pl.r .pr{flex-direction:row-reverse;clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px)}
 .pr::before{content:'';position:absolute;top:0;bottom:0;left:0;width:2px;background:rgba(255,255,255,.14);z-index:3}
