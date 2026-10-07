@@ -108,16 +108,16 @@ body.bg{background:#222 url() center/cover}
 /* row 3: abilities */
 .pr .abw{display:flex;justify-content:flex-start;align-items:center;gap:4px}
 .pl.r .abw{flex-direction:row-reverse}
-.pr .ab-s{width:28px;height:24px;position:relative;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.05);border-radius:2px}
-.pr .ab-s img{width:20px;height:20px;opacity:.9}
-.pr .ab-s.empty{background:rgba(255,255,255,.02)}.pr .ab-s.empty img{opacity:.2}
-.pr .ab-s .cp{position:absolute;bottom:1px;right:1px;display:flex;gap:2px;align-items:center}
+.pr .ab-s{width:28px;height:28px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:3px 0 2px;background:rgba(255,255,255,.05);border-radius:2px}
+.pr .ab-s>img{width:16px;height:16px;opacity:.9;flex:none}
+.pr .ab-s.empty{background:rgba(255,255,255,.02)}.pr .ab-s.empty>img{opacity:.2}
+.pr .ab-s .cp{display:flex;gap:2px;align-items:center;justify-content:center}
 .pr .ab-s .cp i{width:4px;height:4px;transform:rotate(45deg);background:var(--c);flex:none}
 .pr .ab-s .cp i.e{background:rgba(255,255,255,.15)}
 /* ult slot */
-.pr .ab-s.ux:not(.ready) img{opacity:.35}
+.pr .ab-s.ux:not(.ready)>img{opacity:.35}
 .pr .ab-s.ux.ready{background:rgba(255,255,255,.1);box-shadow:0 0 8px var(--c);animation:glow 1.4s ease-in-out infinite}
-.pr .ab-s.ux.ready img{filter:brightness(1.4);opacity:.9}
+.pr .ab-s.ux.ready>img{filter:brightness(1.4);opacity:.9}
 .pr .ab-s .up{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:.5px;background:rgba(0,0,0,.4);border-radius:2px}
 .pr .ab-s.ux.ready .up{display:none}
 @keyframes glow{50%{box-shadow:0 0 12px var(--c)}}
