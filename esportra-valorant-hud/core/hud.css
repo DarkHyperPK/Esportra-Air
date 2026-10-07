@@ -99,7 +99,7 @@ body.bg{background:#222 url() center/cover}
 .pr .r2{display:flex;align-items:center;gap:6px}
 .pl.r .r2{flex-direction:row-reverse}
 .pr .r2 .wp{height:22px;min-width:22px;opacity:.95;flex:none}
-.pl.r .r2 .wp{transform:scaleX(-1)}
+.pl.l .r2 .wp{transform:scaleX(-1)}
 .pr .r2 .ar{width:14px;height:14px;opacity:.85;flex:none}
 .pr .hpb{flex:1;height:5px;background:rgba(255,255,255,.08);position:relative}
 .pr .hpb i{position:absolute;top:0;height:100%;background:#fff;transition:width .35s var(--ease)}
@@ -108,23 +108,23 @@ body.bg{background:#222 url() center/cover}
 /* row 3: abilities */
 .pr .abw{display:flex;justify-content:flex-start;align-items:center;gap:4px}
 .pl.r .abw{flex-direction:row-reverse}
-.pr .ab-s{width:28px;height:28px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:3px 0 2px;background:rgba(255,255,255,.05);border-radius:2px}
+.pr .ab-s{width:28px;height:28px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:3px 0 2px}
 .pr .ab-s>img{width:16px;height:16px;opacity:.9;flex:none}
-.pr .ab-s.empty{background:rgba(255,255,255,.02)}.pr .ab-s.empty>img{opacity:.2}
+.pr .ab-s.empty>img{opacity:.2}
 .pr .ab-s .cp{display:flex;gap:2px;align-items:center;justify-content:center}
 .pr .ab-s .cp i{width:4px;height:4px;transform:rotate(45deg);background:var(--c);flex:none}
 .pr .ab-s .cp i.e{background:rgba(255,255,255,.15)}
 /* ult slot */
 .pr .ab-s.ux:not(.ready)>img{opacity:.35}
-.pr .ab-s.ux.ready{background:rgba(255,255,255,.1);box-shadow:0 0 8px var(--c);animation:glow 1.4s ease-in-out infinite}
+.pr .ab-s.ux.ready{box-shadow:0 0 8px var(--c);animation:glow 1.4s ease-in-out infinite}
 .pr .ab-s.ux.ready>img{filter:brightness(1.4);opacity:.9}
-.pr .ab-s .up{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:.5px;background:rgba(0,0,0,.4);border-radius:2px}
+.pr .ab-s .up{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:.5px}
 .pr .ab-s.ux.ready .up{display:none}
 @keyframes glow{50%{box-shadow:0 0 12px var(--c)}}
 .pr .cr{font-size:11px;color:var(--gold);white-space:nowrap}
 .pr .r2 .cri{width:12px;height:10px;flex:none;opacity:.85}
 .pr.dead{opacity:.5}.pr.dead .ag img{filter:grayscale(1) brightness(.6)}.pr.dead .nm{color:#9a9aa0}
-.pr.obs{outline:2px solid var(--bone);outline-offset:-2px}
+.pr.obs{box-shadow:0 0 12px 2px var(--c);outline:2px solid var(--c);outline-offset:-2px;z-index:1}
 
 /* ───────── KILLFEED ───────── */
 .kf{position:absolute;right:24px;top:184px;width:600px}
