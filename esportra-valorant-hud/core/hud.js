@@ -165,18 +165,20 @@
 
   function ultRingSVG(cur, max, sz) {
     if (!max) return '';
-    const cx = sz / 2, cy = sz / 2, r = sz / 2 - 2.5, paths = [];
+    const cx = sz / 2, cy = sz / 2, r = sz / 2 - 2.5;
+    if (cur >= max) return `<svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>`;
+    const paths = [];
     for (let i = 0; i < max; i++) {
       const gapD = 360 / max * 0.18, segD = 360 / max - gapD;
       const s = (i * 360 / max - 90) * Math.PI / 180, e = (i * 360 / max - 90 + segD) * Math.PI / 180;
-      const lg = segD > 180 ? 1 : 0, col = i < cur ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.15)';
+      const lg = segD > 180 ? 1 : 0, col = i < cur ? 'currentColor' : 'rgba(255,255,255,.15)';
       paths.push(`<path d="M${cx+r*Math.cos(s)},${cy+r*Math.sin(s)} A${r},${r} 0 ${lg} 1 ${cx+r*Math.cos(e)},${cy+r*Math.sin(e)}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round"/>`);
     }
     return `<svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}">${paths.join('')}</svg>`;
   }
 
   M.players = root => {
-    const m = E('div', 'mod', root); const sides = [0, 1].map(i => { const w = E('div', 'pl fx-' + (i ? 'right' : 'left') + ' ' + (i ? 'r' : 'l'), m); const hd = E('div', 'pl-head mono', w); const rows = [];
+    const m = E('div', 'mod', root); const sides = [0, 1].map(i => { const w = E('div', 'pl fx-' + (i ? 'right' : 'left') + ' ' + (i ? 'r' : 'l'), m); const hd = E('div', 'pl-head mono', w); const htag = E('b', '', hd), hside = E('span', '', hd); const rows = [];
       for (let j = 0; j < 5; j++) {
         const r = E('div', 'pr', w);
         const col = E('div', 'ag-col', r);
@@ -188,23 +190,23 @@
         const r2 = E('div', 'r2', mn);
         const abs = [0,1,2].map(() => { const ab = E('div', 'ab', r2); const im = E('img', '', ab); const cp = E('div', 'cp', ab); return { ab, im, cp }; });
         const wp = E('img', 'wp', r2);
-        const ec = E('div', 'cred', r2); const cri = E('img', 'cri', ec); const cr = E('span', 'cr num', ec);
-        const di = E('div', 'di', r2); const dkda = E('span', '', di); const dcri = E('img', '', di); const dcr = E('span', 'cr num', di);
+        const ec = E('div', 'pc-econ', r2); const cri = E('img', 'cri', ec); const cr = E('span', 'cr num', ec);
+        const di = E('div', 'di', r2); const dkda = E('span', '', di); const de = E('span', 'de', di); const dcri = E('img', '', de); const dcr = E('span', 'cr num', de);
         rows.push({ r, ai, ud, uico, uring, nm, sh, hpn, hpb, hpi, abs, wp, ec, cri, cr, di, dkda, dcri, dcr }); }
-      return { w, hd, rows }; });
+      return { w, hd, htag, hside, rows }; });
     return { update(s) {
       toggle(m, vis.players(s));
-      sides.forEach((sd, i) => { tv(sd.w, s, i); const T = s.teams[i]; sd.hd.innerHTML = `<b>${T.tag}</b><span>${T.side || ''}</span>`;
-        sd.rows.forEach((o, j) => { const p = s.players[i][j]; if (!p) return; const A = agent(p.agent);
+      sides.forEach((sd, i) => { tv(sd.w, s, i); const T = s.teams[i]; txt(sd.htag, T.tag || ''); txt(sd.hside, T.side || '');
+        sd.rows.forEach((o, j) => { const p = s.players[i][j]; o.r.style.visibility = p ? '' : 'hidden'; if (!p) return; const A = agent(p.agent);
           setImg(o.ai, A && A.icon);
           setImg(o.uico, A && A.ab[3] && A.ab[3][1]);
-          const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); o.ud.classList.toggle('ready', u >= um);
-          o.uring.innerHTML = ultRingSVG(u, um, 38);
+          const um = Math.max(1, Math.min(64, Math.floor(Number(p.ultMax) || 7))), u = Math.max(0, Math.min(um, Math.floor(Number(p.ult) || 0))); o.ud.classList.toggle('ready', u >= um);
+          const ringKey = `${u}/${um}`; if (o.uring.dataset.k !== ringKey) { o.uring.dataset.k = ringKey; o.uring.innerHTML = ultRingSVG(u, um, 44); }
           txt(o.nm, p.name);
           const armor = p.alive ? +p.armor || 0 : 0; txt(o.sh, armor > 0 ? armor : ''); o.sh.style.display = armor > 0 ? '' : 'none';
-          const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : ''); o.hpn.classList.toggle('low', hp > 0 && hp <= 30);
+          const hp = p.alive ? Math.max(0, Math.min(100, Number(p.hp) || 0)) : 0; txt(o.hpn, p.alive ? hp : ''); o.hpn.classList.toggle('low', hp > 0 && hp <= 30);
           o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
-          o.abs.forEach((ab, k) => { const d = A && A.ab[k]; setImg(ab.im, d && d[1]); const c = +(p.charges || [])[k] || 0; ab.ab.classList.toggle('empty', c === 0); ab.cp.innerHTML = c ? Array.from({length:c},()=>'<i></i>').join('') : '<i class="e"></i>'; });
+          o.abs.forEach((ab, k) => { const d = A && A.ab[k]; setImg(ab.im, d && d[1]); const c = Math.max(0, Math.min(16, Math.floor(Number((p.charges || [])[k]) || 0))); ab.ab.classList.toggle('empty', c === 0); ab.cp.classList.toggle('chamber-q', c > 4); if (ab.cp.dataset.c !== String(c)) { ab.cp.dataset.c = String(c); ab.cp.innerHTML = c ? Array.from({length:c},()=>'<i></i>').join('') : '<i class="e"></i>'; } });
           const W = weapon(p.weapon); setImg(o.wp, p.alive && W && W.kill);
           txt(o.cr, money(p.credits)); o.cri.src = s.teams[i].side === 'ATK' ? '../core/assets/misc/ValorantCreditsRed.svg' : '../core/assets/misc/ValorantCreditsGreen.svg';
           txt(o.dkda, `${p.k||0}/${p.d||0}/${p.a||0}`); txt(o.dcr, money(p.credits)); o.dcri.src = o.cri.src;

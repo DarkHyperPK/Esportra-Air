@@ -75,76 +75,81 @@ body.bg{background:#222 url() center/cover}
 .sb-tag{position:absolute;left:500px;top:108px;transform:translateX(-50%);padding:6px 16px;font-size:13px;letter-spacing:.3em;background:var(--red);color:#fff;opacity:0;transition:opacity .3s}
 .sb-tag.show{opacity:1}
 
-/* ───────── PLAYER CARDS ───────── */
-/* ───────── PLAYER CARDS — VCT reference layout ───────── */
-.pl{position:absolute;bottom:24px;width:310px;display:flex;flex-direction:column;gap:6px}
-.pl.l{left:24px}.pl.r{right:24px}
-.pl-head{height:26px;display:flex;align-items:center;gap:10px;font-size:12px;letter-spacing:.24em;color:var(--muted);margin-bottom:4px;padding:0 8px}
+/* ───────── PLAYER CARDS — Esportra / VCT structure ───────── */
+@font-face{font-family:EsportraRajdhani;src:url(fonts/rajdhani-700.ttf);font-weight:700;font-style:normal;font-display:block}
+@font-face{font-family:EsportraMontserrat;src:url(fonts/montserrat-600.ttf);font-weight:600;font-style:normal;font-display:block}
+/* All dimensions are authored on the existing 1920 x 1080 canvas. */
+.pl{--rose:#e0445e;--card-width:320px;--card-height:92px;position:absolute;bottom:24px;width:var(--card-width);display:flex;flex-direction:column;gap:12px}
+.pl.l{left:12px}.pl.r{right:12px}
+.pl-head{height:22px;display:flex;align-items:center;gap:10px;padding:0 3px;margin:0;font-family:EsportraMontserrat,sans-serif;font-size:10px;font-weight:600;letter-spacing:.15em;color:#99999f;white-space:nowrap}
 .pl.r .pl-head{flex-direction:row-reverse}
 .pl-head b{color:var(--c);font-weight:600}
-/* card shell */
-.pr{height:86px;width:100%;display:flex;background:rgba(15,20,25,.85)}
-.pl.r .pr{flex-direction:row-reverse}
-/* ── portrait column (outer edge) ── */
-.pr .ag-col{width:50px;flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px}
-.pr .ag-i{width:46px;height:36px;object-fit:cover;object-position:top;border-radius:2px}
-.pr.dead .ag-i{filter:grayscale(1) brightness(.5)}
-/* ult indicator */
-.pr .ult{width:32px;height:32px;position:relative;display:flex;align-items:center;justify-content:center}
-.pr .ult-ico{width:14px;height:14px;position:absolute;z-index:1;opacity:.7}
-.pr .ult-ring{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-.pr .ult.ready .ult-ico{opacity:1;filter:brightness(1.5)}
-.pr.dead .ult{opacity:.4}
-/* ── main body ── */
-.pr .main{flex:1;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:6px 12px;min-width:0}
-/* row 1: name + shield + hp */
-.pr .r1{display:flex;align-items:center;gap:5px}
+.pr{position:relative;width:100%;height:var(--card-height);flex:none;display:flex;background:rgba(13,13,15,.93);overflow:hidden;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%);box-shadow:inset 0 -1px rgba(255,255,255,.1);transition:background-color .18s}
+.pl.r .pr{flex-direction:row-reverse;clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px)}
+.pr::before{content:'';position:absolute;top:0;bottom:0;left:0;width:2px;background:rgba(255,255,255,.14);z-index:3}
+.pl.r .pr::before{left:auto;right:0}
+/* Portrait and ultimate share the outer 50px column. */
+.pr .ag-col{width:50px;height:92px;flex:none;display:flex;flex-direction:column;align-items:center;gap:0;padding:0;background:rgba(255,255,255,.025)}
+.pr .ag-i{display:block;width:50px;height:38px;flex:none;object-fit:cover;object-position:center 22%;border-radius:0}
+.pr .ult{width:50px;height:54px;flex:none;position:relative;display:flex;align-items:center;justify-content:center}
+.pr .ult-ico{width:23px;height:23px;object-fit:contain;position:absolute;z-index:1;opacity:.9}
+.pr .ult-ring{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff}
+.pr .ult-ring svg{display:block;flex:none}
+.pr .ult.ready .ult-ring{color:var(--rose)}
+.pr .ult.ready .ult-ico{opacity:1}
+/* Fixed rows keep the dead state from moving the name or ultimate. */
+.pr .main{flex:1;min-width:0;display:grid;grid-template-rows:38px 4px 50px;padding:0 10px;gap:0}
+.pr .r1{grid-row:1;display:flex;align-items:center;gap:8px;min-width:0}
 .pl.r .r1{flex-direction:row-reverse}
-.pr .nm{font-family:PBd;font-size:17px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr .nm{font-family:EsportraMontserrat,sans-serif;font-size:17px;font-weight:600;line-height:1.1;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.04em}
 .pl.r .nm{text-align:right}
-.pr .sh{font-size:10px;font-weight:700;padding:0 3px;border:1.5px solid rgba(255,255,255,.35);border-radius:2px;color:#7ee6c2;flex:none;line-height:1.5}
-.pr .hpn{font-family:JB;font-weight:700;font-size:18px;flex:none}
-.pr .hpn.low{color:var(--red)}
-.pr.dead .sh,.pr.dead .hpn{display:none}
-/* hp bar */
-.pr .hpb{width:100%;height:3px;background:rgba(255,255,255,.06);position:relative;flex:none}
-.pr .hpb i{position:absolute;top:0;height:100%;background:var(--c);transition:width .35s var(--ease)}
+.pr .sh{width:25px;height:27px;display:flex;align-items:center;justify-content:center;flex:none;padding:0 0 3px;border:0;border-radius:0;color:#e5e5e8;font-family:EsportraRajdhani,sans-serif;font-size:16px;font-weight:700;line-height:1;background:center/25px 27px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 25 27'%3E%3Cpath d='M5 2h15l3 4v11L12.5 25 2 17V6Z' fill='none' stroke='%239c9ca5' stroke-width='1.5'/%3E%3C/svg%3E")}
+.pr .hpn{width:38px;flex:none;text-align:right;font-family:EsportraRajdhani,sans-serif;font-size:28px;font-weight:700;letter-spacing:0;line-height:1;font-variant-numeric:tabular-nums}
+.pl.r .hpn{text-align:left}
+.pr .hpn.low{color:var(--rose)}
+.pr .hpb{grid-row:2;height:4px;width:100%;position:relative;background:rgba(255,255,255,.13)}
+.pr .hpb i{position:absolute;top:0;height:100%;background:var(--c);transition:width .2s linear}
 .pl.l .hpb i{left:0}.pl.r .hpb i{right:0}
-.pr .hpb i.low{background:var(--red)}
-.pr.dead .hpb{display:none}
-/* row 2: abilities + weapon + credits (alive) or KDA + credits (dead) */
-.pr .r2{display:flex;align-items:center;gap:8px}
-.pl.r .r2{flex-direction:row-reverse}
-/* abilities */
-.pr .ab{display:flex;flex-direction:column;align-items:center;gap:3px}
-.pr .ab>img{width:20px;height:20px;opacity:.85;flex:none}
-.pr .ab.empty>img{opacity:.2}
-.pr .ab .cp{display:flex;flex-wrap:wrap;justify-content:center;gap:2px;max-width:24px}
-.pr .ab .cp i{width:4px;height:4px;transform:rotate(45deg);background:var(--c);flex:none}
-.pr .ab .cp i.e{background:rgba(255,255,255,.15)}
-.pr.dead .ab{display:none}
-/* weapon */
-.pr .r2 .wp{height:18px;max-width:80px;flex:none;opacity:.8}
-.pl.l .pr .r2 .wp{transform:scaleX(-1)}
-.pr.dead .r2 .wp{display:none}
-/* credits */
-.pr .cred{display:flex;align-items:center;gap:2px;margin-left:auto}
-.pl.r .pr .cred{margin-left:0;margin-right:auto;flex-direction:row-reverse}
-.pr .cri{width:13px;height:13px;flex:none;opacity:.75}
-.pr .cr{font-size:14px;color:var(--gold);white-space:nowrap}
-.pr.dead .cred{display:none}
-/* dead info: KDA + credits */
-.pr .di{display:none;align-items:center;gap:6px;font-size:12px;font-weight:500;color:rgba(255,255,255,.5)}
+.pr .hpb i.low{background:var(--rose)}
+/* Three abilities, a weapon above, credits beneath the weapon. */
+.pr .r2{grid-row:3;position:relative;display:grid;grid-template-columns:repeat(3,30px) minmax(0,1fr);column-gap:8px;align-items:start;min-width:0}
+.pr .ab{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:7px;width:30px;min-width:0}
+.pr .ab>img{display:block;width:21px;height:21px;object-fit:contain;opacity:.95}
+.pr .ab.empty>img{opacity:.22}
+.pr .ab .cp{display:flex;gap:3px;justify-content:center;min-height:4px}
+.pr .ab .cp.chamber-q{display:grid;grid-template-columns:repeat(4,4px);grid-auto-rows:4px}
+.pr .ab .cp i{display:block;width:4px;height:4px;background:#eeeef0;flex:none;transform:none}
+.pr .ab .cp i.e{background:rgba(255,255,255,.2)}
+.pr .r2 .wp{grid-column:4;grid-row:1;display:block;width:100%;height:22px;max-width:100%;object-fit:contain;object-position:right center;margin-top:4px;opacity:.95}
+/* Align before the flip so the visible weapon ends at the same edge as its credits. */
+.pl.l .pr .r2 .wp{object-position:left center;transform:scaleX(-1)}
+.pl.r .r2{grid-template-columns:minmax(0,1fr) repeat(3,30px)}
+.pl.r .r2 .ab:nth-child(1){grid-column:4;grid-row:1}
+.pl.r .r2 .ab:nth-child(2){grid-column:3;grid-row:1}
+.pl.r .r2 .ab:nth-child(3){grid-column:2;grid-row:1}
+.pl.r .pr .r2 .wp{grid-column:1;object-position:left center}
+.pr .pc-econ{position:absolute;left:auto;right:0;bottom:4px;width:max-content;height:18px;display:flex;align-items:center;gap:4px;margin:0;line-height:1}
+.pl.r .pc-econ{right:auto;left:0;flex-direction:row}
+.pr .cri{display:block;width:12px;height:12px;object-fit:contain;flex:none;filter:grayscale(1) brightness(0) invert(1);opacity:.8}
+.pr .cr{font-family:EsportraRajdhani,sans-serif;font-size:18px;font-weight:700;letter-spacing:.01em;color:#e1e1e5;white-space:nowrap;line-height:1;font-variant-numeric:tabular-nums}
+/* Dead players retain the same slot, portrait, name and ultimate position. */
+.pr .di{position:absolute;left:0;right:0;top:0;height:50px;display:none;align-items:center;gap:10px;font-family:EsportraRajdhani,sans-serif;font-size:19px;font-weight:700;letter-spacing:.02em;color:#aaaab2;font-variant-numeric:tabular-nums}
 .pl.r .di{flex-direction:row-reverse}
-.pr .di img{width:10px;height:10px;opacity:.5}
-.pr .di .cr{color:rgba(255,255,255,.4)}
+.pr .di .de{display:flex;align-items:center;gap:4px}
+.pr .di img{width:12px;height:12px;object-fit:contain;filter:grayscale(1) brightness(0) invert(1);opacity:.65}
+.pr .di .cr{color:#aaaab2}
+.pr.dead{background:linear-gradient(to right,rgba(13,13,15,.85),rgba(13,13,15,.55) 70%,rgba(13,13,15,0));box-shadow:none}
+.pl.r .pr.dead{background:linear-gradient(to left,rgba(13,13,15,.85),rgba(13,13,15,.55) 70%,rgba(13,13,15,0))}
+.pr.dead .ag-i{filter:grayscale(1) brightness(.5)}
+.pr.dead .ult{opacity:.42}
+.pr.dead .nm{color:#9999a2}
+.pr.dead .sh,.pr.dead .hpn,.pr.dead .ab,.pr.dead .r2 .wp,.pr.dead .pc-econ{display:none}
+.pr.dead .hpb{visibility:hidden}
 .pr.dead .di{display:flex}
-/* dead card */
-.pr.dead{background:linear-gradient(to right,rgba(15,20,25,.7),rgba(15,20,25,.4) 70%,transparent)}
-.pl.r .pr.dead{background:linear-gradient(to left,rgba(15,20,25,.7),rgba(15,20,25,.4) 70%,transparent)}
-.pr.dead .nm{color:#9a9aa0}
-/* observed */
-.pr.obs{background:rgba(180,150,50,.15)}
+/* Esportra identity: a rose tint and narrow outer edge, no gold or glow. */
+.pr.obs{background:linear-gradient(90deg,rgba(224,68,94,.2),rgba(224,68,94,.06)),rgba(13,13,15,.95);box-shadow:inset 0 -1px rgba(224,68,94,.55)}
+.pl.r .pr.obs{background:linear-gradient(270deg,rgba(224,68,94,.2),rgba(224,68,94,.06)),rgba(13,13,15,.95)}
+.pr.obs::before{background:var(--rose)}
 
 /* ───────── KILLFEED ───────── */
 .kf{position:absolute;right:24px;top:184px;width:600px}
@@ -184,6 +189,7 @@ body.bg{background:#222 url() center/cover}
 .ob .slot.empty .ic img{opacity:.25}
 .ob .slot .k{position:absolute;top:-2px;left:3px;font-size:10px;color:var(--muted);letter-spacing:0}
 .ob .slot .ch{display:flex;gap:4px;justify-content:center;margin-top:7px;height:6px}
+.ob .slot .ch.chamber-q{display:grid;grid-template-columns:repeat(4,6px);grid-auto-rows:6px;height:16px}
 .ob .slot .ch i{width:6px;height:6px;transform:rotate(45deg);background:var(--c)}
 .ob .slot .ch i.e{background:rgba(255,255,255,.18)}
 .ob .slot.ult.ready .ic{border-color:var(--c);box-shadow:0 0 18px var(--c) inset}
@@ -489,7 +495,7 @@ body.bg{background:#222 url() center/cover}
 .sk .ml{position:absolute;top:16px;transform:translateX(-50%);font-size:9px;letter-spacing:.16em;color:#c8c8cc;white-space:nowrap}
 .sk.hot{animation:skp .5s steps(2) infinite}@keyframes skp{50%{border-bottom-color:#fff}}
 /* moments (first blood / multikill / clutch) */
-.mo{position:absolute;left:24px;top:500px;display:flex;flex-direction:column;gap:8px}
+.mo{position:absolute;left:24px;top:460px;display:flex;flex-direction:column;gap:8px}
 .mo .m{height:46px;display:flex;align-items:center;background:var(--ink);border-left:5px solid var(--c);padding-right:18px;animation:kin .45s var(--ease)}
 .mo .m .k{height:46px;padding:0 14px;display:flex;align-items:center;background:var(--c);color:var(--ci);font-family:PBk;font-size:20px;letter-spacing:.02em}
 .mo .m img{width:36px;height:36px;margin:0 10px}
