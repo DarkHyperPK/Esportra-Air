@@ -163,6 +163,8 @@
     } };
   };
 
+  const MAX_AB_CHARGES = { JETT:[1,2,1], RAZE:[2,1,1], SKYE:[2,3,1], SOVA:[1,2,1] };
+
   M.players = root => {
     const m = E('div', 'mod', root); const sides = [0, 1].map(i => { const w = E('div', 'pl fx-' + (i ? 'right' : 'left') + ' ' + (i ? 'r' : 'l'), m); const hd = E('div', 'pl-head mono', w); const rows = [];
       for (let j = 0; j < 5; j++) { const r = E('div', 'pr', w); const ag = E('div', 'ag', r); const ai = E('img', '', ag); const body = E('div', 'body', r);
@@ -179,8 +181,8 @@
           setImg(o.ai, A && A.icon); txt(o.nm, p.name); setImg(o.wp, p.alive && weapon(p.weapon) && weapon(p.weapon).kill); setImg(o.ar, p.alive && armorIcon(p.armor));
           const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
           o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]);
-            if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = c ? Array.from({ length: c }, () => '<i></i>').join('') : '<i class="e"></i>'; }
-            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); if (u < um) { const filled = Array.from({ length: u }, () => `<img src="../core/assets/misc/ultimate-pip-full.svg" width="4" height="5">`).join(''); const empty = Array.from({ length: um - u }, () => `<img src="../core/assets/misc/ultimate-pip.svg" width="4" height="5">`).join(''); sl.ch.innerHTML = filled + empty; } else { sl.ch.innerHTML = ''; } } });
+            if (k < 3) { const c = +(p.charges || [])[k] || 0; const max = (MAX_AB_CHARGES[p.agent] || [])[k] || 1; const filled = Math.min(c, max); const empty = max - filled; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = Array.from({length:filled},()=>'<i></i>').join('') + Array.from({length:empty},()=>'<i class="e"></i>').join(''); }
+            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); if (u < um) { const filled = Array.from({length:u},()=>'<img src="../core/assets/misc/ultimate-pip-full.svg">').join(''); const empty = Array.from({length:um-u},()=>'<img src="../core/assets/misc/ultimate-pip.svg">').join(''); sl.ch.innerHTML = filled + empty; } else { sl.ch.innerHTML = ''; } } });
           txt(o.cr, money(p.credits));
           o.cri.src = s.teams[i].side === 'ATK' ? '../core/assets/misc/ValorantCreditsRed.svg' : '../core/assets/misc/ValorantCreditsGreen.svg';
           o.r.classList.toggle('dead', !p.alive); o.r.classList.toggle('obs', s.observed[0] === i && s.observed[1] === j && p.alive); }); });
