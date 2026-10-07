@@ -141,6 +141,7 @@
       [A, B].forEach((o, i) => txt(o.sd, s.teams[i].side || ''));
       pips.forEach((p, i) => { tv(p, s, i); p.innerHTML = ''; for (let j = 0; j < need(s); j++) E('i', j < s.teams[i].series ? 'w' : '', p); p.style.display = s.event.bestOf > 1 ? '' : 'none'; });
       heads.forEach((h, i) => [...h.children].forEach((d, j) => d.classList.toggle('dead', !s.players[i][j].alive)));
+      heads.forEach(h => h.style.display = vis.players(s) ? 'none' : '');
       txt(top, `ROUND ${s.round.number}`); txt(bot, `MAP ${s.map.number}  /  ${s.map.name}`);
       const st = HUD.status(s); tag.classList.toggle('show', !!st);
       if (st) { txt(tag, st.text); tag.style.background = st.team >= 0 ? s.teams[st.team].color : 'var(--red)'; tag.style.color = st.team >= 0 ? ink(s.teams[st.team].color) : '#fff'; }
@@ -150,7 +151,7 @@
         if (plantedAt === null) plantedAt = HUD.now();
         const remaining = Math.max(0, 45 - (HUD.now() - plantedAt) / 1000);
         const speed = remaining > 20 ? 1000 : remaining > 10 ? 500 : remaining > 5 ? 250 : remaining > 1 ? 125 : 0;
-        cls = 'planted'; html = SPIKE('#e0445e', 22);
+        cls = 'planted'; html = '<img class="spike-tm" src="../core/assets/misc/Spike_top_light.svg">';
         if (speed > 0) { tm.style.setProperty('--blink', speed + 'ms'); } else { tm.style.removeProperty('--blink'); }
       } else {
         plantedAt = null; tm.style.removeProperty('--blink');
@@ -165,23 +166,23 @@
   M.players = root => {
     const m = E('div', 'mod', root); const sides = [0, 1].map(i => { const w = E('div', 'pl fx-' + (i ? 'right' : 'left') + ' ' + (i ? 'r' : 'l'), m); const hd = E('div', 'pl-head mono', w); const rows = [];
       for (let j = 0; j < 5; j++) { const r = E('div', 'pr', w); const ag = E('div', 'ag', r); const ai = E('img', '', ag); const body = E('div', 'body', r);
-        const row1 = E('div', 'r1', body); const hpn = E('div', 'hpn num', row1); const arv = E('div', 'arv num', row1); const nm = E('div', 'nm', row1);
-        const row2 = E('div', 'r2', body); const wp = E('img', 'wp', row2); const ar = E('img', 'ar', row2); const cr = E('div', 'cr num', row2); const hpb = E('div', 'hpb', row2); const hpi = E('i', '', hpb);
+        const row1 = E('div', 'r1', body); const hpn = E('div', 'hpn num', row1); const nm = E('div', 'nm', row1);
+        const row2 = E('div', 'r2', body); const wp = E('img', 'wp', row2); const ar = E('img', 'ar', row2); const hpb = E('div', 'hpb', row2); const hpi = E('i', '', hpb); const cri = E('img', 'cri', row2); const cr = E('div', 'cr num', row2);
         const abw = E('div', 'abw', body);
         const abSlots = [0,1,2,3].map(k => { const sl = E('div', 'ab-s' + (k === 3 ? ' ux' : ''), abw); const im = E('img', '', sl); const ch = E('div', k === 3 ? 'up' : 'cp', sl); return { sl, im, ch }; });
-        rows.push({ r, ai, nm, ar, arv, wp, hpn, hpi, abSlots, cr }); }
+        rows.push({ r, ai, nm, ar, wp, hpn, hpi, abSlots, cr, cri }); }
       return { w, hd, rows }; });
     return { update(s) {
       toggle(m, vis.players(s));
       sides.forEach((sd, i) => { tv(sd.w, s, i); const T = s.teams[i]; sd.hd.innerHTML = `<b>${T.tag}</b><span>${T.side || ''}</span>`;
         sd.rows.forEach((o, j) => { const p = s.players[i][j]; if (!p) return; const A = agent(p.agent);
           setImg(o.ai, A && A.icon); txt(o.nm, p.name); setImg(o.wp, p.alive && weapon(p.weapon) && weapon(p.weapon).kill); setImg(o.ar, p.alive && armorIcon(p.armor));
-          txt(o.arv, p.alive && p.armor > 0 ? p.armor : ''); o.arv.style.display = p.alive && p.armor > 0 ? '' : 'none';
           const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
           o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]);
-            if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); txt(sl.ch, c > 1 ? String(c) : ''); }
-            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); txt(sl.ch, u >= um ? '' : u + '/' + um); } });
+            if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = c ? Array.from({ length: c }, () => '<i></i>').join('') : '<i class="e"></i>'; }
+            else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); sl.sl.classList.toggle('ready', u >= um); if (u < um) { const filled = Array.from({ length: u }, () => `<img src="../core/assets/misc/ultimate-pip-full.svg" width="4" height="5">`).join(''); const empty = Array.from({ length: um - u }, () => `<img src="../core/assets/misc/ultimate-pip.svg" width="4" height="5">`).join(''); sl.ch.innerHTML = filled + empty; } else { sl.ch.innerHTML = ''; } } });
           txt(o.cr, money(p.credits));
+          o.cri.src = s.teams[i].side === 'ATK' ? '../core/assets/misc/ValorantCreditsRed.svg' : '../core/assets/misc/ValorantCreditsGreen.svg';
           o.r.classList.toggle('dead', !p.alive); o.r.classList.toggle('obs', s.observed[0] === i && s.observed[1] === j && p.alive); }); });
     } };
   };
@@ -248,7 +249,7 @@
   };
 
   M.minimap = root => {
-    const m = E('div', 'mod', root), f = E('div', 'mmf fx-rise', m); E('div', 'edge', f); ['tl', 'tr', 'bl', 'brr'].forEach(c => E('div', 'br ' + c, f));
+    const m = E('div', 'mod', root), f = E('div', 'mmf fx-rise', m);
     const lb = E('div', 'lbl mono', f), a = E('div', 'm', lb), b = E('div', '', lb);
     return { update(s) { toggle(m, s.show.minimap && !s.show.scoreboard); const L = s.layout.minimap; Object.assign(f.style, { left: L.x + 'px', top: L.y + 'px', width: L.size + 'px', height: L.size + 'px' });
       txt(a, s.map.name); txt(b, `ROUND ${s.round.number}`); } };
@@ -481,19 +482,49 @@
     if (!a && !b) return .5; return a / (a + b);
   };
 
-  M.roundhistory = root => { const m = E('div', 'mod', root), rh = E('div', 'rh fx-rise', m);
-    return { update(s) { toggle(m, s.show.roundHistory); const n = Math.max(24, Math.ceil((s.rounds.length + 1) / 2) * 2);
-      let h = `<span class="lab mono" style="color:${s.teams[0].color}">${s.teams[0].tag}</span>`;
-      for (let i = 0; i < n; i++) { if (i === 12 || (i >= 24 && i % 2 === 0)) h += '<span class="half"></span>'; const r = s.rounds[i];
-        h += r ? `<span class="c w" style="--c:${s.teams[r.w].color}" title="R${i + 1}">${RIC(r.how, '#fff', 13)}</span>` : `<span class="c ${i === s.rounds.length ? 'now' : ''}"></span>`; }
-      rh.innerHTML = h + `<span class="lab mono" style="color:${s.teams[1].color}">${s.teams[1].tag}</span>`; } }; };
+  M.roundhistory = root => {
+    const m = E('div', 'mod', root), rh = E('div', 'rh fx-rise', m);
+    const RHMAP = {
+      elim:   '../core/assets/roundWinReason/kills.webp',
+      boom:   '../core/assets/roundWinReason/detonated.webp',
+      defuse: '../core/assets/roundWinReason/defused.webp',
+      time:   '../core/assets/roundWinReason/timeout.webp',
+    };
+    return { update(s) {
+      toggle(m, s.show.roundHistory || s.round.phase === 'buy');
+      const n = Math.max(24, Math.ceil((s.rounds.length + 1) / 2) * 2);
+      const buildRow = (teamIdx, isTop) => {
+        const T = s.teams[teamIdx];
+        let h = `<span class="rh-lab" style="--c:${T.color}">${T.tag}</span>`;
+        for (let i = 0; i < n; i++) {
+          if (i === 12 || (i >= 24 && i % 2 === 0)) {
+            if (isTop && i === 12) {
+              h += `<span class="half"><img src="../core/assets/misc/swapIcon.svg" width="12" height="12" style="opacity:.6"></span>`;
+            } else {
+              h += '<span class="half"></span>';
+            }
+          }
+          const r = s.rounds[i];
+          if (r && r.w === teamIdx) {
+            const icon = RHMAP[r.how] || '';
+            h += `<span class="c w" style="--c:${T.color}" title="R${i + 1}">${icon ? `<img src="${icon}" width="14" height="14">` : ''}</span>`;
+          } else {
+            const isCurrent = i === s.rounds.length;
+            h += `<span class="c${isCurrent ? ' now' : ''}"></span>`;
+          }
+        }
+        return `<div class="rh-row" style="--c:${T.color}">${h}</div>`;
+      };
+      rh.innerHTML = buildRow(0, true) + buildRow(1, false);
+    } };
+  };
 
   M.winprob = root => { const m = E('div', 'mod', root), wp = E('div', 'wp fx-rise', m), na = E('div', 'n num', wp), bar = E('div', 'bar', wp), ia = E('i', '', bar), ib = E('i', '', bar); E('b', '', bar); E('div', 'lab mono', wp, 'WIN PROBABILITY'); const nb = E('div', 'n num', wp);
     return { update(s) { toggle(m, s.show.winProb && ['live', 'planted', 'buy'].includes(s.round.phase) && !s.show.scoreboard); const p = HUD.winProb(s);
       ia.style.width = (p * 100) + '%'; ib.style.width = (100 - p * 100) + '%'; ia.style.background = s.teams[0].color; ib.style.background = s.teams[1].color;
       txt(na, Math.round(p * 100) + '%'); txt(nb, Math.round(100 - p * 100) + '%'); na.style.color = s.teams[0].color; nb.style.color = s.teams[1].color; } }; };
 
-  M.spiketimer = root => { const m = E('div', 'mod', root), sk = E('div', 'sk fx-rise', m); sk.innerHTML = SPIKE('#e0445e', 26); const v = E('div', 'v', sk), tr = E('div', 'track', sk), fi = E('i', '', tr);
+  M.spiketimer = root => { const m = E('div', 'mod', root), sk = E('div', 'sk fx-rise', m); sk.innerHTML = '<img class="spike-ic" src="../core/assets/misc/Spike_Icon.svg">'; const v = E('div', 'v', sk), tr = E('div', 'track', sk), fi = E('i', '', tr);
     [[7, 'FULL DEFUSE 7S'], [3.5, 'HALF 3.5S']].forEach(([x, l]) => { const k = E('div', 'mk', tr); k.style.left = (x / 45 * 100) + '%'; const t = E('div', 'ml mono', tr, l); t.style.left = (x / 45 * 100) + '%'; });
     return { update(s) { toggle(m, s.show.spikeTimer && s.round.phase === 'planted' && !s.show.scoreboard); }, tick(s) { if (s.round.phase !== 'planted') return; const t = timeLeft(s.round);
       txt(v, t.toFixed(1)); fi.style.width = Math.min(100, t / 45 * 100) + '%'; sk.classList.toggle('hot', t < 7); } }; };
@@ -590,7 +621,35 @@
     return { update(s) { if (same(this, s)) return; txt(hr, s.event.name); const live = s.schedule.findIndex(x => !x.done);
       box.innerHTML = s.schedule.map((x, i) => `<div class="r ${x.done ? 'done' : ''} ${i === live ? 'live' : ''}"><div class="tm">${x.time}</div><div class="m">${x.a && x.b ? `${x.a}<i>vs</i>${x.b}` : `<span style="font-size:36px">${x.label}</span>`}${i === live ? '<span class="lv">NEXT UP</span>' : ''}</div><div class="l mono">${x.a && x.b ? x.label : ''}</div></div>`).join(''); } }; };
 
-  M.ingame = root => { const parts = ['minimap', 'eventbug', 'scorebug', 'winprob', 'roundhistory', 'spiketimer', 'toast', 'killfeed', 'moments', 'poll', 'players', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird'].map(k => M[k](root)); return { update(s) { parts.forEach(p => p.update(s)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); } }; };
+  M.seriesmaps = root => {
+    const m = E('div', 'mod', root), sm = E('div', 'sm fx-rise', m);
+    function buildTile(s, x, i) {
+      const Mm = mapA(x.map);
+      const liveIdx = s.map.number - 1;
+      const isPast = x.winner !== null;
+      const isLive = !isPast && i === liveIdx;
+      const isNext = !isPast && !isLive && i === liveIdx + 1;
+      const isDec  = !isPast && !isLive && x.pick === -1;
+      const stateClass = isPast ? 'past' : isLive ? 'live' : 'future';
+      const winnerColor = isPast ? s.teams[x.winner].color : 'transparent';
+      let badge = '';
+      if (isLive) badge = `<div class="bd live">LIVE</div>`;
+      else if (isNext) badge = `<div class="bd next">NEXT</div>`;
+      else if (isDec)  badge = `<div class="bd dec">DECIDER</div>`;
+      else if (!isPast && x.pick >= 0) badge = `<div class="bd pick">${s.teams[x.pick].tag} PICK</div>`;
+      let score = '';
+      if (isPast && x.score) score = `<div class="sc">${x.score[0]}–${x.score[1]}</div>`;
+      else if (isLive) score = `<div class="sc">${s.teams[0].score}–${s.teams[1].score}</div>`;
+      return `<div class="tile ${stateClass}" style="--tw:${winnerColor}">${Mm ? `<img class="bg" src="${Mm.list}">` : ''}<div class="sh"></div>${badge}${score}<div class="mn">${x.map}</div></div>`;
+    }
+    return { update(s) {
+      if (s.series.length <= 1) { toggle(m, false); return; }
+      toggle(m, s.show.seriesMaps !== false);
+      sm.innerHTML = s.series.map((x, i) => buildTile(s, x, i)).join('');
+    } };
+  };
+
+  M.ingame = root => { const parts = ['minimap', 'eventbug', 'seriesmaps', 'scorebug', 'winprob', 'roundhistory', 'spiketimer', 'toast', 'killfeed', 'moments', 'poll', 'players', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird'].map(k => M[k](root)); return { update(s) { parts.forEach(p => p.update(s)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); } }; };
 
   // ───── demo simulator (?demo=1): loops a fast round so overlays can be tested without the control panel ─────
   function demo() {
