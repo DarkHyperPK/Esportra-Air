@@ -100,7 +100,7 @@ body.bg{background:#222 url() center/cover}
 /* row 1: name + shield + hp */
 .pr .r1{display:flex;align-items:center;gap:5px}
 .pl.r .r1{flex-direction:row-reverse}
-.pr .nm{font-family:PBd;font-size:14px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr .nm{font-family:PBd;font-size:17px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pl.r .nm{text-align:right}
 .pr .sh{font-size:10px;font-weight:700;padding:0 3px;border:1.5px solid rgba(255,255,255,.35);border-radius:2px;color:#7ee6c2;flex:none;line-height:1.5}
 .pr .hpn{font-family:JB;font-weight:700;font-size:18px;flex:none}
