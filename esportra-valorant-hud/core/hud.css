@@ -128,11 +128,11 @@ body.bg{background:#222 url() center/cover}
 .pl.l .pr .r2 .wp{transform:scaleX(-1)}
 .pr.dead .r2 .wp{display:none}
 /* credits */
-.pr .ec{display:flex;align-items:center;gap:2px;margin-left:auto}
-.pl.r .ec{margin-left:0;margin-right:auto;flex-direction:row-reverse}
+.pr .cred{display:flex;align-items:center;gap:2px;margin-left:auto}
+.pl.r .pr .cred{margin-left:0;margin-right:auto;flex-direction:row-reverse}
 .pr .cri{width:10px;height:10px;flex:none;opacity:.7}
 .pr .cr{font-size:11px;color:var(--gold);white-space:nowrap}
-.pr.dead .ec{display:none}
+.pr.dead .cred{display:none}
 /* dead info: KDA + credits */
 .pr .di{display:none;align-items:center;gap:6px;font-size:12px;font-weight:500;color:rgba(255,255,255,.5)}
 .pl.r .di{flex-direction:row-reverse}

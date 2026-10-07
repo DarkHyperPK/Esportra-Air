@@ -188,7 +188,7 @@
         const r2 = E('div', 'r2', mn);
         const abs = [0,1,2].map(() => { const ab = E('div', 'ab', r2); const im = E('img', '', ab); const cp = E('div', 'cp', ab); return { ab, im, cp }; });
         const wp = E('img', 'wp', r2);
-        const ec = E('div', 'ec', r2); const cri = E('img', 'cri', ec); const cr = E('span', 'cr num', ec);
+        const ec = E('div', 'cred', r2); const cri = E('img', 'cri', ec); const cr = E('span', 'cr num', ec);
         const di = E('div', 'di', r2); const dkda = E('span', '', di); const dcri = E('img', '', di); const dcr = E('span', 'cr num', di);
         rows.push({ r, ai, ud, uico, uring, nm, sh, hpn, hpb, hpi, abs, wp, ec, cri, cr, di, dkda, dcri, dcr }); }
       return { w, hd, rows }; });
