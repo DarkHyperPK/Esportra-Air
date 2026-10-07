@@ -176,7 +176,7 @@
       toggle(m, vis.players(s));
       sides.forEach((sd, i) => { tv(sd.w, s, i); const T = s.teams[i]; sd.hd.innerHTML = `<b>${T.tag}</b><span>${T.side || ''}</span>`;
         sd.rows.forEach((o, j) => { const p = s.players[i][j]; if (!p) return; const A = agent(p.agent);
-          setImg(o.ai, A && A.icon); txt(o.nm, p.name); setImg(o.wp, p.alive && weapon(p.weapon) && weapon(p.weapon).kill); setImg(o.ar, p.alive && armorIcon(p.armor));
+          setImg(o.ai, A && A.icon); txt(o.nm, p.name); const W = weapon(p.weapon); setImg(o.wp, p.alive && W && W.icon); setImg(o.ar, p.alive && armorIcon(p.armor));
           const hp = p.alive ? Math.max(0, Math.min(100, +p.hp)) : 0; txt(o.hpn, p.alive ? hp : '—'); o.hpn.classList.toggle('low', hp > 0 && hp <= 30); o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
           o.abSlots.forEach((sl, k) => { const ab = A && A.ab[k]; setImg(sl.im, ab && ab[1]);
             if (k < 3) { const c = +(p.charges || [])[k] || 0; sl.sl.classList.toggle('empty', c === 0); sl.ch.innerHTML = c ? Array.from({ length: c }, () => '<i></i>').join('') : '<i class="e"></i>'; }
