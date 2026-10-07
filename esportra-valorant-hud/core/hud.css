@@ -483,7 +483,7 @@ body.bg{background:#222 url() center/cover}
 .winp .bar b{position:absolute;left:50%;top:-4px;width:1px;height:16px;background:rgba(255,255,255,.5)}
 .winp .lab{position:absolute;left:0;right:0;top:-14px;text-align:center;font-size:9px;letter-spacing:.3em;color:var(--muted)}
 /* spike timer */
-.spike-tm{height:42px;width:auto;flex:none}
+.spike-tm{height:54px;width:auto;flex:none}
 .spike-ic{height:46px;width:auto;flex:none}
 .sk{position:absolute;left:700px;top:270px;width:520px;height:66px;background:var(--ink);border-bottom:3px solid var(--red);display:flex;align-items:center;gap:16px;padding:0 18px}
 .sk .v{font-family:JB;font-weight:700;font-size:34px;color:var(--red);width:90px}
