@@ -78,32 +78,32 @@ body.bg{background:#222 url() center/cover}
 /* ───────── PLAYER CARDS ───────── */
 /* ───────── PLAYER CARDS — VCT reference layout ───────── */
 .pl{position:absolute;bottom:24px;display:flex;flex-direction:column;gap:6px}
-.pl.l{left:0}.pl.r{right:0}
+.pl.l{left:24px}.pl.r{right:24px}
 .pl-head{height:26px;display:flex;align-items:center;gap:10px;font-size:12px;letter-spacing:.24em;color:var(--muted);margin-bottom:4px;padding:0 8px}
 .pl.r .pl-head{flex-direction:row-reverse}
 .pl-head b{color:var(--c);font-weight:600}
 /* card shell */
-.pr{height:110px;display:flex;background:rgba(15,20,25,.85);overflow:hidden}
+.pr{height:86px;min-width:310px;display:flex;background:rgba(15,20,25,.85);overflow:hidden}
 .pl.r .pr{flex-direction:row-reverse}
 /* ── portrait column (outer edge) ── */
-.pr .ag-col{width:62px;flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px}
-.pr .ag-i{width:54px;height:44px;object-fit:cover;object-position:top;border-radius:3px}
+.pr .ag-col{width:50px;flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px}
+.pr .ag-i{width:46px;height:36px;object-fit:cover;object-position:top;border-radius:2px}
 .pr.dead .ag-i{filter:grayscale(1) brightness(.5)}
 /* ult indicator */
-.pr .ult{width:40px;height:40px;position:relative;display:flex;align-items:center;justify-content:center}
-.pr .ult-ico{width:18px;height:18px;position:absolute;z-index:1;opacity:.7}
+.pr .ult{width:32px;height:32px;position:relative;display:flex;align-items:center;justify-content:center}
+.pr .ult-ico{width:14px;height:14px;position:absolute;z-index:1;opacity:.7}
 .pr .ult-ring{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 .pr .ult.ready .ult-ico{opacity:1;filter:brightness(1.5)}
 .pr.dead .ult{opacity:.4}
 /* ── main body ── */
-.pr .main{flex:1;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:8px 14px;min-width:0}
+.pr .main{flex:1;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:6px 12px;min-width:0}
 /* row 1: name + shield + hp */
-.pr .r1{display:flex;align-items:center;gap:6px}
+.pr .r1{display:flex;align-items:center;gap:5px}
 .pl.r .r1{flex-direction:row-reverse}
-.pr .nm{font-family:PBd;font-size:16px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr .nm{font-family:PBd;font-size:14px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pl.r .nm{text-align:right}
-.pr .sh{font-size:12px;font-weight:700;padding:1px 5px;border:1.5px solid rgba(255,255,255,.35);border-radius:3px;color:#7ee6c2;flex:none;line-height:1.5}
-.pr .hpn{font-family:JB;font-weight:700;font-size:22px;flex:none}
+.pr .sh{font-size:10px;font-weight:700;padding:0 3px;border:1.5px solid rgba(255,255,255,.35);border-radius:2px;color:#7ee6c2;flex:none;line-height:1.5}
+.pr .hpn{font-family:JB;font-weight:700;font-size:18px;flex:none}
 .pr .hpn.low{color:var(--red)}
 .pr.dead .sh,.pr.dead .hpn{display:none}
 /* hp bar */
@@ -113,28 +113,28 @@ body.bg{background:#222 url() center/cover}
 .pr .hpb i.low{background:var(--red)}
 .pr.dead .hpb{display:none}
 /* row 2: abilities + weapon + credits (alive) or KDA + credits (dead) */
-.pr .r2{display:flex;align-items:center;gap:6px}
+.pr .r2{display:flex;align-items:center;gap:4px}
 .pl.r .r2{flex-direction:row-reverse}
 /* abilities */
-.pr .ab{display:flex;flex-direction:column;align-items:center;gap:2px}
-.pr .ab>img{width:18px;height:18px;opacity:.85;flex:none}
+.pr .ab{display:flex;flex-direction:column;align-items:center;gap:1px}
+.pr .ab>img{width:14px;height:14px;opacity:.85;flex:none}
 .pr .ab.empty>img{opacity:.2}
-.pr .ab .cp{display:flex;gap:2px}
-.pr .ab .cp i{width:4px;height:4px;transform:rotate(45deg);background:var(--c);flex:none}
+.pr .ab .cp{display:flex;gap:1px}
+.pr .ab .cp i{width:3px;height:3px;transform:rotate(45deg);background:var(--c);flex:none}
 .pr .ab .cp i.e{background:rgba(255,255,255,.15)}
 .pr.dead .ab{display:none}
 /* weapon */
-.pr .r2 .wp{height:22px;max-width:90px;flex:none;opacity:.8}
+.pr .r2 .wp{height:16px;max-width:70px;flex:none;opacity:.8}
 .pl.l .pr .r2 .wp{transform:scaleX(-1)}
 .pr.dead .r2 .wp{display:none}
 /* credits */
-.pr .ec{display:flex;align-items:center;gap:3px;margin-left:auto}
+.pr .ec{display:flex;align-items:center;gap:2px;margin-left:auto}
 .pl.r .ec{margin-left:0;margin-right:auto;flex-direction:row-reverse}
-.pr .cri{width:12px;height:12px;flex:none;opacity:.7}
-.pr .cr{font-size:13px;color:var(--gold);white-space:nowrap}
+.pr .cri{width:10px;height:10px;flex:none;opacity:.7}
+.pr .cr{font-size:11px;color:var(--gold);white-space:nowrap}
 .pr.dead .ec{display:none}
 /* dead info: KDA + credits */
-.pr .di{display:none;align-items:center;gap:8px;font-size:14px;font-weight:500;color:rgba(255,255,255,.5)}
+.pr .di{display:none;align-items:center;gap:6px;font-size:12px;font-weight:500;color:rgba(255,255,255,.5)}
 .pl.r .di{flex-direction:row-reverse}
 .pr .di img{width:10px;height:10px;opacity:.5}
 .pr .di .cr{color:rgba(255,255,255,.4)}
@@ -489,7 +489,7 @@ body.bg{background:#222 url() center/cover}
 .sk .ml{position:absolute;top:16px;transform:translateX(-50%);font-size:9px;letter-spacing:.16em;color:#c8c8cc;white-space:nowrap}
 .sk.hot{animation:skp .5s steps(2) infinite}@keyframes skp{50%{border-bottom-color:#fff}}
 /* moments (first blood / multikill / clutch) */
-.mo{position:absolute;left:24px;top:500px;display:flex;flex-direction:column;gap:8px}
+.mo{position:absolute;left:340px;top:500px;display:flex;flex-direction:column;gap:8px}
 .mo .m{height:46px;display:flex;align-items:center;background:var(--ink);border-left:5px solid var(--c);padding-right:18px;animation:kin .45s var(--ease)}
 .mo .m .k{height:46px;padding:0 14px;display:flex;align-items:center;background:var(--c);color:var(--ci);font-family:PBk;font-size:20px;letter-spacing:.02em}
 .mo .m img{width:36px;height:36px;margin:0 10px}
