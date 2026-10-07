@@ -166,7 +166,6 @@
   function ultRingSVG(cur, max, sz) {
     if (!max) return '';
     const cx = sz / 2, cy = sz / 2, r = sz / 2 - 2.5;
-    if (cur >= max) return `<svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>`;
     const paths = [];
     for (let i = 0; i < max; i++) {
       const gapD = 360 / max * 0.18, segD = 360 / max - gapD;
