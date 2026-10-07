@@ -108,12 +108,14 @@ body.bg{background:#222 url() center/cover}
 /* row 3: abilities — evenly distributed */
 .pr .abw{display:flex;justify-content:flex-start;align-items:center;gap:6px}
 .pl.r .abw{flex-direction:row-reverse}
-.pr .ab-s{width:36px;height:30px;position:relative;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.05);border-radius:3px}
-.pr .ab-s>img{width:26px;height:26px;opacity:.9}
+.pr .ab-s{width:36px;height:36px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;padding:5px 0 4px;background:rgba(255,255,255,.05);border-radius:3px}
+.pr .ab-s>img{width:20px;height:20px;opacity:.9;flex:none}
+.pr .ab-s.ux{justify-content:center;padding:0}
+.pr .ab-s.ux>img{width:26px;height:26px}
 .pr .ab-s.empty{background:rgba(255,255,255,.02)}.pr .ab-s.empty>img{opacity:.2}
-/* charge count — corner badge, stays within slot bounds */
-.pr .ab-s .cp{position:absolute;bottom:2px;right:2px;display:flex;gap:3px;align-items:center}
-.pr .ab-s .cp i{width:5px;height:5px;transform:rotate(45deg);background:var(--c);flex:none}
+/* charge pips — centered row below icon */
+.pr .ab-s .cp{display:flex;gap:2px;align-items:center;justify-content:center}
+.pr .ab-s .cp i{width:4px;height:4px;transform:rotate(45deg);background:var(--c);flex:none}
 .pr .ab-s .cp i.e{background:rgba(255,255,255,.15)}
 /* ult slot — dim icon + centered fraction overlay when not ready */
 .pr .ab-s.ux:not(.ready)>img{opacity:.35}
