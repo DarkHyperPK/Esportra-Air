@@ -83,7 +83,7 @@ body.bg{background:#222 url() center/cover}
 .pl.r .pl-head{flex-direction:row-reverse}
 .pl-head b{color:var(--c);font-weight:600}
 /* card shell */
-.pr{height:86px;min-width:310px;display:flex;background:rgba(15,20,25,.85);overflow:hidden}
+.pr{height:86px;min-width:310px;display:flex;background:rgba(15,20,25,.85)}
 .pl.r .pr{flex-direction:row-reverse}
 /* ── portrait column (outer edge) ── */
 .pr .ag-col{width:50px;flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px}
