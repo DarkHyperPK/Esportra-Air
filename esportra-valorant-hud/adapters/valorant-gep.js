@@ -153,7 +153,6 @@ function createValorantAdapter(opts = {}) {
       else if (key === 'round_phase') {
         const r = s.round;
         if (v === 'shopping') {
-          s.prevCredits = s.players.map(t => t.map(p => +p.credits || 0));
           Object.assign(r, { phase: 'buy', endsAt: now + 30000 });
           s.killfeed = []; ctx.spike = {};
           ctx.roundKills.clear(); ctx.teamKillers[0].clear(); ctx.teamKillers[1].clear();
@@ -215,7 +214,7 @@ function createValorantAdapter(opts = {}) {
       else if (key === 'observing') { const tp = ctx.byName.get(nameKey(v)); if (tp) s.observed = tp; }
       else if (key === 'kill_feed') events.push({ name: 'kill_feed', data: v });
       else if (key === 'health' && playerId) { const p = P(s, ctx.slots.get(playerId)); if (p) p.hp = +v; }
-      else if (key === 'abilities' && playerId) { const p = P(s, ctx.slots.get(playerId)); if (p && v) p.charges = ['C', 'Q', 'E'].map(k => +v[k] || 0); }
+      else if (key === 'abilities' && playerId) { const p = P(s, ctx.slots.get(playerId)); if (p && v) p.charges = ['C', 'Q', 'E'].map(k => (v[k] ? 1 : 0)); }
     }
     for (const { name, data: d } of events) {
       if (name === 'kill_feed' && d) {
