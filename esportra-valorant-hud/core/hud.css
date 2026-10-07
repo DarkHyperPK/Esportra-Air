@@ -452,12 +452,12 @@ body.bg{background:#222 url() center/cover}
 .rh .c.now{outline:1px dashed rgba(255,255,255,.5);outline-offset:-1px}
 .rh .half{width:14px;height:26px;display:flex;align-items:center;justify-content:center;margin:0 3px;background:transparent}
 /* win probability */
-.wp{position:absolute;left:750px;top:186px;width:420px;height:28px;display:flex;align-items:center;gap:10px}
-.wp .n{width:48px;font-size:14px;text-align:center}
-.wp .bar{flex:1;height:8px;display:flex;background:var(--ink);position:relative}
-.wp .bar i{height:100%;transition:width .6s var(--ease)}
-.wp .bar b{position:absolute;left:50%;top:-4px;width:1px;height:16px;background:rgba(255,255,255,.5)}
-.wp .lab{position:absolute;left:0;right:0;top:-14px;text-align:center;font-size:9px;letter-spacing:.3em;color:var(--muted)}
+.winp{position:absolute;left:750px;top:186px;width:420px;height:28px;display:flex;align-items:center;gap:10px}
+.winp .n{width:48px;font-size:14px;text-align:center}
+.winp .bar{flex:1;height:8px;display:flex;background:var(--ink);position:relative}
+.winp .bar i{height:100%;transition:width .6s var(--ease)}
+.winp .bar b{position:absolute;left:50%;top:-4px;width:1px;height:16px;background:rgba(255,255,255,.5)}
+.winp .lab{position:absolute;left:0;right:0;top:-14px;text-align:center;font-size:9px;letter-spacing:.3em;color:var(--muted)}
 /* spike timer */
 .spike-tm{height:22px;width:auto;flex:none}
 .spike-ic{height:26px;width:auto;flex:none}
