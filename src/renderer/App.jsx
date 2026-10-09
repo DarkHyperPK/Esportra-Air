@@ -4,6 +4,7 @@ import PairScreen from './components/PairScreen.jsx';
 import ReadinessScreen from './components/ReadinessScreen.jsx';
 import CaptureScreen from './components/CaptureScreen.jsx';
 import OutputsScreen from './components/OutputsScreen.jsx';
+import ProducerScreen from './components/ProducerScreen.jsx';
 
 const airApi = window.esportraBroadcast?.air ?? null;
 
@@ -58,8 +59,16 @@ export default function App() {
     return <CaptureScreen status={airStatus} />;
   }
 
-  // Paired production node — Readiness / Outputs
+  // Paired production node — Readiness / Producer / Outputs
   if (airStatus?.paired) {
+    if (activeScreen === 'producer') {
+      return (
+        <ProducerScreen
+          status={airStatus}
+          onScreenChange={setActiveScreen}
+        />
+      );
+    }
     if (activeScreen === 'outputs') {
       return (
         <OutputsScreen

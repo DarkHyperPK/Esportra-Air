@@ -6,10 +6,12 @@ const crypto = require('crypto');
 const fetch = require('node-fetch');
 const keytar = require('keytar');
 
-const NodeConfig = require('./node-config');
-const HubClient = require('./hub-client');
+const NodeConfig   = require('./node-config');
+const HubClient    = require('./hub-client');
 const OfflineQueue = require('./offline-queue');
 const matchContext = require('./match-context');
+const OBSController  = require('./obs-controller');
+const VMixController = require('./vmix-controller');
 
 const { version: APP_VERSION } = require('../package.json');
 
@@ -49,6 +51,29 @@ const IPC_COMMANDS = Object.freeze({
   // Persist a mode change. Requires app restart to take effect.
   // Returns: { ok, restartRequired }
   SET_MODE:         'SET_MODE',
+
+  // ── P1 additions — OBS/vMix video switcher control ───────────────────────
+  // Connect to OBS/vMix. Args: { host, port, password? }
+  // Returns: { ok, error? }
+  OBS_CONNECT:        'OBS_CONNECT',
+  // Disconnect from video switcher.
+  // Returns: { ok }
+  OBS_DISCONNECT:     'OBS_DISCONNECT',
+  // Current video switcher state snapshot.
+  // Returns: { connected, state, studioMode, tally }
+  OBS_GET_STATUS:     'OBS_GET_STATUS',
+  // Ensure ESA_ scenes exist in OBS with browser sources.
+  // Args: { outputUrls: { holding, gameplay, fullscreen, replay, casters } }
+  // Returns: { ok, created, existing, error? }
+  OBS_BUILD_SCENES:   'OBS_BUILD_SCENES',
+  // Transition a scene into program (studio mode-aware, ≤100ms target).
+  // Args: { sceneName }
+  // Returns: { ok, latencyMs, scene, error? }
+  OBS_TAKE:           'OBS_TAKE',
+  // Save replay buffer → ESA_Replay scene → return after dwell.
+  // Args: { dwellMs? }
+  // Returns: { ok, savedPath?, error? }
+  OBS_TRIGGER_REPLAY: 'OBS_TRIGGER_REPLAY',
 });
 
 const KEYTAR_SERVICE = 'esportra-air';
@@ -71,6 +96,11 @@ let hubConnected = false;
 // nodeToken is kept in memory for hub/queue operations only — NEVER sent to renderer.
 let nodeToken = null;
 let lanRelay = null;
+
+// ─── P1 module state — video switcher ─────────────────────────────────────────
+let obsController = null;
+let obsScreenshotBusy = false;
+let obsScreenshotInterval = null;
 
 // ─── Helper: resolve hud root ─────────────────────────────────────────────────
 function getHudRoot() {
@@ -155,6 +185,70 @@ function createHubClient(queue) {
   });
 
   return client;
+}
+
+// ─── P1: Video switcher helpers ───────────────────────────────────────────────
+
+/** Start the 2fps screenshot loop that pushes PVW/PGM thumbnails to renderer. */
+function startObsScreenshotLoop() {
+  stopObsScreenshotLoop();
+  obsScreenshotInterval = setInterval(async () => {
+    if (obsScreenshotBusy || !obsController || !mainWindow) return;
+    obsScreenshotBusy = true;
+    try {
+      const tally = obsController.getTally();
+      const frames = {};
+      if (tally.program) {
+        const img = await obsController.getScreenshot(tally.program);
+        if (img) frames.pgm = img;
+      }
+      if (tally.preview && tally.preview !== tally.program) {
+        const img = await obsController.getScreenshot(tally.preview);
+        if (img) frames.pvw = img;
+      }
+      if (mainWindow && Object.keys(frames).length > 0) {
+        mainWindow.webContents.send('obs-preview-frame', frames);
+      }
+    } catch (_) {} finally {
+      obsScreenshotBusy = false;
+    }
+  }, 500);
+}
+
+function stopObsScreenshotLoop() {
+  if (obsScreenshotInterval) {
+    clearInterval(obsScreenshotInterval);
+    obsScreenshotInterval = null;
+  }
+  obsScreenshotBusy = false;
+}
+
+/** Wire event emitter from a newly created video controller to the renderer. */
+function wireObsEvents(controller) {
+  controller.on('connected', (info) => {
+    if (mainWindow) mainWindow.webContents.send('obs-connected', info ?? {});
+    startObsScreenshotLoop();
+  });
+  controller.on('disconnected', () => {
+    if (mainWindow) mainWindow.webContents.send('obs-disconnected');
+    stopObsScreenshotLoop();
+  });
+  controller.on('tally-changed', (tally) => {
+    if (mainWindow) mainWindow.webContents.send('obs-tally', tally);
+  });
+}
+
+/**
+ * Returns the active video controller, creating it if necessary.
+ * Reads obsBackend from node-config ('obs' | 'vmix'); defaults to OBSController.
+ */
+function getOrCreateVideoController() {
+  if (obsController) return obsController;
+  const backend = nodeConfig ? nodeConfig.get('obsBackend') : 'obs';
+  const ControllerClass = backend === 'vmix' ? VMixController : OBSController;
+  obsController = new ControllerClass({ logger: console });
+  wireObsEvents(obsController);
+  return obsController;
 }
 
 // ─── Window ───────────────────────────────────────────────────────────────────
@@ -387,7 +481,14 @@ ipcMain.handle(IPC_COMMANDS.GET_STATUS, () => {
         state: hudOnline ? 'healthy' : (hudStartErrorCode ? 'error' : 'offline'),
         detail: hudOnline ? `Port ${HUD_PORT}` : (hudStartErrorCode ? `Error: ${hudStartErrorCode}` : 'Not started'),
       },
-      obsConnection: { state: 'unknown', detail: 'Not connected — P1' },
+      obsConnection: (() => {
+        if (!obsController) return { state: 'offline', detail: 'Not connected' };
+        const obs = obsController.getState();
+        if (obs.connected) {
+          return { state: 'healthy', detail: `OBS ready${obs.studioMode ? ' (Studio Mode)' : ''}` };
+        }
+        return { state: 'attention', detail: obs.state };
+      })(),
       gepFeed: {
         state: gepStatus.active ? 'healthy' : 'offline',
         detail: gepStatus.active ? 'Live' : 'Not capturing',
@@ -430,6 +531,104 @@ ipcMain.handle(IPC_COMMANDS.COPY_OUTPUT_URL, (_event, { overlayName, matchCode }
     ? matchCode.replace(/[^A-Z0-9_-]/gi, '') || 'MAIN'
     : 'MAIN';
   return { ok: true, url: `http://localhost:${HUD_PORT}/overlays/${safeName}.html?match=${safeCode}` };
+});
+
+// ─── P1 IPC: OBS_CONNECT ─────────────────────────────────────────────────────
+// Creates (or reuses) the video controller and initiates a connection.
+// host/port/password validated; controller type determined by obsBackend config.
+
+// Security: OBS WebSocket must be on loopback. Remote OBS requires explicit
+// config-level allowlisting in a future version; for P1 local operation only.
+const OBS_ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1']);
+
+ipcMain.handle(IPC_COMMANDS.OBS_CONNECT, async (_event, { host, port, password } = {}) => {
+  if (!host || typeof host !== 'string') {
+    return { ok: false, error: 'host is required.' };
+  }
+  if (!OBS_ALLOWED_HOSTS.has(host)) {
+    return { ok: false, error: 'OBS must run on localhost. Remote connections not supported in P1.' };
+  }
+  const safePort = Number(port) || 4455;
+  if (safePort < 1 || safePort > 65535) {
+    return { ok: false, error: 'port must be between 1 and 65535.' };
+  }
+  const controller = getOrCreateVideoController();
+  try {
+    await controller.connect(host, safePort, password || '');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message || 'Connection failed.' };
+  }
+});
+
+// ─── P1 IPC: OBS_DISCONNECT ──────────────────────────────────────────────────
+
+ipcMain.handle(IPC_COMMANDS.OBS_DISCONNECT, async () => {
+  if (!obsController) return { ok: true };
+  await obsController.disconnect();
+  return { ok: true };
+});
+
+// ─── P1 IPC: OBS_GET_STATUS ──────────────────────────────────────────────────
+
+ipcMain.handle(IPC_COMMANDS.OBS_GET_STATUS, () => {
+  if (!obsController) {
+    return { connected: false, state: 'disconnected', studioMode: false, tally: { preview: null, program: null } };
+  }
+  return obsController.getState();
+});
+
+// ─── P1 IPC: OBS_BUILD_SCENES ────────────────────────────────────────────────
+// Creates ESA_ scenes in OBS with browser sources for each named overlay URL.
+// Security: all provided URLs must target the local HUD server only.
+
+const HUD_URL_PREFIX_RE = /^https?:\/\/(localhost|127\.0\.0\.1):5300\//;
+
+ipcMain.handle(IPC_COMMANDS.OBS_BUILD_SCENES, async (_event, { outputUrls } = {}) => {
+  if (!obsController) return { ok: false, error: 'OBS is not connected.' };
+  const safeUrls = {};
+  for (const [key, url] of Object.entries(outputUrls || {})) {
+    if (typeof url !== 'string' || !HUD_URL_PREFIX_RE.test(url)) {
+      return { ok: false, error: `outputUrls["${key}"] must be a localhost:5300 HUD URL.` };
+    }
+    safeUrls[key] = url;
+  }
+  try {
+    const result = await obsController.buildScenes(safeUrls);
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// ─── P1 IPC: OBS_TAKE ────────────────────────────────────────────────────────
+// Studio-mode-aware scene transition targeting ≤100ms.
+
+ipcMain.handle(IPC_COMMANDS.OBS_TAKE, async (_event, { sceneName } = {}) => {
+  if (!obsController) return { ok: false, error: 'OBS is not connected.' };
+  if (!sceneName || typeof sceneName !== 'string') {
+    return { ok: false, error: 'sceneName is required.' };
+  }
+  if (sceneName.length > 256) {
+    return { ok: false, error: 'sceneName must be 256 characters or fewer.' };
+  }
+  return obsController.take(sceneName);
+});
+
+// ─── P1 IPC: OBS_TRIGGER_REPLAY ──────────────────────────────────────────────
+// Save replay buffer → ESA_Replay → return to previous scene after dwell.
+
+ipcMain.handle(IPC_COMMANDS.OBS_TRIGGER_REPLAY, async (_event, opts = {}) => {
+  if (!obsController) return { ok: false, error: 'OBS is not connected.' };
+  let dwellMs;
+  if (opts.dwellMs !== undefined) {
+    const d = Number(opts.dwellMs);
+    if (!Number.isFinite(d) || d < 0 || d > 60000) {
+      return { ok: false, error: 'dwellMs must be a number between 0 and 60000.' };
+    }
+    dwellMs = d;
+  }
+  return obsController.triggerReplay({ dwellMs });
 });
 
 // ─── Broadcast GEP controls ───────────────────────────────────────────────────
@@ -581,6 +780,11 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', async () => {
   broadcastGep.stop();
   clearInterval(healthCheckInterval);
+  stopObsScreenshotLoop();
+  if (obsController) {
+    await obsController.disconnect();
+    obsController = null;
+  }
   if (hubClient) {
     await hubClient.disconnect();
     hubClient = null;

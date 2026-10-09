@@ -12,6 +12,7 @@ const HEALTH_DEFS = [
 
 const NAV = [
   { id: 'readiness', label: 'Readiness' },
+  { id: 'producer',  label: 'Producer' },
   { id: 'outputs',   label: 'Outputs' },
 ];
 

@@ -10,6 +10,7 @@ function makeDefaults() {
     lanRelayPort: 5301,
     lanRelayTargets: [],     // string[] — IPs of observer PCs in production mode
     nodeId: null,            // UUID, set after first successful pairing
+    obsBackend: 'obs',       // 'obs' | 'vmix' — video switcher backend (P1+)
   };
 }
 

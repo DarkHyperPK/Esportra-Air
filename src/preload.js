@@ -42,4 +42,46 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     // ShowConfig pushed from BroadcastHub (safe to expose — no secrets in payload)
     onShowConfig: (cb) => ipcRenderer.on('show-config', (_e, cfg) => cb(cfg)),
   },
+
+  // P1: Video switcher (OBS / vMix) control surface
+  obs: {
+    // Connect to OBS WebSocket. Returns { ok, error? }.
+    connect: (host, port, password) =>
+      ipcRenderer.invoke('OBS_CONNECT', { host, port, password }),
+    // Disconnect. Returns { ok }.
+    disconnect: () => ipcRenderer.invoke('OBS_DISCONNECT'),
+    // Current state snapshot. Returns { connected, state, studioMode, tally }.
+    getStatus: () => ipcRenderer.invoke('OBS_GET_STATUS'),
+    // Build ESA_ scenes with browser sources. Returns { ok, created, existing, error? }.
+    buildScenes: (outputUrls) =>
+      ipcRenderer.invoke('OBS_BUILD_SCENES', { outputUrls }),
+    // Studio-mode-aware scene take. Returns { ok, latencyMs, scene, error? }.
+    take: (sceneName) => ipcRenderer.invoke('OBS_TAKE', { sceneName }),
+    // Trigger replay buffer save + ESA_Replay + return. Returns { ok, savedPath?, error? }.
+    triggerReplay: (dwellMs) =>
+      ipcRenderer.invoke('OBS_TRIGGER_REPLAY', { dwellMs }),
+
+    // ── Push events (main → renderer) ──────────────────────────────────────
+    // Each returns an off-function for clean useEffect cleanup.
+    onConnected: (cb) => {
+      const fn = (_e, info) => cb(info);
+      ipcRenderer.on('obs-connected', fn);
+      return () => ipcRenderer.removeListener('obs-connected', fn);
+    },
+    onDisconnected: (cb) => {
+      const fn = () => cb();
+      ipcRenderer.on('obs-disconnected', fn);
+      return () => ipcRenderer.removeListener('obs-disconnected', fn);
+    },
+    onTally: (cb) => {
+      const fn = (_e, tally) => cb(tally);
+      ipcRenderer.on('obs-tally', fn);
+      return () => ipcRenderer.removeListener('obs-tally', fn);
+    },
+    onPreviewFrame: (cb) => {
+      const fn = (_e, frames) => cb(frames);
+      ipcRenderer.on('obs-preview-frame', fn);
+      return () => ipcRenderer.removeListener('obs-preview-frame', fn);
+    },
+  },
 });

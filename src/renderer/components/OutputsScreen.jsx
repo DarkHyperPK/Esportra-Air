@@ -5,6 +5,7 @@ import ConfirmDialog from './air/ConfirmDialog.jsx';
 
 const NAV = [
   { id: 'readiness', label: 'Readiness' },
+  { id: 'producer',  label: 'Producer' },
   { id: 'outputs',   label: 'Outputs' },
 ];
 
