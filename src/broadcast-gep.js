@@ -60,7 +60,7 @@ function getStatus() {
  * @param {string} [opts.matchCode='MAIN']
  * @returns {Promise<{ ok: boolean, pid?: number, error?: string }>}
  */
-async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN' }) {
+async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN', gepTargetUrl }) {
   if (captureProcess !== null && captureProcess.exitCode === null) {
     return { ok: false, error: 'Broadcast already active.' };
   }
@@ -87,7 +87,7 @@ async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN' }) {
   );
   const env = {
     ...inheritedEnv,
-    ESPORTRA_SERVER: `ws://127.0.0.1:${hudPort}`,
+    ESPORTRA_SERVER: gepTargetUrl || `ws://127.0.0.1:${hudPort}`,
     ESPORTRA_MATCH: matchCode,
     ESPORTRA_KEY: hudKey,
     ESPORTRA_API_URL: '',

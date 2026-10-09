@@ -134,7 +134,7 @@ html, body {
 
 .form-input {
   height: 32px;
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--c-bg);
   border: 1px solid var(--c-border-active);
   color: var(--c-text);
@@ -151,8 +151,8 @@ html, body {
 }
 
 .form-input:focus {
-  border-color: var(--c-accent);
-  outline: 1px solid var(--c-accent);
+  border-color: rgba(255,255,255,.18);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -164,14 +164,14 @@ html, body {
 .form-error {
   font-weight: 400;
   font-size: 11px;
-  color: var(--c-accent);
+  color: #EF4444;
   margin-top: 8px;
 }
 
 /* ─── Buttons ───────────────────────────────────────────────────────────────── */
 .btn-primary {
   height: 32px;
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--c-accent);
   color: #ffffff;
   font-family: 'Poppins', system-ui, sans-serif;
@@ -191,7 +191,7 @@ html, body {
 }
 
 .btn-primary:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -216,7 +216,7 @@ html, body {
 }
 
 .text-link:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -317,7 +317,7 @@ html, body {
   justify-content: center;
   padding: 0 8px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 0;
   border-left: 2px solid transparent;
   background: transparent;
   border-right: none;
@@ -338,7 +338,7 @@ html, body {
 }
 
 .match-list-item:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -388,14 +388,14 @@ html, body {
   height: 36px;
   width: 80%;
   background: var(--c-surface-hover);
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 /* Selected match card */
 .match-selected-card {
   background: var(--c-surface);
   border: 1px solid var(--c-border-subtle);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 10px 12px;
   margin-bottom: 8px;
 }
@@ -420,7 +420,7 @@ html, body {
 .match-status-pill {
   display: inline-flex;
   align-items: center;
-  border-radius: 4px;
+  border-radius: 0;
   padding: 0 8px;
   height: 18px;
   font-weight: 600;
@@ -597,7 +597,7 @@ html, body {
 }
 
 .catalogue-retry:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -606,7 +606,7 @@ html, body {
   height: 56px;
   background: var(--c-surface);
   border: 1px solid var(--c-border-subtle);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 10px 12px;
   display: flex;
   align-items: center;
@@ -642,14 +642,14 @@ html, body {
   height: 56px;
   background: var(--c-surface);
   border: 1px solid var(--c-border-subtle);
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 /* Preview button */
 .overlay-preview-btn {
   height: 28px;
   padding: 0 10px;
-  border-radius: 4px;
+  border-radius: 0;
   border: none;
   background: transparent;
   color: var(--c-muted);
@@ -664,7 +664,7 @@ html, body {
 }
 
 .overlay-preview-btn:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -672,7 +672,7 @@ html, body {
 .overlay-copy-btn {
   height: 28px;
   padding: 0 10px;
-  border-radius: 4px;
+  border-radius: 0;
   border: 1px solid var(--c-border-active);
   background: transparent;
   color: var(--c-panel-header);
@@ -703,7 +703,7 @@ html, body {
 }
 
 .overlay-copy-btn:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -749,7 +749,7 @@ html, body {
 }
 
 .mode-toggle:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -777,7 +777,7 @@ html, body {
 .state-field-input {
   flex: 1;
   height: 28px;
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--c-bg);
   border: 1px solid var(--c-border-active);
   color: var(--c-text);
@@ -793,8 +793,8 @@ html, body {
 }
 
 .state-field-input:focus {
-  border-color: var(--c-accent);
-  outline: 1px solid var(--c-accent);
+  border-color: rgba(255,255,255,.18);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -807,7 +807,7 @@ html, body {
   width: 90px;
   flex-shrink: 0;
   height: 28px;
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--c-bg);
   border: 1px solid var(--c-border-active);
   color: var(--c-text);
@@ -819,8 +819,8 @@ html, body {
 }
 
 .custom-field-key:focus {
-  border-color: var(--c-accent);
-  outline: 1px solid var(--c-accent);
+  border-color: rgba(255,255,255,.18);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -847,7 +847,7 @@ html, body {
 
 .custom-field-remove:hover { color: var(--c-text); }
 .custom-field-remove:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -865,7 +865,7 @@ html, body {
 
 .add-field-btn:hover { color: var(--c-text); }
 .add-field-btn:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -879,7 +879,7 @@ html, body {
   min-height: 160px;
   background: var(--c-bg);
   border: 1px solid var(--c-border-active);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 10px;
   color: var(--c-text);
   font-family: monospace;
@@ -890,8 +890,8 @@ html, body {
 }
 
 .json-textarea:focus {
-  border-color: var(--c-accent);
-  outline: 1px solid var(--c-accent);
+  border-color: rgba(255,255,255,.18);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -908,7 +908,7 @@ html, body {
 .patch-btn {
   height: 32px;
   width: 100%;
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--c-accent);
   color: #ffffff;
   font-family: 'Poppins', system-ui, sans-serif;
@@ -928,7 +928,7 @@ html, body {
 }
 
 .patch-btn:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -957,7 +957,7 @@ html, body {
 .broadcast-start-btn {
   height: 32px;
   width: 100%;
-  border-radius: 4px;
+  border-radius: 0;
   border: 1px solid var(--c-border-active);
   background: transparent;
   font-family: 'Poppins', system-ui, sans-serif;
@@ -982,14 +982,14 @@ html, body {
 }
 
 .broadcast-start-btn:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
 .broadcast-stop-btn {
   height: 32px;
   width: 100%;
-  border-radius: 4px;
+  border-radius: 0;
   border: none;
   background: transparent;
   font-family: 'Poppins', system-ui, sans-serif;
@@ -1003,7 +1003,7 @@ html, body {
 }
 
 .broadcast-stop-btn:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
@@ -1049,7 +1049,7 @@ html, body {
 .privacy-modal-card {
   background: var(--c-surface);
   border: 1px solid var(--c-border-active);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 24px;
   max-width: 400px;
   width: calc(100% - 48px);
@@ -1080,7 +1080,7 @@ html, body {
 .privacy-cancel-btn {
   height: 28px;
   padding: 0 12px;
-  border-radius: 4px;
+  border-radius: 0;
   border: 1px solid var(--c-border-active);
   background: transparent;
   font-family: 'Poppins', system-ui, sans-serif;
@@ -1095,14 +1095,14 @@ html, body {
 }
 
 .privacy-cancel-btn:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
 
 .privacy-confirm-btn {
   height: 28px;
   padding: 0 16px;
-  border-radius: 4px;
+  border-radius: 0;
   border: none;
   background: var(--c-accent);
   font-family: 'Poppins', system-ui, sans-serif;
@@ -1117,6 +1117,6 @@ html, body {
 }
 
 .privacy-confirm-btn:focus-visible {
-  outline: 1px solid var(--c-accent);
+  outline: 2px solid #F4F4F5;
   outline-offset: 2px;
 }
