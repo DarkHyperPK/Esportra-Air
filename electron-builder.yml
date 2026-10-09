@@ -1,0 +1,13 @@
+appId: gg.esportra.air
+productName: Esportra Air
+asar: true
+asarUnpack:
+  - "esportra-valorant-hud/**/*"
+directories:
+  output: dist
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

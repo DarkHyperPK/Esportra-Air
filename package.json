@@ -1,0 +1,44 @@
+{
+  "name": "esportra-air",
+  "version": "0.1.0",
+  "description": "Esportra Air — ops-to-air broadcast desktop app",
+  "main": "src/main.js",
+  "scripts": {
+    "build:renderer": "esbuild src/renderer/main.jsx --bundle --outfile=src/renderer/app.js --platform=browser --loader:.jsx=jsx",
+    "start": "npm run build:renderer && electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "electron": "^28.0.0",
+    "keytar": "^7.9.0",
+    "node-fetch": "^2.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.0.0",
+    "esbuild": "^0.21.5"
+  },
+  "build": {
+    "appId": "gg.esportra.air",
+    "productName": "Esportra Air",
+    "asar": true,
+    "asarUnpack": [
+      "esportra-valorant-hud/**/*"
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Esportra Air",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}
