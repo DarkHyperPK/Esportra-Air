@@ -84,4 +84,37 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
       return () => ipcRenderer.removeListener('obs-preview-frame', fn);
     },
   },
+
+  // P2: ShowRunner autopilot control surface
+  runner: {
+    // Load a segment array and start the rundown.
+    loadRundown: (segments) => ipcRenderer.invoke('RUNNER_LOAD_RUNDOWN', { segments }),
+    start:       ()          => ipcRenderer.invoke('RUNNER_START'),
+    // Operator commands. Returns { ok, error? }.
+    hold:      (segmentId)              => ipcRenderer.invoke('RUNNER_HOLD',       { segmentId }),
+    skip:      (segmentId)              => ipcRenderer.invoke('RUNNER_SKIP',       { segmentId }),
+    take:      (segmentId, commandId)   => ipcRenderer.invoke('RUNNER_TAKE',       { segmentId, commandId }),
+    resume:    ()                       => ipcRenderer.invoke('RUNNER_RESUME'),
+    techPause: ()                       => ipcRenderer.invoke('RUNNER_TECH_PAUSE'),
+    // Push events (main → renderer). Each returns an off-function.
+    onState: (cb) => {
+      const fn = (_e, state) => cb(state);
+      ipcRenderer.on('runner-state', fn);
+      return () => ipcRenderer.removeListener('runner-state', fn);
+    },
+    onEventLogEntry: (cb) => {
+      const fn = (_e, entry) => cb(entry);
+      ipcRenderer.on('event-log-entry', fn);
+      return () => ipcRenderer.removeListener('event-log-entry', fn);
+    },
+  },
+
+  // P2: On-air score correction
+  fixData: (correction) => ipcRenderer.invoke('FIX_DATA', correction),
+
+  // P2: Simulation harness (NODE_ENV=development only)
+  simulation: {
+    start: (filePath, speed) => ipcRenderer.invoke('SIMULATION_START', { filePath, speed }),
+    stop:  ()                => ipcRenderer.invoke('SIMULATION_STOP'),
+  },
 });

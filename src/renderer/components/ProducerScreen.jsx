@@ -1,10 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AirShell from './air/AirShell.jsx';
 import HealthRow from './air/HealthRow.jsx';
 import KbdBadge from './air/KbdBadge.jsx';
 import TallyDot from './air/TallyDot.jsx';
 
-const obsApi = window.esportraBroadcast?.obs ?? null;
+const obsApi    = window.esportraBroadcast?.obs    ?? null;
+const runnerApi = window.esportraBroadcast?.runner ?? null;
+
+/** Format milliseconds as MM:SS countdown display. */
+function formatCountdown(ms) {
+  const total = Math.ceil(Math.max(0, ms) / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+const SEG_BADGE_LABELS = {
+  queued:  'QUEUED',
+  armed:   'ARMED',
+  holding: 'HOLDING',
+  taking:  'TAKING',
+  on_air:  'ON AIR',
+  done:    'DONE',
+};
 
 const NAV = [
   { id: 'readiness', label: 'Readiness' },
@@ -28,12 +46,55 @@ export default function ProducerScreen({ status, onScreenChange }) {
   const [host,      setHost]      = useState('localhost');
   const [port,      setPort]      = useState('4455');
   const [pass,      setPass]      = useState('');
-  const [connecting, setConnecting] = useState(false);
-  const [connError,  setConnError]  = useState('');
-  const [obsStatus,  setObsStatus]  = useState(null);
-  const [frames,     setFrames]     = useState({ pvw: null, pgm: null });
-  const [tally,      setTally]      = useState({ preview: null, program: null });
-  const [lastAction, setLastAction] = useState(null);
+  const [connecting,   setConnecting]   = useState(false);
+  const [connError,    setConnError]    = useState('');
+  const [obsStatus,    setObsStatus]    = useState(null);
+  const [frames,       setFrames]       = useState({ pvw: null, pgm: null });
+  const [tally,        setTally]        = useState({ preview: null, program: null });
+  const [lastAction,   setLastAction]   = useState(null);
+  // P2 autopilot state
+  const [runnerState,  setRunnerState]  = useState(null);
+  const [countdown,    setCountdown]    = useState(null); // MM:SS string
+  const [eventLog,     setEventLog]     = useState([]);
+  const countdownRef = useRef(null); // { end: performance.now() target, tick: interval }
+
+  // ── P2: hold countdown helpers (monotonic clock) ─────────────────────────
+  const stopCountdown = useCallback(() => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current.tick);
+      countdownRef.current = null;
+    }
+    setCountdown(null);
+  }, []);
+
+  const startCountdown = useCallback((initialMs) => {
+    stopCountdown();
+    const end  = performance.now() + initialMs;
+    const tick = setInterval(() => {
+      const remaining = Math.max(0, end - performance.now());
+      setCountdown(formatCountdown(remaining));
+      if (remaining <= 0) stopCountdown();
+    }, 100);
+    countdownRef.current = { end, tick };
+    setCountdown(formatCountdown(initialMs));
+  }, [stopCountdown]);
+
+  // ── P2: runner event subscriptions ────────────────────────────────────────
+  useEffect(() => {
+    if (!runnerApi) return;
+    const offState = runnerApi.onState((state) => {
+      setRunnerState(state);
+      if (state.holdCountdown !== null) {
+        startCountdown(state.holdCountdown);
+      } else {
+        stopCountdown();
+      }
+    });
+    const offLog = runnerApi.onEventLogEntry((entry) => {
+      setEventLog(prev => [...prev.slice(-9), entry]);
+    });
+    return () => { offState?.(); offLog?.(); stopCountdown(); };
+  }, [startCountdown, stopCountdown]);
 
   const refreshObs = useCallback(async () => {
     if (!obsApi) return;
@@ -56,13 +117,28 @@ export default function ProducerScreen({ status, onScreenChange }) {
   }, [refreshObs]);
 
   const handleTrigger = useCallback(async (binding) => {
-    if (!obsApi || !obsStatus?.connected) return;
     let result;
-    if (binding.action === 'scene')        result = await obsApi.take(binding.scene);
-    else if (binding.action === 'replay')  result = await obsApi.triggerReplay();
-    else result = { ok: false, error: `${binding.label} available in P2` };
-    setLastAction({ key: binding.key, label: binding.label, ok: result.ok });
-  }, [obsStatus]);
+    if (binding.action === 'scene') {
+      if (!obsApi || !obsStatus?.connected) return;
+      result = await obsApi.take(binding.scene);
+    } else if (binding.action === 'replay') {
+      if (!obsApi || !obsStatus?.connected) return;
+      result = await obsApi.triggerReplay();
+    } else if (binding.action === 'hold') {
+      const seg = runnerState?.activeSegment;
+      result = seg && runnerApi
+        ? (runnerApi.hold(seg.id) ?? { ok: false })
+        : { ok: false, error: 'No active segment' };
+    } else if (binding.action === 'live') {
+      const seg = runnerState?.activeSegment;
+      result = seg && runnerApi
+        ? await runnerApi.take(seg.id)
+        : { ok: false, error: 'No active segment' };
+    } else {
+      result = { ok: false, error: `${binding.label}: unknown action` };
+    }
+    setLastAction({ key: binding.key, label: binding.label, ok: result?.ok ?? false });
+  }, [obsStatus, runnerState]);
 
   // F1–F8 keyboard shortcuts — inactive when focus is inside a form field
   useEffect(() => {
@@ -185,6 +261,74 @@ export default function ProducerScreen({ status, onScreenChange }) {
               </span>
             </div>
           )}
+
+          {/* ── P2: Autopilot segment panel (left column) ──────────────── */}
+          <div className="air-section-sep" />
+          <div className="air-section-label">Autopilot</div>
+
+          {runnerState?.techPaused && (
+            <div className="autopilot-tech-banner" role="status">TECH PAUSE</div>
+          )}
+
+          {runnerState?.activeSegment ? (
+            <div className="autopilot-seg-block">
+              <div className="autopilot-seg-row">
+                <span className={`seg-badge seg-badge--${runnerState.activeSegment.state}`}>
+                  {SEG_BADGE_LABELS[runnerState.activeSegment.state] ?? runnerState.activeSegment.state}
+                </span>
+                <span className="autopilot-seg-name">{runnerState.activeSegment.name}</span>
+              </div>
+              {countdown !== null && (
+                <div className="autopilot-countdown" aria-label="Hold window countdown">
+                  {countdown}
+                </div>
+              )}
+              {runnerState.nextSegment && (
+                <div className="autopilot-next-row">
+                  <span className="autopilot-next-label">NEXT</span>
+                  <span className="autopilot-next-name">{runnerState.nextSegment.name}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="air-empty-state" style={{ marginTop: 4 }}>No rundown loaded.</p>
+          )}
+
+          {/* ── P2: Autopilot command buttons ──────────────────────────── */}
+          <div className="autopilot-cmds">
+            <button
+              type="button"
+              className="air-ghost-btn"
+              disabled={!runnerState?.activeSegment || runnerState?.techPaused}
+              onClick={() => runnerApi?.hold(runnerState.activeSegment?.id)}
+            >
+              Hold
+            </button>
+            <button
+              type="button"
+              className="air-ghost-btn"
+              disabled={!runnerState?.activeSegment}
+              onClick={() => runnerApi?.skip(runnerState.activeSegment?.id)}
+            >
+              Skip
+            </button>
+            <button
+              type="button"
+              className="air-primary-btn"
+              style={{ flex: 1 }}
+              disabled={!runnerState?.activeSegment || runnerState?.techPaused}
+              onClick={() => runnerApi?.take(runnerState.activeSegment?.id)}
+            >
+              Take
+            </button>
+            <button
+              type="button"
+              className={`air-ghost-btn${runnerState?.techPaused ? ' autopilot-resume-btn' : ''}`}
+              onClick={() => runnerState?.techPaused ? runnerApi?.resume() : runnerApi?.techPause()}
+            >
+              {runnerState?.techPaused ? 'Resume' : 'T.Pause'}
+            </button>
+          </div>
         </div>
 
         {/* ── Right: monitors + trigger pad ──────────────────────────────── */}
@@ -227,6 +371,32 @@ export default function ProducerScreen({ status, onScreenChange }) {
 
           {!connected && (
             <p className="air-empty-state">Connect to OBS to enable the trigger pad and monitors.</p>
+          )}
+
+          {/* ── P2: Event log (last 10 entries) ────────────────────────── */}
+          {eventLog.length > 0 && (
+            <>
+              <div className="air-section-sep" style={{ margin: '16px 0 10px' }} />
+              <div className="air-section-label">Event Log</div>
+              <div
+                className="autopilot-event-log"
+                role="log"
+                aria-live="polite"
+                aria-label="Show runner event log"
+              >
+                {[...eventLog].reverse().map((entry, i) => (
+                  <div key={i} className="log-entry">
+                    <span className="log-ts">
+                      {new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                    <span className="log-type">{entry.type.replace(/_/g, ' ')}</span>
+                    {entry.segmentId && (
+                      <span className="log-seg">{entry.segmentId}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

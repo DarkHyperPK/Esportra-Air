@@ -12,6 +12,10 @@ const OfflineQueue = require('./offline-queue');
 const matchContext = require('./match-context');
 const OBSController  = require('./obs-controller');
 const VMixController = require('./vmix-controller');
+const { ShowRunner } = require('./show-runner');
+const { RulesEngine } = require('./rules-engine');
+const EventLogger    = require('./event-logger');
+const { fixData }    = require('./fix-data');
 
 const { version: APP_VERSION } = require('../package.json');
 
@@ -56,6 +60,7 @@ const IPC_COMMANDS = Object.freeze({
   // Connect to OBS/vMix. Args: { host, port, password? }
   // Returns: { ok, error? }
   OBS_CONNECT:        'OBS_CONNECT',
+
   // Disconnect from video switcher.
   // Returns: { ok }
   OBS_DISCONNECT:     'OBS_DISCONNECT',
@@ -74,6 +79,28 @@ const IPC_COMMANDS = Object.freeze({
   // Args: { dwellMs? }
   // Returns: { ok, savedPath?, error? }
   OBS_TRIGGER_REPLAY: 'OBS_TRIGGER_REPLAY',
+
+  // ── P2 additions — ShowRunner autopilot ──────────────────────────────────
+  // Load a segment array into ShowRunner and arm the first segment.
+  RUNNER_LOAD_RUNDOWN: 'RUNNER_LOAD_RUNDOWN',
+  // Start the rundown (arms first queued segment).
+  RUNNER_START:       'RUNNER_START',
+  // Enter hold window on a segment.     Args: { segmentId }
+  RUNNER_HOLD:        'RUNNER_HOLD',
+  // Skip a segment.                     Args: { segmentId }
+  RUNNER_SKIP:        'RUNNER_SKIP',
+  // Trigger a take.                     Args: { segmentId, commandId? }
+  RUNNER_TAKE:        'RUNNER_TAKE',
+  // Resume from tech pause.
+  RUNNER_RESUME:      'RUNNER_RESUME',
+  // Engage tech pause.
+  RUNNER_TECH_PAUSE:  'RUNNER_TECH_PAUSE',
+  // Apply an on-air score correction.   Args: correction object
+  FIX_DATA:           'FIX_DATA',
+  // Start simulation (dev only).        Args: { filePath, speed? }
+  SIMULATION_START:   'SIMULATION_START',
+  // Stop simulation.
+  SIMULATION_STOP:    'SIMULATION_STOP',
 });
 
 const KEYTAR_SERVICE = 'esportra-air';
@@ -101,6 +128,13 @@ let lanRelay = null;
 let obsController = null;
 let obsScreenshotBusy = false;
 let obsScreenshotInterval = null;
+
+// ─── P2 module state — autopilot ──────────────────────────────────────────────
+let showRunner        = null;
+let rulesEngine       = null;
+let eventLogger       = null;
+let harness           = null;
+let currentShowConfig = null; // last ShowConfig received from hub, used by fixData
 
 // ─── Helper: resolve hud root ─────────────────────────────────────────────────
 function getHudRoot() {
@@ -138,6 +172,22 @@ function getNodeStatus() {
     lanRelayActive: lanRelay !== null,
     appVersion: APP_VERSION,
   };
+}
+
+// ─── Helper: apply an arbitrary merge patch to the HUD server ─────────────────
+// Used by ShowRunner (via hudPatch callback) and RulesEngine.
+async function applyHudPatch(matchCode, patch) {
+  if (!hudServer) return;
+  try {
+    const res = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${matchCode || 'MAIN'}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': HUD_KEY },
+      body:    JSON.stringify(patch),
+    });
+    if (!res.ok) console.warn('[hud] PATCH rejected, status:', res.status);
+  } catch (err) {
+    console.error('[hud] PATCH error:', err.message);
+  }
 }
 
 // ─── Helper: apply a ShowConfig patch to the HUD server ───────────────────────
@@ -178,6 +228,7 @@ function createHubClient(queue) {
   });
 
   client.onShowConfig(cfg => {
+    currentShowConfig = cfg;
     // Forward raw config to renderer for UI (no secrets in ShowConfig payload).
     if (mainWindow) mainWindow.webContents.send('show-config', cfg);
     // Apply to HUD server.
@@ -248,6 +299,8 @@ function getOrCreateVideoController() {
   const ControllerClass = backend === 'vmix' ? VMixController : OBSController;
   obsController = new ControllerClass({ logger: console });
   wireObsEvents(obsController);
+  // P2: wire ShowRunner to the newly created controller.
+  if (showRunner) showRunner.setObsController(obsController);
   return obsController;
 }
 
@@ -454,6 +507,8 @@ ipcMain.handle(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
     offlineQueue = new OfflineQueue({ nodeToken: newToken, logger: console });
     hubClient = createHubClient(offlineQueue);
     hubClient.connect(newToken);
+    // P2: wire new offlineQueue into EventLogger.
+    if (eventLogger) eventLogger._offlineQueue = offlineQueue;
 
     // Return nodeId only — token stays in main process.
     return { ok: true, nodeId };
@@ -631,6 +686,102 @@ ipcMain.handle(IPC_COMMANDS.OBS_TRIGGER_REPLAY, async (_event, opts = {}) => {
   return obsController.triggerReplay({ dwellMs });
 });
 
+// ─── P2 IPC: ShowRunner autopilot ─────────────────────────────────────────────
+
+ipcMain.handle(IPC_COMMANDS.RUNNER_LOAD_RUNDOWN, (_event, { segments } = {}) => {
+  if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
+  if (!Array.isArray(segments)) return { ok: false, error: 'segments must be an array.' };
+  showRunner.loadRundown(segments);
+  if (eventLogger) eventLogger.log({ type: 'rundown_loaded', actor: 'operator', data: { count: segments.length } });
+  return { ok: true };
+});
+
+ipcMain.handle(IPC_COMMANDS.RUNNER_START, () => {
+  if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
+  showRunner.start();
+  if (eventLogger) eventLogger.log({ type: 'rundown_started', actor: 'operator' });
+  return { ok: true };
+});
+
+ipcMain.handle(IPC_COMMANDS.RUNNER_HOLD, (_event, { segmentId } = {}) => {
+  if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
+  if (!segmentId)  return { ok: false, error: 'segmentId required.' };
+  const result = showRunner.hold(segmentId);
+  if (result.ok && eventLogger) eventLogger.log({ type: 'cmd_hold', segmentId, actor: 'operator' });
+  return result;
+});
+
+ipcMain.handle(IPC_COMMANDS.RUNNER_SKIP, (_event, { segmentId } = {}) => {
+  if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
+  if (!segmentId)  return { ok: false, error: 'segmentId required.' };
+  const result = showRunner.skip(segmentId);
+  if (result.ok && eventLogger) eventLogger.log({ type: 'cmd_skip', segmentId, actor: 'operator' });
+  return result;
+});
+
+ipcMain.handle(IPC_COMMANDS.RUNNER_TAKE, async (_event, { segmentId, commandId } = {}) => {
+  if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
+  if (!segmentId)  return { ok: false, error: 'segmentId required.' };
+  const result = await showRunner.take(segmentId, { commandId });
+  if (result.ok && eventLogger) eventLogger.log({ type: 'cmd_take', segmentId, actor: 'operator' });
+  return result;
+});
+
+ipcMain.handle(IPC_COMMANDS.RUNNER_RESUME, () => {
+  if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
+  showRunner.resume();
+  if (eventLogger) eventLogger.log({ type: 'cmd_resume', actor: 'operator' });
+  return { ok: true };
+});
+
+ipcMain.handle(IPC_COMMANDS.RUNNER_TECH_PAUSE, () => {
+  if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
+  showRunner.techPause();
+  if (eventLogger) eventLogger.log({ type: 'cmd_tech_pause', actor: 'operator' });
+  return { ok: true };
+});
+
+// ─── P2 IPC: FIX_DATA ────────────────────────────────────────────────────────
+
+ipcMain.handle(IPC_COMMANDS.FIX_DATA, async (_event, correction = {}) => {
+  if (!hudServer) return { ok: false, error: 'HUD server not running.' };
+  const result = await fixData(correction, {
+    showConfig:  currentShowConfig || {},
+    hudPort:     HUD_PORT,
+    hudKey:      HUD_KEY,
+    offlineQueue,
+  });
+  if (result.ok && eventLogger) {
+    eventLogger.log({ type: 'fix_data', actor: 'operator', data: correction });
+  }
+  return result;
+});
+
+// ─── P2 IPC: SIMULATION (dev only) ───────────────────────────────────────────
+
+ipcMain.handle(IPC_COMMANDS.SIMULATION_START, async (_event, { filePath, speed } = {}) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return { ok: false, error: 'Simulation only available in development mode.' };
+  }
+  if (!harness) return { ok: false, error: 'Simulation harness not initialized.' };
+  if (!filePath || typeof filePath !== 'string') {
+    return { ok: false, error: 'filePath required.' };
+  }
+  // Restrict to the simulation directory to prevent path traversal.
+  const simDir   = path.join(__dirname, 'simulation');
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(simDir)) {
+    return { ok: false, error: 'filePath must be within the simulation directory.' };
+  }
+  await harness.play(resolved, { speed: Number(speed) || 1.0 });
+  return { ok: true };
+});
+
+ipcMain.handle(IPC_COMMANDS.SIMULATION_STOP, () => {
+  if (harness) harness.stop();
+  return { ok: true };
+});
+
 // ─── Broadcast GEP controls ───────────────────────────────────────────────────
 const broadcastGep = require('./broadcast-gep');
 broadcastGep.setStatusCallback(status => {
@@ -724,6 +875,39 @@ app.whenReady().then(async () => {
   // 1. Load node config — must be first (mode determines which modules start).
   nodeConfig = new NodeConfig();
   const mode = resolveMode(nodeConfig);
+
+  // P2: Initialize ShowRunner, EventLogger, and RulesEngine.
+  // OBS controller wired lazily in getOrCreateVideoController(); offlineQueue
+  // wired after pairing succeeds.
+  showRunner  = new ShowRunner({ obsController: null, hudPatch: applyHudPatch, logger: console });
+  eventLogger = new EventLogger({ offlineQueue: null, logger: console });
+  rulesEngine = new RulesEngine({ hudPatch: applyHudPatch, logger: console });
+  showRunner.setRulesEngine(rulesEngine);
+
+  // Forward ShowRunner events to renderer.
+  showRunner.on('stateChange', (state) => {
+    if (mainWindow) mainWindow.webContents.send('runner-state', state);
+  });
+  showRunner.on('takeTriggered', ({ segment }) => {
+    if (eventLogger) eventLogger.log({ type: 'take_triggered', segmentId: segment.id, scene: segment.scene, actor: 'runner' });
+  });
+  showRunner.on('segmentDone', ({ segment }) => {
+    if (eventLogger) eventLogger.log({ type: 'segment_done', segmentId: segment.id, scene: segment.scene, actor: 'runner' });
+  });
+  showRunner.on('error', (err) => {
+    if (eventLogger) eventLogger.log({ type: 'runner_error', actor: 'runner', data: { message: err.message } });
+  });
+
+  // Forward EventLogger entries to renderer.
+  eventLogger.on('entry', (entry) => {
+    if (mainWindow) mainWindow.webContents.send('event-log-entry', entry);
+  });
+
+  // P2: Simulation harness — dev only.
+  if (process.env.NODE_ENV === 'development') {
+    const Harness = require('./simulation/harness');
+    harness = new Harness({ showRunner, logger: console });
+  }
 
   // 2. Mode-specific boot.
   if (mode === 'production') {
