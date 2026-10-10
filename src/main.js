@@ -508,7 +508,7 @@ ipcMain.handle(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
     hubClient = createHubClient(offlineQueue);
     hubClient.connect(newToken);
     // P2: wire new offlineQueue into EventLogger.
-    if (eventLogger) eventLogger._offlineQueue = offlineQueue;
+    if (eventLogger) eventLogger.setOfflineQueue(offlineQueue);
 
     // Return nodeId only — token stays in main process.
     return { ok: true, nodeId };
@@ -744,14 +744,13 @@ ipcMain.handle(IPC_COMMANDS.RUNNER_TECH_PAUSE, () => {
 // ─── P2 IPC: FIX_DATA ────────────────────────────────────────────────────────
 
 ipcMain.handle(IPC_COMMANDS.FIX_DATA, async (_event, correction = {}) => {
-  if (!hudServer) return { ok: false, error: 'HUD server not running.' };
   const result = await fixData(correction, {
     showConfig:  currentShowConfig || {},
     hudPort:     HUD_PORT,
     hudKey:      HUD_KEY,
     offlineQueue,
   });
-  if (result.ok && eventLogger) {
+  if ((result.ok || result.queued) && eventLogger) {
     eventLogger.log({ type: 'fix_data', actor: 'operator', data: correction });
   }
   return result;

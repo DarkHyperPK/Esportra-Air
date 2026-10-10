@@ -26,17 +26,17 @@ const DEFAULT_RULES = [
     name:  'spike_timer',
     event: 'valorant_spike_planted',
     // Show spike timer overlay on the HUD immediately.
-    action: async (_e, _runner, { hudPatch }) => {
-      await hudPatch('MAIN', { show: { spikeTimer: true } });
+    action: async (_e, _runner, { hudPatch, matchCode }) => {
+      await hudPatch(matchCode, { show: { spikeTimer: true } });
     },
   },
   {
     name:  'round_recap',
     event: 'valorant_round_end',
     // Show round recap banner for 4 s then dismiss.
-    action: async (_e, _runner, { hudPatch }) => {
-      await hudPatch('MAIN', { show: { roundRecap: 'show' } });
-      setTimeout(() => hudPatch('MAIN', { show: { roundRecap: 'hide' } }), 4000);
+    action: async (_e, _runner, { hudPatch, matchCode }) => {
+      await hudPatch(matchCode, { show: { roundRecap: 'show' } });
+      setTimeout(() => hudPatch(matchCode, { show: { roundRecap: 'hide' } }), 4000);
     },
   },
   {
@@ -44,11 +44,11 @@ const DEFAULT_RULES = [
     event:     'valorant_kill_feed',
     condition: (e) => Array.isArray(e.kills) && e.kills.length >= 3,
     // Ace (5K) or multi-kill (3K/4K) lower-third banner for 5 s.
-    action: async (e, _runner, { hudPatch }) => {
+    action: async (e, _runner, { hudPatch, matchCode }) => {
       const count = e.kills.length;
       const label = count >= 5 ? 'ACE' : `${count}K`;
-      await hudPatch('MAIN', { lowerThird: { text: label, show: true } });
-      setTimeout(() => hudPatch('MAIN', { lowerThird: { show: false } }), 5000);
+      await hudPatch(matchCode, { lowerThird: { text: label, show: true } });
+      setTimeout(() => hudPatch(matchCode, { lowerThird: { show: false } }), 5000);
     },
   },
 ];
@@ -85,8 +85,8 @@ class RulesEngine {
    * @param {object}     gepEvent
    * @param {ShowRunner} showRunner
    */
-  async processEvent(gepEvent, showRunner) {
-    const ctx = { hudPatch: this._hudPatch };
+  async processEvent(gepEvent, showRunner, matchCode = 'MAIN') {
+    const ctx = { hudPatch: this._hudPatch, matchCode };
     for (const rule of this._rules) {
       if (rule.event !== gepEvent.type) continue;
       if (rule.condition && !rule.condition(gepEvent)) continue;

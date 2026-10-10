@@ -27,6 +27,8 @@ class EventLogger extends EventEmitter {
     this._memory       = [];
   }
 
+  setOfflineQueue(queue) { this._offlineQueue = queue; }
+
   /**
    * Append one event entry to disk, memory ring-buffer, offline-queue (if set),
    * and emit 'entry' for renderer push.

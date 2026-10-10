@@ -32,8 +32,8 @@ async function fixData(correction, { showConfig, hudPort, hudKey, offlineQueue }
     reason     = '',
   } = correction;
 
-  if (typeof mapIndex !== 'number' || mapIndex < 1) {
-    return { ok: false, patch: null, queued: false, error: 'mapIndex must be >= 1' };
+  if (typeof mapIndex !== 'number' || !Number.isInteger(mapIndex) || mapIndex < 1) {
+    return { ok: false, patch: null, queued: false, error: 'mapIndex must be a positive integer' };
   }
   if (typeof teamAScore !== 'number' || typeof teamBScore !== 'number') {
     return { ok: false, patch: null, queued: false, error: 'scores must be numbers' };

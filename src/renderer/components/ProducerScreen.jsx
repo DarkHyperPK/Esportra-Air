@@ -127,7 +127,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
     } else if (binding.action === 'hold') {
       const seg = runnerState?.activeSegment;
       result = seg && runnerApi
-        ? (runnerApi.hold(seg.id) ?? { ok: false })
+        ? await runnerApi.hold(seg.id)
         : { ok: false, error: 'No active segment' };
     } else if (binding.action === 'live') {
       const seg = runnerState?.activeSegment;
@@ -137,7 +137,8 @@ export default function ProducerScreen({ status, onScreenChange }) {
     } else {
       result = { ok: false, error: `${binding.label}: unknown action` };
     }
-    setLastAction({ key: binding.key, label: binding.label, ok: result?.ok ?? false });
+    const techPaused = result?.error === 'tech_pause';
+    setLastAction({ key: binding.key, label: binding.label, ok: result?.ok ?? false, techPaused });
   }, [obsStatus, runnerState]);
 
   // F1–F8 keyboard shortcuts — inactive when focus is inside a form field
@@ -257,7 +258,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
           {lastAction && (
             <div className="producer-last-action" aria-live="polite">
               <span className={lastAction.ok ? 'producer-action-ok' : 'producer-action-err'}>
-                {lastAction.key}: {lastAction.label} {lastAction.ok ? '✓' : '✗'}
+                {lastAction.key}: {lastAction.label} {lastAction.ok ? '✓' : lastAction.techPaused ? '✗ Tech Pause' : '✗'}
               </span>
             </div>
           )}
@@ -267,7 +268,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
           <div className="air-section-label">Autopilot</div>
 
           {runnerState?.techPaused && (
-            <div className="autopilot-tech-banner" role="status">TECH PAUSE</div>
+            <div className="autopilot-tech-banner" role="alert">TECH PAUSE</div>
           )}
 
           {runnerState?.activeSegment ? (
@@ -307,7 +308,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
             <button
               type="button"
               className="air-ghost-btn"
-              disabled={!runnerState?.activeSegment}
+              disabled={!runnerState?.activeSegment || runnerState?.techPaused}
               onClick={() => runnerApi?.skip(runnerState.activeSegment?.id)}
             >
               Skip
@@ -358,7 +359,11 @@ export default function ProducerScreen({ status, onScreenChange }) {
                   type="button"
                   className={`trigger-btn${active ? ' trigger-btn--active' : ''}`}
                   onClick={() => handleTrigger(b)}
-                  disabled={!connected}
+                  disabled={
+                    b.action === 'scene' || b.action === 'replay'
+                      ? !connected
+                      : !runnerState?.activeSegment || runnerState?.techPaused
+                  }
                   aria-label={`${b.key}: ${b.label}`}
                   aria-pressed={active}
                 >
@@ -382,10 +387,10 @@ export default function ProducerScreen({ status, onScreenChange }) {
                 className="autopilot-event-log"
                 role="log"
                 aria-live="polite"
-                aria-label="Show runner event log"
+                aria-label="Runner event log"
               >
-                {[...eventLog].reverse().map((entry, i) => (
-                  <div key={i} className="log-entry">
+                {[...eventLog].reverse().map((entry) => (
+                  <div key={entry.ts} className="log-entry">
                     <span className="log-ts">
                       {new Date(entry.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>

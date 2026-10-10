@@ -102,9 +102,9 @@ class ShowRunner extends EventEmitter {
   }
 
   /** Forward GEP event to the rules engine (called by main.js on each ingest). */
-  processGepEvent(gepEvent) {
+  processGepEvent(gepEvent, matchCode = 'MAIN') {
     if (!this._rulesEngine) return;
-    this._rulesEngine.processEvent(gepEvent, this).catch(err => {
+    this._rulesEngine.processEvent(gepEvent, this, matchCode).catch(err => {
       this._logger.error('[show-runner] rules engine error:', err.message);
     });
   }
@@ -204,6 +204,7 @@ class ShowRunner extends EventEmitter {
 
   /** Resume autopilot after tech pause. */
   resume() {
+    this._techPausedByObs = false;
     if (!this._techPaused) return;
     this._techPaused = false;
     this.emit('stateChange', this.getState());
