@@ -95,6 +95,10 @@ const IPC_COMMANDS = Object.freeze({
   RUNNER_RESUME:      'RUNNER_RESUME',
   // Engage tech pause.
   RUNNER_TECH_PAUSE:  'RUNNER_TECH_PAUSE',
+  // Log a sponsor slot impression start or end.
+  // Args: { action: 'start'|'end', sponsorId, slotType, segmentId? }
+  // Returns: { ok: true }
+  RUNNER_SPONSOR_SLOT: 'RUNNER_SPONSOR_SLOT',
   // Apply an on-air score correction.   Args: correction object
   FIX_DATA:           'FIX_DATA',
   // Start simulation (dev only).        Args: { filePath, speed? }
@@ -135,6 +139,10 @@ let rulesEngine       = null;
 let eventLogger       = null;
 let harness           = null;
 let currentShowConfig = null; // last ShowConfig received from hub, used by fixData
+
+// Tracks in-flight sponsor impressions so we can pair start→end.
+// key: `${sponsorId}:${slotType}` → { sponsorId, slotType, startedAt, segmentId }
+const activeImpressions = new Map();
 
 // ─── Helper: resolve hud root ─────────────────────────────────────────────────
 function getHudRoot() {
@@ -461,10 +469,14 @@ ipcMain.handle(IPC_COMMANDS.PREVIEW_OVERLAY, async (_event, { url } = {}) => {
   const win = new BrowserWindow({
     width: 1280,
     height: 720,
-    title: 'Overlay Preview',
+    useContentSize: true,
+    backgroundColor: '#20242b',
+    title: 'Overlay Preview — Sample Data',
     webPreferences: { nodeIntegration: false, contextIsolation: true, webSecurity: true },
   });
-  win.loadURL(url);
+  const previewUrl = new URL(url);
+  previewUrl.searchParams.set('preview', '1');
+  win.loadURL(previewUrl.href);
   return { ok: true };
 });
 
@@ -741,6 +753,93 @@ ipcMain.handle(IPC_COMMANDS.RUNNER_TECH_PAUSE, () => {
   return { ok: true };
 });
 
+// ─── P2 IPC: RUNNER_SPONSOR_SLOT ─────────────────────────────────────────────
+// Logs a sponsor impression start or end via EventLogger → offline queue AND
+// directly POSTs to broadcast_sponsor_impressions via the REST endpoint.
+// The EventLogger path records the event in broadcast_events for the show log.
+// The REST POST path is the source of truth for sponsor proof aggregation.
+// action: 'start' | 'end'  sponsorId: string  slotType: string  segmentId?: string
+
+ipcMain.handle(IPC_COMMANDS.RUNNER_SPONSOR_SLOT, async (_event, { action, sponsorId, slotType, segmentId } = {}) => {
+  const VALID_ACTIONS = new Set(['start', 'end']);
+  if (!action || !VALID_ACTIONS.has(action)) {
+    return { ok: false, error: 'action must be "start" or "end".' };
+  }
+  if (!sponsorId || typeof sponsorId !== 'string') {
+    return { ok: false, error: 'sponsorId is required.' };
+  }
+  if (!slotType || typeof slotType !== 'string') {
+    return { ok: false, error: 'slotType is required.' };
+  }
+
+  // Log to EventLogger → offline queue (broadcast_events show log).
+  const type = action === 'start' ? 'SponsorImpressionStarted' : 'SponsorImpressionEnded';
+  if (eventLogger) {
+    eventLogger.log({
+      type,
+      actor:     'sponsor-slot',
+      segmentId: segmentId ?? null,
+      data: {
+        sponsorId,
+        slotType,
+        wallClockMs: Date.now(),
+      },
+    });
+  }
+
+  // Direct REST POST to broadcast_sponsor_impressions (sponsor proof source of truth).
+  const showId = currentShowConfig?.showId;
+  if (!showId || !nodeToken) {
+    console.warn('[sponsor-slot] No active show or node token — impression skipped from sponsor proof.');
+    return { ok: true };
+  }
+
+  const impressionKey = `${sponsorId}:${slotType}`;
+  let impression;
+
+  if (action === 'start') {
+    const startedAt = new Date().toISOString();
+    activeImpressions.set(impressionKey, {
+      sponsorId,
+      slotType,
+      startedAt,
+      segmentId: segmentId ?? null,
+    });
+    impression = { sponsorId, segmentId: segmentId ?? null, startedAt, endedAt: null, slotType };
+  } else {
+    const tracked = activeImpressions.get(impressionKey);
+    activeImpressions.delete(impressionKey);
+    const endedAt = new Date().toISOString();
+    impression = {
+      sponsorId,
+      segmentId: segmentId ?? (tracked?.segmentId ?? null),
+      startedAt: tracked?.startedAt ?? endedAt,
+      endedAt,
+      slotType,
+    };
+  }
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/broadcast/shows/${showId}/sponsor-impressions`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${nodeToken}` },
+        body:    JSON.stringify({ impressions: [impression] }),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      console.warn('[sponsor-slot] impression POST failed:', res.status, body.error || '');
+    }
+  } catch (err) {
+    // Non-fatal — network may be offline; EventLogger path provides the fallback record.
+    console.warn('[sponsor-slot] impression POST error (offline?):', err.message);
+  }
+
+  return { ok: true };
+});
+
 // ─── P2 IPC: FIX_DATA ────────────────────────────────────────────────────────
 
 ipcMain.handle(IPC_COMMANDS.FIX_DATA, async (_event, correction = {}) => {
@@ -888,10 +987,34 @@ app.whenReady().then(async () => {
     if (mainWindow) mainWindow.webContents.send('runner-state', state);
   });
   showRunner.on('takeTriggered', ({ segment }) => {
-    if (eventLogger) eventLogger.log({ type: 'take_triggered', segmentId: segment.id, scene: segment.scene, actor: 'runner' });
+    if (eventLogger) eventLogger.log({
+      type:      'SegmentTake',
+      actor:     'show-runner',
+      segmentId: segment.id,
+      scene:     segment.scene,
+      data: {
+        segmentId:   segment.id,
+        segmentName: segment.name,
+        segmentType: segment.type,
+        scene:       segment.scene,
+        wallClockMs: Date.now(),
+      },
+    });
   });
   showRunner.on('segmentDone', ({ segment }) => {
-    if (eventLogger) eventLogger.log({ type: 'segment_done', segmentId: segment.id, scene: segment.scene, actor: 'runner' });
+    if (eventLogger) eventLogger.log({
+      type:      'SegmentDone',
+      actor:     'show-runner',
+      segmentId: segment.id,
+      scene:     segment.scene,
+      data: {
+        segmentId:   segment.id,
+        segmentName: segment.name,
+        segmentType: segment.type,
+        scene:       segment.scene,
+        wallClockMs: Date.now(),
+      },
+    });
   });
   showRunner.on('error', (err) => {
     if (eventLogger) eventLogger.log({ type: 'runner_error', actor: 'runner', data: { message: err.message } });

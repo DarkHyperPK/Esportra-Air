@@ -1,5 +1,6 @@
 'use strict';
 const { EventEmitter } = require('events');
+const crypto = require('crypto');
 const signalR = require('@microsoft/signalr');
 
 // Reconnect delays: 1 s, 2 s, 4 s, 8 s, then cap at 10 s.
@@ -205,10 +206,17 @@ class HubClient extends EventEmitter {
     if (!conn) return;
     // Each dequeued payload is sent as a NodeEvent to the hub.
     // If invoke throws (hub disconnected), drain stops; events stay on disk.
+    //
+    // Envelope shape from EventLogger: { type: 'BroadcastEvent', event: { ts, type, actor, ... } }
+    // eventType must be read from the inner entry (.event.type), not the outer envelope (.type).
+    // eventId is a fresh UUID — the hub uses ON CONFLICT (event_id) DO NOTHING for idempotency.
     this._offlineQueue.drain(async (payload) => {
+      const isBroadcastEvent = payload.type === 'BroadcastEvent';
+      const entry = isBroadcastEvent ? (payload.event || {}) : payload;
       await conn.invoke('NodeEvent', {
-        eventType: payload.type || 'unknown',
-        data: payload,
+        eventType: entry.type || 'unknown',
+        eventId: crypto.randomUUID(),
+        data: entry.data || {},
       });
     }).catch(err => {
       this._logger.warn('[hub-client] Queue drain error:', err.message);
