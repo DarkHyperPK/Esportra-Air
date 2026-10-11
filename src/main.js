@@ -1,4 +1,5 @@
 'use strict';
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const os = require('os');
@@ -110,7 +111,7 @@ const IPC_COMMANDS = Object.freeze({
 const KEYTAR_SERVICE = 'esportra-air';
 const KEYTAR_ACCOUNT = 'jwt';
 const KEYTAR_NODE_TOKEN_ACCOUNT = 'node-token';
-const API_BASE = process.env.ESPORTRA_API_URL || 'https://esportra.gg';
+const API_BASE = process.env.ESPORTRA_API_URL || 'https://api-staging.esportra.com';
 
 // ─── HUD server state ─────────────────────────────────────────────────────────
 let hudServer = null;

@@ -1,3 +1,6 @@
+# Environment — local config, never commit
+.env
+
 # Claude Code local memory — never commit
 .claude/
 
