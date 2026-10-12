@@ -1,4 +1,5 @@
 'use strict';
+const crypto = require('crypto');
 const fetch = require('node-fetch');
 const { buildMapResultPatch } = require('./match-context');
 
@@ -58,14 +59,15 @@ async function fixData(correction, { showConfig, hudPort, hudKey, offlineQueue }
   if (offlineQueue) {
     try {
       offlineQueue.enqueue({
-        type:       'BroadcastCorrection',
+        type:           'BroadcastCorrection',
         matchCode,
         mapIndex,
         teamAScore,
         teamBScore,
         reason,
         patch,
-        ts:         Date.now(),
+        idempotencyKey: crypto.randomUUID(),
+        ts:             Date.now(),
       });
       queued = true;
     } catch (err) {
