@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Esportra HUD control</title>
-<link rel="stylesheet" href="core/hud.css">
+<link rel="stylesheet" href="core/hud.css?v=20261011-36">
+<link rel="stylesheet" href="core/banner-variants.css?v=20261011-36">
 <style>
 html,body{height:auto;overflow:auto;background:#0f0e11;color:#e8e8ec;font-family:PMd,sans-serif;font-size:13px}
 body{padding:18px 20px 60px}
@@ -42,7 +43,10 @@ td input,td select{padding:4px 5px}
 td input.n{width:70px}td input.nn{width:56px}
 .tsep td{padding-top:10px;font-family:PBd;color:var(--c)}
 .links{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
-.links a{color:#e8e8ec;text-decoration:none;background:#0f0e11;border:1px solid rgba(255,255,255,.08);padding:8px 10px;display:flex;justify-content:space-between;gap:8px}
+.links .overlay-link{background:#0f0e11;border:1px solid rgba(255,255,255,.08);padding:9px 10px}
+.links .overlay-name{font-family:PSB;font-size:12px;margin-bottom:6px}
+.links .overlay-actions{display:flex;gap:8px}
+.links a{color:#e8e8ec;text-decoration:none;border:1px solid rgba(255,255,255,.12);padding:5px 8px;font-size:11px}
 .links a:hover{border-color:#e0445e}
 .links a span{font-family:JB;font-size:10px;color:#8a8a90;letter-spacing:.1em}
 .hint{font-size:11px;color:#8a8a90;margin-top:6px;line-height:1.5}
@@ -101,6 +105,7 @@ td input.n{width:70px}td input.nn{width:56px}
   <!-- BANNERS -->
   <div class="card">
     <h2>Banners <small>ROUND MOMENTS + PAUSES</small></h2>
+    <div class="row"><label>Banner theme<select data-k="layout.bannerTheme"><option value="broadcast">Broadcast — full width</option><option value="compact">Velocity</option><option value="monument">Monument</option><option value="impact">Impact</option></select></label><a id="bannerPreview" href="overlays/banners.html?preview=1" target="_blank" rel="noopener">Preview theme</a><a href="previews/banner-full-width/index.html" target="_blank" rel="noopener">Compare designs</a></div>
     <div class="row"><label>Team<select id="bnT"><option value="0">A</option><option value="1">B</option></select></label><label>Player<select id="bnP"></select></label><label>Clutch vs<select id="bnN"><option>2</option><option>3</option><option>4</option><option>5</option></select></label></div>
     <div class="row"><button data-bn="ace">Ace</button><button data-bn="teamace">Team ace</button><button data-bn="clutch">Clutch</button><button data-bn="flawless">Flawless</button><button data-bn="thrifty">Thrifty</button></div>
     <div class="row"><button data-bn="matchpoint">Match point</button><button data-bn="overtime">Overtime</button><button data-bn="techpause" id="tpBtn">Technical pause <kbd>F8</kbd></button><button data-bn="timeout" id="toBtn">Timeout <kbd>F7</kbd></button></div>
@@ -229,6 +234,7 @@ td input.n{width:70px}td input.nn{width:56px}
   <!-- LINKS -->
   <div class="card wide">
     <h2>Overlays <small>ADD EACH AS A 1920×1080 BROWSER SOURCE</small></h2>
+    <p class="hint" style="margin:0 0 10px">Preview shows sample data. Live source follows the match and may be transparent until its toggle, phase, or event is active. Use the live source URL in OBS.</p>
     <div class="links" id="links"></div>
   </div>
 
@@ -244,7 +250,7 @@ td input.n{width:70px}td input.nn{width:56px}
 </div>
 </div>
 
-<script src="core/catalog.js"></script><script src="core/state.default.js"></script><script src="core/state.clean.js"></script><script src="core/hud.js"></script>
+<script src="core/catalog.js"></script><script src="core/state.default.js"></script><script src="core/state.clean.js"></script><script src="core/hud.js?v=20261011-36"></script>
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const get = (o, p) => p.split('.').reduce((a, k) => a == null ? a : a[k], o);
@@ -282,7 +288,10 @@ let pSig = '';
 // write any bound field
 document.addEventListener('input', e => { const el = e.target, k = el.dataset.k; if (!k) return; const s = S();
   let v = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.t === 'num') v = Number(v);
-  put(s, k, v); commit(s); });
+  put(s, k, v);
+  const chargeField = /^players\.(\d)\.(\d)\.charges\.\d$/.exec(k);
+  if (chargeField) s.players[+chargeField[1]][+chargeField[2]].chargesKnown = true;
+  commit(s); });
 document.addEventListener('change', e => { if (e.target.dataset.obs) { const s = S(); s.observed = e.target.dataset.obs.split(',').map(Number); commit(s); } });
 $('#recapSel').onchange = e => { const s = S(); s.show.roundRecap = { auto: 'auto', on: true, off: false }[e.target.value]; commit(s); };
 $('#ecoSel').onchange = e => { const s = S(); s.show.economy = { auto: 'auto', on: true, off: false }[e.target.value]; commit(s); };
@@ -290,7 +299,7 @@ $('#ecoSel').onchange = e => { const s = S(); s.show.economy = { auto: 'auto', o
 // reflect state into the form (skip the field being edited)
 function render(s) {
   const sig = JSON.stringify([s.teams.map(t => [t.name, t.color, t.tag]), s.players.map(t => t.length)]); if (sig !== pSig) { pSig = sig; buildPlayers(s); }
-  $$('[data-k]').forEach(el => { if (el === document.activeElement) return; const v = get(s, el.dataset.k); if (el.type === 'checkbox') el.checked = !!v; else if (v != null && String(el.value) !== String(v)) el.value = v; });
+  $$('[data-k]').forEach(el => { if (el === document.activeElement) return; const v = el.dataset.k === 'layout.bannerTheme' ? HUD.bannerTheme(s.layout?.bannerTheme) : get(s, el.dataset.k); if (el.type === 'checkbox') el.checked = !!v; else if (v != null && String(el.value) !== String(v)) el.value = v; });
   $$('[data-obs]').forEach(r => r.checked = r.dataset.obs === s.observed.join(','));
   [0, 1].forEach(i => $('#team' + i).style.setProperty('--c', s.teams[i].color));
   ['#winT', '#bnT'].forEach(id => { const el = $(id), v = el.value; el.innerHTML = opts([[0, s.teams[0].tag], [1, s.teams[1].tag]], v); });
@@ -301,6 +310,7 @@ function render(s) {
   $('#rnd').textContent = s.round.number; $('#phase').textContent = s.round.phase.toUpperCase();
   $('#pauseBtn').textContent = s.round.phase === 'paused' ? 'Resume' : 'Pause';
   $('#tpBtn').classList.toggle('on', s.banner.type === 'techpause'); $('#toBtn').classList.toggle('on', s.banner.type === 'timeout');
+  $('#bannerPreview').href = `overlays/banners.html?preview=1&bannerTheme=${HUD.bannerTheme(s.layout?.bannerTheme)}`;
   if (document.activeElement !== $('#tickerTa')) $('#tickerTa').value = s.ticker.join('\n');
   $$('[data-json]').forEach(t => { if (t !== document.activeElement) t.value = JSON.stringify(s[t.dataset.json], null, 1); });
 }
@@ -380,8 +390,8 @@ const OV = [['ingame', 'All in-game layers'], ['scorebug', 'Scorebug'], ['player
   ['event-bug', 'Event bug'], ['poll', 'Poll'], ['player-cams', 'Player cam frames'], ['round-recap', 'Round recap'], ['duel', '1v1 duel'], ['team-compare', 'Team comparison'],
   ['break-clock', 'Break clock'], ['player-profile', 'Player profile'], ['team-roster-a', 'Team roster A'], ['team-roster-b', 'Team roster B'], ['map-breakdown', 'Map breakdown'],
   ['halftime', 'Halftime'], ['champion', 'Champion'], ['schedule', 'Schedule']];
-const qs = HUD.match ? `?match=${encodeURIComponent(HUD.match)}` : '?bg=1';
-$('#links').innerHTML = OV.map(([f, l]) => `<a href="overlays/${f}.html${qs}" target="_blank">${l}<span>${f}.html</span></a>`).join('');
+const qs = HUD.match ? `?match=${encodeURIComponent(HUD.match)}` : '';
+$('#links').innerHTML = OV.map(([f, l]) => `<div class="overlay-link"><div class="overlay-name">${l}</div><div class="overlay-actions"><a href="overlays/${f}.html?preview=1" target="_blank" rel="noopener">Preview</a><a href="overlays/${f}.html${qs}" target="_blank" rel="noopener">Live source</a></div></div>`).join('');
 
 // tab switching
 document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {

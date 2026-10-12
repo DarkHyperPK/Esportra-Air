@@ -17,6 +17,7 @@ assert.deepStrictEqual(s.teams.map(t => t.side), ['ATK', 'DEF']);
 feed({ feature: 'match_info', key: 'match_score', value: '{"team_0":0,"team_1":0}' });
 feed({ info: { match_info: { round_phase: 'shopping' } }, feature: 'match_info' }, 2000);
 assert.strictEqual(s.round.phase, 'buy'); assert.strictEqual(s.round.endsAt, 32000);
+assert.strictEqual(s.prevCredits[0][0], 3900, 'buy phase records the starting credits for the purchase change');
 feed({ info: { match_info: { round_phase: 'combat' } }, feature: 'match_info' }, 32000);
 feed({ events: [{ name: 'kill_feed', data: '{"attacker":"maher","victim":"TroyDarion","is_attacker_teammate":false,"is_victim_teammate":true,"weapon":"TX_Hud_Operator","ult":"","assist1":"","headshot":true}' }] }, 40000);
 assert.strictEqual(s.killfeed.at(-1).weapon, 'OPERATOR'); assert.deepStrictEqual(s.killfeed.at(-1).killer, [1, 1]); assert.strictEqual(s.players[0][0].alive, false); assert.strictEqual(s.killfeed.at(-1).hs, true);
@@ -28,11 +29,31 @@ assert.deepStrictEqual(s.rounds.at(-1), { w: 1, how: 'defuse' }); assert.strictE
 feed({ feature: 'match_info', key: 'observing', data: 'kot #8059' }); assert.deepStrictEqual(s.observed, [1, 3]);
 feed({ playerId: 'pid-6', feature: 'me', info: { me: { health: '64', abilities: '{"C":true,"Q":false,"E":true,"X":false}' } } });
 assert.strictEqual(s.players[1][1].hp, 64); assert.deepStrictEqual(s.players[1][1].charges, [1, 0, 1]);
+assert.strictEqual(s.players[1][1].chargesKnown, true, 'GEP ability data marks charges as known');
 // a roster message seen before the scoreboard must not pin a player to the wrong team
 const B = createValorantAdapter(); let s2 = JSON.parse(JSON.stringify(window.HUD_DEFAULT));
 s2 = B.ingest(s2, { info: { match_info: { roster_7: '{"name":"late #1","player_id":"x7","character":"Rift","teammate":true,"locked":true}' } }, feature: 'match_info' }).state;
 s2 = B.ingest(s2, sb(7, { name: 'late #1', character: 'Rift', team: 1, alive: true, player_id: 'x7', shield: 0, kills: 0, deaths: 0, assists: 0, money: 800 })).state;
 assert.deepStrictEqual(B.ctx.slots.get('x7'), [1, 0]); assert.strictEqual(s2.players[1][0].agent, 'ASTRA');
+// Team assignment must work during agent select, before the scoreboard has a valid team ID.
+{ const C = createValorantAdapter(); let sx = JSON.parse(JSON.stringify(window.HUD_DEFAULT));
+  sx = C.ingest(sx, { info: { match_info: { roster_0: '{"name":"ally#1","player_id":"ally","character":"Wushu","teammate":true,"locked":true}', roster_1: '{"name":"enemy#1","player_id":"enemy","character":"Clay","teammate":false,"locked":true}' } } }).state;
+  assert.strictEqual(sx.players[0][0].agent, 'JETT'); assert.strictEqual(sx.players[1][0].agent, 'RAZE');
+  sx = C.ingest(sx, sb(1, { name: 'enemy#1', player_id: 'enemy', character: 'Clay', teammate: false, team: 255, alive: true, money: 800 })).state;
+  assert.deepStrictEqual(C.ctx.slots.get('enemy'), [1, 0], 'team 255 falls back to teammate flag');
+  sx = C.ingest(sx, { feature: 'match_info', key: 'ui_team_order_enemies', value: '{"1":"Pandemic","2":"Hunter"}' }).state;
+  assert.strictEqual(sx.players[1][1].agent, 'SOVA', 'team order can fill enemy picks before the roster arrives'); }
+// Plant location is an info key in GEP; it must start the timer and count once.
+{ const C = createValorantAdapter(); let sx = JSON.parse(JSON.stringify(window.HUD_DEFAULT));
+  const ingest = (m, t) => { const result = C.ingest(sx, m, t); sx = result.state; return result.events; };
+  ingest({ feature: 'match_info', key: 'match_start', value: '' }, 1000);
+  assert.strictEqual(sx.teamStats[0].plants, 0, 'match start resets derived team stats');
+  ingest({ info: { match_info: { round_number: '1', round_phase: 'combat' } } }, 2000);
+  const events = ingest({ feature: 'match_info', key: 'planted_location', value: 'A' }, 12000);
+  assert.strictEqual(sx.round.phase, 'planted'); assert.strictEqual(sx.round.endsAt, 57000);
+  assert.strictEqual(sx.teamStats[0].plants, 1); assert.ok(events.some(e => e.type === 'spike.planted'));
+  ingest({ feature: 'match_info', key: 'planted_location', value: 'A' }, 13000);
+  assert.strictEqual(sx.teamStats[0].plants, 1, 'repeat location does not double count'); }
 // ─── T2: SUMMIT map + BANDIT / WARDEN codes ──────────────────────────────────
 { const { MAPS, LOADOUT, KILL } = require('./valorant-gep');
   assert.strictEqual(MAPS['Summit'], 'SUMMIT', 'Summit → SUMMIT');

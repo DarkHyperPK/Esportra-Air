@@ -88,6 +88,6 @@ window.HUD_DEFAULT = {
   show: { scorebug: true, players: true, killfeed: true, observed: true, minimap: false, economy: 'auto', scoreboard: false, lowerThird: false, replay: false, ticker: true,
           roundHistory: false, winProb: true, spikeTimer: true, moments: true, sponsor: true, eventBug: true, poll: false, duel: false, teamCompare: false, roundRecap: 'auto', playerCams: false, seriesMaps: true },
   prevCredits: [[1150, 2900, 800, 3450, 400], [4200, 1900, 2600, 3100, 1300]],
-  layout: { minimap: { x: 24, y: 24, size: 400 } },
+  layout: { minimap: { x: 24, y: 24, size: 400 }, bannerTheme: 'broadcast' },
   stinger: 0                    // epoch ms of the last stinger trigger
 };

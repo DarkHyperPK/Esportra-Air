@@ -8,10 +8,12 @@
   const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
   function merge(a, b) { for (const k in b) { if (isObj(b[k]) && isObj(a[k])) merge(a[k], b[k]); else a[k] = b[k]; } return a; }
 
-  const MATCH = Q.get('match');                // server mode: ?match=CODE joins that room on the Esportra server
-  const HUD = window.HUD = { subs: [], mods: [], events: [], now: () => Date.now(), demo: Q.has('demo'), live: !Q.has('demo') && !MATCH, match: MATCH };
+  const PREVIEW = Q.get('preview') === '1';
+  const MATCH = PREVIEW ? null : Q.get('match'); // previews are isolated from live rooms and browser storage
+  const previewNow = Date.now();
+  const HUD = window.HUD = { subs: [], mods: [], events: [], now: PREVIEW ? () => previewNow : () => Date.now(), preview: PREVIEW, demo: !PREVIEW && Q.has('demo'), live: !PREVIEW && !Q.has('demo') && !MATCH, match: MATCH };
   function readStore() { try { const s = localStorage.getItem(KEY); if (s) return merge(clone(HUD_DEFAULT), JSON.parse(s)); } catch (e) {} return clone(HUD_DEFAULT); }
-  HUD.state = HUD.demo || MATCH ? clone(HUD_DEFAULT) : readStore();
+  HUD.state = PREVIEW || HUD.demo || MATCH ? clone(HUD_DEFAULT) : readStore();
   let raw = '', bc = null;
   try { bc = new BroadcastChannel('esportra-hud'); } catch (e) {}
   HUD.commit = function (s, opts = {}) {
@@ -28,7 +30,7 @@
   HUD.reset = () => HUD.commit(clone(HUD_DEFAULT));
   HUD.resetClean = () => HUD.commit(clone(typeof HUD_CLEAN !== 'undefined' ? HUD_CLEAN : HUD_DEFAULT));
   HUD.on = f => { HUD.subs.push(f); f(HUD.state); };
-  function receive(s) { HUD.state = merge(clone(HUD_DEFAULT), s); HUD.subs.forEach(f => f(HUD.state)); }
+  function receive(s, opts = {}) { HUD.state = merge(clone(HUD_DEFAULT), s); HUD.subs.forEach(f => f(HUD.state, opts)); }
   if (HUD.live) {
     if (bc) bc.onmessage = e => receive(e.data);
     addEventListener('storage', e => { if (e.key === KEY && e.newValue) { raw = e.newValue; receive(JSON.parse(e.newValue)); } });
@@ -43,13 +45,13 @@
     let v = 0; HUD.send = m => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
     ws.onopen = () => { HUD.connected = true; HUD.subs.forEach(f => f(HUD.state)); };
     ws.onmessage = e => { const m = JSON.parse(e.data);
-      if (m.type === 'snapshot') { v = m.v; receive(m.state); }
+      if (m.type === 'snapshot') { v = m.v; receive(m.state, {snapshot:true}); }
       else if (m.type === 'patch') { if (m.v !== v + 1) return HUD.send({ type: 'resync' }); v = m.v; receive(mergePatch(clone(HUD.state), m.patch)); }
       else if (m.type === 'event') HUD.events.forEach(f => f(m.event));
       else if (m.type === 'error') console.warn('Esportra server:', m.message); };
     ws.onclose = () => { HUD.connected = false; HUD.subs.forEach(f => f(HUD.state)); setTimeout(conn, 1500); };
   })();
-  if (Q.get('ws')) (function conn() {
+  if (!PREVIEW && Q.get('ws')) (function conn() {
     const ws = new WebSocket(Q.get('ws'));
     ws.onmessage = e => { try { const m = JSON.parse(e.data); if (m.state) receive(m.state); else if (m.patch) receive(merge(clone(HUD.state), m.patch)); else receive(m); } catch (err) {} };
     ws.onclose = () => setTimeout(conn, 2000);
@@ -66,10 +68,19 @@
     return .2126 * r + .7152 * g + .0722 * b > .42 ? '#101014' : '#ffffff'; };
   const tv = HUD.tv = (el, s, i) => { const c = s.teams[i].color; el.style.setProperty('--c', c); el.style.setProperty('--ci', ink(c)); return el; };
   const fmt = HUD.fmt = sec => { sec = Math.max(0, Math.ceil(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+  const fmtHundredths = sec => { const value = Math.max(0, Math.ceil(Math.round(sec * 1000) / 10)); return `${String(Math.floor(value / 100)).padStart(2, '0')}:${String(value % 100).padStart(2, '0')}`; };
   const money = n => Number(n || 0).toLocaleString('en-US');
   const setImg = (im, url) => { if (!url) { im.style.visibility = 'hidden'; return; } im.style.visibility = ''; if (im.dataset.u !== url) { im.dataset.u = url; im.src = url; } };
   const txt = (e, v) => { v = String(v); if (e.textContent !== v) e.textContent = v; };
   const timeLeft = HUD.timeLeft = r => r.endsAt ? Math.max(0, (r.endsAt - HUD.now()) / 1000) : (r.remaining || 0);
+  // Align CSS motion once per plant; the compositor keeps it smooth between HUD ticks.
+  const pulseSpike = (el, round) => {
+    const deadline = String(round.endsAt || 'remaining');
+    if (el.dataset.spikeDeadline === deadline) return;
+    const elapsed = Math.max(0, 45000 - timeLeft(round) * 1000);
+    el.style.setProperty('--spike-delay', -(elapsed % 1000) + 'ms');
+    el.dataset.spikeDeadline = deadline;
+  };
   const need = s => Math.ceil((s.event.bestOf || 1) / 2);
   const P = (s, tp) => s.players[tp[0]] && s.players[tp[0]][tp[1]];
   function logo(team, size, parent, cls = '') {
@@ -86,12 +97,18 @@
   };
   const ABILITY_ICONS = {};
   Object.values(CAT.agents).forEach(ag => { (ag.ab || []).forEach(([name, url]) => { if (name) ABILITY_ICONS[name.toUpperCase()] = url; }); });
+  const chargeCount = (p, k) => {
+    if (!Array.isArray(p.charges) || (p.puuid && !p.chargesKnown)) return null;
+    return Math.max(0, Math.min(16, Math.floor(Number(p.charges[k]) || 0)));
+  };
+  const chargeDots = count => count === null ? '' : count ? '<i></i>'.repeat(count) : '<i class="e"></i>';
   const vis = HUD.vis = {
     economy: s => s.show.economy === true || (s.show.economy === 'auto' && s.round.phase === 'buy'),
-    players: s => s.show.players && !vis.economy(s) && !s.show.scoreboard && !vis.recap(s),
-    observed: s => s.show.observed && !vis.economy(s) && !s.show.scoreboard && s.round.phase !== 'buy' && !vis.recap(s),
-    recap: s => !s.show.scoreboard && (s.show.roundRecap === true || (s.show.roundRecap === 'auto' && s.round.phase === 'end')) && s.rounds.length > 0,
-    killfeed: s => s.show.killfeed && !s.show.scoreboard,
+    focused: s => s.show.scoreboard || s.show.teamCompare || s.show.duel,
+    players: s => s.show.players && !vis.economy(s) && !vis.focused(s) && !vis.recap(s),
+    observed: s => s.show.observed && !vis.economy(s) && !vis.focused(s) && s.round.phase !== 'buy' && !vis.recap(s),
+    recap: s => !vis.focused(s) && (s.show.roundRecap === true || (s.show.roundRecap === 'auto' && s.round.phase === 'end')) && s.rounds.length > 0,
+    killfeed: s => s.show.killfeed && !vis.focused(s),
   };
   function chrome(root, right) {
     const c = E('div', 'chrome', root);
@@ -114,23 +131,38 @@
   function sceneFx(sc) { E('div', 'lines', sc); E('div', 'vig', sc); }
   function toggle(el, on) { el.classList.toggle('on', !!on); }
   // scenes only rebuild when the data they show changes (score edits etc. don't replay entrances)
-  const same = (o, s) => { const k = JSON.stringify([s.event, s.teams, s.players.map(t => t.map(p => [p.name, p.agent, p.k, p.d, p.a, p.acs, p.adr, p.hs])), s.map, s.series, s.veto, s.bracket, s.standings, s.casters, s.schedule, s.holding, Q.get('mode')]);
+  const same = (o, s) => { const k = JSON.stringify([s.event, s.teams, s.players.map(t => t.map(p => [p.name, p.agent, p.k, p.d, p.a, p.acs, p.adr, p.hs])), s.map, s.series, s.veto, s.bracket, s.standings, s.casters, s.schedule, s.holding, s.rounds, s.firstSide, s.teamStats, s.champion, Q.get('mode')]);
     if (o._k === k) return true; o._k = k; return false; };
 
   // ───── modules ─────
   const M = HUD.modules = {};
 
   M.scorebug = root => {
-    const m = E('div', 'mod', root), sb = E('div', 'sb fx-wipe', m), row = E('div', 'sb-row', sb);
+    const m = E('div', 'mod scorebug-layer', root), sb = E('div', 'sb fx-wipe', m), row = E('div', 'sb-row', sb);
     const side = i => { const n = E('div', 'sb-name ' + (i ? 'r' : 'l'), row); const sd = E('div', 'sb-side mono', n); return { n, sd }; };
-    const A = side(0); const sA = E('div', 'sb-score', row); const mid = E('div', 'sb-mid notch-b', row); const sB = E('div', 'sb-score', row); const B = side(1);
+    const A = side(0); const sA = E('div', 'sb-score l', row); const mid = E('div', 'sb-mid notch-b', row); const sB = E('div', 'sb-score r', row); const B = side(1);
     const top = E('div', 'top mono', mid), tm = E('div', 'tm', mid), bot = E('div', 'bot mono', mid);
+    let timerCells = null;
+    // Rajdhani's digits have different advances even with tabular-nums enabled.
+    // Keep each urgent digit in a fixed slot and update only its text.
+    function renderTimer(label, urgent) {
+      if (!urgent) {
+        if (timerCells) { tm.textContent = label; timerCells = null; }
+        else txt(tm, label);
+        return;
+      }
+      if (!timerCells) {
+        tm.textContent = '';
+        timerCells = Array.from({length:5}, (_, i) => E('span', i === 2 ? 'tm-separator' : 'tm-digit', tm));
+      }
+      timerCells.forEach((cell, i) => txt(cell, label[i]));
+    }
     const pips = [E('div', 'sb-pips l', sb), E('div', 'sb-pips r', sb)], heads = [E('div', 'sb-heads l', sb), E('div', 'sb-heads r', sb)];
-    const tag = E('div', 'sb-tag mono', sb); let last = [null, null], sig = '', plantedAt = null;
+    const tag = E('div', 'sb-tag mono', sb); let last = [null, null], sig = '';
     function build(s) {
       [A, B].forEach((o, i) => { o.n.querySelectorAll('.lg,.nm,.bar').forEach(x => x.remove()); tv(o.n, s, i);
         const nm = E('div', 'nm', null, s.teams[i].name); const lg = logo(s.teams[i], 44, null);
-        if (i) { o.n.appendChild(lg); o.n.appendChild(nm); } else { o.n.appendChild(nm); o.n.appendChild(lg); } E('div', 'bar', o.n); });
+        if (i) { o.n.appendChild(nm); o.n.appendChild(lg); } else { o.n.appendChild(lg); o.n.appendChild(nm); } E('div', 'bar', o.n); });
       heads.forEach((h, i) => { h.innerHTML = ''; tv(h, s, i); s.players[i].forEach(p => { const d = E('div', '', h); const im = E('img', '', d); setImg(im, agent(p.agent) && agent(p.agent).icon); }); });
     }
     return { update(s) {
@@ -145,21 +177,26 @@
       txt(top, `ROUND ${s.round.number}`); txt(bot, `MAP ${s.map.number}  /  ${s.map.name}`);
       const st = HUD.status(s); tag.classList.toggle('show', !!st);
       if (st) { txt(tag, st.text); tag.style.background = st.team >= 0 ? s.teams[st.team].color : 'var(--red)'; tag.style.color = st.team >= 0 ? ink(s.teams[st.team].color) : '#fff'; }
+      this.tick(s);
     }, tick(s) {
-      const r = s.round, t = timeLeft(r); let cls = '', html = fmt(t);
+      const r = s.round, t = timeLeft(r); let cls = '', label = fmt(t);
       if (r.phase === 'planted') {
-        if (plantedAt === null) plantedAt = HUD.now();
-        const remaining = Math.max(0, 45 - (HUD.now() - plantedAt) / 1000);
-        const speed = remaining > 20 ? 1000 : remaining > 10 ? 500 : remaining > 5 ? 250 : remaining > 1 ? 125 : 0;
-        cls = 'planted'; html = '<img class="spike-tm" src="../core/assets/misc/Spike_top_light.svg">';
-        if (speed > 0) { tm.style.setProperty('--blink', speed + 'ms'); } else { tm.style.removeProperty('--blink'); }
+        cls = 'planted'; label = '';
+        pulseSpike(tm, r);
       } else {
-        plantedAt = null; tm.style.removeProperty('--blink');
+        tm.style.removeProperty('--spike-delay'); delete tm.dataset.spikeDeadline;
         if (r.phase === 'buy') { cls = 'buy'; }
-        else if (r.phase === 'paused') { cls = 'paused'; html = 'PAUSE'; }
-        else if (r.phase === 'end') html = '0:00';
+        else if (r.phase === 'paused') { cls = 'paused'; label = 'PAUSE'; }
+        else if (r.phase === 'end') label = '0:00';
       }
-      if (tm.dataset.h !== html) { tm.dataset.h = html; tm.innerHTML = html; } tm.className = 'tm ' + cls;
+      const urgent = r.phase === 'live' && t <= 15;
+      if (urgent) { cls += ' urgent'; label = fmtHundredths(t); }
+      renderTimer(label, urgent);
+      const timerClass = 'tm ' + cls;
+      if (tm.className !== timerClass) tm.className = timerClass;
+    }, frame(s) {
+      const r = s.round;
+      if (r.endsAt && r.phase === 'live' && timeLeft(r) <= 15) this.tick(s);
     } };
   };
 
@@ -205,7 +242,7 @@
           const armor = p.alive ? +p.armor || 0 : 0; txt(o.sh, armor > 0 ? armor : ''); o.sh.style.display = armor > 0 ? '' : 'none';
           const hp = p.alive ? Math.max(0, Math.min(100, Number(p.hp) || 0)) : 0; txt(o.hpn, p.alive ? hp : ''); o.hpn.classList.toggle('low', hp > 0 && hp <= 30);
           o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
-          o.abs.forEach((ab, k) => { const d = A && A.ab[k]; setImg(ab.im, d && d[1]); const c = Math.max(0, Math.min(16, Math.floor(Number((p.charges || [])[k]) || 0))); ab.ab.classList.toggle('empty', c === 0); ab.cp.classList.toggle('chamber-q', c > 4); if (ab.cp.dataset.c !== String(c)) { ab.cp.dataset.c = String(c); ab.cp.innerHTML = c ? Array.from({length:c},()=>'<i></i>').join('') : '<i class="e"></i>'; } });
+          o.abs.forEach((ab, k) => { const d = A && A.ab[k]; setImg(ab.im, d && d[1]); const c = chargeCount(p, k); ab.ab.classList.toggle('empty', c === 0); ab.cp.classList.toggle('chamber-q', c > 4); if (ab.cp.dataset.c !== String(c)) { ab.cp.dataset.c = String(c); ab.cp.innerHTML = chargeDots(c); } });
           const W = weapon(p.weapon); setImg(o.wp, p.alive && W && W.kill);
           txt(o.cr, money(p.credits)); o.cri.src = s.teams[i].side === 'ATK' ? '../core/assets/misc/ValorantCreditsRed.svg' : '../core/assets/misc/ValorantCreditsGreen.svg';
           txt(o.dkda, `${p.k||0}/${p.d||0}/${p.a||0}`); txt(o.dcr, money(p.credits)); o.dcri.src = o.cri.src;
@@ -268,10 +305,33 @@
       setImg(wp, weapon(p.weapon) && weapon(p.weapon).kill); txt(cr, money(p.credits)); txt(kda, `${p.k}/${p.d}/${p.a}`);
       const h = p.alive ? +p.hp : 0; txt(hv, h); hv.classList.toggle('low', h <= 30); hbi.style.width = Math.min(100, h) + '%'; setImg(ar, armorIcon(p.alive ? p.armor : 0));
       slots.forEach((o, k) => { const a = A && A.ab[k]; setImg(o.im, a && a[1]);
-        if (k < 3) { const c = +(p.charges || [])[k] || 0; o.s.classList.toggle('empty', c === 0); o.ch.innerHTML = c ? Array.from({ length: c }, () => '<i></i>').join('') : '<i class="e"></i>'; }
+        if (k < 3) { const c = chargeCount(p, k); o.s.classList.toggle('empty', c === 0); o.ch.innerHTML = chargeDots(c); }
         else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); o.s.classList.toggle('ready', u >= um); txt(o.ch, u >= um ? 'READY' : `${u}/${um}`); } });
       ob.classList.toggle('isdead', !p.alive);
     } };
+  };
+
+  M.playercams = root => {
+    const m = E('div', 'mod', root);
+    const teams = [0, 1].map(team => {
+      const column = E('div', 'player-cams ' + (team ? 'r fx-right' : 'l fx-left'), m);
+      const frames = Array.from({length:5}, () => {
+        const frame = E('div', 'cam', column), name = E('span', 'name mono', frame);
+        return {frame, name};
+      });
+      return {column, frames};
+    });
+    return {update(s) {
+      toggle(m, s.show.playerCams && vis.players(s));
+      teams.forEach((team, i) => {
+        tv(team.column, s, i);
+        team.frames.forEach(({frame, name}, j) => {
+          const player = s.players[i][j]; frame.style.visibility = player ? '' : 'hidden';
+          txt(name, player?.name || 'PLAYER ' + (j + 1));
+          frame.classList.toggle('observed', s.observed[0] === i && s.observed[1] === j);
+        });
+      });
+    }};
   };
 
   M.minimap = root => {
@@ -281,30 +341,84 @@
       txt(a, s.map.name); txt(b, `ROUND ${s.round.number}`); } };
   };
 
+  const BANNER_THEMES = HUD.bannerThemes = Object.freeze(['broadcast', 'compact', 'monument', 'impact']);
+  const bannerTheme = HUD.bannerTheme = value => BANNER_THEMES.includes(value) ? value : value === 'velocity' ? 'compact' : 'broadcast';
   M.banner = root => {
     const m = E('div', 'mod', root), bn = E('div', 'bn', m), band = E('div', 'band', bn), por = E('img', 'por', bn), lg = E('div', 'lgw', bn), t1 = E('div', 't1', bn), t2 = E('div', 't2 mono', bn);
-    const pz = E('div', 'pause', m), pa = E('div', 'a', pz), pb = E('div', 'b mono', pz);
-    let cur = 0, outAt = 0;
+    E('div', 'bn-frame', bn); E('div', 'bn-wing l', bn); E('div', 'bn-wing r', bn);
+    const watermark = E('img', 'bn-watermark', band); watermark.src = '../core/brand/mark-512.png'; watermark.alt = '';
+    // Game art belongs to the added themes. Broadcast keeps its original composition.
+    const scene = E('div', 'bn-scene', bn);
+    const lineup = E('div', 'bn-lineup', scene);
+    const artImages = Array.from({length:5}, (_, i) => { const slot = E('div', 'bn-agent', lineup); slot.style.setProperty('--i', i); const image = E('img', '', slot); image.alt = ''; return image; });
+    const abilities = E('div', 'bn-abilities', scene), abilityImages = Array.from({length:4}, () => E('img', '', abilities));
+    const context = E('div', 'bn-context', scene), roundLabel = E('div', 'bn-round-label', scene), teamGhost = E('div', 'bn-team-ghost', scene), sigil = E('div', 'bn-sigil', scene);
+    scene.setAttribute('aria-hidden', 'true'); abilityImages.forEach(image => { image.alt = ''; });
+    [...artImages, ...abilityImages].forEach(image => { image.onerror = () => { image.removeAttribute('src'); delete image.dataset.u; image.style.visibility = 'hidden'; }; });
+    const artImage = (image, url) => { if (!url) { image.removeAttribute('src'); delete image.dataset.u; } setImg(image, url); };
+    const kicker = E('div', 'bn-kicker', bn);
+    const crest = E('div', 'bn-crest', bn), emblem = E('img', 'bn-emblem', crest);
+    const footer = E('div', 'bn-footer', bn), side = E('span', 'bn-side', footer), teamLogo = E('div', 'bn-team-logo', footer), teamName = E('strong', 'bn-team-name', footer), actor = E('span', 'bn-actor', footer);
+    const pz = E('div', 'pause', m), pauseCrest = E('div', 'pause-crest', pz), pauseIcon = E('img', 'pause-symbol', pauseCrest), pa = E('div', 'a', pz), pb = E('div', 'b mono', pz);
+    E('div', 'pause-wing l', pz); E('div', 'pause-wing r', pz);
+    let cur = 0, outAt = 0, content = '';
     const PERSIST = { techpause: 1, timeout: 1 };
-    return { update(s) {
-      const b = s.banner; if (PERSIST[b.type]) { bn.classList.remove('on', 'out'); return; }
-      if (!b.type || !b.ts || b.ts === cur) return; cur = b.ts;
+    return { update(s, opts = {}) {
+      const theme = bannerTheme(s.layout?.bannerTheme), compact = theme !== 'broadcast';
+      bn.classList.toggle('compact', compact); pz.classList.toggle('compact', compact);
+      ['monument', 'impact', 'velocity'].forEach(variant => { const selected = theme === (variant === 'velocity' ? 'compact' : variant); bn.classList.toggle(variant, selected); pz.classList.toggle(variant, selected); });
+      const b = s.banner;
+      if (PERSIST[b.type] || !b.type || !b.ts) { bn.classList.remove('on', 'out'); cur = 0; outAt = 0; content = ''; this.tick(s); return; }
       const T = s.teams[b.team] || s.teams[0]; const p = s.players[b.team] && s.players[b.team][b.player]; const A = p && agent(p.agent);
-      bn.style.setProperty('--c', T.color); bn.style.setProperty('--ci', ink(T.color)); por.style.display = 'none'; lg.innerHTML = '';
-      const map = { round: [T.name, `WIN ROUND ${Math.max(1, s.round.number - (s.round.phase === 'end' ? 0 : 1))}${b.method ? '   /   ' + b.method : ''}`],
-        ace: ['ACE', `${p ? p.name : ''}   /   ${T.tag}`], teamace: ['TEAM ACE', T.name], clutch: [`CLUTCH 1V${b.text || '?'}`, `${p ? p.name : ''}   /   ${T.tag}`],
-        flawless: ['FLAWLESS', `${T.name} TAKE THE ROUND`], thrifty: ['THRIFTY', `${T.name} WIN ON AN ECO`], matchpoint: ['MATCH POINT', T.name], overtime: ['OVERTIME', 'FIRST TO LEAD BY TWO'], custom: [b.text || '', b.method || ''] };
-      if (b.type === 'overtime') { bn.style.setProperty('--c', '#f0c040'); bn.style.setProperty('--ci', '#0d0d0f'); }
-      const [a1, a2] = map[b.type] || [b.text, ''];
-      t1.textContent = a1; t2.textContent = a2;
-      if ((b.type === 'ace' || b.type === 'clutch') && A) { por.src = A.full; por.style.display = ''; por.style.left = '380px'; }
-      if (b.type === 'round' || b.type === 'teamace' || b.type === 'flawless' || b.type === 'thrifty' || b.type === 'matchpoint') { const l = logo(T, 90, lg, 'lg'); l.style.position = 'absolute'; l.style.left = '220px'; l.style.top = '70px'; l.style.setProperty('--c', ink(T.color)); l.style.borderColor = ink(T.color); l.style.color = ink(T.color); }
-      bn.classList.remove('on', 'out'); void bn.offsetWidth; bn.classList.add('on'); outAt = b.ts + (b.hold || 4200);
+      const signature = JSON.stringify([b, theme, T, p?.name, p?.agent, s.round.number, s.round.phase, ...(compact ? [s.players[b.team]?.map(player => player.agent), s.map.name] : [])]);
+      if (signature !== content) {
+        content = signature;
+        bn.style.setProperty('--c', T.color); bn.style.setProperty('--ci', ink(T.color)); por.style.display = 'none'; lg.innerHTML = '';
+        const map = { round: [T.name, `WIN ROUND ${Math.max(1, s.round.number - (s.round.phase === 'end' ? 0 : 1))}${b.method ? '   /   ' + b.method : ''}`],
+          ace: ['ACE', `${p ? p.name : ''}   /   ${T.tag}`], teamace: ['TEAM ACE', T.name], clutch: [`CLUTCH 1V${b.text || '?'}`, `${p ? p.name : ''}   /   ${T.tag}`],
+          flawless: ['FLAWLESS', `${T.name} TAKE THE ROUND`], thrifty: ['THRIFTY', `${T.name} WIN ON AN ECO`], matchpoint: ['MATCH POINT', T.name], overtime: ['OVERTIME', 'FIRST TO LEAD BY TWO'], custom: [b.text || '', b.method || ''] };
+        if (b.type === 'overtime') { bn.style.setProperty('--c', '#f0c040'); bn.style.setProperty('--ci', '#0d0d0f'); }
+        const [a1, a2] = map[b.type] || [b.text, ''];
+        txt(t1, compact && b.type === 'round' ? 'ROUND WIN' : a1); txt(t2, a2);
+        t1.classList.toggle('long', compact && t1.textContent.length > 14);
+        if (!compact && (b.type === 'ace' || b.type === 'clutch') && A) { por.src = A.full; por.style.display = ''; por.style.left = '380px'; }
+        if (!compact && ['round', 'teamace', 'flawless', 'thrifty', 'matchpoint'].includes(b.type)) { const l = logo(T, 90, lg, 'lg'); l.style.position = 'absolute'; l.style.left = '220px'; l.style.top = '70px'; l.style.setProperty('--c', ink(T.color)); l.style.borderColor = ink(T.color); l.style.color = ink(T.color); }
+        if (compact) {
+          const personal = !!A && (b.type === 'ace' || b.type === 'clutch');
+          const neutral = b.type === 'custom' || b.type === 'overtime';
+          bn.classList.toggle('personal', personal); bn.classList.toggle('neutral', neutral);
+          const roster = personal ? [A] : neutral ? [] : (s.players[b.team] || []).map(player => agent(player.agent)).filter(Boolean).slice(0, 5);
+          artImages.forEach((image, i) => artImage(image, roster[i] && (theme === 'compact' && !personal ? roster[i].icon : roster[i].full)));
+          abilityImages.forEach((image, i) => artImage(image, personal && theme === 'impact' ? A.ab?.[i]?.[1] : ''));
+          sigil.innerHTML = ''; if (theme === 'compact' && !neutral) logo(T, 104, sigil);
+          txt(context, theme === 'compact' ? s.map.name : personal ? `${A.name} / ${A.role}` : `${T.tag || T.name} / ${T.side || ''}`);
+          txt(roundLabel, `ROUND ${String(s.round.number).padStart(2, '0')}`);
+          txt(teamGhost, neutral ? 'AIR' : T.tag || '');
+          const icons = {ace:'banners/skullAceCrown.webp', teamace:'banners/skullAceCrown.webp', flawless:'banners/flawless.svg', clutch:'banners/clutch.svg', thrifty:'banners/thrifty.webp'};
+          crest.classList.toggle('brand-icon', !icons[b.type] && b.type !== 'round');
+          setImg(emblem, icons[b.type] ? '../core/assets/' + icons[b.type] : b.type === 'round' ? '../core/assets/banners/round-victory.svg' : '../core/brand/mark-224.png');
+          const captions = {flawless:'PERFECT ROUND', ace:'FIVE KILLS · ONE PLAYER', teamace:'EVERY PLAYER · ONE KILL', clutch:'LAST PLAYER STANDING', thrifty:'LESS SPENT · MORE WON', matchpoint:'ONE ROUND FROM VICTORY', overtime:'FIRST TO LEAD BY TWO', round:`ROUND ${s.round.number} · ${b.method || 'VICTORY'}`};
+          txt(kicker, captions[b.type] || 'ESPORTRA');
+          txt(side, neutral ? '' : T.side || ''); teamLogo.innerHTML = ''; teamLogo.style.display = neutral ? 'none' : '';
+          if (!neutral) logo(T, 30, teamLogo);
+          txt(teamName, neutral ? a2 : T.name || T.tag || 'TEAM ' + (b.team + 1));
+          txt(actor, !neutral && (b.type === 'ace' || b.type === 'clutch') && p ? p.name : '');
+        }
+      }
+      if (b.ts !== cur) {
+        cur = b.ts; outAt = b.ts + (b.hold || 4200);
+        bn.classList.remove('on', 'out', 'restored');
+        bn.classList.toggle('restored', !!opts.snapshot && HUD.now() - b.ts > 400);
+        if (HUD.now() < outAt) { void bn.offsetWidth; bn.classList.add('on'); }
+      }
+      this.tick(s);
     }, tick(s) {
       const b = s.banner, n = HUD.now();
-      if (bn.classList.contains('on') && !bn.classList.contains('out') && n > outAt) { bn.classList.add('out'); setTimeout(() => { if (HUD.now() > outAt) bn.classList.remove('on', 'out'); }, 500); }
+      if (bn.classList.contains('on') && !bn.classList.contains('out') && n > outAt) { const id = cur; bn.classList.remove('restored'); bn.classList.add('out'); setTimeout(() => { if (cur === id && HUD.now() > outAt) bn.classList.remove('on', 'out'); }, bn.classList.contains('compact') ? 300 : 500); }
       const on = PERSIST[b.type]; pz.classList.toggle('on', !!on);
       if (on) { const T = s.teams[b.team] || s.teams[0];
+        pz.style.setProperty('--c', b.type === 'techpause' ? 'var(--red)' : T.color);
+        setImg(pauseIcon, '../core/assets/banners/' + (b.type === 'techpause' ? 'technical-pause' : 'timeout') + '.svg');
         if (b.type === 'techpause') { txt(pa, 'TECHNICAL PAUSE'); txt(pb, `PAUSED FOR ${fmt((n - b.ts) / 1000)}`); pz.style.borderBottomColor = 'var(--red)'; }
         else { txt(pa, `TIMEOUT  ${T.tag}`); txt(pb, `RESUMES IN ${fmt(Math.max(0, 60 - (n - b.ts) / 1000))}`); pz.style.borderBottomColor = T.color; } }
     } };
@@ -314,30 +428,40 @@
     return { update(s) { r.classList.toggle('on', !!s.show.replay); txt(b, `ROUND ${s.round.number}   /   ${s.map.name}`); } }; };
 
   M.economy = root => {
-    const m = E('div', 'mod', root), top = E('div', 'ec-top mono fx-rise', m), ec = E('div', 'ec fx-rise', m);
-    const teams = [0, 1].map(i => { const t = E('div', 'tm', ec); const hd = E('div', 'hd', t); return { t, hd, body: E('div', '', t) }; });
-    const buyType = (bank, n) => { const avg = bank / n; return avg >= 3900 ? 'FULL BUY' : avg >= 2400 ? 'HALF BUY' : avg >= 1200 ? 'FORCE' : 'ECO'; };
+    const m = E('div', 'mod', root), ec = E('div', 'ec fx-rise', m);
+    const teams = [0, 1].map(i => { const t = E('div', 'tm ' + (i ? 'r' : 'l'), ec); const hd = E('div', 'hd', t); return { t, hd, body: E('div', 'body', t) }; });
     return { update(s) {
       toggle(m, vis.economy(s));
       teams.forEach((o, i) => { tv(o.t, s, i); const T = s.teams[i], ps = s.players[i]; const bank = ps.reduce((a, p) => a + (+p.credits || 0), 0);
         const lb = [1900, 2400, 2900, 3400, 3900][Math.min(4, T.lossStreak || 0)];
-        o.hd.innerHTML = `<div class="n">${T.name}</div><div class="s mono">${T.side || ''}   /   LOSS BONUS ${money(lb)}</div><div class="bank"><div class="v">${money(bank)}</div><div class="l mono">TEAM BANK</div></div>`;
-        o.body.innerHTML = ps.map(p => { const A = agent(p.agent), W = weapon(p.weapon), um = +p.ultMax || 7, u = +p.ult || 0;
-          return `<div class="rw">${A ? `<img class="ag" src="${A.icon}">` : ''}<div class="n">${p.name}</div><div class="cr num">${money(p.credits)}</div><div class="wpn">${W ? `<img class="wp" src="${W.kill}">` : ''}</div>${armorIcon(p.armor) ? `<img class="ar" src="${armorIcon(p.armor)}">` : ''}<div class="u mono ${u >= um ? 'rd' : ''}">${u >= um ? 'ULT READY' : 'ULT ' + u + '/' + um}</div></div>`; }).join(''); });
-    }, tick(s) { top.innerHTML = `ROUND ${s.round.number}   /   BUY PHASE <b>${fmt(timeLeft(s.round))}</b>`; } };
+        o.hd.innerHTML = `<div class="team"><span class="score num">${T.score}</span><span class="n">${T.name || T.tag || 'TEAM ' + (i + 1)}</span><span class="side mono">${T.side || ''}</span></div><div class="summary mono">BUY PHASE<span>LOSS BONUS ${money(lb)}</span></div><div class="bank"><span class="v num">${money(bank)}</span><span class="l mono">TEAM BANK</span></div>`;
+        o.body.innerHTML = ps.map((p, j) => { const A = agent(p.agent), W = weapon(p.weapon), um = +p.ultMax || 7, u = +p.ult || 0;
+          const before = s.prevCredits?.[i]?.[j], delta = before == null ? null : (+p.credits || 0) - Number(before);
+          const unchanged = delta == null || delta === 0;
+          const change = unchanged ? '—' : `${delta > 0 ? '+' : ''}${money(delta)}`;
+          const abilities = [0, 1, 2].map(k => { const ability = A && A.ab[k], count = chargeCount(p, k); if (!ability) return '';
+            return `<div class="ability ${count === 0 ? 'empty' : ''}" title="${ability[0]}"><img src="${ability[1]}"><div class="cp ${count > 4 ? 'chamber-q' : ''}">${chargeDots(count)}</div></div>`; }).join('');
+          const kit = `<div class="kit"><div class="ult ${u >= um ? 'ready' : ''}">${A?.ab?.[3]?.[1] ? `<img src="${A.ab[3][1]}">` : ''}<span class="num">${u}/${um}</span></div><div class="weapon">${W ? `<img src="${W.kill}" title="${p.weapon}">` : `<span class="mono">${p.weapon || '—'}</span>`}</div><div class="armor">${armorIcon(p.armor) ? `<img src="${armorIcon(p.armor)}" title="${p.armor} armor">` : '<span class="mono">NO ARMOR</span>'}</div></div>`;
+          const identity = `<div class="identity">${A ? `<img class="ag" src="${A.icon}">` : '<div class="ag empty"></div>'}<div class="person"><div class="n">${p.name || 'PLAYER ' + (j + 1)}</div><div class="agent mono">${A?.name || 'AGENT PENDING'}</div></div><div class="kda"><strong class="num">${p.k || 0} / ${p.d || 0} / ${p.a || 0}</strong><span class="mono">K / D / A</span></div></div>`;
+          const econ = `<div class="econ"><span class="cr num">${money(p.credits)}</span><span class="change num ${unchanged ? 'neutral' : delta > 0 ? 'gain' : ''}" title="Credit change since the previous round">${change}</span></div>`;
+          const util = `<div class="abilities">${abilities}</div>`;
+          return `<div class="rw">${i ? identity + kit + util + econ : econ + util + kit + identity}</div>`; }).join(''); });
+    } };
   };
 
   M.scoreboard = root => {
     const m = E('div', 'mod', root); E('div', 'st-dim', m); const st = E('div', 'st fx-rise', m);
-    const COLS = ['ACS', 'K', 'D', 'A', '+/-', 'ADR', 'HS%', 'FK'];
+    const COLS = ['K', 'D', 'A', '+/-', 'FK', 'CREDITS', 'ULT', 'ACS'];
     return { update(s) {
-      toggle(m, !!s.show.scoreboard); const all = s.players.flat(); const mvp = all.reduce((a, p) => (+p.acs > +a.acs ? p : a), all[0]);
+      toggle(m, !!s.show.scoreboard); const all = s.players.flat(); const hasAcs = all.some(p => Number(p.acs) > 0);
+      const mvp = all.reduce((a, p) => (+(hasAcs ? p.acs : p.k) > +(hasAcs ? a.acs : a.k) ? p : a), all[0]);
       st.innerHTML = `<div class="hd"><div class="t disp hl">SCOREBOARD</div><div class="m mono">MAP ${s.map.number}  /  ${s.map.name}<br>ROUND ${s.round.number}</div></div>` +
-        [0, 1].map(i => { const T = s.teams[i]; const ps = [...s.players[i]].sort((a, b) => b.acs - a.acs);
+        [0, 1].map(i => { const T = s.teams[i]; const ps = [...s.players[i]].sort((a, b) => +(hasAcs ? b.acs : b.k) - +(hasAcs ? a.acs : a.k));
           return `<div class="tb" style="--c:${T.color}"><div class="row h"><div class="tn"><b>${T.score}</b>${T.name}</div><div></div>${COLS.map(c => `<div class="c mono">${c}</div>`).join('')}</div>` +
-            ps.map(p => { const A = agent(p.agent); const pm = p.k - p.d;
-              return `<div class="row ${p.alive ? '' : 'dead'}">${A ? `<img src="${A.icon}">` : '<div></div>'}<div class="pn">${p.name}${p === mvp ? '<span class="mvp mono">MVP</span>' : ''}</div><div class="ag mono">${A ? A.name : ''}</div>` +
-                [p.acs, p.k, p.d, p.a, (pm > 0 ? '+' : '') + pm, p.adr, p.hs + '%', p.fk].map((v, k) => `<div class="c num" style="${k === 4 ? `color:${pm >= 0 ? '#7ee0a0' : '#e0445e'}` : ''}">${v}</div>`).join('') + '</div>'; }).join('') + '</div>'; }).join('');
+            ps.map(p => { const A = agent(p.agent); const pm = (+p.k || 0) - (+p.d || 0), acs = p.acs > 0 ? p.acs : '—';
+              const values = [p.k, p.d, p.a, (pm > 0 ? '+' : '') + pm, p.fk ?? '—', money(p.credits), `${p.ult || 0}/${p.ultMax || 7}`, acs];
+              return `<div class="row ${p.alive ? '' : 'dead'}">${A ? `<img src="${A.icon}">` : '<div></div>'}<div class="pn">${p.name}${p === mvp ? `<span class="mvp mono">${hasAcs ? 'MVP' : 'TOP FRAG'}</span>` : ''}</div><div class="ag mono">${A ? A.name : ''} / ${p.weapon || '—'}</div>` +
+                values.map((v, k) => `<div class="c num" style="${k === 3 ? `color:${pm >= 0 ? '#7ee0a0' : '#e0445e'}` : ''}">${v ?? '—'}</div>`).join('') + '</div>'; }).join('') + '</div>'; }).join('');
     } };
   };
 
@@ -375,7 +499,9 @@
     const m = E('div', 'mod on lu', root); const sc = sceneBg(m); chrome(m, 'AGENT SELECT'); const box = E('div', '', m); sceneFx(sc);
     return { update(s) { if (same(this, s)) return; box.innerHTML = `<div class="vs">vs</div>` + [0, 1].map(i => { const T = s.teams[i];
       return `<div class="th disp hl ${i ? 'r' : 'l'}">${T.name}<small>${T.side || ''}   /   MAP ${s.map.number} ${s.map.name}</small></div><div class="col ${i ? 'r' : 'l'}" style="--c:${T.color}">` + s.players[i].map((p, j) => { const A = agent(p.agent);
-        return `<div class="pc" style="animation:tIn .6s ${.07 * (i * 5 + j)}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="pn">${p.name}</div><div class="an mono">${A ? A.name : p.agent}</div><div class="rl mono">${A ? A.role : ''}</div></div>`; }).join('') + '</div>'; }).join(''); } };
+        return `<div class="pc" style="animation:tIn .6s ${.07 * (i * 5 + j)}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img class="por" src="${A.full}" data-fallback="${A.icon}"><img class="icon" src="${A.icon}">` : '<div class="pending mono">AWAITING PICK</div>'}<div class="sh"></div><div class="pn">${p.name || 'PLAYER ' + (j + 1)}</div><div class="an mono">${A ? A.name : 'AGENT PENDING'}</div><div class="rl mono">${A ? A.role : ''}</div></div>`; }).join('') + '</div>'; }).join('');
+      box.querySelectorAll('.pc img.por').forEach(im => { im.onerror = () => { im.onerror = null; im.src = im.dataset.fallback; im.classList.add('fallback'); }; });
+    } };
   };
 
   M.intro = root => {
@@ -477,17 +603,41 @@
   };
 
   M.stinger = root => {
-    const m = E('div', 'mod', root), sg = E('div', 'sg', m); const w = ['w3', 'w1', 'w2'].map(c => E('div', 'w ' + c, sg)); const ul = E('div', 'ul', sg); const lg = E('img', 'lg', sg); lg.src = '../core/brand/lockup-mark.png';
+    const duration = 2;
+    const m = E('div', 'mod stinger-layer', root), sg = E('div', 'sg', m); const w = ['w3', 'w1', 'w2'].map(c => E('div', 'w ' + c, sg)); const ul = E('div', 'ul', sg); const lg = E('img', 'lg', sg); lg.src = '../core/brand/lockup-mark.png';
     const ease = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2, cl = x => Math.max(0, Math.min(1, x));
-    // t in seconds, 0..1.2. Full cover from ~0.42s to ~0.78s (cut point: 0.6s)
+    // Two-second playback; retain the original wipe proportions (scene cut: 0.96s).
     window.stingerAt = t => {
+      t *= 1.25 / duration;
       const d = [0, .06, .12]; w.forEach((e, i) => { const a = ease(cl((t - d[i]) / .42)), b = ease(cl((t - .66 - (2 - i) * .05) / .42)); const x = -120 + a * 120 + b * 130; e.style.transform = `translateX(${x}%) skewX(-18deg)`; });
       const lp = cl((t - .34) / .16), lo = cl((t - .72) / .1); lg.style.opacity = lp * (1 - lo); lg.style.transform = `scale(${.8 + .2 * ease(lp) + .12 * lo})`;
       const up = ease(cl((t - .42) / .18)); ul.style.width = (up * 160 * (1 - lo)) + 'px'; ul.style.left = (960 - up * 80 * (1 - lo)) + 'px';
     };
-    window.stingerAt(0); let st = 0;
-    return { update(s) { if (s.stinger && s.stinger !== st) { const first = !st; st = s.stinger; if (!first || HUD.now() - s.stinger < 1500) play(s.stinger); } }, tick() {} };
-    function play(ts) { const f = () => { const t = (HUD.now() - ts) / 1000; window.stingerAt(Math.min(1.25, t)); if (t < 1.25) requestAnimationFrame(f); }; f(); }
+    window.stingerAt(0); let st = 0, animation = 0;
+    if (HUD.preview && document.body.dataset.modules.split(',').includes('stinger')) {
+      const started = performance.now();
+      const frame = () => { window.stingerAt(((performance.now() - started) % 3000) / 1000); requestAnimationFrame(frame); };
+      frame();
+    }
+    return { update(s, opts = {}) {
+      const trigger = Number(s.stinger) || 0;
+      if (trigger === st) return; st = trigger;
+      if (HUD.preview) return;
+      if (!trigger) { cancelAnimationFrame(animation); animation = 0; window.stingerAt(0); return; }
+      // A restored snapshot may resume a current wipe; an old one must never replay.
+      if (opts.snapshot) { const age = HUD.now() - trigger; if (age >= 0 && age < duration * 1000) play(age); }
+      else play();
+    }, tick() {} };
+    function play(offset = 0) {
+      cancelAnimationFrame(animation);
+      const started = performance.now() - offset;
+      const frame = now => {
+        const t = Math.max(0, (now - started) / 1000);
+        window.stingerAt(Math.min(duration, t));
+        animation = t < duration ? requestAnimationFrame(frame) : 0;
+      };
+      frame(performance.now());
+    }
   };
 
   // ═════════ EXTENDED LIBRARY ═════════
@@ -517,15 +667,21 @@
       time:   '../core/assets/roundWinReason/timeout.webp',
     };
     return { update(s) {
-      toggle(m, s.show.roundHistory || s.round.phase === 'buy');
-      const n = Math.max(24, Math.ceil((s.rounds.length + 1) / 2) * 2);
+      toggle(m, (s.show.roundHistory || s.round.phase === 'buy') && !s.show.scoreboard);
+      rh.classList.toggle('buy', s.round.phase === 'buy' && vis.economy(s));
+      const n = Math.max(24, Math.min(30, Math.ceil((s.rounds.length + 1) / 2) * 2));
+      const start = Math.max(0, Math.ceil((s.rounds.length + 1 - n) / 2) * 2);
+      const half = i => i === 12 || (i >= 24 && i % 2 === 0);
+      let header = '<div class="rh-head"><span class="rh-lab">ROUND</span>';
+      for (let j = 0; j < n; j++) { const i = start + j; if (half(i)) header += '<span class="half"></span>'; header += `<span class="num ${i === s.rounds.length ? 'now' : ''}">${String(i + 1).padStart(2, '0')}</span>`; }
+      header += '</div>';
       const buildRow = (teamIdx, isTop) => {
         const T = s.teams[teamIdx];
-        let h = `<span class="rh-lab" style="--c:${T.color}">${T.tag}</span>`;
-        for (let i = 0; i < n; i++) {
-          if (i === 12 || (i >= 24 && i % 2 === 0)) {
+        let h = `<span class="rh-lab" style="--c:${T.color}">${T.tag || 'T' + (teamIdx + 1)}</span>`;
+        for (let j = 0; j < n; j++) { const i = start + j;
+          if (half(i)) {
             if (isTop && i === 12) {
-              h += `<span class="half"><img src="../core/assets/misc/swapIcon.svg" width="12" height="12" style="opacity:.6"></span>`;
+              h += `<span class="half"><img src="../core/assets/misc/swapIcon.svg" width="16" height="16"></span>`;
             } else {
               h += '<span class="half"></span>';
             }
@@ -533,7 +689,8 @@
           const r = s.rounds[i];
           if (r && r.w === teamIdx) {
             const icon = RHMAP[r.how] || '';
-            h += `<span class="c w" style="--c:${T.color}" title="R${i + 1}">${icon ? `<img src="${icon}" width="14" height="14">` : ''}</span>`;
+            const reason = HOW[r.how] || 'ROUND WON';
+            h += `<span class="c w" style="--c:${T.color}" title="Round ${i + 1}: ${T.name} — ${reason}" aria-label="Round ${i + 1}: ${T.name} — ${reason}">${icon ? `<span class="result-icon" style="--result:url('${icon}')"></span>` : ''}</span>`;
           } else {
             const isCurrent = i === s.rounds.length;
             h += `<span class="c${isCurrent ? ' now' : ''}"></span>`;
@@ -541,7 +698,7 @@
         }
         return `<div class="rh-row" style="--c:${T.color}">${h}</div>`;
       };
-      rh.innerHTML = buildRow(0, true) + buildRow(1, false);
+      rh.innerHTML = header + buildRow(0, true) + buildRow(1, false);
     } };
   };
 
@@ -550,19 +707,23 @@
       ia.style.width = (p * 100) + '%'; ib.style.width = (100 - p * 100) + '%'; ia.style.background = s.teams[0].color; ib.style.background = s.teams[1].color;
       txt(na, Math.round(p * 100) + '%'); txt(nb, Math.round(100 - p * 100) + '%'); na.style.color = s.teams[0].color; nb.style.color = s.teams[1].color; } }; };
 
-  M.spiketimer = root => { const m = E('div', 'mod', root), sk = E('div', 'sk fx-rise', m); sk.innerHTML = '<img class="spike-ic" src="../core/assets/misc/Spike_Icon.svg">'; const v = E('div', 'v', sk), tr = E('div', 'track', sk), fi = E('i', '', tr);
-    [[7], [3.5]].forEach(([x]) => { const k = E('div', 'mk', tr); k.style.left = (x / 45 * 100) + '%'; });
-    return { update(s) { toggle(m, s.show.spikeTimer && s.round.phase === 'planted' && !s.show.scoreboard); }, tick(s) { if (s.round.phase !== 'planted') return; const t = timeLeft(s.round);
-      txt(v, t.toFixed(1)); fi.style.width = Math.min(100, t / 45 * 100) + '%'; sk.classList.toggle('hot', t < 7); } }; };
+  M.spiketimer = root => {
+    const m = E('div', 'mod scorebug-layer', root), sk = E('div', 'sk sb-mid notch-b', m), icon = E('div', 'tm', sk);
+    return { update(s) {
+      const on = s.show.spikeTimer && s.round.phase === 'planted' && !s.show.scoreboard;
+      toggle(m, on); icon.classList.toggle('planted', !!on);
+      if (on) pulseSpike(icon, s.round); else delete icon.dataset.spikeDeadline;
+    }, tick(s) { if (m.classList.contains('on')) pulseSpike(icon, s.round); } };
+  };
 
   M.moments = root => { const m = E('div', 'mod', root), mo = E('div', 'mo', m); let sig = '';
-    function items(s) { const out = [], n = HUD.now(), live = ts => !ts || n - ts < 6500, kf = s.killfeed;
-      if (kf.length && live(kf[0].ts)) { const k = P(s, kf[0].killer); if (k) out.push({ id: 'fb', t: kf[0].killer[0], k: 'FIRST BLOOD', p: k, sub: 'ON ' + (P(s, kf[0].victim) || {}).name }); }
+    function items(s) { const out = [], n = HUD.now(), live = ts => Number.isFinite(ts) && ts > 0 && n >= ts && n - ts < 6500, kf = s.killfeed;
+      if (kf.length && live(kf[0].ts)) { const k = P(s, kf[0].killer); if (k) out.push({ id: 'fb', t: kf[0].killer[0], k: 'FIRST BLOOD', p: k, sub: 'ON ' + (P(s, kf[0].victim) || {}).name, priority: 1 }); }
       const cnt = {}; kf.forEach(e => { const id = e.killer.join(); cnt[id] = cnt[id] || { n: 0, e }; cnt[id].n++; cnt[id].e = e; });
-      Object.values(cnt).forEach(c => { if (c.n >= 2 && live(c.e.ts)) out.push({ id: 'mk' + c.e.killer + c.n, t: c.e.killer[0], k: c.n >= 5 ? 'ACE' : c.n + 'K', p: P(s, c.e.killer), sub: 'THIS ROUND' }); });
-      if (['live', 'planted'].includes(s.round.phase)) [0, 1].forEach(t => { const a = alive(s, t), b = alive(s, 1 - t); if (a.length === 1 && b.length >= 2) out.push({ id: 'cl' + t + b.length, t, k: '1V' + b.length, p: a[0], sub: 'CLUTCH ATTEMPT' }); });
-      return out.slice(-3); }
-    return { update(s) { toggle(m, s.show.moments && !s.show.scoreboard); this.tick(s); }, tick(s) { const it = items(s), k = it.map(x => x.id).join('|'); if (k === sig) return; sig = k;
+      Object.values(cnt).forEach(c => { if (c.n >= 2 && live(c.e.ts)) out.push({ id: 'mk' + c.e.killer + c.n, t: c.e.killer[0], k: c.n >= 5 ? 'ACE' : c.n + 'K', p: P(s, c.e.killer), sub: 'THIS ROUND', priority: c.n + 2 }); });
+      if (['live', 'planted'].includes(s.round.phase)) [0, 1].forEach(t => { const a = alive(s, t), b = alive(s, 1 - t); if (a.length === 1 && b.length >= 2) out.push({ id: 'cl' + t + b.length, t, k: '1V' + b.length, p: a[0], sub: 'CLUTCH ATTEMPT', priority: 2 }); });
+      return out.sort((a, b) => b.priority - a.priority).slice(0, 1); }
+    return { update(s) { toggle(m, s.show.moments && !vis.focused(s) && !vis.economy(s)); this.tick(s); }, tick(s) { const it = items(s), k = it.map(x => x.id).join('|'); if (k === sig) return; sig = k;
       mo.innerHTML = it.map(x => { const A = agent(x.p.agent), c = s.teams[x.t].color; return `<div class="m" style="--c:${c};--ci:${ink(c)}"><div class="k">${x.k}</div>${A ? `<img src="${A.icon}">` : ''}<div class="t">${x.p.name}</div><div class="s mono">${x.sub}</div></div>`; }).join(''); } }; };
 
   M.toast = root => { const m = E('div', 'mod', root), ts = E('div', 'ts', m); E('div', 'k mono', ts, 'UPDATE'); const t = E('div', 't', ts);
@@ -590,19 +751,27 @@
         `</div><div class="ft mono">${s.teams.map((T, t) => `<span>${T.tag} BANK <b>${money(s.players[t].reduce((a, p) => a + (+p.credits || 0), 0))}</b></span>`).join('')}<span>SCORE ${s.teams[0].score} – ${s.teams[1].score}</span></div>`; } }; };
 
   M.duel = root => { const m = E('div', 'mod', root), du = E('div', 'du fx-rise', m);
-    return { update(s) { toggle(m, s.show.duel); const d = s.duel, a = P(s, d.a), b = P(s, d.b); if (!a || !b) return;
+    return { update(s) { toggle(m, s.show.duel && !s.show.scoreboard && !s.show.teamCompare); const d = s.duel, a = P(s, d.a), b = P(s, d.b); if (!a || !b) return;
       const side = (p, t, c) => { const A = agent(p.agent); return `<div class="p ${c}" style="--c:${s.teams[t].color}"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="n">${p.name}</div><div class="t mono">${s.teams[t].tag}   /   ${A ? A.name : ''}</div></div>`; };
-      const rows = [['KILLS', 'k', 1], ['DEATHS', 'd', -1], ['ACS', 'acs', 1], ['ADR', 'adr', 1], ['HEADSHOT %', 'hs', 1], ['FIRST KILLS', 'fk', 1]];
-      du.innerHTML = side(a, d.a[0], 'a') + side(b, d.b[0], 'b') + `<div class="hd mono">${d.title || 'HEAD TO HEAD'}</div><div class="rows">` + rows.map(([l, k, dir]) => { const x = +a[k], y = +b[k];
-        return `<div class="row"><div class="v ${(x - y) * dir > 0 ? 'win' : ''}">${x}</div><div class="l mono">${l}</div><div class="v ${(y - x) * dir > 0 ? 'win' : ''}">${y}</div></div>`; }).join('') + '</div>'; } }; };
+      const ratio = p => (+p.k || 0) / Math.max(1, +p.d || 0);
+      const rows = [['KILLS', a.k, b.k, 1], ['DEATHS', a.d, b.d, -1], ['ASSISTS', a.a, b.a, 1], ['K/D', ratio(a), ratio(b), 1],
+        ['FIRST KILLS', a.fk, b.fk, 1], ['CREDITS', a.credits, b.credits, 1], ['ULT', a.ult, b.ult, 1], ['ACS', a.acs > 0 ? a.acs : null, b.acs > 0 ? b.acs : null, 1]];
+      const display = (label, value, p) => value == null ? '—' : label === 'K/D' ? value.toFixed(2) : label === 'CREDITS' ? money(value) : label === 'ULT' ? `${value || 0}/${p.ultMax || 7}` : value;
+      du.innerHTML = side(a, d.a[0], 'a') + side(b, d.b[0], 'b') + `<div class="hd mono">${d.title || 'HEAD TO HEAD'}</div><div class="rows">` + rows.map(([label, x, y, dir]) =>
+        `<div class="row"><div class="v ${x != null && y != null && (x - y) * dir > 0 ? 'win' : ''}">${display(label, x, a)}</div><div class="l mono">${label}</div><div class="v ${x != null && y != null && (y - x) * dir > 0 ? 'win' : ''}">${display(label, y, b)}</div></div>`).join('') + '</div>'; } }; };
 
   M.teamcompare = root => { const m = E('div', 'mod', root), tc = E('div', 'tc fx-rise', m);
-    return { update(s) { toggle(m, s.show.teamCompare); const [A, B] = s.teams, S = s.teamStats || [{}, {}];
-      const acs = t => Math.round(s.players[t].reduce((a, p) => a + (+p.acs || 0), 0) / 5), bank = t => s.players[t].reduce((a, p) => a + (+p.credits || 0), 0);
-      const rows = [['ROUNDS WON', A.score, B.score], ['FIRST KILLS', S[0].firstKills, S[1].firstKills], ['SPIKE PLANTS', S[0].plants, S[1].plants], ['DEFUSES', S[0].defuses, S[1].defuses], ['CLUTCHES', S[0].clutches, S[1].clutches], ['ECO WINS', S[0].ecoWins, S[1].ecoWins], ['AVERAGE ACS', acs(0), acs(1)]];
+    return { update(s) { toggle(m, s.show.teamCompare && !s.show.scoreboard); const [A, B] = s.teams, S = s.teamStats || [{}, {}];
+      const sum = (t, key) => s.players[t].reduce((total, p) => total + (+p[key] || 0), 0);
+      const acs = t => s.players[t].every(p => p.acs > 0) ? Math.round(sum(t, 'acs') / s.players[t].length) : null;
+      const defuses = t => Math.max(+S[t].defuses || 0, s.rounds.filter(r => r.w === t && r.how === 'defuse').length);
+      const rows = [['ROUNDS WON', A.score, B.score], ['TOTAL KILLS', sum(0, 'k'), sum(1, 'k')], ['TEAM BANK', sum(0, 'credits'), sum(1, 'credits')],
+        ['ULTIMATES READY', s.players[0].filter(p => +p.ult >= +p.ultMax).length, s.players[1].filter(p => +p.ult >= +p.ultMax).length],
+        ['FIRST KILLS', S[0].firstKills, S[1].firstKills], ['SPIKE PLANTS', S[0].plants, S[1].plants], ['DEFUSES', defuses(0), defuses(1)],
+        ['CLUTCHES', S[0].clutches, S[1].clutches], ['ECO WINS', S[0].ecoWins, S[1].ecoWins], ['AVERAGE ACS', acs(0), acs(1)]];
       tc.style.setProperty('--a', A.color); tc.style.setProperty('--b', B.color);
       tc.innerHTML = `<div class="hd"><div class="t" style="color:${A.color}">${A.tag}</div><div class="k mono">TEAM COMPARISON   /   MAP ${s.map.number}</div><div class="t" style="color:${B.color}">${B.tag}</div></div>` +
-        rows.map(([l, x, y]) => { const tot = (+x || 0) + (+y || 0) || 1; return `<div class="row"><div class="v">${x ?? '–'}</div><div class="bar a"><i style="width:${(+x || 0) / tot * 100}%"></i></div><div class="l mono">${l}</div><div class="bar b"><i style="width:${(+y || 0) / tot * 100}%"></i></div><div class="v">${y ?? '–'}</div></div>`; }).join(''); } }; };
+        rows.map(([l, x, y]) => { const tot = (+x || 0) + (+y || 0) || 1; return `<div class="row"><div class="v">${x == null ? '—' : l === 'TEAM BANK' ? money(x) : x}</div><div class="bar a"><i style="width:${(+x || 0) / tot * 100}%"></i></div><div class="l mono">${l}</div><div class="bar b"><i style="width:${(+y || 0) / tot * 100}%"></i></div><div class="v">${y == null ? '—' : l === 'TEAM BANK' ? money(y) : y}</div></div>`; }).join(''); } }; };
 
   M.clock = root => { const m = E('div', 'mod on', root), ck = E('div', 'ck', m), k = E('div', 'k mono', ck), v = E('div', 'v', ck);
     return { update(s) { txt(k, { starting: 'WE GO LIVE IN', brb: 'BACK IN', ending: 'NEXT SHOW' }[s.holding.mode] || 'BREAK'); }, tick(s) { const t = s.holding.target ? (s.holding.target - HUD.now()) / 1000 : (s.holding.minutes || 0) * 60; txt(v, fmt(t)); } }; };
@@ -674,7 +843,27 @@
     } };
   };
 
-  M.ingame = root => { const parts = ['minimap', 'eventbug', 'seriesmaps', 'scorebug', 'winprob', 'roundhistory', 'spiketimer', 'toast', 'killfeed', 'moments', 'poll', 'players', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird'].map(k => M[k](root)); return { update(s) { parts.forEach(p => p.update(s)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); } }; };
+  M.ingame = root => { const parts = ['minimap', 'eventbug', 'seriesmaps', 'scorebug', 'winprob', 'roundhistory', 'toast', 'killfeed', 'moments', 'poll', 'players', 'playercams', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird', 'stinger'].map(k => M[k](root)); return { update(s, opts) { parts.forEach(p => p.update(s, opts)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); }, frame(s) { parts.forEach(p => p.frame && p.frame(s)); } }; };
+
+  // Sample previews activate the requested source without publishing or consuming live state.
+  function previewState(list) {
+    const s = clone(HUD_DEFAULT);
+    if (Q.has('bannerTheme')) s.layout.bannerTheme = bannerTheme(Q.get('bannerTheme'));
+    const gates = {scorebug:'scorebug', players:'players', observed:'observed', minimap:'minimap', economy:'economy', scoreboard:'scoreboard', lowerthird:'lowerThird', replay:'replay', ticker:'ticker', roundhistory:'roundHistory', winprob:'winProb', spiketimer:'spikeTimer', moments:'moments', sponsor:'sponsor', eventbug:'eventBug', poll:'poll', duel:'duel', teamcompare:'teamCompare', roundrecap:'roundRecap', playercams:'playerCams'};
+    Object.assign(s.show, {economy:false, scoreboard:false, teamCompare:false, duel:false, roundRecap:false});
+    list.forEach(name => { if (gates[name]) s.show[gates[name]] = true; });
+    s.round.phase = 'live'; s.round.endsAt = previewNow + 84000;
+    if (list.includes('economy')) s.round.phase = 'buy';
+    if (list.includes('roundrecap')) s.round.phase = 'end';
+    if (list.includes('spiketimer')) { s.round.phase = 'planted'; s.round.endsAt = previewNow + 26000; }
+    if (list.includes('moments')) {
+      s.killfeed = [{killer:[1,0], victim:[0,3], weapon:'OPERATOR', hs:false, ts:previewNow - 200},
+        {killer:[1,0], victim:[0,4], weapon:'OPERATOR', hs:false, ts:previewNow - 100}];
+    }
+    if (list.includes('banner')) Object.assign(s.banner, {type:bannerTheme(s.layout.bannerTheme) !== 'broadcast' ? 'flawless' : 'ace', team:1, player:0, ts:previewNow - 100});
+    if (list.includes('toast')) s.toast.ts = previewNow - 100;
+    return s;
+  }
 
   // ───── demo simulator (?demo=1): loops a fast round so overlays can be tested without the control panel ─────
   function demo() {
@@ -705,9 +894,16 @@
     const root = document.getElementById('hud'); if (!root) { window.HUD_READY = true; return; } fit(root); addEventListener('resize', () => fit(root));
     if (Q.has('bg')) { const u = Q.get('bg'); document.body.style.background = `#1a1a1d url(${u && u !== '1' ? u : (mapA(HUD.state.map.name) || {}).splash}) center/cover`; }
     const list = (document.body.dataset.modules || '').split(',').map(x => x.trim()).filter(Boolean);
-    const mods = list.map(k => M[k] && M[k](root)).filter(Boolean); HUD.mods = mods;
-    HUD.subs.push(s => mods.forEach(m => m.update(s))); mods.forEach(m => m.update(HUD.state));
-    let lastT = 0; (function loop(t) { if (t - lastT > 90) { lastT = t; mods.forEach(m => m.tick && m.tick(HUD.state)); } requestAnimationFrame(loop); })(0);
+    const missing = list.filter(k => typeof M[k] !== 'function');
+    if (missing.length) throw new Error('Unknown HUD module: ' + missing.join(', '));
+    if (PREVIEW) {
+      HUD.state = previewState(list);
+      document.body.classList.add('hud-preview');
+      E('div', 'preview-label', document.body, 'PREVIEW · SAMPLE DATA');
+    }
+    const mods = list.map(k => M[k](root)); HUD.mods = mods;
+    HUD.subs.push((s, opts) => mods.forEach(m => m.update(s, opts))); mods.forEach(m => m.update(HUD.state, {snapshot:true}));
+    let lastT = 0; (function loop(t) { if (t - lastT > 90) { lastT = t; mods.forEach(m => m.tick && m.tick(HUD.state)); } mods.forEach(m => m.frame && m.frame(HUD.state)); requestAnimationFrame(loop); })(0);
     if (HUD.demo) demo();
     window.HUD_READY = true;
   }

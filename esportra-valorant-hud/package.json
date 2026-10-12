@@ -1,0 +1,12 @@
+{
+  "name": "esportra-valorant-hud",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Esportra broadcast HUD: overlays, control panel, real-time server and Valorant adapter",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node adapters/test-valorant.js"
+  },
+  "dependencies": { "ws": "^8.18.0" },
+  "engines": { "node": ">=18" }
+}
