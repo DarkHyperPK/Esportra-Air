@@ -50,7 +50,7 @@ function loadStateDefaults(root) {
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 // No code runs on require(). Call start() to bring the server up.
-async function start({ port, key, root, dataDir }) {
+async function start({ port, key, root, dataDir, host = '127.0.0.1' }) {
   const DATA = dataDir || path.join(root, 'server', 'data');
   const KEY = key;
 
@@ -59,15 +59,15 @@ async function start({ port, key, root, dataDir }) {
   loadStateDefaults(root);
   const DEFAULT = _DEFAULT, CLEAN = _CLEAN;
 
-  const canWrite = k => k === KEY;
+  const canWrite = k => typeof KEY === 'string' && KEY.length > 0 && k === KEY;
 
   const rooms = new Map();
   function room(code) {
     code = String(code || 'MAIN').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32) || 'MAIN';
     if (!rooms.has(code)) {
       const file = path.join(DATA, code + '.json');
-      let state = clone(DEFAULT);
-      try { state = merge(clone(DEFAULT), JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) {}
+      let state = clone(CLEAN);
+      try { state = merge(clone(CLEAN), JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) {}
       rooms.set(code, { code, v: 0, state, clients: new Set(), file, log: path.join(DATA, code + '.ndjson'), adapter: createValorantAdapter(), saveT: null });
     }
     return rooms.get(code);
@@ -93,11 +93,35 @@ async function start({ port, key, root, dataDir }) {
       try {
         if (req.method === 'GET' && parts.length === 2) return send(res, 200, { match: r.code, v: r.v, state: r.state });
         if (!canWrite(k)) return send(res, 401, { error: 'Missing or wrong X-Esportra-Key header.' });
+        if (req.method === 'POST' && parts[2] === 'config') {
+          const patch = await body(req);
+          if (!isObj(patch) || !isObj(patch.airContext)) return send(res, 400, { error: 'Show context required.' });
+          const changed = r.state.airContext && JSON.stringify(r.state.airContext) !== JSON.stringify(patch.airContext);
+          let next = clone(changed ? CLEAN : r.state);
+          next.airContext = patch.airContext;
+          if (isObj(patch.event)) next.event = merge(next.event || {}, patch.event);
+          if (Array.isArray(patch.teams) && patch.teams.length === 2) next.teams = patch.teams.map((team, index) => {
+            const identity = Object.fromEntries(['name', 'tag', 'color', 'logo'].filter(field => typeof team[field] === 'string').map(field => [field, team[field]]));
+            return { ...next.teams[index], ...identity, ...(!r.state.airContext || changed ? { series: team.series || 0 } : {}) };
+          });
+          for (const field of ['casters', 'sponsors', 'veto']) if (Array.isArray(patch[field])) next[field] = patch[field];
+          return send(res, 200, { v: apply(r, next, 'air:config') || r.v });
+        }
+        if (req.method === 'POST' && parts[2] === 'map-result') {
+          const input = await body(req), { mapIndex, teamAScore, teamBScore } = input;
+          if (!Number.isInteger(mapIndex) || mapIndex < 1 || mapIndex > 9 || ![teamAScore, teamBScore].every(score => Number.isInteger(score) && score >= 0 && score <= 2147483647)) return send(res, 400, { error: 'Invalid map result.' });
+          const next = clone(r.state), series = Array.isArray(next.series) ? next.series : [];
+          while (series.length < mapIndex) series.push({});
+          series[mapIndex - 1] = { ...series[mapIndex - 1], score: [teamAScore, teamBScore], winner: teamAScore > teamBScore ? 0 : teamAScore < teamBScore ? 1 : -1 };
+          next.series = series;
+          return send(res, 200, { v: apply(r, next, 'air:map-result') || r.v, patch: { series } });
+        }
         if (req.method === 'PUT' && parts.length === 2) { const base = u.query.preset === 'clean' ? CLEAN : DEFAULT; return send(res, 200, { v: apply(r, merge(clone(base), await body(req)), 'api:put') || r.v }); }
         if (req.method === 'PATCH' && parts.length === 2) return send(res, 200, { v: apply(r, merge(clone(r.state), await body(req)), 'api:patch') || r.v });
         if (req.method === 'POST' && parts[2] === 'event') return send(res, 200, event(r, await body(req), 'api'));
         if (req.method === 'POST' && parts[2] === 'ingest' && parts[3] === 'valorant') {
           const b = await body(req), msgs = Array.isArray(b) ? b : [b]; let s = clone(r.state); const evs = [];
+          if (msgs.length) r.lastGepAt = Date.now();
           for (const m of msgs) { const out = r.adapter.ingest(s, m, Date.now()); s = out.state; evs.push(...out.events); }
           const v = apply(r, s, 'valorant-gep') || r.v; evs.forEach(e => event(r, e, 'valorant-gep'));
           return send(res, 200, { v, events: evs.length });
@@ -107,8 +131,11 @@ async function start({ port, key, root, dataDir }) {
     }
     if (parts[0] === 'health') return send(res, 200, { ok: true, rooms: [...rooms.values()].map(r => ({ match: r.code, v: r.v, clients: r.clients.size })) });
     // static — serve from root, block server/ subdirectory
-    let f = path.normalize(path.join(root, decodeURIComponent(u.pathname === '/' ? '/control.html' : u.pathname)));
-    if (!f.startsWith(root) || f.startsWith(path.join(root, 'server'))) { res.writeHead(403); return res.end(); }
+    let f;
+    try { f = path.resolve(root, '.' + decodeURIComponent(u.pathname === '/' ? '/control.html' : u.pathname)); }
+    catch { res.writeHead(400); return res.end('Invalid path'); }
+    const relative = path.relative(root, f);
+    if (relative.startsWith('..') || path.isAbsolute(relative) || relative.split(path.sep)[0] === 'server') { res.writeHead(403); return res.end(); }
     fs.readFile(f, (err, buf) => { if (err) { res.writeHead(404); return res.end('Not found'); }
       res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-cache' }); res.end(buf); });
   });
@@ -125,7 +152,7 @@ async function start({ port, key, root, dataDir }) {
       if (m.type === 'set') apply(r, merge(clone(DEFAULT), m.state), role);
       else if (m.type === 'patch') apply(r, merge(clone(r.state), m.patch), role);
       else if (m.type === 'event') event(r, m.event, role);
-      else if (m.type === 'valorant') { const out = r.adapter.ingest(clone(r.state), m.message, Date.now()); apply(r, out.state, 'valorant-gep'); out.events.forEach(e => event(r, e, 'valorant-gep')); }
+      else if (m.type === 'valorant') { r.lastGepAt = Date.now(); const out = r.adapter.ingest(clone(r.state), m.message, Date.now()); apply(r, out.state, 'valorant-gep'); out.events.forEach(e => event(r, e, 'valorant-gep')); }
     });
     ws.on('close', () => r.clients.delete(ws));
   });
@@ -134,7 +161,7 @@ async function start({ port, key, root, dataDir }) {
   // ───── Start listening — bind to loopback only (security C-1) ─────
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, host, () => {
       console.log(`Esportra HUD server on http://localhost:${port}`);
       console.log(`  Control panel  http://localhost:${port}/control.html?match=MAIN`);
       console.log(`  In-game HUD    http://localhost:${port}/overlays/ingame.html?match=MAIN`);
@@ -144,8 +171,15 @@ async function start({ port, key, root, dataDir }) {
   });
 
   const result = {
+    port: server.address().port,
+    getLastGepAt(code) { return rooms.get(String(code || 'MAIN').toUpperCase())?.lastGepAt || null; },
     stop() {
       clearInterval(pingInterval);
+      for (const r of rooms.values()) {
+        clearTimeout(r.saveT);
+        try { fs.writeFileSync(r.file, JSON.stringify(r.state)); } catch (error) { console.warn('HUD state could not be saved:', error.code); }
+      }
+      for (const client of wss.clients) client.terminate();
       server.close();
       wss.close();
     },

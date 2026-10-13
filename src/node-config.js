@@ -7,6 +7,8 @@ const path = require('path');
 function makeDefaults() {
   return {
     mode: 'production',      // 'production' | 'capture-only'
+    modeConfigured: false,
+    outputs: [],
     lanRelayPort: 5301,
     lanRelayTargets: [],     // string[] — IPs of observer PCs in production mode
     nodeId: null,            // UUID, set after first successful pairing

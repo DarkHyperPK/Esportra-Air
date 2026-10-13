@@ -1,0 +1,12 @@
+{
+  "package": "passed",
+  "nativeRuntimeDependencies": "passed",
+  "captureSdkIncluded": true,
+  "protectedEntries": 0,
+  "installer": "Esportra Air Setup 0.1.0.exe",
+  "bytes": 189054791,
+  "sha256": "36081ce6dbff7f1c18f5aca0fc0523758d4bb407504179c4f3fbca2e7db46274",
+  "signed": false,
+  "installed": false,
+  "liveGameTested": false
+}

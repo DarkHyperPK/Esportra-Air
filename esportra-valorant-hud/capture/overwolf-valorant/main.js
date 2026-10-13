@@ -12,6 +12,7 @@ const WebSocket = require('ws');
 const CONFIG = {
   server: process.env.ESPORTRA_SERVER || 'ws://localhost:5300',   // your Esportra server
   match: process.env.ESPORTRA_MATCH || 'MAIN',                     // the match room code shown in the control panel
+  showId: process.env.ESPORTRA_SHOW_ID || null,
   key: process.env.ESPORTRA_KEY || '',                             // only if the server sets ESPORTRA_KEY
   playerId: process.env.ESPORTRA_PLAYER_ID || '',                  // set on player PCs: the player's Riot PUUID
 };
@@ -29,7 +30,7 @@ function connect() {
 }
 function send(message) {
   if (CONFIG.playerId) message.playerId = CONFIG.playerId;      // lets the adapter attach health/abilities to the right player
-  const frame = JSON.stringify({ type: 'valorant', message });
+  const frame = JSON.stringify({ type: 'valorant', message, match: CONFIG.match, showId: CONFIG.showId });
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(frame); else queue.push(message);
 }
 
@@ -44,7 +45,7 @@ app.whenReady().then(() => {
 
     // ── diagnostics: check pending updates + supported games ──
     const pending = packages.hasPendingUpdates();
-    console.log('Pending GEP updates:', JSON.stringify(pending));
+    console.log('Pending GEP updates checked');
 
     gep.getSupportedGames()
       .then(games => {
@@ -55,20 +56,20 @@ app.whenReady().then(() => {
       .catch(err => console.error('getSupportedGames error:', err.message || err));
 
     gep.getInfo(VALORANT)
-      .then(info => console.log('getInfo(Valorant):', JSON.stringify(info)))
+      .then(info => console.log('Valorant game information received'))
       .catch(err => console.log('getInfo(Valorant) error (expected if not running):', err.message || err));
 
     gep.getFeatures(VALORANT)
-      .then(features => console.log('getFeatures(21640):', JSON.stringify(features)))
+      .then(features => console.log('Valorant features received'))
       .catch(err => console.log('getFeatures(21640) error:', err.message || err));
 
     gep.getInfo(22904)
-      .then(info => console.log('getInfo(22904):', JSON.stringify(info)))
+      .then(info => console.log('Alternate Valorant game information received'))
       .catch(err => console.log('getInfo(22904) error:', err.message || err));
 
     // ── package-level events ──
     packages.on('failed-to-initialize', (_e, pkgName) => console.error('Package failed to initialize:', pkgName));
-    packages.on('package-update-pending', (_e, info) => console.log('Package update pending:', JSON.stringify(info)));
+    packages.on('package-update-pending', (_e, info) => console.log('Package update pending'));
 
     let gameConnected = false;
 
@@ -97,13 +98,13 @@ app.whenReady().then(() => {
     gep.on('new-info-update', (_e, gameId, ...args) => {
       if (gameId !== VALORANT && gameId !== 22904) return;
       if (!gameConnected) { gameConnected = true; console.log('✓ Valorant detected — GEP connected'); }
-      console.log('[info]', JSON.stringify(args[0]));
+      console.log('[GEP] Information update received');
       args.forEach(a => send(a));
     });
     gep.on('new-game-event', (_e, gameId, ...args) => {
       if (gameId !== VALORANT && gameId !== 22904) return;
       if (!gameConnected) { gameConnected = true; console.log('✓ Valorant detected — GEP connected'); }
-      console.log('[event]', JSON.stringify(args[0]));
+      console.log('[GEP] Game event received');
       args.forEach(a => send(a.events ? a : { events: [a] }));
     });
     gep.on('error', (_e, gameId, err) => console.error('GEP error', gameId, err));

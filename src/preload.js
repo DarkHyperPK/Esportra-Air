@@ -36,11 +36,18 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     copyOutputUrl: (overlayName, matchCode) => ipcRenderer.invoke('COPY_OUTPUT_URL', { overlayName, matchCode }),
     // Persist a node mode change. Requires app restart — returns { ok, restartRequired }.
     setMode: (mode) => ipcRenderer.invoke('SET_MODE', { mode }),
+    restart: () => ipcRenderer.invoke('RESTART_AIR'),
+    addOutput: (input) => ipcRenderer.invoke('OUTPUT_ADD', input),
+    removeOutput: (id) => ipcRenderer.invoke('OUTPUT_REMOVE', { id }),
+    setRelayTargets: (targets, keys) => ipcRenderer.invoke('SET_RELAY_TARGETS', { targets, keys }),
+    copyRelayKey: () => ipcRenderer.invoke('COPY_RELAY_KEY'),
+    selectShowMatch: (matchCode) => ipcRenderer.invoke('SHOW_SELECT_MATCH', { matchCode }),
+    applyPendingShow: () => ipcRenderer.invoke('SHOW_APPLY_PENDING'),
     // Hub connection lifecycle events (main → renderer push)
-    onHubConnected: (cb) => ipcRenderer.on('hub-connected', (_e) => cb()),
-    onHubDisconnected: (cb) => ipcRenderer.on('hub-disconnected', (_e) => cb()),
+    onHubConnected: (cb) => { const handler = () => cb(); ipcRenderer.on('hub-connected', handler); return () => ipcRenderer.removeListener('hub-connected', handler); },
+    onHubDisconnected: (cb) => { const handler = () => cb(); ipcRenderer.on('hub-disconnected', handler); return () => ipcRenderer.removeListener('hub-disconnected', handler); },
     // ShowConfig pushed from BroadcastHub (safe to expose — no secrets in payload)
-    onShowConfig: (cb) => ipcRenderer.on('show-config', (_e, cfg) => cb(cfg)),
+    onShowConfig: (cb) => { const handler = (_e, cfg) => cb(cfg); ipcRenderer.on('show-config', handler); return () => ipcRenderer.removeListener('show-config', handler); },
   },
 
   // P1: Video switcher (OBS / vMix) control surface
@@ -90,6 +97,7 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     // Load a segment array and start the rundown.
     loadRundown: (segments) => ipcRenderer.invoke('RUNNER_LOAD_RUNDOWN', { segments }),
     start:       ()          => ipcRenderer.invoke('RUNNER_START'),
+    stop:        ()          => ipcRenderer.invoke('RUNNER_STOP'),
     // Operator commands. Returns { ok, error? }.
     hold:      (segmentId)              => ipcRenderer.invoke('RUNNER_HOLD',       { segmentId }),
     skip:      (segmentId)              => ipcRenderer.invoke('RUNNER_SKIP',       { segmentId }),

@@ -1,0 +1,120 @@
+.product-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.product-page-head h1 {
+  font:
+    700 26px Poppins,
+    Arial;
+  margin: 0 0 8px;
+}
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.product-panel {
+  border: 1px solid #3f3f46;
+  background: #111114;
+  padding: 22px;
+  margin-bottom: 18px;
+}
+.product-panel h2 {
+  font:
+    600 18px Poppins,
+    Arial;
+  margin: 0 0 14px;
+}
+.product-panel p {
+  color: #a1a1aa;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.product-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.product-input {
+  display: block;
+  background: #09090b;
+  color: #fafafa;
+  border: 1px solid #52525b;
+  min-height: 40px;
+  padding: 9px 12px;
+  width: 100%;
+  font:
+    13px Inter,
+    Arial;
+  margin: 8px 0 12px;
+}
+.product-input:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 2px;
+}
+.product-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.product-table {
+  margin-top: 24px;
+  width: 100%;
+  table-layout: fixed;
+}
+.product-table th,
+.product-table td {
+  text-align: left;
+  padding: 15px 12px;
+  border-bottom: 1px solid #303036;
+}
+.product-table small {
+  display: block;
+  color: #a1a1aa;
+  font-size: 11px;
+  margin-top: 6px;
+}
+.product-url {
+  font:
+    11px "JetBrains Mono",
+    monospace;
+  overflow-wrap: anywhere;
+}
+.product-data-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid #303036;
+}
+.product-data-row small {
+  color: #a1a1aa;
+}
+.product-table .product-actions {
+  margin: 0;
+  gap: 6px;
+}
+.product-table th:nth-child(2) {
+  width: 40%;
+}
+.product-table th:last-child {
+  width: 260px;
+}
+@media (max-width: 800px) {
+  .product-grid,
+  .product-form {
+    grid-template-columns: 1fr;
+  }
+  .product-page-head {
+    align-items: start;
+    gap: 14px;
+  }
+  .product-input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}

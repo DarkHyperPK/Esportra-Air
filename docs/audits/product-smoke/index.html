@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Esportra Air — implemented product screens</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#09090b;color:#eee;font:15px/1.6 system-ui,sans-serif}
+    header,main{padding:28px clamp(16px,4vw,64px)}header{border-bottom:1px solid #29292d}
+    h1{font-size:clamp(26px,4vw,44px);line-height:1.2;margin:8px 0 18px}h2{margin:0 0 18px}p{color:#a1a1aa;max-width:850px}
+    .eyebrow{letter-spacing:.18em;font-size:12px;color:#fb7185}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px;margin-bottom:48px}
+    figure{margin:0;background:#121216;border:1px solid #29292d;overflow:hidden}figure a{display:block;aspect-ratio:16/10;background:#060608}
+    img{width:100%;height:100%;object-fit:contain}figcaption{padding:16px;color:#a1a1aa;font-size:13px}strong{display:block;color:#eee;font-size:16px;margin-bottom:5px}
+    a{color:#fb7185}.phone a{aspect-ratio:9/16}.phone{max-width:460px}footer{padding:20px 0;color:#71717a;border-top:1px solid #29292d}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">ESPORTRA AIR · 14 OCTOBER 2026</div>
+    <h1>Implemented product screens.</h1>
+    <p>Actual application components captured during local browser and native Electron checks. Synthetic platform, database and OBS fixtures. These screenshots demonstrate working controls and layout; they do not certify a live broadcast.</p>
+    <p>Click any image for its full size. <a href="../../PRODUCT.md">Operator guide and verification limits</a>.</p>
+  </header>
+  <main>
+    <h2>Desktop production</h2>
+    <div class="grid">
+      <figure><a href="desktop-readiness.png"><img src="desktop-readiness.png" alt="Desktop readiness with loaded show, rundown and observer setup"></a><figcaption><strong>Readiness</strong>Actual loaded show and match, local checks, rundown start and observer setup.</figcaption></figure>
+      <figure><a href="desktop-outputs.png"><img src="desktop-outputs.png" alt="Desktop saved overlay outputs"></a><figcaption><strong>Browser outputs</strong>Create a saved output from the existing HUD catalogue and configured match code.</figcaption></figure>
+      <figure><a href="desktop-producer.png"><img src="desktop-producer.png" alt="Producer controls with OBS tally and preview/program test frames"></a><figcaption><strong>Producer</strong>OBS connection, scene preparation, tally, manual take and event log. White frames are the synthetic OBS screenshot fixture.</figcaption></figure>
+    </div>
+    <h2>Tournament operations to Air</h2>
+    <div class="grid">
+      <figure><a href="web-tournament-broadcast.png"><img src="web-tournament-broadcast.png" alt="Tournament dashboard Broadcast navigation and tournament-scoped show creation"></a><figcaption><strong>Tournament Broadcast panel</strong>Existing dashboard navigation leads to tournament-scoped creation and shows. Screenshot uses the real nav/panel with synthetic owner context.</figcaption></figure>
+      <figure><a href="web-tournament-setup.png"><img src="web-tournament-setup.png" alt="Tournament-linked guided show setup with return link"></a><figcaption><strong>Tournament-linked preparation</strong>Server-bound tournament and organization; return to the tournament dashboard.</figcaption></figure>
+      <figure><a href="web-air-configuration.png"><img src="web-air-configuration.png" alt="Current server configuration preview with match teams and veto"></a><figcaption><strong>Configuration preview</strong>Review tournament identity, teams, best-of and veto before sending the plan to Air.</figcaption></figure>
+    </div>
+    <h2>Web planning</h2>
+    <div class="grid">
+      <figure><a href="web-home.png"><img src="web-home.png" alt="Web broadcast home and organization counts"></a><figcaption><strong>Workspace home</strong>Organization shows, recent node heartbeat and pairing entry.</figcaption></figure>
+      <figure><a href="web-pairing.png"><img src="web-pairing.png" alt="Pairing dialog with generated temporary fixture code and expiry"></a><figcaption><strong>Pair desktop node</strong>API-backed generation and server expiry countdown. Displayed code is a synthetic test value.</figcaption></figure>
+      <figure><a href="web-setup-matches.png"><img src="web-setup-matches.png" alt="Nine-step preparation with match slot codes"></a><figcaption><strong>Match planning</strong>Nine-step guided preparation and actual code controls.</figcaption></figure>
+      <figure><a href="web-setup-talent.png"><img src="web-setup-talent.png" alt="On-air talent form in show preparation"></a><figcaption><strong>On-air talent</strong>Optional caster, analyst and host planning.</figcaption></figure>
+      <figure><a href="web-crew-workspace.png"><img src="web-crew-workspace.png" alt="Observer crew workspace with job brief, match code and rundown"></a><figcaption><strong>Crew workspace</strong>Assigned role brief, match codes and planned rundown with authenticated member access.</figcaption></figure>
+    </div>
+    <h2>Web operations and phone planning</h2>
+    <div class="grid">
+      <figure><a href="web-shows.png"><img src="web-shows.png" alt="Web show list with duplicate and delete controls"></a><figcaption><strong>Show lifecycle</strong>Duplicate planning into a fresh draft. Confirm deletion of an unused show; broadcast history stays protected.</figcaption></figure>
+      <figure><a href="web-schedule.png"><img src="web-schedule.png" alt="Show settings with planned start in the operator timezone"></a><figcaption><strong>Planned start</strong>Local timezone editing, UTC storage and explicit schedule clearing.</figcaption></figure>
+      <figure><a href="web-activity.png"><img src="web-activity.png" alt="Acknowledged platform activity records"></a><figcaption><strong>Recorded activity</strong>Paginated accepted records; current OBS state remains desktop-local.</figcaption></figure>
+      <figure><a href="web-node-monitor.png"><img src="web-node-monitor.png" alt="Heartbeat node monitor with revoke action"></a><figcaption><strong>Node access</strong>Actual backend heartbeat data and organization access management.</figcaption></figure>
+      <figure><a href="web-node-revoke.png"><img src="web-node-revoke.png" alt="Node revocation confirmation"></a><figcaption><strong>Revoke confirmation</strong>Explicit action with local capture and OBS responsibility stated.</figcaption></figure>
+    </div>
+    <div class="grid">
+      <figure class="phone"><a href="web-setup-phone.png"><img src="web-setup-phone.png" alt="Phone nine-step preparation and node pairing controls"></a><figcaption><strong>Responsive setup</strong>Compact step selector and pairing controls.</figcaption></figure>
+      <figure class="phone"><a href="web-rundown-phone.png"><img src="web-rundown-phone.png" alt="Phone rundown preparation"></a><figcaption><strong>Rundown preparation</strong>Persisted segment planning and full editor entry.</figcaption></figure>
+      <figure class="phone"><a href="web-home-phone.png"><img src="web-home-phone.png" alt="Phone broadcast home"></a><figcaption><strong>Workspace on phone</strong>Readable show and node information without horizontal overflow.</figcaption></figure>
+    </div>
+    <footer>Local verification only. Independent runtime QA, live game/service rehearsal, acceptance, signing and deployment remain pending.</footer>
+  </main>
+</body>
+</html>

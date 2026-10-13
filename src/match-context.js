@@ -22,7 +22,7 @@
  * @param {object} showConfig - ShowConfig shape (P0 architecture §4)
  * @returns {object} RFC 7386 merge patch for PATCH /api/{matchCode}
  */
-function buildShowPatch(showConfig) {
+function buildShowPatch(showConfig, currentState = {}) {
   const teams = Array.isArray(showConfig.teams) ? showConfig.teams : [];
   const veto = Array.isArray(showConfig.veto) ? showConfig.veto : [];
   const bracketPosition = showConfig.bracketPosition || null;
@@ -33,23 +33,27 @@ function buildShowPatch(showConfig) {
     ? teams[1].seriesScore : 0;
   const mapsPlayed = team0Score + team1Score;
 
-  return {
+  const patch = {
     event: {
-      name: showConfig.eventLabel || '',
-      stage: bracketPosition ? (bracketPosition.roundLabel || '') : '',
+      name: showConfig.eventLabel || showConfig.title || currentState.event?.name || '',
+      stage: bracketPosition ? (bracketPosition.roundLabel || '') : (currentState.event?.stage || ''),
       bestOf: typeof showConfig.seriesTotal === 'number' ? showConfig.seriesTotal : 1,
     },
-    teams: teams.map(t => ({
+    ...(teams.length === 2 ? { teams: teams.map((t, index) => ({
+      ...(currentState.teams?.[index] || {}),
       name: t.name || '',
       tag: t.tag || t.abbreviation || '',
       ...(t.color ? { color: t.color } : {}),
-      ...(t.logoUrl ? { logo: t.logoUrl } : {}),
-      series: typeof t.seriesScore === 'number' ? t.seriesScore : 0,
-    })),
-    veto,
-    // Populate series map list only when at least one map has been played.
-    series: mapsPlayed > 0 ? _picksToSeriesMaps(veto) : null,
+      logo: t.logoUrl || '',
+      series: currentState.teams?.[index]?.series ?? (typeof t.seriesScore === 'number' ? t.seriesScore : 0),
+    })) } : {}),
+    ...(Array.isArray(showConfig.veto) ? { veto } : {}),
+    ...(Array.isArray(showConfig.mapPool) ? { mapPool: showConfig.mapPool } : {}),
   };
+  if (mapsPlayed > 0 && !Array.isArray(currentState.series) && veto.length) patch.series = _picksToSeriesMaps(veto);
+  if (Array.isArray(showConfig.casters)) patch.casters = showConfig.casters.map(person => ({ name: person.name || '', handle: person.handle || '' }));
+  if (Array.isArray(showConfig.sponsors)) patch.sponsors = showConfig.sponsors.map(sponsor => ({ name: sponsor.name || '', logo: sponsor.logoUrl || '' }));
+  return patch;
 }
 
 /**
@@ -63,12 +67,12 @@ function buildShowPatch(showConfig) {
  * @param {number} teamBScore  - Rounds/points won by team B on this map
  * @returns {object} RFC 7386 merge patch for PATCH /api/{matchCode}
  */
-function buildMapResultPatch(showConfig, mapIndex, teamAScore, teamBScore) {
+function buildMapResultPatch(showConfig, mapIndex, teamAScore, teamBScore, currentState = {}) {
   const teams = Array.isArray(showConfig.teams) ? showConfig.teams : [];
   const veto = Array.isArray(showConfig.veto) ? showConfig.veto : [];
 
   // Start from the veto-derived baseline (map names only).
-  const seriesMaps = _picksToSeriesMaps(veto);
+  const seriesMaps = Array.isArray(currentState.series) ? currentState.series.map(map => ({ ...map })) : _picksToSeriesMaps(veto);
 
   // Ensure the array is long enough to hold this map index (1-based).
   while (seriesMaps.length < mapIndex) {
@@ -77,6 +81,7 @@ function buildMapResultPatch(showConfig, mapIndex, teamAScore, teamBScore) {
 
   const slotIndex = mapIndex - 1;
   seriesMaps[slotIndex] = {
+    ...seriesMaps[slotIndex],
     map: seriesMaps[slotIndex].map || '',
     score: [teamAScore, teamBScore],
     winner: teamAScore > teamBScore ? 0 : teamBScore > teamAScore ? 1 : -1,
@@ -84,9 +89,6 @@ function buildMapResultPatch(showConfig, mapIndex, teamAScore, teamBScore) {
 
   return {
     // Carry forward current series scores (team wins in the series).
-    teams: teams.map(t => ({
-      series: typeof t.seriesScore === 'number' ? t.seriesScore : 0,
-    })),
     series: seriesMaps,
   };
 }

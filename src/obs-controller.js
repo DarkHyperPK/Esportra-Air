@@ -197,6 +197,8 @@ class OBSController extends EventEmitter {
       connected:   this._state === STATES.READY || this._state === STATES.STUDIO_MODE,
       studioMode:  this._state === STATES.STUDIO_MODE,
       tally:       { ...this._tally },
+      host:        this._connArgs?.host || null,
+      port:        this._connArgs?.port || null,
     };
   }
 

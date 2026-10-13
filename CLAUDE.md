@@ -2,10 +2,13 @@
 
 ## What This Project Is
 
-Esportra-Air is Esportra's broadcast production system for Valorant tournaments. It has two layers:
+Esportra-Air is Esportra's broadcast production system for Valorant tournaments. The current checkout has three parts:
 
-1. **Working HUD** (`esportra-valorant-hud/`) — 45 web overlays, a Node.js server, a Valorant GEP data adapter, and a full operator control panel. Production-ready. No build step, no framework.
-2. **Design Spec** (`index.html` + `screens/`) — 19 annotated mockups for the next phase: a web dashboard, a desktop Electron node app with autopilot, and a phone remote. Not yet coded.
+1. **HUD** (`esportra-valorant-hud/`) — 45 web overlays, a Node.js server, a Valorant GEP adapter and an operator control panel. Plain HTML/JS/CSS; no HUD build step. Production readiness requires current environment evidence.
+2. **Desktop runtime** (`src/`) — standard Electron + React, currently JavaScript/JSX. Includes node pairing/keychain, BroadcastHub, local OBS, rundown/rules, durable queue, Fix Data and a separate ow-electron capture child/LAN relay. Run `npm run build:renderer` and `npm test` for local verification. Web operations live in the main Esportra frontend.
+3. **Static designs** (`index.html`, `screens/`, `design/`) — original references and later static packs. Latest: `design/PROJ-061-control-room-v3/`, 66 frames. Source-backed/proposed/target labels distinguish existing primitives from missing contracts. Preview artwork is not a second HUD implementation.
+
+**Source freshness (13 October 2026):** older build-scope tables below describe the original plan, not the current implementation. Check current modules and shared Obsidian handoffs before treating a feature as absent or accepted. Local tests do not certify OBS/GEP/live backend operation, CEO acceptance or deployment. The focused reliability audit and remaining gaps are recorded in `docs/audits/2026-10-13-core-reliability.md`.
 
 ## Read All Memory First
 

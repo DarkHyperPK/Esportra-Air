@@ -1,0 +1,25 @@
+{
+  "browser": "passed",
+  "checks": [
+    "home data",
+    "pairing request",
+    "match codes",
+    "nine-step navigation",
+    "configuration send",
+    "crew workspace",
+    "desktop and phone layout",
+    "no page errors",
+    "activity pagination",
+    "node revocation confirmation",
+    "schedule timezone",
+    "duplicate draft",
+    "delete draft acknowledgment",
+    "server configuration preview",
+    "tournament dashboard nav/panel",
+    "tournament-bound show creation",
+    "multi-organization pairing",
+    "tournament show preparation route"
+  ],
+  "screenshots": 16,
+  "liveServices": false
+}

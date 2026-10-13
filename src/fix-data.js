@@ -8,8 +8,8 @@ const { buildMapResultPatch } = require('./match-context');
  *
  * 1. Derives a HUD merge patch via buildMapResultPatch.
  * 2. PATCHes the HUD server immediately (best-effort).
- * 3. Enqueues a BroadcastCorrection in the offline-queue for P3 drain to
- *    /api/broadcast/corrections — the backend endpoint does not exist yet.
+ * 3. Queues a correction tied to its original show for the existing typed drain.
+ *    Queue acceptance is separate from server delivery or an official result.
  *
  * @param {object} correction
  * @param {string} [correction.matchCode='MAIN']
@@ -25,6 +25,9 @@ const { buildMapResultPatch } = require('./match-context');
  * @returns {Promise<{ ok: boolean, patch: object|null, queued: boolean, error?: string }>}
  */
 async function fixData(correction, { showConfig, hudPort, hudKey, offlineQueue }) {
+  if (!correction || typeof correction !== 'object' || Array.isArray(correction)) {
+    return { ok: false, patch: null, queued: false, error: 'correction must be an object' };
+  }
   const {
     matchCode  = 'MAIN',
     mapIndex,
@@ -33,23 +36,31 @@ async function fixData(correction, { showConfig, hudPort, hudKey, offlineQueue }
     reason     = '',
   } = correction;
 
-  if (typeof mapIndex !== 'number' || !Number.isInteger(mapIndex) || mapIndex < 1) {
-    return { ok: false, patch: null, queued: false, error: 'mapIndex must be a positive integer' };
+  if (!Number.isSafeInteger(mapIndex) || mapIndex < 1 || mapIndex > 9) {
+    return { ok: false, patch: null, queued: false, error: 'mapIndex must be an integer from 1 to 9' };
   }
-  if (typeof teamAScore !== 'number' || typeof teamBScore !== 'number') {
-    return { ok: false, patch: null, queued: false, error: 'scores must be numbers' };
+  if (![teamAScore, teamBScore].every(score => Number.isSafeInteger(score) && score >= 0 && score <= 2147483647)) {
+    return { ok: false, patch: null, queued: false, error: 'scores must be non-negative integers' };
+  }
+  if (typeof matchCode !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(matchCode)) {
+    return { ok: false, patch: null, queued: false, error: 'invalid matchCode' };
+  }
+  if (typeof reason !== 'string' || reason.length > 500) {
+    return { ok: false, patch: null, queued: false, error: 'reason must be a string up to 500 characters' };
   }
 
-  const patch  = buildMapResultPatch(showConfig || {}, mapIndex, teamAScore, teamBScore);
+  let patch  = buildMapResultPatch(showConfig || {}, mapIndex, teamAScore, teamBScore);
   let   hudOk  = false;
 
   try {
-    const res = await fetch(`http://127.0.0.1:${hudPort}/api/${matchCode}`, {
-      method:  'PATCH',
+    const res = await fetch(`http://127.0.0.1:${hudPort}/api/${matchCode}/map-result`, {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': hudKey },
-      body:    JSON.stringify(patch),
+      body:    JSON.stringify({ mapIndex, teamAScore, teamBScore }),
+      timeout: 3000,
     });
     hudOk = res.ok;
+    if (hudOk && res.json) patch = (await res.json()).patch || patch;
     if (!hudOk) console.warn('[fix-data] HUD PATCH rejected, status:', res.status);
   } catch (err) {
     console.warn('[fix-data] HUD PATCH error:', err.message);
@@ -60,6 +71,7 @@ async function fixData(correction, { showConfig, hudPort, hudKey, offlineQueue }
     try {
       offlineQueue.enqueue({
         type:           'BroadcastCorrection',
+        showId:         showConfig?.showId || null,
         matchCode,
         mapIndex,
         teamAScore,

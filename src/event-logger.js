@@ -3,6 +3,7 @@ const EventEmitter = require('events');
 const { app } = require('electron');
 const fs   = require('fs');
 const path = require('path');
+const { REMOTE_EVENT_TYPES } = require('./broadcast-events');
 
 const MAX_MEMORY = 500;
 
@@ -25,9 +26,11 @@ class EventLogger extends EventEmitter {
     this._logger       = logger;
     this._filePath     = path.join(app.getPath('userData'), 'event-log.ndjson');
     this._memory       = [];
+    this._showId       = null;
   }
 
   setOfflineQueue(queue) { this._offlineQueue = queue; }
+  setShowId(showId) { this._showId = showId || null; }
 
   /**
    * Append one event entry to disk, memory ring-buffer, offline-queue (if set),
@@ -41,6 +44,7 @@ class EventLogger extends EventEmitter {
       ts:    Date.now(),
       type,
       actor,
+      showId: this._showId,
       ...(segmentId !== undefined ? { segmentId } : {}),
       ...(scene     !== undefined ? { scene }     : {}),
       ...(data      !== undefined ? { data }      : {}),
@@ -55,7 +59,7 @@ class EventLogger extends EventEmitter {
     this._memory.push(entry);
     if (this._memory.length > MAX_MEMORY) this._memory.shift();
 
-    if (this._offlineQueue) {
+    if (this._offlineQueue && REMOTE_EVENT_TYPES.has(type)) {
       try {
         this._offlineQueue.enqueue({ type: 'BroadcastEvent', event: entry });
       } catch (err) {

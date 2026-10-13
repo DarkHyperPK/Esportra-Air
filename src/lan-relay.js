@@ -11,6 +11,7 @@
 //   Receives gep_state packets, calls onGepState(payload) callback
 
 const { WebSocketServer, WebSocket } = require('ws');
+const crypto = require('crypto');
 
 const PING_INTERVAL_MS = 30_000;
 const RECONNECT_DELAY_MS = 5_000;
@@ -36,7 +37,7 @@ class LanRelay {
    * @param {Function} [opts.onGepState]           Production mode only
    */
   constructor(opts = {}) {
-    const { mode, port = 5301, targets = [], logger = console, onGepState } = opts;
+    const { mode, port = 5301, targets = [], logger = console, onGepState, sharedKey, targetKeys = {} } = opts;
 
     if (mode !== 'observer' && mode !== 'production') {
       throw new Error(`LanRelay: mode must be 'observer' or 'production', got '${mode}'`);
@@ -45,12 +46,15 @@ class LanRelay {
     this._mode = mode;
     this._port = port;
     this._targets = targets;
+    this._sharedKey = sharedKey || '';
+    this._targetKeys = targetKeys;
     this._logger = logger;
     this._onGepState = typeof onGepState === 'function' ? onGepState : () => {};
     this._stopped = false;
 
     // Observer-mode state
     this._wss = null;
+    this._listening = false;
     this._pingInterval = null;
     this._gepTimestamps = []; // epoch-ms timestamps in the sliding GEP window
 
@@ -72,6 +76,7 @@ class LanRelay {
   /** Gracefully close all connections and timers. */
   stop() {
     this._stopped = true;
+    this._listening = false;
     if (this._mode === 'observer') {
       this._stopObserver();
     } else {
@@ -86,7 +91,7 @@ class LanRelay {
   getStatus() {
     if (this._mode === 'observer') {
       return {
-        listening: this._wss !== null,
+        listening: this._listening,
         port: this._port,
         consumerCount: this._consumerCount(),
         gepMessagesPerSec: this._gepMessagesPerSec(),
@@ -102,19 +107,17 @@ class LanRelay {
   // ── Observer mode ─────────────────────────────────────────────────────────────
 
   _startObserver() {
-    // CIO: no auth in P0 — LAN operator environments only
-    this._logger.warn(
-      '[LanRelay] Observer mode: no auth in P0 — restrict to trusted LAN only',
-    );
-
-    const wss = new WebSocketServer({ host: '0.0.0.0', port: this._port });
+    const wss = new WebSocketServer({ host: '0.0.0.0', port: this._port, maxPayload: 512 * 1024,
+      verifyClient: ({ req }) => this._authorize(req) });
     this._wss = wss;
 
     wss.on('listening', () => {
+      this._listening = true;
       this._logger.info(`[LanRelay] Observer listening on 0.0.0.0:${this._port}`);
     });
 
     wss.on('error', (err) => {
+      this._listening = false;
       this._logger.error('[LanRelay] Server error:', err.message);
     });
 
@@ -142,6 +145,15 @@ class LanRelay {
     });
 
     this._pingInterval = setInterval(() => this._pingObserverClients(), PING_INTERVAL_MS);
+  }
+
+  _authorize(req) {
+    // Browser origins cannot masquerade as the loopback capture child.
+    if (req.headers.origin) return false;
+    if (isLoopback(req.socket.remoteAddress || '')) return true;
+    const provided = req.headers['x-esportra-relay-key'];
+    if (typeof provided !== 'string' || !/^[a-f0-9]{64}$/i.test(this._sharedKey) || !/^[a-f0-9]{64}$/i.test(provided)) return false;
+    return crypto.timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(this._sharedKey, 'hex'));
   }
 
   _pingObserverClients() {
@@ -198,6 +210,8 @@ class LanRelay {
     const envelope = JSON.stringify({
       type: 'gep_state',
       payload: parsed.message,
+      matchCode: typeof parsed.match === 'string' ? parsed.match.toUpperCase() : 'MAIN',
+      showId: typeof parsed.showId === 'string' ? parsed.showId : null,
       ts: Date.now(),
     });
 
@@ -276,7 +290,7 @@ class LanRelay {
 
     let ws;
     try {
-      ws = new WebSocket(url);
+      ws = new WebSocket(url, { headers: { 'X-Esportra-Relay-Key': this._targetKeys[entry.target] || '' }, maxPayload: 512 * 1024 });
     } catch (err) {
       this._logger.error(`[LanRelay] Failed to create WebSocket for ${url}:`, err.message);
       this._scheduleReconnect(entry);
@@ -362,7 +376,7 @@ class LanRelay {
 
     this._lastReceivedAt = Date.now();
     try {
-      this._onGepState(parsed.payload);
+      this._onGepState(parsed.payload, { matchCode: parsed.matchCode || 'MAIN', showId: parsed.showId || null });
     } catch (err) {
       this._logger.error('[LanRelay] onGepState callback threw:', err.message);
     }

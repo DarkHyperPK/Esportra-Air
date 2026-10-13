@@ -39,7 +39,7 @@ const TRIGGER_PAD = [
   { key: 'F5', label: 'Casters',    action: 'scene', scene: 'ESA_Casters' },
   { key: 'F6', label: 'Replay Buf', action: 'replay' },
   { key: 'F7', label: 'Hold',       action: 'hold' },
-  { key: 'F8', label: 'Go Live',    action: 'live' },
+  { key: 'F8', label: 'Take',       action: 'live' },
 ];
 
 export default function ProducerScreen({ status, onScreenChange }) {
@@ -53,7 +53,10 @@ export default function ProducerScreen({ status, onScreenChange }) {
   const [tally,        setTally]        = useState({ preview: null, program: null });
   const [lastAction,   setLastAction]   = useState(null);
   // P2 autopilot state
-  const [runnerState,  setRunnerState]  = useState(null);
+  const [runnerState,  setRunnerState]  = useState(status?.runner || null);
+  const [buildingScenes, setBuildingScenes] = useState(false);
+  const [sceneNotice, setSceneNotice] = useState('');
+  useEffect(() => setRunnerState(status?.runner || null), [status?.runner]);
   const [countdown,    setCountdown]    = useState(null); // MM:SS string
   const [eventLog,     setEventLog]     = useState([]);
   const countdownRef = useRef(null); // { end: performance.now() target, tick: interval }
@@ -101,6 +104,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
     try {
       const s = await obsApi.getStatus();
       setObsStatus(s);
+      if (s?.connected && s.host) { setHost(s.host); setPort(String(s.port)); }
       if (s?.tally) setTally(s.tally);
     } catch (_) {}
   }, []);
@@ -145,7 +149,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
   useEffect(() => {
     const handler = (e) => {
       const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable || document.querySelector('[role="dialog"]')) return;
       const binding = TRIGGER_PAD.find((b) => b.key === e.key);
       if (!binding) return;
       e.preventDefault();
@@ -228,6 +232,18 @@ export default function ProducerScreen({ status, onScreenChange }) {
           </div>
 
           {connError && <div className="producer-conn-error" role="alert">{connError}</div>}
+          {connected && <button className="air-ghost-btn" disabled={buildingScenes} onClick={async () => {
+            setBuildingScenes(true); setSceneNotice('');
+            try {
+              const names = { holding: 'holding', gameplay: 'ingame', fullscreen: 'sponsor', replay: 'replay', casters: 'casters' };
+              const urls = Object.fromEntries(Object.entries(names).map(([key, overlay]) => [key, `http://localhost:5300/overlays/${overlay}.html?match=${encodeURIComponent(status?.show?.matchCode || 'MAIN')}`]));
+              const result = await obsApi.buildScenes(urls);
+              if (!result.ok) throw new Error(result.error);
+              setSceneNotice('Scene setup complete. Existing scenes were preserved. Check sources in OBS before taking.');
+            } catch (error) { setSceneNotice(error.message); }
+            finally { setBuildingScenes(false); }
+          }}>{buildingScenes ? 'Preparing scenes…' : 'Prepare ESA scenes'}</button>}
+          {sceneNotice && <p className="air-empty-state" role="status">{sceneNotice}</p>}
 
           <div className="air-section-sep" />
 
@@ -265,7 +281,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
 
           {/* ── P2: Autopilot segment panel (left column) ──────────────── */}
           <div className="air-section-sep" />
-          <div className="air-section-label">Autopilot</div>
+          <div className="air-section-label">Rundown</div>
 
           {runnerState?.techPaused && (
             <div className="autopilot-tech-banner" role="alert">TECH PAUSE</div>
@@ -300,7 +316,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
             <button
               type="button"
               className="air-ghost-btn"
-              disabled={!runnerState?.activeSegment || runnerState?.techPaused}
+              disabled={!['armed', 'queued'].includes(runnerState?.activeSegment?.state) || runnerState?.techPaused}
               onClick={() => runnerApi?.hold(runnerState.activeSegment?.id)}
             >
               Hold
@@ -308,7 +324,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
             <button
               type="button"
               className="air-ghost-btn"
-              disabled={!runnerState?.activeSegment || runnerState?.techPaused}
+              disabled={!['armed', 'holding', 'on_air'].includes(runnerState?.activeSegment?.state) || runnerState?.techPaused}
               onClick={() => runnerApi?.skip(runnerState.activeSegment?.id)}
             >
               Skip
@@ -317,7 +333,7 @@ export default function ProducerScreen({ status, onScreenChange }) {
               type="button"
               className="air-primary-btn"
               style={{ flex: 1 }}
-              disabled={!runnerState?.activeSegment || runnerState?.techPaused}
+              disabled={!connected || !['armed', 'holding'].includes(runnerState?.activeSegment?.state) || runnerState?.techPaused}
               onClick={() => runnerApi?.take(runnerState.activeSegment?.id)}
             >
               Take

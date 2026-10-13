@@ -13,9 +13,13 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { app } = require('electron');
 
 // Paths are relative to this file (src/), resolving to the capture app root.
-const CAPTURE_APP = path.join(__dirname, '..', 'esportra-valorant-hud', 'capture', 'overwolf-valorant');
+const HUD_ROOT = app.isPackaged
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'esportra-valorant-hud')
+  : path.join(__dirname, '..', 'esportra-valorant-hud');
+const CAPTURE_APP = path.join(HUD_ROOT, 'capture', 'overwolf-valorant');
 const OW_ELECTRON_BIN = path.join(
   CAPTURE_APP,
   'node_modules',
@@ -60,7 +64,7 @@ function getStatus() {
  * @param {string} [opts.matchCode='MAIN']
  * @returns {Promise<{ ok: boolean, pid?: number, error?: string }>}
  */
-async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN', gepTargetUrl }) {
+async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN', gepTargetUrl, showId }) {
   if (captureProcess !== null && captureProcess.exitCode === null) {
     return { ok: false, error: 'Broadcast already active.' };
   }
@@ -68,7 +72,7 @@ async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN', gepTargetUrl 
   if (!fs.existsSync(OW_ELECTRON_BIN)) {
     return {
       ok: false,
-      error: 'GEP capture binary not found. Reinstall Esportra Broadcast.',
+      error: 'Observer runtime is missing. Install dependencies in esportra-valorant-hud/capture/overwolf-valorant, or reinstall the complete Esportra Air package.',
     };
   }
 
@@ -89,6 +93,7 @@ async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN', gepTargetUrl 
     ...inheritedEnv,
     ESPORTRA_SERVER: gepTargetUrl || `ws://127.0.0.1:${hudPort}`,
     ESPORTRA_MATCH: matchCode,
+    ESPORTRA_SHOW_ID: showId || '',
     ESPORTRA_KEY: hudKey,
     ESPORTRA_API_URL: '',
   };

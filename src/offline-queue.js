@@ -3,6 +3,7 @@ const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { EventEmitter } = require('events');
 
 /**
  * Disk-persisted NDJSON event queue with HMAC integrity.
@@ -18,7 +19,7 @@ const crypto = require('crypto');
  *   await queue.drain(async (payload) => { await hub.send(payload); });
  *   queue.clear();
  */
-class OfflineQueue {
+class OfflineQueue extends EventEmitter {
   /**
    * @param {object} opts
    * @param {string} opts.nodeToken - Secret token used to derive the HMAC key.
@@ -26,11 +27,13 @@ class OfflineQueue {
    * @param {{ info: fn, warn: fn, error: fn }} [opts.logger]
    */
   constructor({ nodeToken, logger = console }) {
+    super();
     this._nodeToken = nodeToken;
     this._logger = logger;
     this._filePath = path.join(app.getPath('userData'), 'offline-queue.ndjson');
     // Lazy — computed on first use so the constructor never touches crypto.
     this._hmacKey = null;
+    this._drainPromise = null;
   }
 
   /**
@@ -45,6 +48,8 @@ class OfflineQueue {
     const hmac = this._signEntry({ id, ts, payload });
     const entry = { id, ts, payload, hmac };
     fs.appendFileSync(this._filePath, JSON.stringify(entry) + '\n', 'utf8');
+    this.emit('enqueue');
+    return id;
   }
 
   /**
@@ -57,10 +62,23 @@ class OfflineQueue {
    *   subsequent events remain on disk for the next drain attempt.
    * - After processing, the file is rewritten to contain only undelivered lines.
    *
-   * @param {(payload: object) => Promise<void>} sendFn
-   *   Must throw on failure (e.g. hub disconnected).
+   * @param {(payload: object, metadata: {id: string, ts: number}) => Promise<void|boolean>} sendFn
+   *   Throw to stop on network failure. Return false to retain an unacknowledged
+   *   record without blocking later eligible records. Concurrent drains coalesce.
    */
-  async drain(sendFn) {
+  drain(sendFn) {
+    return this.drainBatches(records => sendFn(records[0].payload, { id: records[0].id, ts: records[0].ts }), { batchSize: 1 });
+  }
+
+  drainBatches(sendFn, { batchSize = 100, key = () => 'default' } = {}) {
+    if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100) throw new Error('Batch size must be 1–100.');
+    if (this._drainPromise) return this._drainPromise;
+    // Set the lock before a sender can synchronously enqueue another record.
+    this._drainPromise = Promise.resolve().then(() => this._drain(sendFn, batchSize, key)).finally(() => { this._drainPromise = null; });
+    return this._drainPromise;
+  }
+
+  async _drain(sendFn, batchSize, key) {
     let raw;
     try {
       raw = fs.readFileSync(this._filePath, 'utf8');
@@ -74,7 +92,13 @@ class OfflineQueue {
 
     const hmacKey = this._getHmacKey();
     const keepLines = [];
-    let stopped = false;
+    let batch = [], batchKey = null, stopped = false;
+    const flush = async () => {
+      if (!batch.length) return;
+      try { if (await sendFn(batch.map(item => item.entry)) === false) keepLines.push(...batch.map(item => item.line)); }
+      catch { stopped = true; keepLines.push(...batch.map(item => item.line)); }
+      batch = []; batchKey = null;
+    };
 
     for (const line of lines) {
       if (stopped) {
@@ -87,7 +111,7 @@ class OfflineQueue {
       try {
         entry = JSON.parse(line);
       } catch (_) {
-        this._logger.warn('[offline-queue] unparseable line, keeping for inspection:', line.slice(0, 80));
+        this._logger.warn('[offline-queue] unparseable record retained for inspection');
         keepLines.push(line);
         continue;
       }
@@ -101,20 +125,27 @@ class OfflineQueue {
         continue;
       }
 
-      // Send
-      try {
-        await sendFn(payload);
-        // Success: do NOT add to keepLines — this line is delivered.
-      } catch (err) {
-        // Stop drain; this line and all subsequent remain on disk.
-        stopped = true;
-        keepLines.push(line);
-      }
+      const group = key(payload);
+      if (batch.length && (batchKey !== group || batch.length >= batchSize)) await flush();
+      if (stopped) { keepLines.push(line); continue; }
+      batchKey = group; batch.push({ line, entry: { id, ts, payload } });
+      if (batch.length >= batchSize) await flush();
     }
+    await flush();
 
-    // Rewrite file with only undelivered + integrity-failed lines.
-    const content = keepLines.length > 0 ? (keepLines.join('\n') + '\n') : '';
-    fs.writeFileSync(this._filePath, content, 'utf8');
+    if (keepLines.length === lines.length) return;
+    // enqueue() may have appended while sendFn awaited the network. Preserve
+    // that suffix; refuse to overwrite a file another writer has replaced.
+    const current = fs.readFileSync(this._filePath, 'utf8');
+    if (!current.startsWith(raw)) throw new Error('Offline queue changed during drain; retaining records');
+    const content = (keepLines.length ? keepLines.join('\n') + '\n' : '') + current.slice(raw.length);
+    const temporary = this._filePath + '.' + crypto.randomUUID() + '.tmp';
+    try {
+      fs.writeFileSync(temporary, content, { encoding: 'utf8', mode: 0o600 });
+      fs.renameSync(temporary, this._filePath);
+    } finally {
+      if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+    }
   }
 
   /**
@@ -122,11 +153,17 @@ class OfflineQueue {
    * of all events (e.g. after the server returns an ack for the full batch).
    */
   clear() {
+    if (this._drainPromise) throw new Error('Cannot clear the offline queue during delivery');
     try {
       fs.writeFileSync(this._filePath, '', 'utf8');
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
+  }
+
+  getPendingCount() {
+    try { return fs.readFileSync(this._filePath, 'utf8').split('\n').filter(line => line.trim()).length; }
+    catch (error) { if (error.code === 'ENOENT') return 0; throw error; }
   }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
@@ -170,15 +207,7 @@ class OfflineQueue {
   }
 
   _generateId() {
-    // nodePrefix: first 8 hex chars of sha256(nodeToken) — ensures IDs are
-    // globally unique per node even under clock collision between nodes.
-    const nodePrefix = crypto
-      .createHash('sha256')
-      .update(this._nodeToken)
-      .digest('hex')
-      .slice(0, 8);
-    const randomHex6 = Math.random().toString(36).slice(2, 8);
-    return `${nodePrefix}-${Date.now()}-${randomHex6}`;
+    return crypto.randomUUID();
   }
 }
 

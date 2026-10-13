@@ -17,6 +17,13 @@ const { ShowRunner } = require('./show-runner');
 const { RulesEngine } = require('./rules-engine');
 const EventLogger    = require('./event-logger');
 const { fixData }    = require('./fix-data');
+const OutputRegistry = require('./output-registry');
+const { applyRundown } = require('./rundown-config');
+const { normalizeRundown } = require('./rundown-config');
+const { selectShowMatch, isProductionActive } = require('./show-selection');
+const { acceptsGep } = require('./gep-route');
+let outputRegistry = null;
+let configurationState = { applied: false, reason: 'No show configuration received.' };
 
 const { version: APP_VERSION } = require('../package.json');
 
@@ -50,6 +57,14 @@ const IPC_COMMANDS = Object.freeze({
   // Full status snapshot for the console UI status bar.
   // Returns: { mode, nodeId, paired, hubConnected, hudOnline, gepActive, lanRelay }
   GET_STATUS:       'GET_STATUS',
+  RESTART_AIR:      'RESTART_AIR',
+  OUTPUT_ADD:       'OUTPUT_ADD',
+  OUTPUT_REMOVE:    'OUTPUT_REMOVE',
+  SET_RELAY_TARGETS:'SET_RELAY_TARGETS',
+  COPY_RELAY_KEY:   'COPY_RELAY_KEY',
+  SHOW_APPLY_PENDING:'SHOW_APPLY_PENDING',
+  SHOW_SELECT_MATCH:'SHOW_SELECT_MATCH',
+  RUNNER_STOP:      'RUNNER_STOP',
   // Returns the browser-source URL for a named overlay (no secrets in URL).
   // Returns: { ok, url? }
   COPY_OUTPUT_URL:  'COPY_OUTPUT_URL',
@@ -128,6 +143,8 @@ let hubConnected = false;
 // nodeToken is kept in memory for hub/queue operations only — NEVER sent to renderer.
 let nodeToken = null;
 let lanRelay = null;
+let relaySharedKey = null;
+let gepRouteMismatch = false;
 
 // ─── P1 module state — video switcher ─────────────────────────────────────────
 let obsController = null;
@@ -140,6 +157,12 @@ let rulesEngine       = null;
 let eventLogger       = null;
 let harness           = null;
 let currentShowConfig = null; // last ShowConfig received from hub, used by fixData
+let pendingShowConfig = null;
+let showConfigTask = Promise.resolve();
+let runtimeMode = null;
+const isPrimaryInstance = app.requestSingleInstanceLock();
+if (!isPrimaryInstance) app.quit();
+app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
 
 // Tracks in-flight sponsor impressions so we can pair start→end.
 // key: `${sponsorId}:${slotType}` → { sponsorId, slotType, startedAt, segmentId }
@@ -158,10 +181,9 @@ function getHudDataDir() {
   return path.join(app.getPath('userData'), 'hud-data');
 }
 
-// ─── Helper: derive hub WSS URL from API base ─────────────────────────────────
+// SignalR requires an HTTP(S) endpoint and chooses WS(S) for its transport.
 function deriveHubUrl() {
   return API_BASE
-    .replace(/^https?:\/\//, 'wss://')
     .replace(/\/$/, '') + '/hubs/broadcast';
 }
 
@@ -201,27 +223,49 @@ async function applyHudPatch(matchCode, patch) {
 
 // ─── Helper: apply a ShowConfig patch to the HUD server ───────────────────────
 async function applyShowConfigToHud(showConfig) {
-  if (!hudServer) return;
+  if (!hudServer) throw new Error('Local HUD is unavailable.');
   const matchCode = showConfig.matchCode || 'MAIN';
-  const patch = matchContext.buildShowPatch(showConfig);
+  const patch = { ...matchContext.buildShowPatch(showConfig), airContext: { showId: showConfig.showId, matchId: showConfig.selectedMatchId } };
   try {
-    const res = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${matchCode}`, {
-      method: 'PATCH',
+    const res = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${matchCode}/config`, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': HUD_KEY },
       body: JSON.stringify(patch),
+      timeout: 3000,
     });
     if (!res.ok) {
-      console.warn('[broadcast] HUD PATCH rejected for ShowConfig, status:', res.status);
+      throw new Error('HUD rejected the show configuration.');
     }
   } catch (err) {
-    console.error('[broadcast] HUD PATCH error:', err.message);
+    throw new Error('Could not apply show configuration: ' + err.message);
   }
+}
+
+async function receiveShowConfig(cfg) {
+  try {
+    const selected = selectShowMatch(cfg, nodeConfig?.get('selectedMatchCode'));
+    normalizeRundown(cfg.rundown || []);
+    if (isProductionActive(showRunner) || broadcastGep.getStatus().active) {
+      pendingShowConfig = cfg;
+      configurationState = { applied: false, reason: 'New plan waiting. Finish the rundown and stop capture before applying it.' };
+      return { ok: false, error: configurationState.reason };
+    }
+    if (runtimeMode === 'production') await applyShowConfigToHud(selected);
+    if (showRunner && runtimeMode === 'production') configurationState = applyRundown(cfg, showRunner);
+    else configurationState = { applied: true, count: 0 };
+    currentShowConfig = selected; pendingShowConfig = null;
+    nodeConfig.set('showConfig', cfg); nodeConfig.set('selectedMatchCode', selected.matchCode);
+    eventLogger?.setShowId(cfg.showId);
+    if (mainWindow) mainWindow.webContents.send('show-config', selected);
+    return { ok: true };
+  } catch (error) { configurationState = { applied: false, reason: error.message }; return { ok: false, error: error.message }; }
 }
 
 // ─── Helper: create and wire a HubClient instance ─────────────────────────────
 function createHubClient(queue) {
   const client = new HubClient({
     hubUrl: deriveHubUrl(),
+    apiBase: API_BASE,
     offlineQueue: queue,
     logger: console,
     statusProvider: getNodeStatus,
@@ -237,11 +281,7 @@ function createHubClient(queue) {
   });
 
   client.onShowConfig(cfg => {
-    currentShowConfig = cfg;
-    // Forward raw config to renderer for UI (no secrets in ShowConfig payload).
-    if (mainWindow) mainWindow.webContents.send('show-config', cfg);
-    // Apply to HUD server.
-    applyShowConfigToHud(cfg);
+    showConfigTask = showConfigTask.then(() => receiveShowConfig(cfg));
   });
 
   return client;
@@ -266,6 +306,7 @@ function startObsScreenshotLoop() {
         const img = await obsController.getScreenshot(tally.preview);
         if (img) frames.pvw = img;
       }
+      if (tally.preview && tally.preview === tally.program && frames.pgm) frames.pvw = frames.pgm;
       if (mainWindow && Object.keys(frames).length > 0) {
         mainWindow.webContents.send('obs-preview-frame', frames);
       }
@@ -318,9 +359,15 @@ let mainWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    show: !(process.env.ESPORTRA_AIR_SMOKE_TEST === '1' && !app.isPackaged),
     width: 1280,
     height: 800,
+    minWidth: 960,
+    minHeight: 600,
+    icon: path.join(__dirname, '..', 'assets', 'esportra-icon.png'),
     webPreferences: {
+      offscreen: process.env.ESPORTRA_AIR_SMOKE_TEST === '1' && !app.isPackaged,
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
@@ -340,20 +387,28 @@ app.on('web-contents-created', (_event, contents) => {
   });
 
   contents.on('will-navigate', (event, url) => {
-    if (url.startsWith('file://')) return;
-    if (!isAllowedExternal(url)) event.preventDefault();
+    event.preventDefault();
+    if (isAllowedExternal(url)) shell.openExternal(url);
   });
 });
 
 // ─── IPC handlers — C-3: registered using the enum, never dynamic ─────────────
+function registerIpc(channel, handler) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow?.webContents.mainFrame) {
+      return { ok: false, error: 'Untrusted application frame.' };
+    }
+    return handler(event, ...args);
+  });
+}
 
-ipcMain.handle(IPC_COMMANDS.HUD_STATUS, async () => {
+registerIpc(IPC_COMMANDS.HUD_STATUS, async () => {
   const online = hudServer !== null;
   const clients = online ? hudServer.clientCount : 0;
   return { online, port: HUD_PORT, clients, errorCode: online ? null : hudStartErrorCode };
 });
 
-ipcMain.handle(IPC_COMMANDS.HUD_OVERLAY_LIST, () => {
+registerIpc(IPC_COMMANDS.HUD_OVERLAY_LIST, () => {
   const fs = require('fs');
   const overlaysDir = path.join(getHudRoot(), 'overlays');
   try {
@@ -367,7 +422,7 @@ ipcMain.handle(IPC_COMMANDS.HUD_OVERLAY_LIST, () => {
   }
 });
 
-ipcMain.handle(IPC_COMMANDS.OPS_LOGIN, async (_event, { email, password } = {}) => {
+registerIpc(IPC_COMMANDS.OPS_LOGIN, async (_event, { email, password } = {}) => {
   if (!email || !password) {
     return { ok: false, error: 'Email and password are required.' };
   }
@@ -393,7 +448,7 @@ ipcMain.handle(IPC_COMMANDS.OPS_LOGIN, async (_event, { email, password } = {}) 
   }
 });
 
-ipcMain.handle(IPC_COMMANDS.OPS_GET_MATCHES, async () => {
+registerIpc(IPC_COMMANDS.OPS_GET_MATCHES, async () => {
   const token = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_ACCOUNT);
   if (!token) return { ok: false, error: 'Not signed in.' };
   try {
@@ -412,7 +467,7 @@ ipcMain.handle(IPC_COMMANDS.OPS_GET_MATCHES, async () => {
   }
 });
 
-ipcMain.handle(IPC_COMMANDS.OPS_SELECT_MATCH, async (_event, { tournamentSlug, matchId } = {}) => {
+registerIpc(IPC_COMMANDS.OPS_SELECT_MATCH, async (_event, { tournamentSlug, matchId } = {}) => {
   if (!tournamentSlug || !matchId) {
     return { ok: false, error: 'tournamentSlug and matchId are required.' };
   }
@@ -445,7 +500,7 @@ ipcMain.handle(IPC_COMMANDS.OPS_SELECT_MATCH, async (_event, { tournamentSlug, m
   }
 });
 
-ipcMain.handle(IPC_COMMANDS.MANUAL_PATCH, async (_event, { patch } = {}) => {
+registerIpc(IPC_COMMANDS.MANUAL_PATCH, async (_event, { patch } = {}) => {
   if (!patch || typeof patch !== 'object') {
     return { ok: false, error: 'patch must be a JSON object.' };
   }
@@ -462,7 +517,7 @@ ipcMain.handle(IPC_COMMANDS.MANUAL_PATCH, async (_event, { patch } = {}) => {
   }
 });
 
-ipcMain.handle(IPC_COMMANDS.PREVIEW_OVERLAY, async (_event, { url } = {}) => {
+registerIpc(IPC_COMMANDS.PREVIEW_OVERLAY, async (_event, { url } = {}) => {
   if (!url || typeof url !== 'string') return { ok: false, error: 'url is required.' };
   if (!url.startsWith(`http://localhost:${HUD_PORT}/`) && !url.startsWith(`http://127.0.0.1:${HUD_PORT}/`)) {
     return { ok: false, error: 'Only HUD overlay URLs can be previewed.' };
@@ -486,7 +541,7 @@ ipcMain.handle(IPC_COMMANDS.PREVIEW_OVERLAY, async (_event, { url } = {}) => {
 // node token via the backend, stores the token in the OS keychain, and connects
 // the hub client. The token is NEVER returned to the renderer.
 
-ipcMain.handle(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
+registerIpc(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
   if (!pairingCode || !/^[A-Z0-9]{6,8}$/i.test(pairingCode)) {
     return { ok: false, error: 'Pairing code must be 6–8 alphanumeric characters.' };
   }
@@ -532,12 +587,23 @@ ipcMain.handle(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
 
 // ─── P0 IPC: GET_STATUS ───────────────────────────────────────────────────────
 
-ipcMain.handle(IPC_COMMANDS.GET_STATUS, () => {
+registerIpc(IPC_COMMANDS.GET_STATUS, () => {
   const relayPort = nodeConfig ? nodeConfig.get('lanRelayPort') : 5301;
   const gepStatus = broadcastGep.getStatus();
   const hudOnline = hudServer !== null;
   return {
-    mode: nodeConfig ? nodeConfig.get('mode') : 'production',
+    mode: runtimeMode || (nodeConfig ? nodeConfig.get('mode') : 'production'),
+    modeConfigured: nodeConfig ? nodeConfig.get('modeConfigured') === true : false,
+    nodeName: os.hostname(),
+    nodeIp: Object.values(os.networkInterfaces()).flat().find(address => address && !address.internal && address.family === 'IPv4')?.address || null,
+    outputs: outputRegistry ? outputRegistry.list() : [],
+    outputCatalogue: outputRegistry ? outputRegistry.catalogue() : [],
+    lanRelayTargets: nodeConfig ? nodeConfig.get('lanRelayTargets') : [],
+    pendingRecords: offlineQueue ? offlineQueue.getPendingCount() : 0,
+    show: currentShowConfig ? { id: currentShowConfig.showId, title: currentShowConfig.title, matchCode: currentShowConfig.matchCode, matches: (currentShowConfig.matches || []).map(match => ({ matchCode: match.matchCode, label: (match.teams || []).map(team => team.name).join(' vs ') })) } : null,
+    pendingShow: pendingShowConfig ? { title: pendingShowConfig.title } : null,
+    configuration: configurationState,
+    runner: showRunner ? showRunner.getState() : null,
     nodeId: nodeConfig ? nodeConfig.get('nodeId') : null,
     paired: nodeToken !== null,
     hubConnected,
@@ -558,16 +624,16 @@ ipcMain.handle(IPC_COMMANDS.GET_STATUS, () => {
         return { state: 'attention', detail: obs.state };
       })(),
       gepFeed: {
-        state: gepStatus.active ? 'healthy' : 'offline',
-        detail: gepStatus.active ? 'Live' : 'Not capturing',
+        state: gepRouteMismatch ? 'attention' : (hudServer?.getLastGepAt?.(currentShowConfig?.matchCode || 'MAIN') && Date.now() - hudServer.getLastGepAt(currentShowConfig?.matchCode || 'MAIN') < 10000 ? 'healthy' : (gepStatus.active ? 'attention' : 'offline')),
+        detail: gepRouteMismatch ? 'Observer show or match differs from the selected production match; packets ignored' : (hudServer?.getLastGepAt?.(currentShowConfig?.matchCode || 'MAIN') && Date.now() - hudServer.getLastGepAt(currentShowConfig?.matchCode || 'MAIN') < 10000 ? 'Game-event packets received' : (gepStatus.active ? 'Capture running; waiting for packets' : 'No recent game-event packets')),
       },
       apiConnection: {
         state: hubConnected ? 'healthy' : (nodeToken ? 'attention' : 'offline'),
         detail: hubConnected ? 'Hub connected' : (nodeToken ? 'Reconnecting…' : 'Not paired'),
       },
       overlayRender: {
-        state: hudOnline ? 'healthy' : 'unknown',
-        detail: hudOnline ? `${hudServer.clientCount || 0} OBS source(s) connected` : 'HUD offline',
+        state: hudOnline && hudServer.clientCount > 0 ? 'healthy' : 'unknown',
+        detail: hudOnline ? `${hudServer.clientCount || 0} HUD client(s) connected; render needs visual verification` : 'HUD offline',
       },
     },
   };
@@ -575,20 +641,53 @@ ipcMain.handle(IPC_COMMANDS.GET_STATUS, () => {
 
 // ─── P0 IPC: SET_MODE ─────────────────────────────────────────────────────────
 
-ipcMain.handle(IPC_COMMANDS.SET_MODE, (_event, { mode: newMode } = {}) => {
+registerIpc(IPC_COMMANDS.SET_MODE, (_event, { mode: newMode } = {}) => {
   const VALID_MODES = new Set(['production', 'capture-only']);
   if (!newMode || !VALID_MODES.has(newMode)) {
     return { ok: false, error: 'Invalid mode. Use "production" or "capture-only".' };
   }
   if (!nodeConfig) return { ok: false, error: 'Node config not ready.' };
+  const restartRequired = nodeConfig.get('mode') !== newMode;
+  if (restartRequired && (isBroadcastActive() || isProductionActive(showRunner))) return { ok: false, error: 'Stop the rundown and capture, then close active HUD consumers before changing modes.' };
   nodeConfig.set('mode', newMode);
+  nodeConfig.set('modeConfigured', true);
+  return { ok: true, restartRequired };
+});
+
+registerIpc(IPC_COMMANDS.RESTART_AIR, () => {
+  if (isBroadcastActive() || isProductionActive(showRunner)) return { ok: false, error: 'Stop the rundown and capture, then close active HUD consumers before restarting.' };
+  app.relaunch(); app.exit(0); return { ok: true };
+});
+registerIpc(IPC_COMMANDS.OUTPUT_ADD, (_event, input) => {
+  try { return { ok: true, output: outputRegistry.add(input) }; }
+  catch (error) { return { ok: false, error: error.message }; }
+});
+registerIpc(IPC_COMMANDS.OUTPUT_REMOVE, (_event, { id } = {}) => {
+  try { outputRegistry.remove(id); return { ok: true }; }
+  catch (error) { return { ok: false, error: error.message }; }
+});
+registerIpc(IPC_COMMANDS.COPY_RELAY_KEY, () => {
+  if (runtimeMode !== 'capture-only' || !relaySharedKey) return { ok: false, error: 'Observer mode is required.' };
+  require('electron').clipboard.writeText(relaySharedKey);
+  return { ok: true };
+});
+registerIpc(IPC_COMMANDS.SET_RELAY_TARGETS, async (_event, { targets, keys = {} } = {}) => {
+  if (!Array.isArray(targets) || targets.length > 8 || targets.some(target => typeof target !== 'string' || !/^[a-zA-Z0-9.-]+:[0-9]{1,5}$/.test(target) || Number(target.split(':')[1]) < 1 || Number(target.split(':')[1]) > 65535)) return { ok: false, error: 'Use observer host:port addresses, up to 8 machines.' };
+  if (!keys || typeof keys !== 'object' || Array.isArray(keys) || Object.entries(keys).some(([target, value]) => !targets.includes(target) || typeof value !== 'string' || !/^[a-f0-9]{64}$/i.test(value))) return { ok: false, error: 'Use the observer’s 64-character pairing key.' };
+  if (isBroadcastActive() || isProductionActive(showRunner)) return { ok: false, error: 'Stop the rundown and capture, then close HUD consumers before changing relay settings.' };
+  for (const target of targets) {
+    const key = keys[target] || await keytar.getPassword(KEYTAR_SERVICE, 'relay:' + target);
+    if (!key) return { ok: false, error: 'Add the pairing key copied from each observer.' };
+  }
+  for (const [target, value] of Object.entries(keys)) await keytar.setPassword(KEYTAR_SERVICE, 'relay:' + target, value);
+  nodeConfig.set('lanRelayTargets', [...new Set(targets)]);
   return { ok: true, restartRequired: true };
 });
 
 // ─── P0 IPC: COPY_OUTPUT_URL ──────────────────────────────────────────────────
 // Returns the browser-source URL for an overlay. No secrets in the URL per arch §8.
 
-ipcMain.handle(IPC_COMMANDS.COPY_OUTPUT_URL, (_event, { overlayName, matchCode } = {}) => {
+registerIpc(IPC_COMMANDS.COPY_OUTPUT_URL, (_event, { overlayName, matchCode } = {}) => {
   if (!overlayName || typeof overlayName !== 'string') {
     return { ok: false, error: 'overlayName is required.' };
   }
@@ -609,7 +708,7 @@ ipcMain.handle(IPC_COMMANDS.COPY_OUTPUT_URL, (_event, { overlayName, matchCode }
 // config-level allowlisting in a future version; for P1 local operation only.
 const OBS_ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1']);
 
-ipcMain.handle(IPC_COMMANDS.OBS_CONNECT, async (_event, { host, port, password } = {}) => {
+registerIpc(IPC_COMMANDS.OBS_CONNECT, async (_event, { host, port, password } = {}) => {
   if (!host || typeof host !== 'string') {
     return { ok: false, error: 'host is required.' };
   }
@@ -631,7 +730,7 @@ ipcMain.handle(IPC_COMMANDS.OBS_CONNECT, async (_event, { host, port, password }
 
 // ─── P1 IPC: OBS_DISCONNECT ──────────────────────────────────────────────────
 
-ipcMain.handle(IPC_COMMANDS.OBS_DISCONNECT, async () => {
+registerIpc(IPC_COMMANDS.OBS_DISCONNECT, async () => {
   if (!obsController) return { ok: true };
   await obsController.disconnect();
   return { ok: true };
@@ -639,7 +738,7 @@ ipcMain.handle(IPC_COMMANDS.OBS_DISCONNECT, async () => {
 
 // ─── P1 IPC: OBS_GET_STATUS ──────────────────────────────────────────────────
 
-ipcMain.handle(IPC_COMMANDS.OBS_GET_STATUS, () => {
+registerIpc(IPC_COMMANDS.OBS_GET_STATUS, () => {
   if (!obsController) {
     return { connected: false, state: 'disconnected', studioMode: false, tally: { preview: null, program: null } };
   }
@@ -652,7 +751,7 @@ ipcMain.handle(IPC_COMMANDS.OBS_GET_STATUS, () => {
 
 const HUD_URL_PREFIX_RE = /^https?:\/\/(localhost|127\.0\.0\.1):5300\//;
 
-ipcMain.handle(IPC_COMMANDS.OBS_BUILD_SCENES, async (_event, { outputUrls } = {}) => {
+registerIpc(IPC_COMMANDS.OBS_BUILD_SCENES, async (_event, { outputUrls } = {}) => {
   if (!obsController) return { ok: false, error: 'OBS is not connected.' };
   const safeUrls = {};
   for (const [key, url] of Object.entries(outputUrls || {})) {
@@ -672,7 +771,7 @@ ipcMain.handle(IPC_COMMANDS.OBS_BUILD_SCENES, async (_event, { outputUrls } = {}
 // ─── P1 IPC: OBS_TAKE ────────────────────────────────────────────────────────
 // Studio-mode-aware scene transition targeting ≤100ms.
 
-ipcMain.handle(IPC_COMMANDS.OBS_TAKE, async (_event, { sceneName } = {}) => {
+registerIpc(IPC_COMMANDS.OBS_TAKE, async (_event, { sceneName } = {}) => {
   if (!obsController) return { ok: false, error: 'OBS is not connected.' };
   if (!sceneName || typeof sceneName !== 'string') {
     return { ok: false, error: 'sceneName is required.' };
@@ -686,7 +785,7 @@ ipcMain.handle(IPC_COMMANDS.OBS_TAKE, async (_event, { sceneName } = {}) => {
 // ─── P1 IPC: OBS_TRIGGER_REPLAY ──────────────────────────────────────────────
 // Save replay buffer → ESA_Replay → return to previous scene after dwell.
 
-ipcMain.handle(IPC_COMMANDS.OBS_TRIGGER_REPLAY, async (_event, opts = {}) => {
+registerIpc(IPC_COMMANDS.OBS_TRIGGER_REPLAY, async (_event, opts = {}) => {
   if (!obsController) return { ok: false, error: 'OBS is not connected.' };
   let dwellMs;
   if (opts.dwellMs !== undefined) {
@@ -701,22 +800,51 @@ ipcMain.handle(IPC_COMMANDS.OBS_TRIGGER_REPLAY, async (_event, opts = {}) => {
 
 // ─── P2 IPC: ShowRunner autopilot ─────────────────────────────────────────────
 
-ipcMain.handle(IPC_COMMANDS.RUNNER_LOAD_RUNDOWN, (_event, { segments } = {}) => {
+registerIpc(IPC_COMMANDS.SHOW_APPLY_PENDING, () => {
+  showConfigTask = showConfigTask.then(() => {
+    const saved = pendingShowConfig || nodeConfig.get('showConfig');
+    return saved ? receiveShowConfig(saved) : { ok: false, error: 'No saved show configuration.' };
+  });
+  return showConfigTask;
+});
+registerIpc(IPC_COMMANDS.SHOW_SELECT_MATCH, (_event, { matchCode } = {}) => {
+  showConfigTask = showConfigTask.then(async () => {
+    if (!currentShowConfig?.matches?.some(match => match.matchCode === matchCode)) return { ok: false, error: 'Choose a configured match.' };
+    if (isProductionActive(showRunner) || broadcastGep.getStatus().active) return { ok: false, error: 'Finish the rundown and stop capture before changing matches.' };
+    try {
+      const selected = selectShowMatch(currentShowConfig, matchCode);
+      if (runtimeMode === 'production') await applyShowConfigToHud(selected);
+      currentShowConfig = selected; nodeConfig.set('selectedMatchCode', matchCode);
+      return { ok: true };
+    } catch (error) { return { ok: false, error: error.message }; }
+  });
+  return showConfigTask;
+});
+registerIpc(IPC_COMMANDS.RUNNER_STOP, () => {
+  if (showRunner?.getState().segments.some(segment => segment.state === 'taking')) return { ok: false, error: 'Wait for the current transition to finish.' };
+  showRunner?.loadRundown([]); eventLogger?.log({ type: 'rundown_stopped', actor: 'operator' });
+  return { ok: true };
+});
+registerIpc(IPC_COMMANDS.RUNNER_LOAD_RUNDOWN, (_event, { segments } = {}) => {
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
   if (!Array.isArray(segments)) return { ok: false, error: 'segments must be an array.' };
-  showRunner.loadRundown(segments);
+  if (isProductionActive(showRunner)) return { ok: false, error: 'Finish the active rundown before replacing it.' };
+  try { showRunner.loadRundown(normalizeRundown(segments)); } catch (error) { return { ok: false, error: error.message }; }
   if (eventLogger) eventLogger.log({ type: 'rundown_loaded', actor: 'operator', data: { count: segments.length } });
   return { ok: true };
 });
 
-ipcMain.handle(IPC_COMMANDS.RUNNER_START, () => {
+registerIpc(IPC_COMMANDS.RUNNER_START, () => {
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
+  if (!obsController?.getState().connected) return { ok: false, error: 'Connect OBS before starting the rundown.' };
+  if (showRunner.getState().activeSegment) return { ok: false, error: 'The rundown is already active.' };
+  if (!showRunner.getState().segments.some(segment => segment.state === 'queued')) return { ok: false, error: 'No queued segments. Send your show configuration from the website.' };
   showRunner.start();
   if (eventLogger) eventLogger.log({ type: 'rundown_started', actor: 'operator' });
   return { ok: true };
 });
 
-ipcMain.handle(IPC_COMMANDS.RUNNER_HOLD, (_event, { segmentId } = {}) => {
+registerIpc(IPC_COMMANDS.RUNNER_HOLD, (_event, { segmentId } = {}) => {
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
   if (!segmentId)  return { ok: false, error: 'segmentId required.' };
   const result = showRunner.hold(segmentId);
@@ -724,7 +852,7 @@ ipcMain.handle(IPC_COMMANDS.RUNNER_HOLD, (_event, { segmentId } = {}) => {
   return result;
 });
 
-ipcMain.handle(IPC_COMMANDS.RUNNER_SKIP, (_event, { segmentId } = {}) => {
+registerIpc(IPC_COMMANDS.RUNNER_SKIP, (_event, { segmentId } = {}) => {
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
   if (!segmentId)  return { ok: false, error: 'segmentId required.' };
   const result = showRunner.skip(segmentId);
@@ -732,7 +860,7 @@ ipcMain.handle(IPC_COMMANDS.RUNNER_SKIP, (_event, { segmentId } = {}) => {
   return result;
 });
 
-ipcMain.handle(IPC_COMMANDS.RUNNER_TAKE, async (_event, { segmentId, commandId } = {}) => {
+registerIpc(IPC_COMMANDS.RUNNER_TAKE, async (_event, { segmentId, commandId } = {}) => {
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
   if (!segmentId)  return { ok: false, error: 'segmentId required.' };
   const result = await showRunner.take(segmentId, { commandId });
@@ -740,14 +868,14 @@ ipcMain.handle(IPC_COMMANDS.RUNNER_TAKE, async (_event, { segmentId, commandId }
   return result;
 });
 
-ipcMain.handle(IPC_COMMANDS.RUNNER_RESUME, () => {
+registerIpc(IPC_COMMANDS.RUNNER_RESUME, () => {
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
   showRunner.resume();
   if (eventLogger) eventLogger.log({ type: 'cmd_resume', actor: 'operator' });
   return { ok: true };
 });
 
-ipcMain.handle(IPC_COMMANDS.RUNNER_TECH_PAUSE, () => {
+registerIpc(IPC_COMMANDS.RUNNER_TECH_PAUSE, () => {
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
   showRunner.techPause();
   if (eventLogger) eventLogger.log({ type: 'cmd_tech_pause', actor: 'operator' });
@@ -761,7 +889,7 @@ ipcMain.handle(IPC_COMMANDS.RUNNER_TECH_PAUSE, () => {
 // The REST POST path is the source of truth for sponsor proof aggregation.
 // action: 'start' | 'end'  sponsorId: string  slotType: string  segmentId?: string
 
-ipcMain.handle(IPC_COMMANDS.RUNNER_SPONSOR_SLOT, async (_event, { action, sponsorId, slotType, segmentId } = {}) => {
+registerIpc(IPC_COMMANDS.RUNNER_SPONSOR_SLOT, async (_event, { action, sponsorId, slotType, segmentId } = {}) => {
   const VALID_ACTIONS = new Set(['start', 'end']);
   if (!action || !VALID_ACTIONS.has(action)) {
     return { ok: false, error: 'action must be "start" or "end".' };
@@ -843,8 +971,8 @@ ipcMain.handle(IPC_COMMANDS.RUNNER_SPONSOR_SLOT, async (_event, { action, sponso
 
 // ─── P2 IPC: FIX_DATA ────────────────────────────────────────────────────────
 
-ipcMain.handle(IPC_COMMANDS.FIX_DATA, async (_event, correction = {}) => {
-  const result = await fixData(correction, {
+registerIpc(IPC_COMMANDS.FIX_DATA, async (_event, correction = {}) => {
+  const result = await fixData(correction && { ...correction, matchCode: correction.matchCode || currentShowConfig?.matchCode || 'MAIN' }, {
     showConfig:  currentShowConfig || {},
     hudPort:     HUD_PORT,
     hudKey:      HUD_KEY,
@@ -858,8 +986,8 @@ ipcMain.handle(IPC_COMMANDS.FIX_DATA, async (_event, correction = {}) => {
 
 // ─── P2 IPC: SIMULATION (dev only) ───────────────────────────────────────────
 
-ipcMain.handle(IPC_COMMANDS.SIMULATION_START, async (_event, { filePath, speed } = {}) => {
-  if (process.env.NODE_ENV !== 'development') {
+registerIpc(IPC_COMMANDS.SIMULATION_START, async (_event, { filePath, speed } = {}) => {
+  if (app.isPackaged || process.env.NODE_ENV !== 'development') {
     return { ok: false, error: 'Simulation only available in development mode.' };
   }
   if (!harness) return { ok: false, error: 'Simulation harness not initialized.' };
@@ -869,14 +997,15 @@ ipcMain.handle(IPC_COMMANDS.SIMULATION_START, async (_event, { filePath, speed }
   // Restrict to the simulation directory to prevent path traversal.
   const simDir   = path.join(__dirname, 'simulation');
   const resolved = path.resolve(filePath);
-  if (!resolved.startsWith(simDir)) {
+  const relative = path.relative(simDir, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
     return { ok: false, error: 'filePath must be within the simulation directory.' };
   }
   await harness.play(resolved, { speed: Number(speed) || 1.0 });
   return { ok: true };
 });
 
-ipcMain.handle(IPC_COMMANDS.SIMULATION_STOP, () => {
+registerIpc(IPC_COMMANDS.SIMULATION_STOP, () => {
   if (harness) harness.stop();
   return { ok: true };
 });
@@ -887,17 +1016,18 @@ broadcastGep.setStatusCallback(status => {
   if (mainWindow) mainWindow.webContents.send('BROADCAST_STATUS_CHANGED', status);
 });
 
-ipcMain.handle(IPC_COMMANDS.BROADCAST_STATUS, () => broadcastGep.getStatus());
+registerIpc(IPC_COMMANDS.BROADCAST_STATUS, () => broadcastGep.getStatus());
 
-ipcMain.handle(IPC_COMMANDS.START_BROADCAST, async (_event, { matchCode } = {}) => {
+registerIpc(IPC_COMMANDS.START_BROADCAST, async (_event, { matchCode } = {}) => {
+  if (matchCode !== undefined && (typeof matchCode !== 'string' || !/^[A-Z0-9_-]{1,64}$/i.test(matchCode))) return { ok: false, error: 'Invalid match code.' };
   const mode = nodeConfig ? nodeConfig.get('mode') : 'production';
   const gepTargetUrl = mode === 'capture-only'
     ? `ws://127.0.0.1:${nodeConfig.get('lanRelayPort')}`
     : undefined;
-  return broadcastGep.start({ hudKey: HUD_KEY, hudPort: HUD_PORT, matchCode: matchCode || 'MAIN', gepTargetUrl });
+  return broadcastGep.start({ hudKey: HUD_KEY, hudPort: HUD_PORT, matchCode: matchCode || currentShowConfig?.matchCode || 'MAIN', gepTargetUrl, showId: currentShowConfig?.showId });
 });
 
-ipcMain.handle(IPC_COMMANDS.STOP_BROADCAST, () => broadcastGep.stop());
+registerIpc(IPC_COMMANDS.STOP_BROADCAST, () => broadcastGep.stop());
 
 // ─── Update guard ─────────────────────────────────────────────────────────────
 function isBroadcastActive() {
@@ -913,8 +1043,8 @@ async function startHudServer() {
   const hudRoot = getHudRoot();
   const hudDataDir = getHudDataDir();
   try {
-    hudServer = await startHud({ port: HUD_PORT, key: HUD_KEY, root: hudRoot, dataDir: hudDataDir });
-    console.log(`[broadcast] HUD server started on 127.0.0.1:${HUD_PORT}`);
+    hudServer = await startHud({ port: HUD_PORT, host: '0.0.0.0', key: HUD_KEY, root: hudRoot, dataDir: hudDataDir });
+    console.log(`[broadcast] HUD outputs available on the local network, port ${HUD_PORT}`);
     hudStartErrorCode = null;
     persistentError = false;
     return true;
@@ -970,10 +1100,12 @@ function startHealthCheck() {
 }
 
 // ─── App lifecycle ─────────────────────────────────────────────────────────────
-app.whenReady().then(async () => {
+if (isPrimaryInstance) app.whenReady().then(async () => {
   // 1. Load node config — must be first (mode determines which modules start).
   nodeConfig = new NodeConfig();
+  outputRegistry = new OutputRegistry({ config: nodeConfig, hudRoot: getHudRoot(), port: HUD_PORT });
   const mode = resolveMode(nodeConfig);
+  runtimeMode = mode;
 
   // P2: Initialize ShowRunner, EventLogger, and RulesEngine.
   // OBS controller wired lazily in getOrCreateVideoController(); offlineQueue
@@ -1027,7 +1159,7 @@ app.whenReady().then(async () => {
   });
 
   // P2: Simulation harness — dev only.
-  if (process.env.NODE_ENV === 'development') {
+  if (!app.isPackaged && process.env.NODE_ENV === 'development') {
     const Harness = require('./simulation/harness');
     harness = new Harness({ showRunner, logger: console });
   }
@@ -1051,17 +1183,24 @@ app.whenReady().then(async () => {
     const relayTargets = nodeConfig.get('lanRelayTargets');
     if (Array.isArray(relayTargets) && relayTargets.length > 0) {
       const LanRelay = require('./lan-relay');
+      const targetKeys = {};
+      for (const target of relayTargets) targetKeys[target] = await keytar.getPassword(KEYTAR_SERVICE, 'relay:' + target) || '';
       lanRelay = new LanRelay({
         mode: 'production',
         targets: relayTargets,
+        targetKeys,
         logger: console,
-        onGepState: (gepMessage) => {
+        onGepState: (gepMessage, context) => {
           if (!hudServer) return;
-          fetch(`http://127.0.0.1:${HUD_PORT}/api/MAIN/ingest/valorant`, {
+          gepRouteMismatch = !acceptsGep(context, currentShowConfig);
+          if (gepRouteMismatch) return;
+          const code = currentShowConfig?.matchCode || 'MAIN';
+          fetch(`http://127.0.0.1:${HUD_PORT}/api/${encodeURIComponent(code)}/ingest/valorant`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': HUD_KEY },
             body: JSON.stringify([gepMessage]),
           }).catch(err => console.warn('[lan-relay] HUD ingest error:', err.message));
+          showRunner?.processGepEvent(gepMessage, code);
         },
       });
       lanRelay.start();
@@ -1069,13 +1208,25 @@ app.whenReady().then(async () => {
   } else if (mode === 'capture-only') {
     // LAN relay observer mode — open WS server; ow-electron sends GEP to it.
     const LanRelay = require('./lan-relay');
+    relaySharedKey = await keytar.getPassword(KEYTAR_SERVICE, 'lan-relay-key');
+    if (!relaySharedKey) { relaySharedKey = crypto.randomBytes(32).toString('hex'); await keytar.setPassword(KEYTAR_SERVICE, 'lan-relay-key', relaySharedKey); }
     lanRelay = new LanRelay({
       mode: 'observer',
       port: nodeConfig.get('lanRelayPort'),
+      sharedKey: relaySharedKey,
       logger: console,
     });
     lanRelay.start();
   }
+
+  // Capture-only nodes restore the same registration and platform connection.
+  if (!nodeToken) {
+    const stored = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_NODE_TOKEN_ACCOUNT);
+    if (stored) { nodeToken = stored; offlineQueue = new OfflineQueue({ nodeToken, logger: console }); hubClient = createHubClient(offlineQueue); hubClient.connect(nodeToken); }
+  }
+  if (offlineQueue) eventLogger.setOfflineQueue(offlineQueue);
+  const cachedShow = nodeConfig.get('showConfig');
+  if (cachedShow) await receiveShowConfig(cachedShow);
 
   // 3. Create main window and register activate handler.
   createWindow();
