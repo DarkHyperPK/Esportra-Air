@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import ConfirmDialog from "./air/ConfirmDialog.jsx";
-export default function ScoreCorrection({ matchCode }) {
+export default function ScoreCorrection({ matchCode, context }) {
+  const [openedContext, setOpenedContext] = useState(null);
+  const [scope, setScope] = useState('air_only');
   const [open, setOpen] = useState(false),
     [confirm, setConfirm] = useState(false);
   const [map, setMap] = useState("1"),
@@ -15,12 +17,15 @@ export default function ScoreCorrection({ matchCode }) {
     setError("");
     try {
       const result = await window.esportraBroadcast.fixData({
+        context: openedContext,
+        scope,
         matchCode,
         mapIndex: Number(map),
         teamAScore: Number(a),
         teamBScore: Number(b),
         reason,
       });
+      if (result.scopeChanged) throw new Error('The selected match changed while processing. Check this match before continuing.');
       if (!result.ok)
         throw new Error(
           result.queued
@@ -31,7 +36,7 @@ export default function ScoreCorrection({ matchCode }) {
       setOpen(false);
       setNotice(
         result.queued
-          ? "Local HUD updated. Correction queued for platform delivery; official bracket result is unchanged."
+          ? scope === 'air_and_bracket' ? "Local HUD updated. Official result proposal queued; an authorized crew member must review it on the web. The bracket is unchanged until approved." : "Local HUD updated. Correction queued for platform delivery; official bracket result is unchanged."
           : "Local HUD updated. Platform delivery was not queued.",
       );
     } catch (failure) {
@@ -53,8 +58,11 @@ export default function ScoreCorrection({ matchCode }) {
       {!open ? (
         <button
           className="air-ghost-btn"
+          disabled={!context?.matchId || !context?.nodeId}
           onClick={() => {
             setOpen(true);
+            setOpenedContext(context);
+            setScope('air_only');
             setError("");
             setNotice("");
           }}
@@ -69,6 +77,13 @@ export default function ScoreCorrection({ matchCode }) {
           }}
         >
           <div className="product-form">
+            <label>
+              Apply to
+              <select className="product-input" aria-label="Apply to" value={scope} onChange={event => setScope(event.target.value)}>
+                <option value="air_only">Air only</option>
+                <option value="air_and_bracket">Air + official result review</option>
+              </select>
+            </label>
             <label>
               Map
               <input
@@ -110,11 +125,13 @@ export default function ScoreCorrection({ matchCode }) {
               <input
                 className="product-input"
                 maxLength={500}
+                required={scope === 'air_and_bracket'}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
               />
             </label>
           </div>
+          <p>{scope === 'air_and_bracket' ? 'Updates the local overlay and queues a proposal for authorized web review. This does not immediately change the tournament result.' : 'Updates the local overlay. The tournament result stays unchanged.'}</p>
           <div className="product-actions">
             <button className="air-primary-btn" type="submit">
               Review correction
@@ -132,7 +149,7 @@ export default function ScoreCorrection({ matchCode }) {
       {confirm && (
         <ConfirmDialog
           title={`Set map ${map} to ${a}–${b}?`}
-          body="The local overlay updates immediately. Platform delivery records a correction; it does not overwrite the official bracket result."
+          body={scope === 'air_and_bracket' ? 'The local overlay updates immediately. A proposal is queued for authorized web review; the official result changes only after approval.' : 'The local overlay updates immediately. Platform delivery records a correction; it does not overwrite the official bracket result.'}
           confirmLabel="Apply correction"
           confirmVariant="primary"
           onConfirm={apply}

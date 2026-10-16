@@ -11,7 +11,7 @@ const HEALTH_DEFS = [
 ];
 
 const NAV = [
-  { id: 'readiness', label: 'Readiness' },
+  { id: 'readiness', label: 'Match setup' },
   { id: 'producer',  label: 'Producer' },
   { id: 'outputs',   label: 'Outputs' },
 ];
@@ -175,7 +175,7 @@ export default function ReadinessScreen({ status, onScreenChange }) {
           <div className="air-section-label">What autopilot does next</div>
           {!rundown ? (
             <p className="air-empty-state">
-              No rundown assigned for this match. Set one up on Esportra Broadcast.
+              No broadcast screens assigned for this match. Set one up on Esportra Broadcast.
             </p>
           ) : (
             rundown.slice(0, 5).map((seg, i) => (

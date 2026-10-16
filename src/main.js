@@ -17,13 +17,21 @@ const { ShowRunner } = require('./show-runner');
 const { RulesEngine } = require('./rules-engine');
 const EventLogger    = require('./event-logger');
 const { fixData }    = require('./fix-data');
+const { correctionScope, validateCorrectionScope } = require('./correction-scope');
 const OutputRegistry = require('./output-registry');
-const { applyRundown } = require('./rundown-config');
+const { applyRundown: applyPublishedRundown } = require('./rundown-config');
+const obsTemplate = require('./obs-template');
 const { normalizeRundown } = require('./rundown-config');
+const { validVersion, publicationDecision, selectedRundown, upcomingDiff } = require('./rundown-publication');
 const { selectShowMatch, isProductionActive } = require('./show-selection');
+const { TournamentSync, mergeMatchContext, eligibleChoices } = require('./tournament-sync');
+let tournamentSync = null;
 const { acceptsGep } = require('./gep-route');
 let outputRegistry = null;
 let configurationState = { applied: false, reason: 'No show configuration received.' };
+let pendingRundownConfig = null;
+let feedDiagnosticsTimer = null;
+const productionFeed = new (require('./production-feed'))();
 
 const { version: APP_VERSION } = require('../package.json');
 
@@ -39,6 +47,12 @@ function isAllowedExternal(href) {
 
 // ─── IPC command enum — C-3: no dynamic dispatch ──────────────────────────────
 const IPC_COMMANDS = Object.freeze({
+  PAUSE_RULES_GET: 'PAUSE_RULES_GET',
+  PAUSE_RULES_SET: 'PAUSE_RULES_SET',
+  DISPLAY_FIX_GET: 'DISPLAY_FIX_GET',
+  DISPLAY_FIX_CHANGE: 'DISPLAY_FIX_CHANGE',
+  SHORTCUTS_GET: 'SHORTCUTS_GET',
+  SHORTCUTS_SET: 'SHORTCUTS_SET',
   // ── Existing ─────────────────────────────────────────────────────────────
   HUD_STATUS:       'HUD_STATUS',
   HUD_OVERLAY_LIST: 'HUD_OVERLAY_LIST',
@@ -48,11 +62,32 @@ const IPC_COMMANDS = Object.freeze({
   MANUAL_PATCH:     'MANUAL_PATCH',
   PREVIEW_OVERLAY:  'PREVIEW_OVERLAY',
   START_BROADCAST:  'START_BROADCAST',
+  CAPTURE_MARKER: 'CAPTURE_MARKER',
   STOP_BROADCAST:   'STOP_BROADCAST',
   BROADCAST_STATUS: 'BROADCAST_STATUS',
   // ── P0 additions ─────────────────────────────────────────────────────────
   // Pair this node with an organizer account using a short-lived code.
   // Returns: { ok, nodeId?, error? }  — never returns the token.
+  AIR_SIGNUP_OPEN:'AIR_SIGNUP_OPEN',
+  AIR_SESSION_GET: 'AIR_SESSION_GET',
+  AIR_LOGIN: 'AIR_LOGIN',
+  AIR_LOGOUT: 'AIR_LOGOUT',
+  AIR_ACCESS_REFRESH: 'AIR_ACCESS_REFRESH',
+  AIR_PROJECTS_LIST: 'AIR_PROJECTS_LIST',
+  AIR_PROJECT_GET: 'AIR_PROJECT_GET',
+  AIR_PROJECT_CREATE: 'AIR_PROJECT_CREATE',
+  AIR_PROJECT_SAVE: 'AIR_PROJECT_SAVE',
+  AIR_PROJECT_RESOLVE: 'AIR_PROJECT_RESOLVE',
+  AIR_SYNC: 'AIR_SYNC',
+  AIR_ASSET_UPLOAD: 'AIR_ASSET_UPLOAD',
+  AIR_PROJECT_SELECT: 'AIR_PROJECT_SELECT',
+  AIR_RESTORE_TOURNAMENT: 'AIR_RESTORE_TOURNAMENT',
+  BRACKET_GET:'BRACKET_GET',
+  BRACKET_VIEW_SET:'BRACKET_VIEW_SET',
+  MATCH_DAY_GET: 'MATCH_DAY_GET',
+  PLAYER_PREFERENCE_SET: 'PLAYER_PREFERENCE_SET',
+  PACKETS_CLEAR: 'PACKETS_CLEAR',
+  OBSERVER_TEST: 'OBSERVER_TEST',
   PAIR:             'PAIR',
   // Full status snapshot for the console UI status bar.
   // Returns: { mode, nodeId, paired, hubConnected, hudOnline, gepActive, lanRelay }
@@ -83,6 +118,19 @@ const IPC_COMMANDS = Object.freeze({
   // Current video switcher state snapshot.
   // Returns: { connected, state, studioMode, tally }
   OBS_GET_STATUS:     'OBS_GET_STATUS',
+  OBS_GET_SETUP:      'OBS_GET_SETUP',
+  OBS_SET_SETUP:      'OBS_SET_SETUP',
+  OBS_DISCOVER:       'OBS_DISCOVER',
+  RULES_GET: 'RULES_GET',
+  RULES_SET: 'RULES_SET',
+  GRAPHIC_FIRE: 'GRAPHIC_FIRE',
+  HUD_CONTROLS_GET: 'HUD_CONTROLS_GET',
+  HUD_CONTROLS_UPDATE: 'HUD_CONTROLS_UPDATE',
+  OBS_BUILD_COLLECTION: 'OBS_BUILD_COLLECTION',
+  OBS_SLOT_STATUS: 'OBS_SLOT_STATUS',
+  OBS_SLOT_ASSIGN: 'OBS_SLOT_ASSIGN',
+  TEMPLATE_GET: 'TEMPLATE_GET', TEMPLATE_SAVE: 'TEMPLATE_SAVE', TEMPLATE_PUSH: 'TEMPLATE_PUSH',
+  PRODUCTION_HISTORY: 'PRODUCTION_HISTORY',
   // Ensure ESA_ scenes exist in OBS with browser sources.
   // Args: { outputUrls: { holding, gameplay, fullscreen, replay, casters } }
   // Returns: { ok, created, existing, error? }
@@ -111,17 +159,40 @@ const IPC_COMMANDS = Object.freeze({
   RUNNER_RESUME:      'RUNNER_RESUME',
   // Engage tech pause.
   RUNNER_TECH_PAUSE:  'RUNNER_TECH_PAUSE',
+  RUNNER_TIMEOUT: 'RUNNER_TIMEOUT',
   // Log a sponsor slot impression start or end.
   // Args: { action: 'start'|'end', sponsorId, slotType, segmentId? }
   // Returns: { ok: true }
   RUNNER_SPONSOR_SLOT: 'RUNNER_SPONSOR_SLOT',
   // Apply an on-air score correction.   Args: correction object
   FIX_DATA:           'FIX_DATA',
-  // Start simulation (dev only).        Args: { filePath, speed? }
+  // Packaged, isolated rehearsal controls.
   SIMULATION_START:   'SIMULATION_START',
+  SIMULATION_CONTROL: 'SIMULATION_CONTROL',
+  SIMULATION_STATUS: 'SIMULATION_STATUS',
   // Stop simulation.
   SIMULATION_STOP:    'SIMULATION_STOP',
 });
+
+const PRODUCTION_COMMANDS = new Set([
+  IPC_COMMANDS.BRACKET_GET,IPC_COMMANDS.BRACKET_VIEW_SET,
+  IPC_COMMANDS.MATCH_DAY_GET, IPC_COMMANDS.PLAYER_PREFERENCE_SET, IPC_COMMANDS.PACKETS_CLEAR, IPC_COMMANDS.OBSERVER_TEST,
+  IPC_COMMANDS.TEMPLATE_GET, IPC_COMMANDS.TEMPLATE_SAVE, IPC_COMMANDS.TEMPLATE_PUSH,
+  IPC_COMMANDS.PAUSE_RULES_GET, IPC_COMMANDS.PAUSE_RULES_SET,
+  IPC_COMMANDS.DISPLAY_FIX_GET, IPC_COMMANDS.DISPLAY_FIX_CHANGE,
+  IPC_COMMANDS.OBS_CONNECT, IPC_COMMANDS.OBS_DISCONNECT, IPC_COMMANDS.OBS_BUILD_SCENES,
+  IPC_COMMANDS.OBS_TAKE, IPC_COMMANDS.OBS_TRIGGER_REPLAY, IPC_COMMANDS.OBS_SET_SETUP,
+  IPC_COMMANDS.RUNNER_START, IPC_COMMANDS.RUNNER_STOP, IPC_COMMANDS.RUNNER_LOAD_RUNDOWN,
+  IPC_COMMANDS.RUNNER_HOLD, IPC_COMMANDS.RUNNER_SKIP, IPC_COMMANDS.RUNNER_TAKE,
+  IPC_COMMANDS.RUNNER_RESUME, IPC_COMMANDS.RUNNER_TECH_PAUSE, IPC_COMMANDS.RUNNER_TIMEOUT,
+  IPC_COMMANDS.RUNNER_SPONSOR_SLOT, IPC_COMMANDS.RULES_SET, IPC_COMMANDS.FIX_DATA,
+  IPC_COMMANDS.MANUAL_PATCH,
+  IPC_COMMANDS.GRAPHIC_FIRE, IPC_COMMANDS.HUD_CONTROLS_GET, IPC_COMMANDS.HUD_CONTROLS_UPDATE,
+  IPC_COMMANDS.OBS_BUILD_COLLECTION, IPC_COMMANDS.OBS_SLOT_STATUS, IPC_COMMANDS.OBS_SLOT_ASSIGN,
+  IPC_COMMANDS.PRODUCTION_HISTORY,
+  IPC_COMMANDS.SIMULATION_START, IPC_COMMANDS.SIMULATION_STOP,
+  IPC_COMMANDS.SIMULATION_CONTROL, IPC_COMMANDS.SIMULATION_STATUS,
+]);
 
 const KEYTAR_SERVICE = 'esportra-air';
 const KEYTAR_ACCOUNT = 'jwt';
@@ -130,13 +201,32 @@ const API_BASE = process.env.ESPORTRA_API_URL || 'https://api-staging.esportra.c
 
 // ─── HUD server state ─────────────────────────────────────────────────────────
 let hudServer = null;
+let hudControls = null;
 let hudStartErrorCode = null;
-const HUD_PORT = 5300;
+// Isolated development smoke runs must not bind the operator's live HUD port.
+const smokeHudPort = Number(process.env.ESPORTRA_AIR_SMOKE_HUD_PORT);
+const HUD_PORT = process.env.ESPORTRA_AIR_SMOKE_TEST === '1' && !app.isPackaged && Number.isInteger(smokeHudPort) && smokeHudPort >= 1024 && smokeHudPort <= 65535 ? smokeHudPort : 5300;
 // C-2: per-session write token, generated once at startup, never exposed to renderer or overlays
 const HUD_KEY = crypto.randomBytes(32).toString('hex');
 
 // ─── P0 module state (set during boot, before IPC handlers are called) ────────
 let nodeConfig = null;
+let airSession = null;
+let standaloneBridge = null;
+let bracketPresentation = null;
+function standaloneActive(){return currentShowConfig?.source==='standalone';}
+function activeNodeId(){return standaloneActive()?airSession?.deviceId:nodeConfig?.get('nodeId');}
+function currentAuthorized(){return standaloneActive()?airSession?.status().authenticated:!!nodeToken;}
+async function standaloneAccess(){if(standaloneActive()||!nodeToken&&airSession?.status().authenticated)await airSession.assertAccess();}
+let standaloneManualScope=null;
+async function standaloneTakeAccess(){
+  if(!standaloneActive())return;
+  const scope=`${currentShowConfig.projectId}:${currentShowConfig.selectedMatchId}`;
+  if(isProductionActive(showRunner)||broadcastGep.getStatus().active||standaloneManualScope===scope)return;
+  await standaloneAccess();standaloneManualScope=scope;
+}
+function idleForWorkspace(){if(isProductionActive(showRunner)||broadcastGep.getStatus().active)throw new Error('Stop production and game capture before changing accounts or matches.');}
+
 let offlineQueue = null;
 let hubClient = null;
 let hubConnected = false;
@@ -154,9 +244,32 @@ let obsScreenshotInterval = null;
 // ─── P2 module state — autopilot ──────────────────────────────────────────────
 let showRunner        = null;
 let rulesEngine       = null;
+let pauseRules = null;
 let eventLogger       = null;
 let harness           = null;
+let nodeSessionMonitor = null;
+let pendingManualTake = null;
+let pairingNotice = null;
+let pairingMutation = Promise.resolve();
+function serializePairing(action) { const pending = pairingMutation.then(action, action); pairingMutation = pending.catch(() => {}); return pending; }
 let currentShowConfig = null; // last ShowConfig received from hub, used by fixData
+function applyRundown(config, runner, mappings = {}) {
+  const applied = ((nodeConfig?.get('obsAppliedTemplates') || {})[`${config.source || 'esportra'}:${config.showId}:${config.selectedMatchId}`] || (config.source!=='standalone'?(nodeConfig?.get('obsAppliedTemplates') || {})[`${config.showId}:${config.selectedMatchId}`]:null));
+  return applyPublishedRundown(obsTemplate.templateRundown(config, applied), runner, mappings);
+}
+
+function templateSnapshot() {
+  if (!currentAuthorized() || !currentShowConfig?.selectedMatchId) throw new Error('Connect your account or tournament workspace, then choose a match.');
+  const context = obsTemplate.templateContext(currentShowConfig, activeNodeId());
+  const key = obsTemplate.templateKey(context);
+  const saved = (nodeConfig.get('obsTemplateDrafts') || {})[key];
+  const draft = obsTemplate.defaultTemplate(currentShowConfig, activeNodeId(), saved);
+  const applied = (nodeConfig.get('obsAppliedTemplates') || {})[key];
+  const obsState = obsController?.getState();
+  const collectionKey = `${obsState?.host}:${obsState?.port}:${obsState?.collection || ''}`;
+  const prepared = (nodeConfig.get('obsAppliedTemplateCollections') || {})[key] === collectionKey && applied?.context?.nodeId === context.nodeId && applied?.context?.planVersion === context.planVersion && JSON.stringify(applied.items) === JSON.stringify(draft.items);
+  return { context, key, draft, prepared: prepared === true };
+}
 let pendingShowConfig = null;
 let showConfigTask = Promise.resolve();
 let runtimeMode = null;
@@ -166,7 +279,9 @@ app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()
 
 // Tracks in-flight sponsor impressions so we can pair start→end.
 // key: `${sponsorId}:${slotType}` → { sponsorId, slotType, startedAt, segmentId }
-const activeImpressions = new Map();
+let sponsorLedger = null;
+const roundChapters = new (require('./round-chapters'))();
+const incidents = new (require('./production-history').IncidentTracker)({ record: entry => eventLogger?.log(entry) });
 
 // ─── Helper: resolve hud root ─────────────────────────────────────────────────
 function getHudRoot() {
@@ -196,36 +311,60 @@ function resolveMode(config) {
 
 // ─── Helper: current node status for heartbeat payload ────────────────────────
 function getNodeStatus() {
+  const feed = productionFeed.snapshot(), obs = obsController?.getState();
   return {
     mode: nodeConfig ? nodeConfig.get('mode') : 'production',
     hudOnline: hudServer !== null,
     gepActive: broadcastGep.getStatus().active,
     lanRelayActive: lanRelay !== null,
     appVersion: APP_VERSION,
+    runtime: {
+      mode: runtimeMode || 'production', hudOnline: hudServer !== null,
+      obsConnected: obs?.connected === true,
+      feedState: !feed.available ? 'waiting' : feed.stale ? 'stale' : feed.ageMs === null ? 'waiting' : feed.ageMs < 10000 ? 'live' : 'idle',
+      automationPaused: showRunner?.isTechPaused() === true,
+      timeoutPaused: showRunner?.isTimeoutPaused() === true,
+      hudClientsConnected: (hudServer?.clientCount || 0) > 0,
+      appVersion: APP_VERSION,
+      plan: runtimeMode === 'production' && validVersion(currentShowConfig?.rundownVersion) ? { showId: currentShowConfig.showId, version: currentShowConfig.rundownVersion, pendingVersion: pendingRundownConfig?.rundownVersion || null } : null,
+      outputs: (outputRegistry?.list() || []).map(output => {
+        const health = hudServer?.getOutputHealth(output.id) || { connectionCount: 0, lastFrameAt: null };
+        return { id: output.id, name: output.name, connectionCount: health.connectionCount, lastFrameAt: health.lastFrameAt ? new Date(health.lastFrameAt).toISOString() : null };
+      }),
+    },
   };
 }
 
 // ─── Helper: apply an arbitrary merge patch to the HUD server ─────────────────
 // Used by ShowRunner (via hudPatch callback) and RulesEngine.
 async function applyHudPatch(matchCode, patch) {
-  if (!hudServer) return;
+  if (!hudServer) throw new Error('Local HUD is unavailable.');
   try {
     const res = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${matchCode || 'MAIN'}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': HUD_KEY },
       body:    JSON.stringify(patch),
     });
-    if (!res.ok) console.warn('[hud] PATCH rejected, status:', res.status);
-  } catch (err) {
-    console.error('[hud] PATCH error:', err.message);
+    if (!res.ok) throw new Error('Local HUD rejected the graphic update.');
+  } catch (_) {
+    throw new Error('Could not update the local HUD.');
   }
 }
 
+async function seedProductionFeed(config) {
+  if (!hudServer || runtimeMode !== 'production') return;
+  try {
+    const response = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${encodeURIComponent(config.matchCode)}`, { signal: AbortSignal.timeout(2000) });
+    if (response.ok) productionFeed.seed(config.matchCode, (await response.json()).state);
+  } catch { /* Readiness remains unknown until an actual game packet arrives. */ }
+}
+
 // ─── Helper: apply a ShowConfig patch to the HUD server ───────────────────────
-async function applyShowConfigToHud(showConfig) {
+async function applyShowConfigToHud(showConfig, sync = false) {
   if (!hudServer) throw new Error('Local HUD is unavailable.');
   const matchCode = showConfig.matchCode || 'MAIN';
-  const patch = { ...matchContext.buildShowPatch(showConfig), airContext: { showId: showConfig.showId, matchId: showConfig.selectedMatchId } };
+  const basePatch = matchContext.buildShowPatch(showConfig), hudPatch = hudControls?.appliedPatch(showConfig) || {};
+  const patch = { ...basePatch, ...hudPatch, show:{...basePatch.show,...hudPatch.show}, layout:{...basePatch.layout,...hudPatch.layout}, sync, airContext: { showId: showConfig.showId, matchId: showConfig.selectedMatchId } };
   try {
     const res = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${matchCode}/config`, {
       method: 'POST',
@@ -243,26 +382,75 @@ async function applyShowConfigToHud(showConfig) {
 
 async function receiveShowConfig(cfg) {
   try {
-    const selected = selectShowMatch(cfg, nodeConfig?.get('selectedMatchCode'));
+    if(cfg.source!=='standalone'){nodeConfig?.set('tournamentShowConfig',cfg);if(standaloneActive())return {ok:false,error:'Tournament setup saved. Switch to the tournament workspace when ready.'};}
+    const decision = publicationDecision(currentShowConfig, cfg);
+    if (cfg.showId === pendingRundownConfig?.showId && validVersion(cfg.rundownVersion) && cfg.rundownVersion < pendingRundownConfig.rundownVersion) return { ok: false, error: 'A newer rundown is already waiting.' };
+    if (decision === 'older' || decision === 'legacy' && validVersion(currentShowConfig?.rundownVersion)) return { ok: false, error: 'An older or unversioned rundown cannot replace the current published plan.' };
+    const selected = selectShowMatch(cfg, cfg.preferredMatchCode || nodeConfig?.get('selectedMatchCode'));
     normalizeRundown(cfg.rundown || []);
     if (isProductionActive(showRunner) || broadcastGep.getStatus().active) {
       pendingShowConfig = cfg;
-      configurationState = { applied: false, reason: 'New plan waiting. Finish the rundown and stop capture before applying it.' };
+      nodeConfig.set('pendingShowConfig', cfg);
+      const sameMatch = currentShowConfig?.showId === selected.showId && currentShowConfig?.matchCode === selected.matchCode;
+      const candidateVersion = pendingRundownConfig?.rundownVersion || currentShowConfig?.rundownVersion || 0;
+      if (sameMatch && validVersion(selected.rundownVersion) && selected.rundownVersion > candidateVersion) pendingRundownConfig = selected;
+      else if (!sameMatch) pendingRundownConfig = null;
+      configurationState = { applied: false, reason: pendingRundownConfig ? `Rundown v${pendingRundownConfig.rundownVersion} waits for the next confirmed Take or Skip. Other setup changes wait until production stops.` : 'New setup waiting. Finish the rundown and stop capture before applying it.' };
       return { ok: false, error: configurationState.reason };
     }
     if (runtimeMode === 'production') await applyShowConfigToHud(selected);
-    if (showRunner && runtimeMode === 'production') configurationState = applyRundown(cfg, showRunner);
+    if(currentShowConfig?.showId!==selected.showId||currentShowConfig?.selectedMatchId!==selected.selectedMatchId||currentShowConfig?.source!==selected.source){pauseRules?.stop();showRunner?.resetForMatch();obsController?.cancelReplay?.();standaloneManualScope=null;}
+    if (showRunner && runtimeMode === 'production') configurationState = applyRundown(selected, showRunner, nodeConfig.get('sceneMappings') || {});
     else configurationState = { applied: true, count: 0 };
-    currentShowConfig = selected; pendingShowConfig = null;
+    if (productionFeed.matchCode !== selected.matchCode || currentShowConfig?.showId !== selected.showId) { productionFeed.reset(selected.matchCode); rulesEngine?.dispose(); }
+    currentShowConfig = selected; pendingShowConfig = null; pendingRundownConfig = null;
+    nodeConfig.set('pendingShowConfig', null);
+    await seedProductionFeed(selected);
+    hudServer?.notifyOutputsChanged();
     nodeConfig.set('showConfig', cfg); nodeConfig.set('selectedMatchCode', selected.matchCode);
     eventLogger?.setShowId(cfg.showId);
+    eventLogger?.setOfflineQueue(selected.source==='standalone'?airSession?.eventQueue:offlineQueue);
     if (mainWindow) mainWindow.webContents.send('show-config', selected);
     return { ok: true };
   } catch (error) { configurationState = { applied: false, reason: error.message }; return { ok: false, error: error.message }; }
 }
 
+function scheduleRundownBoundary() {
+  showConfigTask = showConfigTask.catch(() => {}).then(async () => {
+    const pending = pendingRundownConfig;
+    if (!pending || !obsController?.getState().connected || showRunner.isTechPaused() || showRunner.isTimeoutPaused()) return;
+    const segments = selectedRundown(pending, nodeConfig.get('sceneMappings') || {});
+    const inspection = await obsController.inspect();
+    if (pending !== pendingRundownConfig || currentShowConfig?.showId !== pending.showId || showRunner.isTechPaused() || showRunner.isTimeoutPaused()) return;
+    const missing = require('./scene-mapping').missingScenes(segments, inspection.scenes);
+    if (!inspection.connected || inspection.inspectionIncomplete || missing.length) {
+      configurationState.reason = `Rundown v${pending.rundownVersion} is waiting. Prepare its OBS scenes before the next Take or Skip${missing.length ? ': ' + missing.join(', ') : '.'}`;
+      return;
+    }
+    const applied = showRunner.replaceUpcoming(segments);
+    if (!applied.ok) return;
+    currentShowConfig = { ...currentShowConfig, rundown: pending.rundown, rundownVersion: pending.rundownVersion };
+    nodeConfig.set('showConfig', currentShowConfig);
+    pendingRundownConfig = null;
+    eventLogger?.log({ type: 'rundown_version_applied', actor: 'system', data: { version: pending.rundownVersion } });
+    configurationState.reason = `Rundown v${pending.rundownVersion} is active for upcoming items. Other setup changes wait until production stops.`;
+  }).catch(error => { configurationState.reason = 'Could not activate the pending rundown: ' + error.message; });
+}
+
 // ─── Helper: create and wire a HubClient instance ─────────────────────────────
+async function recoverPublishedRundown(client, sessionToken) {
+  const showId = currentShowConfig?.showId;
+  if (!showId || runtimeMode !== 'production') return;
+  try {
+    const response = await fetch(`${API_BASE}/api/broadcast/nodes/shows/${showId}/publication`, { headers: { Authorization: `Bearer ${sessionToken}` }, timeout: 2500 });
+    if (!response.ok) return;
+    const snapshot = await response.json();
+    if (hubClient !== client || nodeToken !== sessionToken || currentShowConfig?.showId !== showId || !validVersion(snapshot.rundownVersion) || snapshot.rundownVersion <= (currentShowConfig.rundownVersion || 0)) return;
+    showConfigTask = showConfigTask.catch(() => {}).then(() => hubClient === client && nodeToken === sessionToken && currentShowConfig?.showId === showId ? receiveShowConfig({ ...snapshot, preferredMatchCode: currentShowConfig.matchCode }) : null);
+  } catch (_) { /* Offline and older backends retain the current local plan. */ }
+}
 function createHubClient(queue) {
+  const sessionToken = nodeToken;
   const client = new HubClient({
     hubUrl: deriveHubUrl(),
     apiBase: API_BASE,
@@ -271,17 +459,77 @@ function createHubClient(queue) {
     statusProvider: getNodeStatus,
   });
 
+  nodeSessionMonitor?.stop();
+  nodeSessionMonitor = new (require('./node-session-monitor'))({ apiBase: API_BASE, token: nodeToken, fetch,
+    onRevoked: () => serializePairing(async () => {
+      if (hubClient !== client || nodeToken !== sessionToken) return;
+      hubConnected = false; nodeToken = null;
+      if(standaloneActive()){await client.disconnect();await keytar.deletePassword(KEYTAR_SERVICE,KEYTAR_NODE_TOKEN_ACCOUNT);nodeConfig.set('nodeId',null);pairingNotice='Tournament pairing was revoked. Your independent workspace remains available.';return;}
+      showRunner?.techPause(); rulesEngine?.dispose(); harness?.stop(); broadcastGep.stop();
+      showRunner?.loadRundown([]);
+      currentShowConfig = null; pendingShowConfig = null;
+      hudServer?.notifyOutputsChanged();
+      nodeConfig.set('showConfig', null); nodeConfig.set('selectedMatchCode', null);
+      pendingRundownConfig = null; nodeConfig.set('pendingShowConfig', null);
+      productionFeed.reset('MAIN'); eventLogger?.setShowId(null);
+      eventLogger?.setOfflineQueue(null);
+      await client.disconnect();
+      await keytar.deletePassword(KEYTAR_SERVICE, KEYTAR_NODE_TOKEN_ACCOUNT);
+      nodeConfig.set('nodeId', null);
+      pairingNotice = 'This computer’s pairing was revoked. Capture stopped and automatic production paused. OBS keeps its current program. Generate a new pairing code to reconnect.';
+      if (mainWindow) mainWindow.webContents.send('hub-disconnected');
+    }),
+  });
+  nodeSessionMonitor.start();
+  tournamentSync?.stop();
+  tournamentSync = new TournamentSync({
+    getScope: () => !standaloneActive() && hubClient === client && nodeToken === sessionToken && runtimeMode === 'production' && currentShowConfig?.selectedMatchId ? { token: sessionToken, config: currentShowConfig } : null,
+    fetchContext: async ({ token, config }) => {
+      const response = await fetch(`${API_BASE}/api/broadcast/nodes/shows/${config.showId}/matches/${config.selectedMatchId}/context`, { headers: { Authorization: `Bearer ${token}` }, timeout: 2500 });
+      if (response.status === 409) { const state = await response.json(); if (state.eligible === false) return state; }
+      if (!response.ok) throw new Error(response.status === 409 ? 'The selected match is no longer eligible. Current output is retained; choose the next match when ready.' : 'Tournament updates unavailable. Current output is retained.');
+      return response.json();
+    },
+    applyIneligible: (incoming, valid) => {
+      showConfigTask = showConfigTask.catch(() => {}).then(async () => {
+        if (!valid()) return;
+        const config = incoming.match ? mergeMatchContext(currentShowConfig, incoming) : eligibleChoices(currentShowConfig, incoming);
+        if (incoming.match) await applyShowConfigToHud(config, true);
+        if (valid()) currentShowConfig = config;
+      });
+      return showConfigTask;
+    },
+    apply: (incoming, valid) => {
+      showConfigTask = showConfigTask.catch(() => {}).then(async () => {
+        if (!valid()) return;
+        const config = mergeMatchContext(currentShowConfig, incoming);
+        await applyShowConfigToHud(config, true);
+        if (!valid()) return;
+        currentShowConfig = config;
+        const saved = nodeConfig.get('showConfig');
+        if (saved?.showId === config.showId) nodeConfig.set('showConfig', { ...saved, matches: config.matches, appearance: config.appearance, casters: config.casters, sponsors: config.sponsors, eventLabel: config.eventLabel, mapPool: config.mapPool });
+      });
+      return showConfigTask;
+    },
+  });
+  tournamentSync.start();
+  client.on('revoked', () => { if (hubClient === client && nodeToken === sessionToken) void nodeSessionMonitor?.revoke(); });
   client.on('connected', () => {
+    if (hubClient !== client || nodeToken !== sessionToken) return;
     hubConnected = true;
+    void recoverPublishedRundown(client, sessionToken);
     if (mainWindow) mainWindow.webContents.send('hub-connected');
   });
   client.on('disconnected', () => {
+    if (hubClient !== client || nodeToken !== sessionToken) return;
+    void nodeSessionMonitor?.check();
     hubConnected = false;
     if (mainWindow) mainWindow.webContents.send('hub-disconnected');
   });
 
   client.onShowConfig(cfg => {
-    showConfigTask = showConfigTask.then(() => receiveShowConfig(cfg));
+    if (hubClient !== client || nodeToken !== sessionToken) return;
+    showConfigTask = showConfigTask.then(() => hubClient === client && nodeToken === sessionToken ? receiveShowConfig(cfg) : { ok: false, error: 'Pairing changed before this configuration arrived.' });
   });
 
   return client;
@@ -327,16 +575,28 @@ function stopObsScreenshotLoop() {
 /** Wire event emitter from a newly created video controller to the renderer. */
 function wireObsEvents(controller) {
   controller.on('connected', (info) => {
+    incidents.update('obs_drop', false, currentShowConfig?.showId);
     if (mainWindow) mainWindow.webContents.send('obs-connected', info ?? {});
     startObsScreenshotLoop();
   });
-  controller.on('disconnected', () => {
+  controller.on('disconnected', info => {
+    incidents.update('obs_drop', true, currentShowConfig?.showId, { actorKind: info?.intentional ? 'operator' : 'system', cause: info?.intentional ? 'manual' : 'connection' });
     if (mainWindow) mainWindow.webContents.send('obs-disconnected');
     stopObsScreenshotLoop();
   });
   controller.on('tally-changed', (tally) => {
+    pauseRules?.tally(tally);
+    confirmManualTake(tally);
+    harness?.acceptTally(tally);
     if (mainWindow) mainWindow.webContents.send('obs-tally', tally);
   });
+}
+
+function confirmManualTake(tally) {
+  const pending = pendingManualTake;
+  if (!pending || pending.expiresAt < Date.now() || tally?.program !== pending.scene) return;
+  pendingManualTake = null;
+  eventLogger?.log({ type: 'manual_scene_take', actor: 'operator', showId: pending.showId });
 }
 
 /**
@@ -348,6 +608,7 @@ function getOrCreateVideoController() {
   const backend = nodeConfig ? nodeConfig.get('obsBackend') : 'obs';
   const ControllerClass = backend === 'vmix' ? VMixController : OBSController;
   obsController = new ControllerClass({ logger: console });
+  obsController.canReplayReturn = () => !showRunner?.isTechPaused() && !showRunner?.isTimeoutPaused() && currentAuthorized();
   wireObsEvents(obsController);
   // P2: wire ShowRunner to the newly created controller.
   if (showRunner) showRunner.setObsController(obsController);
@@ -364,6 +625,8 @@ function createWindow() {
     height: 800,
     minWidth: 960,
     minHeight: 600,
+    autoHideMenuBar: true,
+    backgroundColor: '#222225',
     icon: path.join(__dirname, '..', 'assets', 'esportra-icon.png'),
     webPreferences: {
       offscreen: process.env.ESPORTRA_AIR_SMOKE_TEST === '1' && !app.isPackaged,
@@ -398,9 +661,25 @@ function registerIpc(channel, handler) {
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow?.webContents.mainFrame) {
       return { ok: false, error: 'Untrusted application frame.' };
     }
+    if (PRODUCTION_COMMANDS.has(channel) && runtimeMode !== 'production') return { ok: false, error: 'Production controls are unavailable in capture-only mode.' };
     return handler(event, ...args);
   });
 }
+
+const {syncNicknames:syncHudNicknames}=require('./match-day-ipc').registerMatchDay({register:registerIpc,commands:IPC_COMMANDS,config:()=>nodeConfig,getShow:()=>currentShowConfig,getNodeId:activeNodeId,feed:productionFeed,patch:applyHudPatch,onPreference:(...args)=>standaloneBridge?.onPreference(...args)});
+registerIpc(IPC_COMMANDS.OBSERVER_TEST,async(_event,input)=>{try{const target=String(input?.host || '')+':'+Number(input?.port);const key=input?.key || await keytar.getPassword(KEYTAR_SERVICE,'relay:'+target);return await require('./observer-probe').testObserver({...input,key});}catch(_){return {ok:false,error:'Could not test the observer. Use a private LAN address and a valid connection key.'};}});
+
+registerIpc(IPC_COMMANDS.AIR_SIGNUP_OPEN,()=>{shell.openExternal((API_BASE.includes('staging')?'https://staging.esportra.gg':'https://esportra.gg')+'/auth/signup');return {ok:true};});
+standaloneBridge=require('./air-session-ipc').registerStandalone({register:registerIpc,commands:IPC_COMMANDS,getSession:()=>airSession,config:()=>nodeConfig,getShow:()=>currentShowConfig,activate:receiveShowConfig,assertIdle:idleForWorkspace,
+  assertAccountIdle:()=>{idleForWorkspace();if(standaloneActive()&&isBroadcastActive())throw new Error('Close the active HUD outputs before changing accounts. Your on-air scene is retained.');},
+  selectAsset:async()=>{const {dialog,nativeImage}=require('electron');const chosen=await dialog.showOpenDialog(mainWindow,{title:'Choose a team or player logo',properties:['openFile'],filters:[{name:'Logos',extensions:['png','jpg','jpeg','webp']}]});if(chosen.canceled)return null;const fs=require('node:fs');const file=chosen.filePaths[0];if(fs.statSync(file).size>5242880)throw new Error('Choose a logo under 5 MB.');const image=nativeImage.createFromBuffer(fs.readFileSync(file));if(image.isEmpty())throw new Error('Choose a valid PNG, JPG or WebP logo.');const size=image.getSize();if(size.width*size.height>24000000)throw new Error('Logo must be under 24 megapixels.');const bytes=(Math.max(size.width,size.height)>1024?image.resize(size.width>=size.height?{width:1024}:{height:1024}):image).toPNG();if(bytes.length>5242880)throw new Error('Choose a smaller logo.');return bytes;},
+  clearStandalone:async()=>{currentShowConfig=null;pendingShowConfig=null;showRunner?.loadRundown([]);productionFeed.reset('MAIN');nodeConfig.set('showConfig',null);nodeConfig.set('activeAirProject',null);nodeConfig.set('activeAirMatch',null);eventLogger?.setShowId(null);eventLogger?.setOfflineQueue(offlineQueue);hudServer?.notifyOutputsChanged();},
+  restoreTournament:async saved=>{if(!nodeToken)throw new Error('Pair this PC with the tournament workspace first.');currentShowConfig=null;const result=await receiveShowConfig(saved);if(!result.ok)throw new Error(result.error);nodeConfig.set('activeAirProject',null);}
+});
+
+
+bracketPresentation=require('./bracket-presentation').registerBracket({register:registerIpc,commands:IPC_COMMANDS,config:()=>nodeConfig,getShow:()=>currentShowConfig,getNodeId:activeNodeId,getToken:()=>nodeToken,fetch,apiBase:API_BASE,patch:applyHudPatch});
+hudControls=require('./hud-controls').registerHudControls({register:registerIpc,commands:IPC_COMMANDS,getShow:()=>currentShowConfig,getNodeId:activeNodeId,authorized:currentAuthorized,config:()=>nodeConfig,previewBase:`http://localhost:${HUD_PORT}`,patch:applyHudPatch,log:event=>eventLogger?.log(event),read:async code=>{const response=await fetch(`http://127.0.0.1:${HUD_PORT}/api/${encodeURIComponent(code)}`,{signal:AbortSignal.timeout(3000)});if(!response.ok)throw new Error('Local HUD is unavailable. Check Connections.');return (await response.json()).state;}});
 
 registerIpc(IPC_COMMANDS.HUD_STATUS, async () => {
   const online = hudServer !== null;
@@ -541,7 +820,7 @@ registerIpc(IPC_COMMANDS.PREVIEW_OVERLAY, async (_event, { url } = {}) => {
 // node token via the backend, stores the token in the OS keychain, and connects
 // the hub client. The token is NEVER returned to the renderer.
 
-registerIpc(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
+async function pairNode({ pairingCode } = {}) {
   if (!pairingCode || !/^[A-Z0-9]{6,8}$/i.test(pairingCode)) {
     return { ok: false, error: 'Pairing code must be 6–8 alphanumeric characters.' };
   }
@@ -552,6 +831,7 @@ registerIpc(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
       body: JSON.stringify({
         code: pairingCode.toUpperCase(),
         name: os.hostname(),
+        capabilities: { mode: runtimeMode, appVersion: APP_VERSION, hud: runtimeMode === 'production', obs: runtimeMode === 'production', gep: true },
       }),
     });
 
@@ -569,6 +849,7 @@ registerIpc(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
     await keytar.setPassword(KEYTAR_SERVICE, KEYTAR_NODE_TOKEN_ACCOUNT, newToken);
     nodeConfig.set('nodeId', nodeId);
     nodeToken = newToken;
+    pairingNotice = null;
 
     // (Re)initialize offline queue and hub client with the new token.
     if (hubClient) await hubClient.disconnect();
@@ -576,14 +857,15 @@ registerIpc(IPC_COMMANDS.PAIR, async (_event, { pairingCode } = {}) => {
     hubClient = createHubClient(offlineQueue);
     hubClient.connect(newToken);
     // P2: wire new offlineQueue into EventLogger.
-    if (eventLogger) eventLogger.setOfflineQueue(offlineQueue);
+    if (eventLogger) eventLogger.setOfflineQueue(standaloneActive()?airSession.eventQueue:offlineQueue);
 
     // Return nodeId only — token stays in main process.
     return { ok: true, nodeId };
   } catch (_) {
     return { ok: false, error: 'Network error — could not reach Esportra.' };
   }
-});
+}
+registerIpc(IPC_COMMANDS.PAIR, (_event, input) => serializePairing(() => pairNode(input)));
 
 // ─── P0 IPC: GET_STATUS ───────────────────────────────────────────────────────
 
@@ -594,21 +876,37 @@ registerIpc(IPC_COMMANDS.GET_STATUS, () => {
   return {
     mode: runtimeMode || (nodeConfig ? nodeConfig.get('mode') : 'production'),
     modeConfigured: nodeConfig ? nodeConfig.get('modeConfigured') === true : false,
+    configuredMode: nodeConfig?.get('mode') || 'production',
+    restartRequired: !!runtimeMode && runtimeMode !== nodeConfig?.get('mode'),
     nodeName: os.hostname(),
     nodeIp: Object.values(os.networkInterfaces()).flat().find(address => address && !address.internal && address.family === 'IPv4')?.address || null,
-    outputs: outputRegistry ? outputRegistry.list() : [],
+    outputs: outputRegistry ? outputRegistry.list().map(output => ({ ...output, ...hudServer?.getOutputHealth(output.id) })) : [],
     outputCatalogue: outputRegistry ? outputRegistry.catalogue() : [],
     lanRelayTargets: nodeConfig ? nodeConfig.get('lanRelayTargets') : [],
     pendingRecords: offlineQueue ? offlineQueue.getPendingCount() : 0,
-    show: currentShowConfig ? { id: currentShowConfig.showId, title: currentShowConfig.title, matchCode: currentShowConfig.matchCode, matches: (currentShowConfig.matches || []).map(match => ({ matchCode: match.matchCode, label: (match.teams || []).map(team => team.name).join(' vs ') })) } : null,
+    show: currentShowConfig ? { source:currentShowConfig.source || 'esportra', projectId:currentShowConfig.projectId, sponsors: runtimeMode === 'production' ? (currentShowConfig.sponsors || []).map(sponsor => ({ sponsorId: sponsor.sponsorId || null, name: sponsor.name || '', logoUrl: sponsor.logoUrl || '' })) : [], id: currentShowConfig.showId, title: currentShowConfig.title, matchCode: currentShowConfig.matchCode, scheduledAt: currentShowConfig.scheduledAt || currentShowConfig.matches?.find(match => match.matchId === currentShowConfig.selectedMatchId)?.scheduledAt || null, registeredRoster: (currentShowConfig.teams || []).map(team => ({ team: team.name, players: team.roster || [] })), matches: (currentShowConfig.matches || []).map(match => ({ matchCode: match.matchCode, label: (match.teams || []).map(team => team.name).join(' vs ') })), screens: (currentShowConfig.rundown || []).filter(item => !item.matchId || item.matchId === currentShowConfig.selectedMatchId).map(item => ({ title: item.title, overlay: item.overlay })) } : null,
     pendingShow: pendingShowConfig ? { title: pendingShowConfig.title } : null,
     configuration: configurationState,
+    correctionContext: currentShowConfig && currentAuthorized() ? { showId: currentShowConfig.showId, matchId: currentShowConfig.selectedMatchId, matchCode: currentShowConfig.matchCode, nodeId: activeNodeId() } : null,
+    tournamentSync: tournamentSync?.status() || null,
+    rundownPublication: { version: currentShowConfig?.rundownVersion || null, pendingVersion: pendingRundownConfig?.rundownVersion || null, diff: pendingRundownConfig ? upcomingDiff(currentShowConfig, pendingRundownConfig) : null },
+    obsTemplate: (() => { try { const state = templateSnapshot(); return { prepared: state.prepared, screenCount: state.draft.items.length, planVersion: state.context.planVersion }; } catch (_) { return { prepared: false, screenCount: 0 }; } })(),
     runner: showRunner ? showRunner.getState() : null,
+    gameFeed: productionFeed.snapshot(),
+    productionFeed: productionFeed.snapshot(),
+    pauseRule: pauseRules?.status() || null,
+    displayOverrides: hudServer?.getDisplayFixSummary(currentShowConfig?.matchCode) || { fields: [] },
+    productionEvents: (eventLogger?.getLog(100) || []).filter(entry => entry.showId === currentShowConfig?.showId),
     nodeId: nodeConfig ? nodeConfig.get('nodeId') : null,
     paired: nodeToken !== null,
+    airAccount: airSession?.status() || {authenticated:false},
+    standalone:!!airSession?.status().authenticated && (standaloneActive() || !nodeToken),
+    pairingNotice,
+    sponsorPlacements: sponsorLedger ? [...sponsorLedger.active.values()] : [],
     hubConnected,
     hudOnline,
     gepActive: gepStatus.active,
+    captureRole: gepStatus.active ? gepStatus.captureRole : nodeConfig.get('captureRole') || 'observer',
     lanRelay: lanRelay ? lanRelay.getStatus() : { listening: false, port: relayPort, consumerCount: 0 },
     health: {
       hudServer: {
@@ -619,7 +917,7 @@ registerIpc(IPC_COMMANDS.GET_STATUS, () => {
         if (!obsController) return { state: 'offline', detail: 'Not connected' };
         const obs = obsController.getState();
         if (obs.connected) {
-          return { state: 'healthy', detail: `OBS ready${obs.studioMode ? ' (Studio Mode)' : ''}` };
+          return { state: 'healthy', detail: `OBS ${obs.version || 'version unavailable'}${obs.studioMode ? ' · Studio Mode' : ''} · Scene collection: ${obs.collection || 'unavailable'}` };
         }
         return { state: 'attention', detail: obs.state };
       })(),
@@ -641,14 +939,26 @@ registerIpc(IPC_COMMANDS.GET_STATUS, () => {
 
 // ─── P0 IPC: SET_MODE ─────────────────────────────────────────────────────────
 
+registerIpc(IPC_COMMANDS.SHORTCUTS_GET, () => {
+  const { DEFAULTS, validateBindings } = require('./shortcuts');
+  const result = validateBindings(nodeConfig?.get('shortcuts') || DEFAULTS);
+  return result.ok ? result : { ok: true, bindings: { ...DEFAULTS } };
+});
+registerIpc(IPC_COMMANDS.SHORTCUTS_SET, (_event, bindings) => {
+  const result = require('./shortcuts').validateBindings(bindings);
+  if (!result.ok) return result;
+  if (!nodeConfig) return { ok: false, error: 'Workstation settings are not ready.' };
+  try { nodeConfig.set('shortcuts', result.bindings); return result; }
+  catch (_) { return { ok: false, error: 'Could not save shortcuts. Check workstation storage and retry.' }; }
+});
 registerIpc(IPC_COMMANDS.SET_MODE, (_event, { mode: newMode } = {}) => {
   const VALID_MODES = new Set(['production', 'capture-only']);
   if (!newMode || !VALID_MODES.has(newMode)) {
     return { ok: false, error: 'Invalid mode. Use "production" or "capture-only".' };
   }
   if (!nodeConfig) return { ok: false, error: 'Node config not ready.' };
-  const restartRequired = nodeConfig.get('mode') !== newMode;
-  if (restartRequired && (isBroadcastActive() || isProductionActive(showRunner))) return { ok: false, error: 'Stop the rundown and capture, then close active HUD consumers before changing modes.' };
+  const restartRequired = (runtimeMode || nodeConfig.get('mode')) !== newMode;
+  if (restartRequired && (isBroadcastActive() || isProductionActive(showRunner))) return { ok: false, error: 'Stop the show flow and game capture, then close HUD previews and browser sources before changing the PC role.' };
   nodeConfig.set('mode', newMode);
   nodeConfig.set('modeConfigured', true);
   return { ok: true, restartRequired };
@@ -663,7 +973,7 @@ registerIpc(IPC_COMMANDS.OUTPUT_ADD, (_event, input) => {
   catch (error) { return { ok: false, error: error.message }; }
 });
 registerIpc(IPC_COMMANDS.OUTPUT_REMOVE, (_event, { id } = {}) => {
-  try { outputRegistry.remove(id); return { ok: true }; }
+  try { outputRegistry.remove(id); hudServer?.notifyOutputsChanged(); return { ok: true }; }
   catch (error) { return { ok: false, error: error.message }; }
 });
 registerIpc(IPC_COMMANDS.COPY_RELAY_KEY, () => {
@@ -706,26 +1016,63 @@ registerIpc(IPC_COMMANDS.COPY_OUTPUT_URL, (_event, { overlayName, matchCode } = 
 
 // Security: OBS WebSocket must be on loopback. Remote OBS requires explicit
 // config-level allowlisting in a future version; for P1 local operation only.
-const OBS_ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1']);
+const { allowedOBSHost, discoverOBS } = require('./obs-discovery');
 
-registerIpc(IPC_COMMANDS.OBS_CONNECT, async (_event, { host, port, password } = {}) => {
+registerIpc(IPC_COMMANDS.OBS_DISCOVER, () => discoverOBS());
+registerIpc(IPC_COMMANDS.OBS_CONNECT, async (_event, { host, port, password, allowRemote } = {}) => {
+  if (runtimeMode !== 'production') return { ok: false, error: 'OBS controls require production mode.' };
   if (!host || typeof host !== 'string') {
     return { ok: false, error: 'host is required.' };
   }
-  if (!OBS_ALLOWED_HOSTS.has(host)) {
-    return { ok: false, error: 'OBS must run on localhost. Remote connections not supported in P1.' };
+  const target = allowedOBSHost(host);
+  if (!target.valid || (target.remote && allowRemote !== true)) {
+    return { ok: false, error: 'Use this PC or explicitly allow a private LAN OBS address.' };
   }
-  const safePort = Number(port) || 4455;
-  if (safePort < 1 || safePort > 65535) {
+  const safePort = port === undefined || port === '' ? 4455 : Number(port);
+  if (!Number.isInteger(safePort) || safePort < 1 || safePort > 65535) {
     return { ok: false, error: 'port must be between 1 and 65535.' };
   }
+  if (password !== undefined && (typeof password !== 'string' || password.length > 4096)) return { ok: false, error: 'Enter a valid OBS password.' };
   const controller = getOrCreateVideoController();
   try {
-    await controller.connect(host, safePort, password || '');
+    const account = `obs:${host}:${safePort}`;
+    const credential = password || await keytar.getPassword(KEYTAR_SERVICE, account) || '';
+    await controller.connect(host, safePort, credential);
+    await keytar.setPassword(KEYTAR_SERVICE, account, credential);
+    nodeConfig.set('obsConnection', { host, port: safePort, allowRemote: target.remote });
     return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err.message || 'Connection failed.' };
+  } catch (_) {
+    return { ok: false, error: 'Could not connect and save OBS credentials. Check the address, password and OS credential store.' };
   }
+});
+
+registerIpc(IPC_COMMANDS.RULES_GET, () => ({ ok: true, durations: rulesEngine.getDurations() }));
+registerIpc(IPC_COMMANDS.PAUSE_RULES_GET, async () => {
+  const inspection = obsController?.getState().connected && obsController.inspect ? await obsController.inspect() : null;
+  return { ok: true, config: pauseRules?.config || require('./pause-rules').DEFAULTS, scenes: inspection?.scenes || [] };
+});
+registerIpc(IPC_COMMANDS.PAUSE_RULES_SET, (_event, input) => {
+  if (!pauseRules || isProductionActive(showRunner) || showRunner.isTechPaused() || showRunner.isTimeoutPaused()) return { ok: false, error: 'Stop the rundown and end pauses before changing pause behavior.' };
+  try { const config = require('./pause-rules').validatePauseRules(input); nodeConfig.set('pauseRules', config); pauseRules.configure(config); return { ok: true, config }; }
+  catch (failure) { return { ok: false, error: failure.message }; }
+});
+registerIpc(IPC_COMMANDS.PRODUCTION_HISTORY, () => ({ ok: true, history: currentAuthorized() && currentShowConfig ? eventLogger?.getTimeline(currentShowConfig.showId) : { items: [] } }));
+registerIpc(IPC_COMMANDS.GRAPHIC_FIRE, async (_event, { kind, input } = {}) => {
+  if (!currentShowConfig?.showId) return { ok: false, error: 'Select a show match before firing a graphic.' };
+  try {
+    const patch = require('./graphic-actions').graphicPatch(kind, input);
+    await applyHudPatch(currentShowConfig.matchCode, patch);
+    eventLogger?.log({ type: 'manual_graphic', actor: 'operator', data: { kind } });
+    return { ok: true };
+  } catch (failure) { return { ok: false, error: failure.message || 'Could not show this graphic.' }; }
+});
+registerIpc(IPC_COMMANDS.RULES_SET, (_event, input) => {
+  if (runtimeMode !== 'production' || isProductionActive(showRunner)) return { ok: false, error: 'Stop the active rundown before changing graphic timings.' };
+  try {
+    const durations = require('./rules-engine').validateDurations(input);
+    nodeConfig.set('graphicsDurations', durations); rulesEngine.setDurations(durations);
+    return { ok: true, durations };
+  } catch (failure) { return { ok: false, error: failure.message }; }
 });
 
 // ─── P1 IPC: OBS_DISCONNECT ──────────────────────────────────────────────────
@@ -738,29 +1085,52 @@ registerIpc(IPC_COMMANDS.OBS_DISCONNECT, async () => {
 
 // ─── P1 IPC: OBS_GET_STATUS ──────────────────────────────────────────────────
 
-registerIpc(IPC_COMMANDS.OBS_GET_STATUS, () => {
+registerIpc(IPC_COMMANDS.OBS_GET_STATUS, async () => {
   if (!obsController) {
-    return { connected: false, state: 'disconnected', studioMode: false, tally: { preview: null, program: null } };
+    const saved = nodeConfig.get('obsConnection');
+    return { connected: false, state: 'disconnected', studioMode: false, host: saved?.host, port: saved?.port, allowRemote: saved?.allowRemote === true, tally: { preview: null, program: null } };
   }
-  return obsController.getState();
+  const state = obsController.inspect ? await obsController.inspect() : obsController.getState();
+  return { ...state, allowRemote: nodeConfig.get('obsConnection')?.allowRemote === true };
+});
+
+registerIpc(IPC_COMMANDS.OBS_GET_SETUP, async () => {
+  if (runtimeMode !== 'production' || !obsController?.inspect) return { ok: false, error: 'Connect OBS in production mode first.' };
+  const inspection = await obsController.inspect();
+  const items = (currentShowConfig?.rundown || []).filter(item => !item.matchId || item.matchId === currentShowConfig.selectedMatchId);
+  return { ok: true, ...inspection, segments: normalizeRundown(items, nodeConfig.get('sceneMappings') || {}), defaults: normalizeRundown(items) };
+});
+
+registerIpc(IPC_COMMANDS.OBS_SET_SETUP, (_event, input) => {
+  showConfigTask = showConfigTask.catch(() => {}).then(async () => {
+    if (runtimeMode !== 'production' || !obsController?.inspect || !currentShowConfig) return { ok: false, error: 'Connect OBS and receive a show first.' };
+    try {
+      const inspection = await obsController.inspect();
+      if (isProductionActive(showRunner)) return { ok: false, error: 'Stop the active rundown before changing scene mappings.' };
+      const items = (currentShowConfig.rundown || []).filter(item => !item.matchId || item.matchId === currentShowConfig.selectedMatchId);
+      const mappings = require('./scene-mapping').validateSceneMappings(input, normalizeRundown(items), inspection);
+      const saved = nodeConfig.get('sceneMappings') || {};
+      const currentIds = new Set((currentShowConfig.rundown || []).map(item => item.id));
+      const retained = Object.fromEntries(Object.entries(saved).filter(([id]) => currentIds.has(id)));
+      nodeConfig.set('sceneMappings', { ...retained, ...mappings });
+      configurationState = applyRundown(currentShowConfig, showRunner, nodeConfig.get('sceneMappings'));
+      eventLogger?.log({ type: 'scene_mappings_saved', actor: 'operator', data: { count: input.length } });
+      return { ok: true };
+    } catch (failure) { return { ok: false, error: failure.message || 'Could not save scene mappings.' }; }
+  });
+  return showConfigTask;
 });
 
 // ─── P1 IPC: OBS_BUILD_SCENES ────────────────────────────────────────────────
 // Creates ESA_ scenes in OBS with browser sources for each named overlay URL.
 // Security: all provided URLs must target the local HUD server only.
 
-const HUD_URL_PREFIX_RE = /^https?:\/\/(localhost|127\.0\.0\.1):5300\//;
 
 registerIpc(IPC_COMMANDS.OBS_BUILD_SCENES, async (_event, { outputUrls } = {}) => {
   if (!obsController) return { ok: false, error: 'OBS is not connected.' };
-  const safeUrls = {};
-  for (const [key, url] of Object.entries(outputUrls || {})) {
-    if (typeof url !== 'string' || !HUD_URL_PREFIX_RE.test(url)) {
-      return { ok: false, error: `outputUrls["${key}"] must be a localhost:5300 HUD URL.` };
-    }
-    safeUrls[key] = url;
-  }
+  if (isProductionActive(showRunner) || harness?.getStatus().allowObs) return { ok: false, error: 'Stop the show flow and OBS rehearsal before preparing screens.' };
   try {
+    const safeUrls = require('./screen-scenes').validateSceneUrls(outputUrls || {}, HUD_PORT);
     const result = await obsController.buildScenes(safeUrls);
     return { ok: true, ...result };
   } catch (err) {
@@ -768,10 +1138,96 @@ registerIpc(IPC_COMMANDS.OBS_BUILD_SCENES, async (_event, { outputUrls } = {}) =
   }
 });
 
+function productionSetup() {
+  if (!obsController?.getState().connected || !obsController.productionSetup) throw new Error('Connect OBS before preparing source slots.');
+  return obsController.productionSetup(name => nodeConfig.set('ownedObsCollection', name));
+}
+registerIpc(IPC_COMMANDS.TEMPLATE_GET, async () => {
+  try {
+    let inputs = [], inputError = null;
+    if (obsController?.getState().connected) { try { await obsController.inspect(); inputs = await obsController.getVideoInputs(); } catch (_) { inputError = 'Could not read OBS video inputs. Reconnect OBS and reload.'; } }
+    const current = templateSnapshot();
+    return { ok: true, ...current, previewBase:`http://localhost:${HUD_PORT}`, teams:currentShowConfig?.teams||[], inputs, inputError, hudSettings:hudControls.draftSettings(), available:obsTemplate.defaultTemplate(currentShowConfig,activeNodeId()).items, overlays: outputRegistry.catalogue().map(item => item.name), obsConnected: obsController?.getState().connected === true };
+  }
+  catch (failure) { return { ok: false, error: failure.message }; }
+});
+registerIpc(IPC_COMMANDS.TEMPLATE_SAVE, (_event, input) => {
+  try {
+    const current = templateSnapshot();
+    const draft = obsTemplate.validateTemplate(input, currentShowConfig, activeNodeId(), current.draft);
+    nodeConfig.set('obsTemplateDrafts', { ...(nodeConfig.get('obsTemplateDrafts') || {}), [current.key]: draft });
+    return { ok: true, draft, prepared: templateSnapshot().prepared };
+  } catch (failure) { return { ok: false, error: failure.message }; }
+});
+registerIpc(IPC_COMMANDS.TEMPLATE_PUSH, (_event, input) => {
+  showConfigTask = showConfigTask.catch(() => {}).then(async () => {
+    try {
+      await standaloneAccess();
+      const current = templateSnapshot(), token = standaloneActive()?airSession?.status().userId:nodeToken;
+      const draft = obsTemplate.validateTemplate(input, currentShowConfig, activeNodeId(), current.draft);
+      if (!obsController?.getState().connected) throw new Error('Connect OBS in Connections, then return here to send your screens.');
+      if (!['localhost', '127.0.0.1', '::1'].includes(obsController.getState().host)) throw new Error('Connect OBS on this PC for automatic template setup. Remote OBS can use advanced scene mappings.');
+      const allowed = () => (standaloneActive()?airSession?.status().userId:nodeToken) === token && !isProductionActive(showRunner) && !harness?.getStatus().allowObs && (() => { try { const context = templateSnapshot().context; return context.planVersion === draft.context.planVersion && context.showId === draft.context.showId && context.matchId === draft.context.matchId && context.nodeId === draft.context.nodeId; } catch (_) { return false; } })();
+      if (!allowed()) throw new Error('Stop the show flow and OBS rehearsal before sending screens.');
+      const inspection = await obsController.inspect();
+      if (!allowed()) throw new Error('The selected match changed. Reload its template.');
+      if (inspection.inspectionIncomplete || !inspection.collection) throw new Error('Could not confirm the OBS scene collection. Reconnect OBS and try sending again.');
+      const collectionKey = `${obsController.getState().host}:${obsController.getState().port}:${inspection.collection || ''}`;
+      const ownership = nodeConfig.get('obsTemplateScenes') || {};
+      const rows = obsTemplate.templateRows(draft, outputRegistry);
+      const baseUrls = {};
+      for (const [key, overlay] of Object.entries({ holding: 'holding', gameplay: 'ingame', fullscreen: 'scoreboard', replay: 'replay', casters: 'casters' })) {
+        let output = outputRegistry.list().find(item => item.overlay === overlay && item.followMatch);
+        if (!output) { outputRegistry.add({ name: overlay.replaceAll('-', ' '), overlay, followMatch: true }); output = outputRegistry.list().find(item => item.overlay === overlay && item.followMatch); }
+        baseUrls[key] = output.url;
+      }
+      const result = await obsController.pushTemplate(rows, ownership[collectionKey] || {}, owned => nodeConfig.set('obsTemplateScenes', { ...(nodeConfig.get('obsTemplateScenes') || {}), [collectionKey]: owned }), allowed, baseUrls);
+      if (!allowed()) throw new Error('Setup changed during the send. OBS keeps its current scene; reload and retry.');
+      const mappings = { ...(nodeConfig.get('sceneMappings') || {}) };
+      const defaults = new Map(normalizeRundown(currentShowConfig.rundown || []).map(item => [item.id, item]));
+      for (const row of rows) mappings[row.id] = { scene: row.sceneName, transition: mappings[row.id]?.transition || defaults.get(row.id)?.transition || undefined };
+      await hudControls.applyDraft();
+      configurationState = applyPublishedRundown(obsTemplate.templateRundown(currentShowConfig, draft), showRunner, mappings);
+      if (!configurationState.applied) throw new Error(configurationState.reason || 'Stop the show flow, then send the screens again.');
+      nodeConfig.set('sceneMappings', mappings);
+      nodeConfig.set('obsTemplateDrafts', { ...(nodeConfig.get('obsTemplateDrafts') || {}), [current.key]: draft });
+      nodeConfig.set('obsAppliedTemplates', { ...(nodeConfig.get('obsAppliedTemplates') || {}), [current.key]: draft });
+      nodeConfig.set('obsAppliedTemplateCollections', { ...(nodeConfig.get('obsAppliedTemplateCollections') || {}), [current.key]: collectionKey });
+      eventLogger?.log({ type: 'obs_template_sent', actor: 'operator', data: { screenCount: rows.length } });
+      return { ok: true, draft, prepared: true, ...result };
+    } catch (failure) { return { ok: false, error: failure.message || 'Could not send screens to OBS. Review setup and retry.' }; }
+  });
+  return showConfigTask;
+});
+registerIpc(IPC_COMMANDS.OBS_BUILD_COLLECTION, async () => {
+  if (isProductionActive(showRunner) || harness?.getStatus().allowObs) return { ok: false, error: 'Stop the show flow and OBS rehearsal before switching collections.' };
+  try {
+    const outputUrls = {};
+    for (const [key, overlay] of Object.entries({ holding: 'holding', gameplay: 'ingame', fullscreen: 'scoreboard', replay: 'replay', casters: 'casters' })) {
+      let output = outputRegistry.list().find(item => item.overlay === overlay && item.followMatch);
+      if (!output) { outputRegistry.add({ name: overlay.replaceAll('-', ' '), overlay, followMatch: true }); output = outputRegistry.list().find(item => item.overlay === overlay && item.followMatch); }
+      outputUrls[key] = output.url;
+    }
+    const result = await productionSetup().build({ name: `Esportra · ${os.hostname().slice(0, 32)} · ${nodeConfig.get('nodeId')?.slice(0, 8) || 'Local'}`, ownedCollection: nodeConfig.get('ownedObsCollection'), outputUrls });
+    await obsController.inspect();
+    return { ok: true, ...result };
+  } catch (failure) { return { ok: false, error: failure.message || 'Could not prepare broadcast collection.' }; }
+});
+registerIpc(IPC_COMMANDS.OBS_SLOT_STATUS, async () => {
+  try { return { ok: true, ...(await productionSetup().inspect(nodeConfig.get('ownedObsCollection'))) }; }
+  catch (failure) { return { ok: false, error: failure.message }; }
+});
+registerIpc(IPC_COMMANDS.OBS_SLOT_ASSIGN, async (_event, { slotId, sourceName } = {}) => {
+  if (isProductionActive(showRunner) || harness?.getStatus().allowObs) return { ok: false, error: 'Stop the show flow and OBS rehearsal before changing source slots.' };
+  try { return { ok: true, ...(await productionSetup().assign(nodeConfig.get('ownedObsCollection'), slotId, sourceName)) }; }
+  catch (failure) { return { ok: false, error: failure.message || 'Could not assign this OBS input.' }; }
+});
+
 // ─── P1 IPC: OBS_TAKE ────────────────────────────────────────────────────────
 // Studio-mode-aware scene transition targeting ≤100ms.
 
-registerIpc(IPC_COMMANDS.OBS_TAKE, async (_event, { sceneName } = {}) => {
+registerIpc(IPC_COMMANDS.OBS_TAKE, async (_event, { sceneName, transition } = {}) => {
+  try{await standaloneTakeAccess();}catch(error){return {ok:false,error:error.message};}
   if (!obsController) return { ok: false, error: 'OBS is not connected.' };
   if (!sceneName || typeof sceneName !== 'string') {
     return { ok: false, error: 'sceneName is required.' };
@@ -779,7 +1235,16 @@ registerIpc(IPC_COMMANDS.OBS_TAKE, async (_event, { sceneName } = {}) => {
   if (sceneName.length > 256) {
     return { ok: false, error: 'sceneName must be 256 characters or fewer.' };
   }
-  return obsController.take(sceneName);
+  if (showRunner?.isTechPaused() || showRunner?.isTimeoutPaused()) return { ok: false, error: showRunner.isTechPaused() ? 'tech_pause' : 'timeout' };
+  if (pendingManualTake && pendingManualTake.expiresAt > Date.now()) return { ok: false, error: 'Wait for OBS to confirm the previous take.' };
+  const pending = { scene: sceneName, showId: currentShowConfig?.showId, expiresAt: Date.now() + 5000 };
+  pendingManualTake = pending;
+  try {
+    const result = await obsController.take(sceneName, transition);
+    if (result.ok) confirmManualTake(obsController.getTally());
+    else if (pendingManualTake === pending) pendingManualTake = null;
+    return result;
+  } catch (failure) { if (pendingManualTake === pending) pendingManualTake = null; return { ok: false, error: failure.message || 'OBS take failed.' }; }
 });
 
 // ─── P1 IPC: OBS_TRIGGER_REPLAY ──────────────────────────────────────────────
@@ -787,6 +1252,7 @@ registerIpc(IPC_COMMANDS.OBS_TAKE, async (_event, { sceneName } = {}) => {
 
 registerIpc(IPC_COMMANDS.OBS_TRIGGER_REPLAY, async (_event, opts = {}) => {
   if (!obsController) return { ok: false, error: 'OBS is not connected.' };
+  if (showRunner?.isTechPaused() || showRunner?.isTimeoutPaused()) return { ok: false, error: showRunner.isTechPaused() ? 'tech_pause' : 'timeout' };
   let dwellMs;
   if (opts.dwellMs !== undefined) {
     const d = Number(opts.dwellMs);
@@ -808,19 +1274,26 @@ registerIpc(IPC_COMMANDS.SHOW_APPLY_PENDING, () => {
   return showConfigTask;
 });
 registerIpc(IPC_COMMANDS.SHOW_SELECT_MATCH, (_event, { matchCode } = {}) => {
-  showConfigTask = showConfigTask.then(async () => {
+  showConfigTask = showConfigTask.catch(()=>{}).then(async () => {
+    try{await standaloneAccess();}catch(error){return {ok:false,error:error.message};}
     if (!currentShowConfig?.matches?.some(match => match.matchCode === matchCode)) return { ok: false, error: 'Choose a configured match.' };
     if (isProductionActive(showRunner) || broadcastGep.getStatus().active) return { ok: false, error: 'Finish the rundown and stop capture before changing matches.' };
     try {
-      const selected = selectShowMatch(currentShowConfig, matchCode);
+      const selected = selectShowMatch({ ...currentShowConfig, preferredMatchCode: matchCode }, matchCode);
       if (runtimeMode === 'production') await applyShowConfigToHud(selected);
-      currentShowConfig = selected; nodeConfig.set('selectedMatchCode', matchCode);
+      if(currentShowConfig?.selectedMatchId!==selected.selectedMatchId){pauseRules?.stop();showRunner?.resetForMatch();obsController?.cancelReplay?.();standaloneManualScope=null;}
+      if (showRunner && runtimeMode === 'production') configurationState = applyRundown(selected, showRunner, nodeConfig.get('sceneMappings') || {});
+      if (productionFeed.matchCode !== selected.matchCode || currentShowConfig?.showId !== selected.showId) { productionFeed.reset(selected.matchCode); rulesEngine?.dispose(); }
+      currentShowConfig = selected; nodeConfig.set('selectedMatchCode', matchCode); nodeConfig.set('showConfig', selected);
+      await seedProductionFeed(selected);
+      hudServer?.notifyOutputsChanged();
       return { ok: true };
     } catch (error) { return { ok: false, error: error.message }; }
   });
   return showConfigTask;
 });
 registerIpc(IPC_COMMANDS.RUNNER_STOP, () => {
+  standaloneManualScope=null;
   if (showRunner?.getState().segments.some(segment => segment.state === 'taking')) return { ok: false, error: 'Wait for the current transition to finish.' };
   showRunner?.loadRundown([]); eventLogger?.log({ type: 'rundown_stopped', actor: 'operator' });
   return { ok: true };
@@ -834,11 +1307,18 @@ registerIpc(IPC_COMMANDS.RUNNER_LOAD_RUNDOWN, (_event, { segments } = {}) => {
   return { ok: true };
 });
 
-registerIpc(IPC_COMMANDS.RUNNER_START, () => {
+registerIpc(IPC_COMMANDS.RUNNER_START, async () => {
+  try {await standaloneAccess();}catch(error){return {ok:false,error:error.message};}
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
   if (!obsController?.getState().connected) return { ok: false, error: 'Connect OBS before starting the rundown.' };
   if (showRunner.getState().activeSegment) return { ok: false, error: 'The rundown is already active.' };
   if (!showRunner.getState().segments.some(segment => segment.state === 'queued')) return { ok: false, error: 'No queued segments. Send your show configuration from the website.' };
+  if (!obsController.inspect) return { ok: false, error: 'This switcher does not support rundown readiness checks.' };
+  const inspection = await obsController.inspect();
+  if (!inspection.connected || inspection.inspectionIncomplete) return { ok: false, error: 'Could not verify OBS readiness. Reconnect OBS and retry.' };
+  const missing = require('./scene-mapping').missingScenes(showRunner.getState().segments, inspection.scenes);
+  if (missing.length) return { ok: false, error: `Prepare or map these missing scenes before starting: ${missing.join(', ')}` };
+  if (showRunner.getState().activeSegment) return { ok: false, error: 'The rundown is already active.' };
   showRunner.start();
   if (eventLogger) eventLogger.log({ type: 'rundown_started', actor: 'operator' });
   return { ok: true };
@@ -856,6 +1336,7 @@ registerIpc(IPC_COMMANDS.RUNNER_SKIP, (_event, { segmentId } = {}) => {
   if (!showRunner) return { ok: false, error: 'ShowRunner not initialized.' };
   if (!segmentId)  return { ok: false, error: 'segmentId required.' };
   const result = showRunner.skip(segmentId);
+  if (result.ok) scheduleRundownBoundary();
   if (result.ok && eventLogger) eventLogger.log({ type: 'cmd_skip', segmentId, actor: 'operator' });
   return result;
 });
@@ -881,134 +1362,76 @@ registerIpc(IPC_COMMANDS.RUNNER_TECH_PAUSE, () => {
   if (eventLogger) eventLogger.log({ type: 'cmd_tech_pause', actor: 'operator' });
   return { ok: true };
 });
-
-// ─── P2 IPC: RUNNER_SPONSOR_SLOT ─────────────────────────────────────────────
-// Logs a sponsor impression start or end via EventLogger → offline queue AND
-// directly POSTs to broadcast_sponsor_impressions via the REST endpoint.
-// The EventLogger path records the event in broadcast_events for the show log.
-// The REST POST path is the source of truth for sponsor proof aggregation.
-// action: 'start' | 'end'  sponsorId: string  slotType: string  segmentId?: string
-
-registerIpc(IPC_COMMANDS.RUNNER_SPONSOR_SLOT, async (_event, { action, sponsorId, slotType, segmentId } = {}) => {
-  const VALID_ACTIONS = new Set(['start', 'end']);
-  if (!action || !VALID_ACTIONS.has(action)) {
-    return { ok: false, error: 'action must be "start" or "end".' };
-  }
-  if (!sponsorId || typeof sponsorId !== 'string') {
-    return { ok: false, error: 'sponsorId is required.' };
-  }
-  if (!slotType || typeof slotType !== 'string') {
-    return { ok: false, error: 'slotType is required.' };
-  }
-
-  // Log to EventLogger → offline queue (broadcast_events show log).
-  const type = action === 'start' ? 'SponsorImpressionStarted' : 'SponsorImpressionEnded';
-  if (eventLogger) {
-    eventLogger.log({
-      type,
-      actor:     'sponsor-slot',
-      segmentId: segmentId ?? null,
-      data: {
-        sponsorId,
-        slotType,
-        wallClockMs: Date.now(),
-      },
-    });
-  }
-
-  // Direct REST POST to broadcast_sponsor_impressions (sponsor proof source of truth).
-  const showId = currentShowConfig?.showId;
-  if (!showId || !nodeToken) {
-    console.warn('[sponsor-slot] No active show or node token — impression skipped from sponsor proof.');
-    return { ok: true };
-  }
-
-  const impressionKey = `${sponsorId}:${slotType}`;
-  let impression;
-
-  if (action === 'start') {
-    const startedAt = new Date().toISOString();
-    activeImpressions.set(impressionKey, {
-      sponsorId,
-      slotType,
-      startedAt,
-      segmentId: segmentId ?? null,
-    });
-    impression = { sponsorId, segmentId: segmentId ?? null, startedAt, endedAt: null, slotType };
-  } else {
-    const tracked = activeImpressions.get(impressionKey);
-    activeImpressions.delete(impressionKey);
-    const endedAt = new Date().toISOString();
-    impression = {
-      sponsorId,
-      segmentId: segmentId ?? (tracked?.segmentId ?? null),
-      startedAt: tracked?.startedAt ?? endedAt,
-      endedAt,
-      slotType,
-    };
-  }
-
-  try {
-    const res = await fetch(
-      `${API_BASE}/api/broadcast/shows/${showId}/sponsor-impressions`,
-      {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${nodeToken}` },
-        body:    JSON.stringify({ impressions: [impression] }),
-      },
-    );
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      console.warn('[sponsor-slot] impression POST failed:', res.status, body.error || '');
-    }
-  } catch (err) {
-    // Non-fatal — network may be offline; EventLogger path provides the fallback record.
-    console.warn('[sponsor-slot] impression POST error (offline?):', err.message);
-  }
-
+registerIpc(IPC_COMMANDS.RUNNER_TIMEOUT, (_event, active) => {
+  if (runtimeMode !== 'production' || typeof active !== 'boolean') return { ok: false, error: 'Choose a valid timeout state in production mode.' };
+  showRunner.setTimeoutPaused(active);
+  eventLogger?.log({ type: active ? 'cmd_timeout_started' : 'cmd_timeout_ended', actor: 'operator' });
   return { ok: true };
 });
 
+// Sponsor proof is durably queued with its original show and placement identity.
+registerIpc(IPC_COMMANDS.RUNNER_SPONSOR_SLOT, (_event, input) => {
+  try {
+    const result = sponsorLedger.record(currentShowConfig, input);
+    eventLogger?.log({ type: input.action === 'start' ? 'SponsorImpressionStarted' : 'SponsorImpressionEnded', actor: 'operator', showId: result.showId, segmentId: result.impression.segmentId, data: { sponsorId: result.impression.sponsorId, slotType: result.impression.slotType, wallClockMs: Date.now() } });
+    return result;
+  } catch (failure) { return { ok: false, error: failure.message || 'Could not record sponsor placement.' }; }
+});
+
 // ─── P2 IPC: FIX_DATA ────────────────────────────────────────────────────────
+async function displayFixRequest(input) {
+  const show = currentShowConfig;
+  if (!currentAuthorized() || !hudServer || !show?.selectedMatchId) return { ok: false, error: 'Pair this computer and choose a match before fixing its on-air data.' };
+  try {
+    const response = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${show.matchCode}/display-fixes`, { method: input ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': HUD_KEY }, ...(input ? { body: JSON.stringify(input) } : {}), timeout: 3000 });
+    const status = await response.json();
+    if (!response.ok) return { ok: false, error: status.error || 'Could not update the local HUD.' };
+    if (input) eventLogger?.log({ type: 'fix_data', showId: show.showId, actor: 'operator', data: { kind: 'display_override', action: status.action.action, field: status.action.field, onAirApplied: true } });
+    if (currentShowConfig?.showId !== show.showId || currentShowConfig?.selectedMatchId !== show.selectedMatchId) return { ok: false, error: 'The selected match changed. Reopen data fixes to review it.' };
+    return { ok: true, status, context: { showId: show.showId, matchId: show.selectedMatchId, matchCode: show.matchCode, nodeId: activeNodeId() }, officialResultChanged: false };
+  } catch (_) { return { ok: false, error: 'Could not reach the local HUD. Check Readiness and retry.' }; }
+}
+registerIpc(IPC_COMMANDS.DISPLAY_FIX_GET, () => displayFixRequest());
+registerIpc(IPC_COMMANDS.DISPLAY_FIX_CHANGE, (_event, { input, context } = {}) => {
+  if (!context || context.showId !== currentShowConfig?.showId || context.matchId !== currentShowConfig?.selectedMatchId || context.matchCode !== currentShowConfig?.matchCode || context.nodeId !== activeNodeId()) return { ok: false, error: 'The match or pairing changed. Reload its on-air data before applying a fix.' };
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { ok: false, error: 'Choose an on-air fix.' };
+  return displayFixRequest(input);
+});
 
 registerIpc(IPC_COMMANDS.FIX_DATA, async (_event, correction = {}) => {
-  const result = await fixData(correction && { ...correction, matchCode: correction.matchCode || currentShowConfig?.matchCode || 'MAIN' }, {
-    showConfig:  currentShowConfig || {},
+  if (standaloneActive()) return {ok:false,error:'Official tournament result submission is unavailable for independent projects. Edit the independent match result in its project instead.'};
+  if (!nodeToken) return { ok: false, error: 'Pair Air before correcting a map result.' };
+  const config = currentShowConfig, token = nodeToken;
+  let scope;
+  try {
+    scope = correctionScope(config, nodeConfig.get('nodeId'));
+    validateCorrectionScope(correction.context, scope);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (correction.matchCode !== scope.matchCode) return { ok: false, error: 'The selected match changed. Reopen the correction.' };
+  const result = await fixData({ ...correction, matchCode: scope.matchCode }, {
+    showConfig: config,
     hudPort:     HUD_PORT,
     hudKey:      HUD_KEY,
     offlineQueue,
   });
   if ((result.ok || result.queued) && eventLogger) {
-    eventLogger.log({ type: 'fix_data', actor: 'operator', data: correction });
+    eventLogger.log({ showId: scope.showId, type: 'fix_data', actor: 'operator', data: { matchCode: scope.matchCode, mapIndex: correction.mapIndex, teamAScore: correction.teamAScore, teamBScore: correction.teamBScore, onAirApplied: result.ok === true } });
   }
-  return result;
+  return { ...result, scopeChanged: token !== nodeToken || currentShowConfig?.showId !== scope.showId || currentShowConfig?.selectedMatchId !== scope.matchId };
 });
 
-// ─── P2 IPC: SIMULATION (dev only) ───────────────────────────────────────────
-
-registerIpc(IPC_COMMANDS.SIMULATION_START, async (_event, { filePath, speed } = {}) => {
-  if (app.isPackaged || process.env.NODE_ENV !== 'development') {
-    return { ok: false, error: 'Simulation only available in development mode.' };
-  }
-  if (!harness) return { ok: false, error: 'Simulation harness not initialized.' };
-  if (!filePath || typeof filePath !== 'string') {
-    return { ok: false, error: 'filePath required.' };
-  }
-  // Restrict to the simulation directory to prevent path traversal.
-  const simDir   = path.join(__dirname, 'simulation');
-  const resolved = path.resolve(filePath);
-  const relative = path.relative(simDir, resolved);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    return { ok: false, error: 'filePath must be within the simulation directory.' };
-  }
-  await harness.play(resolved, { speed: Number(speed) || 1.0 });
-  return { ok: true };
-});
-
-registerIpc(IPC_COMMANDS.SIMULATION_STOP, () => {
-  if (harness) harness.stop();
-  return { ok: true };
-});
+// Rehearsal never invokes the live runner, event logger or result submission.
+async function controlRehearsal(input) {
+  if (!harness || !hudServer) return { ok: false, error: 'Local HUD is unavailable.' };
+  try { return { ok: true, status: await harness.control(input) }; }
+  catch (failure) { return { ok: false, error: failure.message || 'Rehearsal failed.' }; }
+}
+registerIpc(IPC_COMMANDS.SIMULATION_START, () => controlRehearsal({ action: 'load' }));
+registerIpc(IPC_COMMANDS.SIMULATION_CONTROL, (_event, input) => controlRehearsal(input));
+registerIpc(IPC_COMMANDS.SIMULATION_STATUS, () => ({ ok: true, status: harness?.getStatus() || null }));
+registerIpc(IPC_COMMANDS.SIMULATION_STOP, () => controlRehearsal({ action: 'pause' }));
 
 // ─── Broadcast GEP controls ───────────────────────────────────────────────────
 const broadcastGep = require('./broadcast-gep');
@@ -1018,16 +1441,25 @@ broadcastGep.setStatusCallback(status => {
 
 registerIpc(IPC_COMMANDS.BROADCAST_STATUS, () => broadcastGep.getStatus());
 
-registerIpc(IPC_COMMANDS.START_BROADCAST, async (_event, { matchCode } = {}) => {
+registerIpc(IPC_COMMANDS.START_BROADCAST, async (_event, { matchCode, captureRole, playerId } = {}) => {
+  try {await standaloneAccess();}catch(error){return {ok:false,error:error.message};}
   if (matchCode !== undefined && (typeof matchCode !== 'string' || !/^[A-Z0-9_-]{1,64}$/i.test(matchCode))) return { ok: false, error: 'Invalid match code.' };
-  const mode = nodeConfig ? nodeConfig.get('mode') : 'production';
+  const mode = runtimeMode || (nodeConfig ? nodeConfig.get('mode') : 'production');
   const gepTargetUrl = mode === 'capture-only'
     ? `ws://127.0.0.1:${nodeConfig.get('lanRelayPort')}`
     : undefined;
-  return broadcastGep.start({ hudKey: HUD_KEY, hudPort: HUD_PORT, matchCode: matchCode || currentShowConfig?.matchCode || 'MAIN', gepTargetUrl, showId: currentShowConfig?.showId });
+  const result = await broadcastGep.start({ hudKey: HUD_KEY, hudPort: HUD_PORT, matchCode: matchCode || currentShowConfig?.matchCode || 'MAIN', gepTargetUrl, showId: currentShowConfig?.showId, captureRole, playerId });
+  if (result.ok) nodeConfig.set('captureRole', captureRole || 'observer');
+  return result;
 });
 
 registerIpc(IPC_COMMANDS.STOP_BROADCAST, () => broadcastGep.stop());
+registerIpc(IPC_COMMANDS.CAPTURE_MARKER, (_event, kind) => {
+  if (runtimeMode !== 'capture-only' || !lanRelay || !['replay', 'flag'].includes(kind)) return { ok: false, error: 'Observer markers require capture mode.' };
+  const capture = broadcastGep.getStatus();
+  lanRelay.sendMarker(kind, { matchCode: capture.active ? capture.matchCode : currentShowConfig?.matchCode || 'MAIN', showId: capture.active ? capture.showId : currentShowConfig?.showId });
+  return { ok: true };
+});
 
 // ─── Update guard ─────────────────────────────────────────────────────────────
 function isBroadcastActive() {
@@ -1043,7 +1475,19 @@ async function startHudServer() {
   const hudRoot = getHudRoot();
   const hudDataDir = getHudDataDir();
   try {
-    hudServer = await startHud({ port: HUD_PORT, host: '0.0.0.0', key: HUD_KEY, root: hudRoot, dataDir: hudDataDir });
+    hudServer = await startHud({ port: HUD_PORT, host: '0.0.0.0', key: HUD_KEY, root: hudRoot, dataDir: hudDataDir, resolveOutput: id => outputRegistry?.resolve(id), resolveAsset:id=>airSession?.store?.asset(id), onState: (code, state) => productionFeed.update(code, state), onGep: (code, state, events, reported, metadata) => {
+      const selected = currentShowConfig?.matchCode || 'MAIN';
+      if (productionFeed.matchCode !== selected) productionFeed.reset(selected);
+      if (!productionFeed.accept(code, state, events, reported, metadata?.captureAt)) return;
+      productionFeed.recordPackets(code, metadata?.messages || []);
+      void syncHudNicknames().catch(() => {});
+      for (const event of events) {
+        const chapter = roundChapters.record(event, state, currentShowConfig, metadata?.captureAt);
+        if (chapter) eventLogger?.log(chapter);
+        eventLogger?.log({ type: `Game_${event.type}`, actor: 'game-feed', data: { round: state.round?.number, ...(Number.isInteger(event.team) ? { team: event.team } : {}) } });
+        if (!metadata?.recovered) showRunner?.processGepEvent({ ...event, state }, code);
+      }
+    } });
     console.log(`[broadcast] HUD outputs available on the local network, port ${HUD_PORT}`);
     hudStartErrorCode = null;
     persistentError = false;
@@ -1103,9 +1547,12 @@ function startHealthCheck() {
 if (isPrimaryInstance) app.whenReady().then(async () => {
   // 1. Load node config — must be first (mode determines which modules start).
   nodeConfig = new NodeConfig();
-  outputRegistry = new OutputRegistry({ config: nodeConfig, hudRoot: getHudRoot(), port: HUD_PORT });
+  sponsorLedger = new (require('./sponsor-ledger'))({ config: nodeConfig, queue: () => standaloneActive()?airSession?.eventQueue:offlineQueue });
+  outputRegistry = new OutputRegistry({ config: nodeConfig, hudRoot: getHudRoot(), port: HUD_PORT, currentMatch: () => currentShowConfig?.matchCode || 'MAIN' });
   const mode = resolveMode(nodeConfig);
   runtimeMode = mode;
+  if(!nodeConfig.get('airDeviceId'))nodeConfig.set('airDeviceId',crypto.randomUUID());
+  airSession=new (require('./air-session').AirSession)({apiBase:API_BASE,fetch,keytar,service:KEYTAR_SERVICE,root:path.join(app.getPath('userData'),'air-workspaces'),deviceId:nodeConfig.get('airDeviceId'),deviceName:os.hostname(),mode});
 
   // P2: Initialize ShowRunner, EventLogger, and RulesEngine.
   // OBS controller wired lazily in getOrCreateVideoController(); offlineQueue
@@ -1113,16 +1560,45 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
   showRunner  = new ShowRunner({ obsController: null, hudPatch: applyHudPatch, logger: console });
   eventLogger = new EventLogger({ offlineQueue: null, logger: console });
   rulesEngine = new RulesEngine({ hudPatch: applyHudPatch, logger: console });
+  try { rulesEngine.setDurations(nodeConfig.get('graphicsDurations') || {}); } catch (_) { console.warn('[rules] Invalid saved durations. Using defaults.'); }
   showRunner.setRulesEngine(rulesEngine);
+  if (mode === 'production') {
+    const { PauseRules } = require('./pause-rules');
+    let config;
+    try { config = require('./pause-rules').validatePauseRules(nodeConfig.get('pauseRules') || {}); } catch (_) { config = {}; }
+    pauseRules = new PauseRules({ config, getScope: () => currentAuthorized() && currentShowConfig?.selectedMatchId ? { showId: currentShowConfig.showId, matchId: currentShowConfig.selectedMatchId, matchCode: currentShowConfig.matchCode, nodeId: activeNodeId() } : null, getObs: () => obsController, patch: async (code, input) => {
+      const response = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${code}/pause-panel`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': HUD_KEY }, body: JSON.stringify(input), timeout: 3000 });
+      if (!response.ok) throw new Error('Could not apply the pause panel.');
+    }, record: entry => eventLogger.log(entry) });
+  }
+  if (mode === 'production') {
+    let lastFeedPaused = null;
+    feedDiagnosticsTimer = setInterval(() => {
+      pauseRules?.update(showRunner.getState());
+      for (const output of outputRegistry?.list() || []) {
+        const health = hudServer?.getOutputHealth(output.id);
+        if (health?.connectionCount > 0) incidents.update('output_drop', false, currentShowConfig?.showId, { outputId: output.id });
+        else if (incidents.states.has(`${currentShowConfig?.showId}:output_drop:${output.id}`)) incidents.update('output_drop', true, currentShowConfig?.showId, { outputId: output.id });
+      }
+      const snapshot = productionFeed.snapshot();
+      const key = `${snapshot.matchCode}:${snapshot.stale}`;
+      if (!hudServer || !snapshot.available || lastFeedPaused === key) return;
+      lastFeedPaused = key;
+      incidents.update('stale_feed', snapshot.stale, currentShowConfig?.showId, { cause: 'missing_events' });
+      void applyHudPatch(snapshot.matchCode, { airDiagnostics: { feedPaused: snapshot.stale } }).catch(() => { lastFeedPaused = null; });
+    }, 500);
+  }
 
   // Forward ShowRunner events to renderer.
   showRunner.on('stateChange', (state) => {
+    pauseRules?.update(state);
     if (mainWindow) mainWindow.webContents.send('runner-state', state);
   });
-  showRunner.on('takeTriggered', ({ segment }) => {
+  showRunner.on('takeConfirmed', ({ segment, actor, cause }) => {
+    scheduleRundownBoundary();
     if (eventLogger) eventLogger.log({
       type:      'SegmentTake',
-      actor:     'show-runner',
+      actor:     actor || 'operator',
       segmentId: segment.id,
       scene:     segment.scene,
       data: {
@@ -1131,6 +1607,7 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
         segmentType: segment.type,
         scene:       segment.scene,
         wallClockMs: Date.now(),
+        actorKind: actor || 'operator', cause: cause || 'manual',
       },
     });
   });
@@ -1158,10 +1635,18 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     if (mainWindow) mainWindow.webContents.send('event-log-entry', entry);
   });
 
-  // P2: Simulation harness — dev only.
-  if (!app.isPackaged && process.env.NODE_ENV === 'development') {
-    const Harness = require('./simulation/harness');
-    harness = new Harness({ showRunner, logger: console });
+  if (mode === 'production') {
+    const { Rehearsal } = require('./simulation/rehearsal');
+    harness = new Rehearsal({ previewBase:`http://localhost:${HUD_PORT}`, hudPatch: applyHudPatch,
+      writeSnapshot: async (code, state) => {
+        if (!hudServer) throw new Error('Local HUD is unavailable.');
+        const response = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${code}?preset=clean`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': HUD_KEY }, body: JSON.stringify(state), signal: AbortSignal.timeout(5000) });
+        if (!response.ok) throw new Error('Could not prepare rehearsal HUD.');
+      },
+      canUseObs: () => obsController?.getState().connected === true && !isProductionActive(showRunner) && !broadcastGep.getStatus().active,
+      takeScene: scene => obsController.take(scene),
+      getTally: () => obsController?.getTally(),
+    });
   }
 
   // 2. Mode-specific boot.
@@ -1190,17 +1675,23 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
         targets: relayTargets,
         targetKeys,
         logger: console,
-        onGepState: (gepMessage, context) => {
-          if (!hudServer) return;
+        onMarker: (marker, context) => {
+          if (!currentShowConfig || !acceptsGep(context, currentShowConfig)) return;
+          eventLogger?.log({ type: marker.kind === 'replay' ? 'ObserverReplayMarker' : 'ObserverProducerFlag', actor: 'observer' });
+          if (marker.kind === 'flag' && !context.recovered && context.bufferedAgeMs <= 1000) showRunner?.processGepEvent({ type: 'observer.flag', state: productionFeed.state }, currentShowConfig.matchCode);
+        },
+        onGepState: async (gepMessage, context) => {
+          if (!hudServer) throw new Error('Local HUD is unavailable.');
           gepRouteMismatch = !acceptsGep(context, currentShowConfig);
           if (gepRouteMismatch) return;
           const code = currentShowConfig?.matchCode || 'MAIN';
-          fetch(`http://127.0.0.1:${HUD_PORT}/api/${encodeURIComponent(code)}/ingest/valorant`, {
+          const result = await fetch(`http://127.0.0.1:${HUD_PORT}/api/${encodeURIComponent(code)}/ingest/valorant?ageMs=${context.bufferedAgeMs || 0}&recovered=${context.recovered ? 1 : 0}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': HUD_KEY },
             body: JSON.stringify([gepMessage]),
-          }).catch(err => console.warn('[lan-relay] HUD ingest error:', err.message));
-          showRunner?.processGepEvent(gepMessage, code);
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!result.ok) throw new Error('The local HUD did not accept this observer update.');
         },
       });
       lanRelay.start();
@@ -1224,18 +1715,28 @@ if (isPrimaryInstance) app.whenReady().then(async () => {
     const stored = await keytar.getPassword(KEYTAR_SERVICE, KEYTAR_NODE_TOKEN_ACCOUNT);
     if (stored) { nodeToken = stored; offlineQueue = new OfflineQueue({ nodeToken, logger: console }); hubClient = createHubClient(offlineQueue); hubClient.connect(nodeToken); }
   }
-  if (offlineQueue) eventLogger.setOfflineQueue(offlineQueue);
-  const cachedShow = nodeConfig.get('showConfig');
-  if (cachedShow) await receiveShowConfig(cachedShow);
+  if (offlineQueue) eventLogger.setOfflineQueue(standaloneActive()?airSession.eventQueue:offlineQueue);
+  const cachedShow = nodeConfig.get('pendingShowConfig') || nodeConfig.get('showConfig');
+  if (cachedShow && cachedShow.source!=='standalone') await receiveShowConfig(cachedShow);
+  if (hubConnected && hubClient && nodeToken) void recoverPublishedRundown(hubClient, nodeToken);
 
   // 3. Create main window and register activate handler.
   createWindow();
+  void airSession.initialize().then(()=>standaloneBridge?.restore()).catch(()=>{});
+  const bracketTimer=setInterval(()=>{if(currentShowConfig?.rundown?.some(item=>item.overlay==='bracket'))void bracketPresentation?.refresh().catch(()=>{});},5000);bracketTimer.unref();
+  const airTimer=setInterval(()=>{if(!airSession?.status().authenticated)return;void airSession.sync().catch(()=>{});void airSession.heartbeat({appVersion:APP_VERSION,obsConnected:obsController?.getState().connected===true,captureActive:broadcastGep.getStatus().active,productionActive:isProductionActive(showRunner),feedState:productionFeed.snapshot().stale?'stale':productionFeed.snapshot().ageMs!=null?'live':'waiting',projectId:standaloneActive()?currentShowConfig.projectId:null});if(!airSession.access?.checkedAt || Date.now()-airSession.access.checkedAt>300000)void airSession.checkAccess().catch(()=>{});},30000);airTimer.unref();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', async () => {
+  tournamentSync?.stop();
+  pauseRules?.stop();
+  nodeSessionMonitor?.stop();
+  harness?.stop();
+  clearInterval(feedDiagnosticsTimer);
+  rulesEngine?.dispose();
   broadcastGep.stop();
   clearInterval(healthCheckInterval);
   stopObsScreenshotLoop();

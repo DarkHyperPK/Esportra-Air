@@ -49,6 +49,14 @@ async function fixData(correction, { showConfig, hudPort, hudKey, offlineQueue }
     return { ok: false, patch: null, queued: false, error: 'reason must be a string up to 500 characters' };
   }
 
+  const scope = correction.scope || 'air_only';
+  if (!['air_only', 'air_and_bracket'].includes(scope)) return { ok: false, queued: false, error: 'Choose Air only or official result review.' };
+  const selected = showConfig?.matches?.find(match => match.matchId === showConfig.selectedMatchId);
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (scope === 'air_and_bracket' && (!selected || !uuid.test(correction.context?.nodeId || '') || !uuid.test(selected.teams?.[0]?.teamId || '') || !uuid.test(selected.teams?.[1]?.teamId || '') ||
+      mapIndex > selected.bestOf || !reason.trim() || teamAScore === teamBScore)) {
+    return { ok: false, queued: false, error: 'Official review needs current registered teams, a valid series map, a decisive score and a reason. Reload match setup if needed.' };
+  }
   let patch  = buildMapResultPatch(showConfig || {}, mapIndex, teamAScore, teamBScore);
   let   hudOk  = false;
 
@@ -56,10 +64,11 @@ async function fixData(correction, { showConfig, hudPort, hudKey, offlineQueue }
     const res = await fetch(`http://127.0.0.1:${hudPort}/api/${matchCode}/map-result`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'X-Esportra-Key': hudKey },
-      body:    JSON.stringify({ mapIndex, teamAScore, teamBScore }),
+      body:    JSON.stringify({ mapIndex, teamAScore, teamBScore, reason, ...(showConfig?.showId && showConfig?.selectedMatchId ? { airContext: { showId: showConfig.showId, matchId: showConfig.selectedMatchId } } : {}) }),
       timeout: 3000,
     });
     hudOk = res.ok;
+    if (res.status === 409) return { ok: false, patch, queued: false, error: 'The selected match changed. Reopen the correction.' };
     if (hudOk && res.json) patch = (await res.json()).patch || patch;
     if (!hudOk) console.warn('[fix-data] HUD PATCH rejected, status:', res.status);
   } catch (err) {
@@ -70,8 +79,13 @@ async function fixData(correction, { showConfig, hudPort, hudKey, offlineQueue }
   if (offlineQueue) {
     try {
       offlineQueue.enqueue({
-        type:           'BroadcastCorrection',
+        type:           scope === 'air_and_bracket' ? 'ResultProposal' : 'BroadcastCorrection',
         showId:         showConfig?.showId || null,
+        matchId:        showConfig?.selectedMatchId || null,
+        nodeId:         correction.context?.nodeId,
+        team1Id:        selected?.teams?.[0]?.teamId,
+        team2Id:        selected?.teams?.[1]?.teamId,
+        bestOf:         selected?.bestOf,
         matchCode,
         mapIndex,
         teamAScore,

@@ -48,7 +48,9 @@ class NodeConfig {
   }
 
   _write(data) {
-    fs.writeFileSync(this._filePath, JSON.stringify(data, null, 2), 'utf8');
+    const temporary = `${this._filePath}.tmp`;
+    fs.writeFileSync(temporary, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(temporary, this._filePath);
   }
 
   /** Returns the current value for key. */
@@ -58,8 +60,9 @@ class NodeConfig {
 
   /** Writes a single key synchronously to disk. */
   set(key, value) {
-    this._data[key] = value;
-    this._write(this._data);
+    const next = { ...this._data, [key]: value };
+    this._write(next);
+    this._data = next;
   }
 
   /** Returns a shallow copy of the full config. Callers must not mutate it. */

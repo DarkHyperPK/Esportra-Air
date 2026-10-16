@@ -62,6 +62,10 @@ class LanRelay {
     // { target, ws, connected, reconnectTimer, pingInterval }
     this._clients = [];
     this._lastReceivedAt = null;
+    this._streamId = crypto.randomUUID(); this._sequence = 0;
+    this._buffer = new (require('./capture-window'))();
+    this._onMarker = typeof opts.onMarker === 'function' ? opts.onMarker : () => {};
+    this._ackTimes = [];
   }
 
   /** Open the server (observer) or connect to observers (production). */
@@ -95,6 +99,9 @@ class LanRelay {
         port: this._port,
         consumerCount: this._consumerCount(),
         gepMessagesPerSec: this._gepMessagesPerSec(),
+        ...this._buffer.status(),
+        buffering: this._consumerCount() === 0 && this._buffer.status().retainedMessages > 0,
+        ackLatencyMs: this._medianAckLatency(),
       };
     }
     return {
@@ -112,6 +119,7 @@ class LanRelay {
     this._wss = wss;
 
     wss.on('listening', () => {
+      this._port = wss.address().port;
       this._listening = true;
       this._logger.info(`[LanRelay] Observer listening on 0.0.0.0:${this._port}`);
     });
@@ -123,7 +131,7 @@ class LanRelay {
 
     wss.on('connection', (ws, req) => {
       const remoteAddr = req.socket.remoteAddress || '';
-      const gepSource = isLoopback(remoteAddr);
+      const gepSource = isLoopback(remoteAddr) && !req.headers['x-esportra-relay-key'];
       ws.isAlive = true;
       ws._isGepSource = gepSource;
 
@@ -137,6 +145,20 @@ class LanRelay {
         ws.on('message', (raw) => this._handleGepMessage(raw));
         ws.on('close', () => this._logger.info('[LanRelay] GEP source disconnected'));
       } else {
+        ws.on('message', raw => {
+          let hello; try { hello = JSON.parse(String(raw)); } catch (_) { return; }
+          if (hello.type === 'relay_ack' && hello.streamId === this._streamId) {
+            if (!Number.isInteger(hello.sequence) || hello.sequence < 0 || hello.sequence > this._sequence) return;
+            this._buffer.acknowledge(hello.sequence);
+            const capturedAt = this._buffer.capturedAt(hello.sequence);
+            if (capturedAt !== null && hello.recovered !== true) this._ackTimes.push({ at: Date.now(), ms: Math.max(0, Date.now() - capturedAt) });
+            return;
+          }
+          if (hello.type !== 'consumer_hello') return;
+          const after = Number.isInteger(hello.lastSequence) ? hello.lastSequence : 0;
+          for (const packet of this._buffer.since(after, hello.streamId)) if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(packet));
+          ws._consumerReady = true;
+        });
         this._logger.info(`[LanRelay] Production node consumer connected from ${remoteAddr}`);
         ws.on('close', () => {
           this._logger.info(`[LanRelay] Consumer disconnected (${remoteAddr})`);
@@ -150,7 +172,7 @@ class LanRelay {
   _authorize(req) {
     // Browser origins cannot masquerade as the loopback capture child.
     if (req.headers.origin) return false;
-    if (isLoopback(req.socket.remoteAddress || '')) return true;
+    if (isLoopback(req.socket.remoteAddress || '') && !req.headers['x-esportra-relay-key']) return true;
     const provided = req.headers['x-esportra-relay-key'];
     if (typeof provided !== 'string' || !/^[a-f0-9]{64}$/i.test(this._sharedKey) || !/^[a-f0-9]{64}$/i.test(provided)) return false;
     return crypto.timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(this._sharedKey, 'hex'));
@@ -207,21 +229,30 @@ class LanRelay {
     // Track for sliding-window rate
     this._gepTimestamps.push(Date.now());
 
-    const envelope = JSON.stringify({
+    const packet = {
       type: 'gep_state',
       payload: parsed.message,
       matchCode: typeof parsed.match === 'string' ? parsed.match.toUpperCase() : 'MAIN',
       showId: typeof parsed.showId === 'string' ? parsed.showId : null,
-      ts: Date.now(),
-    });
+      ts: Date.now() - (Number.isFinite(parsed.bufferedAgeMs) ? Math.max(0, Math.min(60000, parsed.bufferedAgeMs)) : 0),
+      recovered: parsed.recovered === true,
+      bufferedAgeMs: Number.isFinite(parsed.bufferedAgeMs) ? Math.max(0, Math.min(60000, parsed.bufferedAgeMs)) : 0,
+      streamId: this._streamId, sequence: ++this._sequence,
+    };
 
-    this._broadcastToConsumers(envelope);
+    this._buffer.push(packet); this._broadcastToConsumers(JSON.stringify(packet));
+  }
+
+  sendMarker(kind, context) {
+    if (this._mode !== 'observer' || !['replay', 'flag'].includes(kind)) throw new Error('Choose a supported observer marker.');
+    const packet = { type: 'observer_marker', kind, matchCode: context.matchCode || 'MAIN', showId: context.showId || null, ts: Date.now(), streamId: this._streamId, sequence: ++this._sequence };
+    this._buffer.push(packet); this._broadcastToConsumers(JSON.stringify(packet)); return packet;
   }
 
   _broadcastToConsumers(envelope) {
     if (!this._wss) return;
     for (const ws of this._wss.clients) {
-      if (!ws._isGepSource && ws.readyState === WebSocket.OPEN) {
+      if (!ws._isGepSource && ws._consumerReady && ws.readyState === WebSocket.OPEN) {
         ws.send(envelope);
       }
     }
@@ -231,7 +262,7 @@ class LanRelay {
     if (!this._wss) return 0;
     let n = 0;
     for (const ws of this._wss.clients) {
-      if (!ws._isGepSource && ws.readyState === WebSocket.OPEN) n++;
+      if (!ws._isGepSource && ws._consumerReady && ws.readyState === WebSocket.OPEN) n++;
     }
     return n;
   }
@@ -247,6 +278,11 @@ class LanRelay {
     }
     return this._gepTimestamps.length / GEP_WINDOW_SEC;
   }
+  _medianAckLatency() {
+    this._ackTimes = this._ackTimes.filter(sample => Date.now() - sample.at < 60000).slice(-1000);
+    const values = this._ackTimes.map(sample => sample.ms).sort((a, b) => a - b);
+    return values.length ? values[Math.floor(values.length / 2)] : null;
+  }
 
   // ── Production mode ───────────────────────────────────────────────────────────
 
@@ -258,6 +294,7 @@ class LanRelay {
         connected: false,
         reconnectTimer: null,
         pingInterval: null,
+        lastSequence: 0, streamId: null, dispatch: Promise.resolve(),
       };
       this._clients.push(entry);
       this._connectToObserver(entry);
@@ -302,7 +339,7 @@ class LanRelay {
     ws.on('open', () => {
       entry.connected = true;
       this._logger.info(`[LanRelay] Connected to observer at ${entry.target}`);
-      ws.send(JSON.stringify({ type: 'consumer_hello', mode: 'production' }));
+      ws.send(JSON.stringify({ type: 'consumer_hello', mode: 'production', streamId: entry.streamId, lastSequence: entry.lastSequence }));
       ws.isAlive = true;
       entry.pingInterval = setInterval(
         () => this._pingProductionClient(ws, entry),
@@ -312,7 +349,7 @@ class LanRelay {
 
     ws.on('pong', () => { ws.isAlive = true; });
 
-    ws.on('message', (raw) => this._handleObserverMessage(raw));
+    ws.on('message', (raw) => { entry.dispatch = entry.dispatch.catch(() => {}).then(() => this._handleObserverMessage(raw, entry)).catch(() => ws.terminate()); });
 
     ws.on('close', (code) => {
       this._logger.warn(`[LanRelay] Observer ${entry.target} disconnected (${code})`);
@@ -360,7 +397,7 @@ class LanRelay {
    * Handle a message from an observer:
    *   { type: 'gep_state', payload: <raw GEP object>, ts: epoch_ms }
    */
-  _handleObserverMessage(raw) {
+  async _handleObserverMessage(raw, entry = {}) {
     let parsed;
     try {
       parsed = JSON.parse(raw);
@@ -369,16 +406,22 @@ class LanRelay {
       return;
     }
 
-    if (!parsed || parsed.type !== 'gep_state' || !parsed.payload) {
+    if (!parsed || !['gep_state', 'observer_marker'].includes(parsed.type) || (parsed.type === 'gep_state' && !parsed.payload)) {
       this._logger.debug?.('[LanRelay] Unexpected message from observer, skipping');
       return;
     }
+    if (parsed.streamId === entry.streamId && Number.isInteger(parsed.sequence) && parsed.sequence <= entry.lastSequence) return;
 
     this._lastReceivedAt = Date.now();
     try {
-      this._onGepState(parsed.payload, { matchCode: parsed.matchCode || 'MAIN', showId: parsed.showId || null });
+      const context = { matchCode: parsed.matchCode || 'MAIN', showId: parsed.showId || null, recovered: parsed.recovered === true, bufferedAgeMs: Number.isFinite(parsed.bufferedAgeMs) ? Math.max(0, Math.min(60000, parsed.bufferedAgeMs)) : 0 };
+      if (parsed.type === 'observer_marker') await this._onMarker(parsed, context);
+      else await this._onGepState(parsed.payload, context);
+      if (Number.isInteger(parsed.sequence)) { entry.lastSequence = parsed.sequence; entry.streamId = parsed.streamId; }
+      if (entry.ws?.readyState === WebSocket.OPEN && Number.isInteger(parsed.sequence)) entry.ws.send(JSON.stringify({ type: 'relay_ack', sequence: parsed.sequence, streamId: parsed.streamId, recovered: parsed.recovered === true }));
     } catch (err) {
       this._logger.error('[LanRelay] onGepState callback threw:', err.message);
+      throw err;
     }
   }
 }

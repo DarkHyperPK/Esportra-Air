@@ -24,7 +24,9 @@ test('listening relay with zero consumers is waiting, not disconnected or buffer
   assert.ok(!html.includes('buffering locally'));
   assert.ok(!html.includes('Latency'));
 });
-test('capture does not offer unimplemented pause or replay marker controls', () => {
-  const html = render({ gepActive: true, lanRelay: { listening: true, port: 5301, consumerCount: 1 } });
-  for (const text of ['Pause sending', 'Resume sending', 'Mark replay', 'Replay marked', 'Moment flagged', 'Change production PC']) assert.ok(!html.includes(text));
+test('observer exposes marker hotkeys while player capture hides them', () => {
+  const html = render({ gepActive: true, captureRole: 'observer', lanRelay: { listening: true, port: 5301, consumerCount: 1 } });
+  assert.ok(html.includes('Mark replay')); assert.ok(html.includes('F10'));
+  assert.ok(!render({ captureRole: 'player' }).includes('Mark replay'));
+  for (const text of ['Pause sending', 'Resume sending', 'Change production PC']) assert.ok(!html.includes(text));
 });

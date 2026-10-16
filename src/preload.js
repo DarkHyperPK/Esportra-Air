@@ -2,6 +2,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('esportraBroadcast', {
+  shortcuts: {
+    get: () => ipcRenderer.invoke('SHORTCUTS_GET'),
+    set: (bindings) => ipcRenderer.invoke('SHORTCUTS_SET', bindings),
+  },
+  rules: { get: () => ipcRenderer.invoke('RULES_GET'), set: (durations) => ipcRenderer.invoke('RULES_SET', durations) },
+  graphics: { fire: (kind, input) => ipcRenderer.invoke('GRAPHIC_FIRE', { kind, input }) },
+  hudControls: { get:()=>ipcRenderer.invoke('HUD_CONTROLS_GET'), update:input=>ipcRenderer.invoke('HUD_CONTROLS_UPDATE',input) },
   hud: {
     getStatus: () => ipcRenderer.invoke('HUD_STATUS'),
     getOverlayList: () => ipcRenderer.invoke('HUD_OVERLAY_LIST'),
@@ -18,20 +25,49 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
   manual: {
     patch: (patch) => ipcRenderer.invoke('MANUAL_PATCH', { patch }),
   },
+  displayFixes: {
+    get: () => ipcRenderer.invoke('DISPLAY_FIX_GET'),
+    change: input => ipcRenderer.invoke('DISPLAY_FIX_CHANGE', input),
+  },
+  pauseRules: { get: () => ipcRenderer.invoke('PAUSE_RULES_GET'), set: input => ipcRenderer.invoke('PAUSE_RULES_SET', input) },
   // Broadcast GEP controls — user must explicitly start broadcast mode
   broadcast: {
     getStatus: () => ipcRenderer.invoke('BROADCAST_STATUS'),
     start: (opts) => ipcRenderer.invoke('START_BROADCAST', opts),
     stop: () => ipcRenderer.invoke('STOP_BROADCAST'),
+    marker: (kind) => ipcRenderer.invoke('CAPTURE_MARKER', kind),
     onStatusChange: (cb) => ipcRenderer.on('BROADCAST_STATUS_CHANGED', (_e, data) => cb(data)),
   },
   // P0: Air node management surface
+  projects: {
+    openSignup:()=>ipcRenderer.invoke('AIR_SIGNUP_OPEN'),
+    session:()=>ipcRenderer.invoke('AIR_SESSION_GET'),
+    login:(email,password)=>ipcRenderer.invoke('AIR_LOGIN',{email,password}),
+    logout:()=>ipcRenderer.invoke('AIR_LOGOUT'),
+    checkAccess:()=>ipcRenderer.invoke('AIR_ACCESS_REFRESH'),
+    list:workspaceId=>ipcRenderer.invoke('AIR_PROJECTS_LIST',{workspaceId}),
+    get:id=>ipcRenderer.invoke('AIR_PROJECT_GET',{id}),
+    create:(workspaceId,title)=>ipcRenderer.invoke('AIR_PROJECT_CREATE',{workspaceId,title}),
+    save:project=>ipcRenderer.invoke('AIR_PROJECT_SAVE',project),
+    resolve:(id,choice)=>ipcRenderer.invoke('AIR_PROJECT_RESOLVE',{id,choice}),
+    sync:()=>ipcRenderer.invoke('AIR_SYNC'),
+    select:(projectId,matchId)=>ipcRenderer.invoke('AIR_PROJECT_SELECT',{projectId,matchId}),
+    upload:workspaceId=>ipcRenderer.invoke('AIR_ASSET_UPLOAD',{workspaceId}),
+    tournament:()=>ipcRenderer.invoke('AIR_RESTORE_TOURNAMENT'),
+  },
   air: {
+    getBracket:()=>ipcRenderer.invoke('BRACKET_GET'),
+    setBracketView:input=>ipcRenderer.invoke('BRACKET_VIEW_SET',input),
+    getMatchDay: () => ipcRenderer.invoke('MATCH_DAY_GET'),
+    setPlayerPreference: input => ipcRenderer.invoke('PLAYER_PREFERENCE_SET', input),
+    clearPackets: () => ipcRenderer.invoke('PACKETS_CLEAR'),
+    testObserver: input => ipcRenderer.invoke('OBSERVER_TEST', input),
     // Exchange an organizer-generated pairing code for a node registration.
     // Returns { ok, nodeId?, error? } — the token is NEVER returned.
     pair: (pairingCode) => ipcRenderer.invoke('PAIR', { pairingCode }),
     // Full status snapshot: mode, paired state, hub and HUD online, GEP active.
     getStatus: () => ipcRenderer.invoke('GET_STATUS'),
+    getHistory: () => ipcRenderer.invoke('PRODUCTION_HISTORY'),
     // Returns the browser-source URL for a named overlay (no secrets in the URL).
     copyOutputUrl: (overlayName, matchCode) => ipcRenderer.invoke('COPY_OUTPUT_URL', { overlayName, matchCode }),
     // Persist a node mode change. Requires app restart — returns { ok, restartRequired }.
@@ -53,17 +89,26 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
   // P1: Video switcher (OBS / vMix) control surface
   obs: {
     // Connect to OBS WebSocket. Returns { ok, error? }.
-    connect: (host, port, password) =>
-      ipcRenderer.invoke('OBS_CONNECT', { host, port, password }),
+    connect: (host, port, password, allowRemote) =>
+      ipcRenderer.invoke('OBS_CONNECT', { host, port, password, allowRemote }),
+    discover: () => ipcRenderer.invoke('OBS_DISCOVER'),
     // Disconnect. Returns { ok }.
     disconnect: () => ipcRenderer.invoke('OBS_DISCONNECT'),
     // Current state snapshot. Returns { connected, state, studioMode, tally }.
     getStatus: () => ipcRenderer.invoke('OBS_GET_STATUS'),
+    getSetup: () => ipcRenderer.invoke('OBS_GET_SETUP'),
+    getTemplate: () => ipcRenderer.invoke('TEMPLATE_GET'),
+    saveTemplate: draft => ipcRenderer.invoke('TEMPLATE_SAVE', draft),
+    pushTemplate: draft => ipcRenderer.invoke('TEMPLATE_PUSH', draft),
+    buildCollection: () => ipcRenderer.invoke('OBS_BUILD_COLLECTION'),
+    getSlots: () => ipcRenderer.invoke('OBS_SLOT_STATUS'),
+    assignSlot: (slotId, sourceName) => ipcRenderer.invoke('OBS_SLOT_ASSIGN', { slotId, sourceName }),
+    setSetup: (rows) => ipcRenderer.invoke('OBS_SET_SETUP', rows),
     // Build ESA_ scenes with browser sources. Returns { ok, created, existing, error? }.
     buildScenes: (outputUrls) =>
       ipcRenderer.invoke('OBS_BUILD_SCENES', { outputUrls }),
     // Studio-mode-aware scene take. Returns { ok, latencyMs, scene, error? }.
-    take: (sceneName) => ipcRenderer.invoke('OBS_TAKE', { sceneName }),
+    take: (sceneName, transition) => ipcRenderer.invoke('OBS_TAKE', { sceneName, transition }),
     // Trigger replay buffer save + ESA_Replay + return. Returns { ok, savedPath?, error? }.
     triggerReplay: (dwellMs) =>
       ipcRenderer.invoke('OBS_TRIGGER_REPLAY', { dwellMs }),
@@ -104,6 +149,8 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     take:      (segmentId, commandId)   => ipcRenderer.invoke('RUNNER_TAKE',       { segmentId, commandId }),
     resume:    ()                       => ipcRenderer.invoke('RUNNER_RESUME'),
     techPause: ()                       => ipcRenderer.invoke('RUNNER_TECH_PAUSE'),
+    timeout: (active) => ipcRenderer.invoke('RUNNER_TIMEOUT', active),
+    sponsorSlot: (input) => ipcRenderer.invoke('RUNNER_SPONSOR_SLOT', input),
     // Push events (main → renderer). Each returns an off-function.
     onState: (cb) => {
       const fn = (_e, state) => cb(state);
@@ -120,9 +167,11 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
   // P2: On-air score correction
   fixData: (correction) => ipcRenderer.invoke('FIX_DATA', correction),
 
-  // P2: Simulation harness (NODE_ENV=development only)
+  // Isolated operator rehearsal; packaged sample only, no arbitrary file access.
   simulation: {
-    start: (filePath, speed) => ipcRenderer.invoke('SIMULATION_START', { filePath, speed }),
+    start: () => ipcRenderer.invoke('SIMULATION_START'),
+    getStatus: () => ipcRenderer.invoke('SIMULATION_STATUS'),
+    control: (input) => ipcRenderer.invoke('SIMULATION_CONTROL', input),
     stop:  ()                => ipcRenderer.invoke('SIMULATION_STOP'),
   },
 });

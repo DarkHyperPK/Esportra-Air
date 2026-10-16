@@ -1,109 +1,48 @@
 'use strict';
-const fs       = require('fs');
-const readline = require('readline');
+const { performance } = require('node:perf_hooks');
 
-/**
- * .ndjson simulation harness — replays a recorded event file through ShowRunner.
- *
- * Each line in the file: { ts, type, ...data }  (ts = epoch ms)
- * Events fire at recorded inter-event deltas, scaled by speed multiplier.
- *
- * Usage: activated via SIMULATION_START IPC in NODE_ENV=development.
- */
+// Seeking rebuilds a snapshot without firing past actions.
 class Harness {
-  /**
-   * @param {{ showRunner: object, logger?: object }} opts
-   */
-  constructor({ showRunner, logger = console }) {
-    this._runner  = showRunner;
-    this._logger  = logger;
-    this._lines   = [];
-    this._playing = false;
-    this._paused  = false;
-    this._seekTs  = null;
-    this._timer   = null;
+  constructor({ onEvent, onSeek, onClock, now = () => performance.now(), schedule = setInterval, cancel = clearInterval }) {
+    this.onEvent = onEvent; this.onSeek = onSeek; this.now = now; this.schedule = schedule; this.cancel = cancel;
+    this.events = []; this.positionMs = 0; this.speed = 1; this.playing = false; this.cursor = 0;
+    this.timer = null; this.lastTick = 0; this.busy = false; this.error = null;
+    this.onClock = onClock;
   }
-
-  /**
-   * Parse and replay a .ndjson event file.
-   * @param {string} filePath  Absolute path to the fixture file.
-   * @param {{ speed?: number }} [opts]  speed = 1.0 = real-time; 10.0 = 10× fast
-   */
-  async play(filePath, { speed = 1.0 } = {}) {
+  async load(events) {
     this.stop();
-    this._lines   = await this._readLines(filePath);
-    this._playing = true;
-    this._paused  = false;
-    this._seekTs  = null;
-    this._dispatch(0, speed);
+    if (!Array.isArray(events) || !events.length || events.length > 10000 || events.some((event, i) => !Number.isFinite(event.ts) || event.ts < 0 || (i && event.ts < events[i - 1].ts))) throw new Error('Invalid rehearsal recording.');
+    this.events = events; this.error = null; await this.seek(0);
   }
-
-  /** Pause inter-event delays (events resume from where they stopped). */
-  pause()        { this._paused = true; }
-
-  /** Resume after pause(). */
-  resume()       { this._paused = false; }
-
-  /**
-   * Seek: skip all events with ts < seekTs.
-   * @param {number} ts  Epoch ms
-   */
-  seek(ts)       { this._seekTs = ts; }
-
-  isPlaying()    { return this._playing; }
-
-  /** Stop playback and clear timers. */
-  stop() {
-    clearTimeout(this._timer);
-    this._timer   = null;
-    this._playing = false;
+  setSpeed(speed) {
+    if (![0.5, 1, 2, 4, 10].includes(speed)) throw new Error('Choose 0.5x, 1x, 2x, 4x or 10x.');
+    this.speed = speed; this.lastTick = this.now();
   }
-
-  // ─── Private ─────────────────────────────────────────────────────────────────
-
-  _dispatch(idx, speed) {
-    if (idx >= this._lines.length || !this._playing) {
-      this._playing = false;
-      return;
-    }
-    if (this._paused) {
-      this._timer = setTimeout(() => this._dispatch(idx, speed), 100);
-      return;
-    }
-    const curr  = this._lines[idx];
-    const next  = this._lines[idx + 1];
-    const delay = next ? Math.max(0, (next.ts - curr.ts) / Math.max(speed, 0.01)) : 0;
-
-    if (!this._seekTs || curr.ts >= this._seekTs) {
-      this._fire(curr);
-    }
-
-    this._timer = setTimeout(() => this._dispatch(idx + 1, speed), delay);
+  pause() { this.playing = false; this.cancel(this.timer); this.timer = null; }
+  resume() {
+    if (!this.events.length || this.busy) throw new Error('Load a rehearsal first.');
+    if (this.positionMs >= this.durationMs) throw new Error('Rehearsal ended. Rewind to play again.');
+    if (this.playing) return;
+    this.playing = true; this.lastTick = this.now(); this.timer = this.schedule(() => void this.tick(), 40);
   }
-
-  _fire(event) {
-    try {
-      this._runner.processGepEvent(event);
-    } catch (err) {
-      this._logger.warn('[harness] processGepEvent error:', err.message);
-    }
+  async seek(ms) {
+    if (!Number.isFinite(ms) || ms < 0 || ms > this.durationMs) throw new Error('Choose a position inside the rehearsal.');
+    if (this.busy) throw new Error('Wait for the current rehearsal event.');
+    this.pause(); this.busy = true;
+    try { this.positionMs = ms; this.cursor = this.events.findIndex(event => event.ts > ms); if (this.cursor < 0) this.cursor = this.events.length; await this.onSeek?.(ms, this.events.filter(event => event.ts <= ms)); }
+    finally { this.busy = false; }
   }
-
-  async _readLines(filePath) {
-    return new Promise((resolve, reject) => {
-      const lines = [];
-      const rl    = readline.createInterface({
-        input:     fs.createReadStream(filePath),
-        crlfDelay: Infinity,
-      });
-      rl.on('line', (line) => {
-        if (!line.trim()) return;
-        try { lines.push(JSON.parse(line)); } catch (_) {}
-      });
-      rl.on('close', () => resolve(lines));
-      rl.on('error', reject);
-    });
+  async tick() {
+    if (!this.playing || this.busy) return;
+    this.busy = true;
+    const clock = this.now(); this.positionMs = Math.min(this.durationMs, this.positionMs + Math.max(0, clock - this.lastTick) * this.speed); this.lastTick = clock;
+    try { while (this.playing && this.cursor < this.events.length && this.events[this.cursor].ts <= this.positionMs) await this.onEvent(this.events[this.cursor++]); if (this.cursor >= this.events.length) this.pause(); await this.onClock?.(); }
+    catch (failure) { this.error = failure.message || 'Rehearsal could not continue.'; this.pause(); }
+    finally { this.busy = false; }
   }
+  stop() { this.pause(); }
+  isPlaying() { return this.playing; }
+  get durationMs() { return this.events.at(-1)?.ts || 0; }
+  getStatus() { return { loaded: !!this.events.length, playing: this.playing, positionMs: this.positionMs, durationMs: this.durationMs, speed: this.speed, busy: this.busy, error: this.error }; }
 }
-
 module.exports = Harness;

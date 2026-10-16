@@ -3,6 +3,19 @@ const assert = require('node:assert/strict');
 const { load, quiet } = require('./helpers.cjs');
 const id = 'cf507ae4-9468-4f40-96aa-5a5ff01459c5';
 const showId = '5e182c34-49f8-40d3-bf6c-88b576c20c45';
+
+test('unsupported new metadata on an older backend cannot block legacy event delivery', async () => {
+  const entries = [
+    { id, ts: 1700000000000, payload: { type: 'BroadcastEvent', event: { type: 'SegmentTake', showId, data: {} } } },
+    { id: '00000000-0000-4000-8000-000000000061', ts: 1700000000000, payload: { type: 'BroadcastEvent', event: { type: 'ProductionAction', showId, data: { action: 'hold' } } } },
+  ];
+  const retained = [];
+  const queue = { async drainBatches(send, { key }) { const groups = new Map(); for (const entry of entries) { const group = key(entry.payload); groups.set(group, [...groups.get(group) || [], entry]); } for (const records of groups.values()) if (!await send(records)) retained.push(...records); } };
+  const Hub = load('hub-client.js', { 'node-fetch': async (_url, options) => { const events = JSON.parse(options.body).events; const accepted = events.filter(event => event.eventType === 'SegmentTake').length; return { ok: true, json: async () => ({ accepted, rejected: events.length-accepted }) }; } });
+  const client = new Hub({ hubUrl: 'https://fixture.invalid/hubs/broadcast', offlineQueue: queue, logger: quiet });
+  client._connected = true; client._nodeToken = 'fixture'; await client._drainQueue();
+  assert.equal(retained.length, 1); assert.equal(retained[0].payload.event.type, 'ProductionAction');
+});
 function fixture(payload, answer = { accepted: 1, rejected: 0 }) {
   const requests = [], retained = [];
   const queue = { async drain(send) { if (await send(payload, { id, ts: 1700000000000 }) === false) retained.push(payload); } };
@@ -42,6 +55,14 @@ test('correction uses its original show and existing typed endpoint', async () =
 test('legacy correction without original show identity is retained without guessing', async () => {
   const { client, requests, retained } = fixture({ type: 'BroadcastCorrection', matchCode: 'MAIN' });
   await client._drainQueue(); assert.equal(requests.length, 0); assert.equal(retained.length, 1);
+});
+test('official result delivery uses the proposal endpoint and retains unacknowledged proposals', async () => {
+  const payload = { type: 'ResultProposal', showId, matchId: id, nodeId: id, team1Id: id, team2Id: showId, bestOf: 3, matchCode: 'FINAL', mapIndex: 1, teamAScore: 13, teamBScore: 7, reason: 'Checked', idempotencyKey: id };
+  const acknowledged = fixture(payload, { proposalId: id, status: 'pending' });
+  await acknowledged.client._drainQueue(); assert.equal(acknowledged.retained.length, 0);
+  assert.ok(acknowledged.requests[0].url.endsWith(`/nodes/shows/${showId}/result-proposals`));
+  assert.equal(JSON.parse(acknowledged.requests[0].options.body).matchId, id);
+  const missing = fixture(payload, { inserted: 1 }); await missing.client._drainQueue(); assert.equal(missing.retained.length, 1);
 });
 test('local-only operator records are retained without invalid remote delivery', async () => {
   const { client, requests, retained } = fixture({ type: 'BroadcastEvent', event: { type: 'cmd_hold' } });

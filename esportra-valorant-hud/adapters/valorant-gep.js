@@ -64,6 +64,7 @@ function normalize(msg) {
 }
 
 function createValorantAdapter(opts = {}) {
+  const coverage = new (require('./player-coverage'))();
   const teamOf = opts.teamOf || (g => g);                  // game team (0 always starts on attack) → HUD team index
   const ctx = {
     slots: new Map(), byName: new Map(), spike: {}, lastScore: null, pendingKills: [],
@@ -136,12 +137,13 @@ function createValorantAdapter(opts = {}) {
 
   function ingest(state, msg, now = Date.now()) {
     const s = state, out = []; const { infos, events, playerId } = normalize(msg || {});
+    coverage.record(playerId, infos, msg?.captureHeartbeat === true, now);
     for (const { key, value: v } of infos) {
       if (/^scoreboard_\d+$/.test(key) && v && v.player_id) {
         const team = [0, 1, '0', '1'].includes(v.team) ? Number(v.team) : v.teammate === false || v.teammate === 'false' ? 1 : 0;
         const tp = slot(s, v.player_id, team, v.name, true), p = P(s, tp); if (!p) continue;
         ctx.byName.set(nameKey(v.name), tp);
-        Object.assign(p, { name: shortName(v.name) || p.name, agent: agentOf(v.character) || p.agent, alive: !!v.alive, ult: +v.ult_points || 0, ultMax: +v.ult_max || p.ultMax,
+        Object.assign(p, { inGameName: typeof v.name === 'string' ? v.name.slice(0,128) : '', name: shortName(v.name) || p.name, agent: agentOf(v.character) || p.agent, alive: !!v.alive, ult: +v.ult_points || 0, ultMax: +v.ult_max || p.ultMax,
           k: +v.kills || 0, d: +v.deaths || 0, a: +v.assists || 0, credits: +v.money || 0, spike: !!v.spike, puuid: v.player_id });
         if (p.acs === 0) p.acs = null;
         if (p.adr === 0) p.adr = null;
@@ -163,7 +165,7 @@ function createValorantAdapter(opts = {}) {
       } else if (/^roster_\d+$/.test(key) && v && v.player_id) {
         const team = [0, 1, '0', '1'].includes(v.team) ? Number(v.team) : v.teammate === false || v.teammate === 'false' ? 1 : 0;
         const tp = slot(s, v.player_id, team, v.name), p = P(s, tp); if (!p) continue;
-        p.name = shortName(v.name) || p.name; p.agent = agentOf(v.character); p.locked = !!v.locked; p.puuid = v.player_id; ctx.byName.set(nameKey(v.name), tp);
+        p.inGameName = typeof v.name === 'string' ? v.name.slice(0,128) : ''; p.name = shortName(v.name) || p.name; p.agent = agentOf(v.character); p.locked = !!v.locked; p.puuid = v.player_id; ctx.byName.set(nameKey(v.name), tp);
         tryReplayKills(s, out, now);
       } else if (key === 'ui_team_order_allies' || key === 'ui_team_order_enemies') {
         const t = key === 'ui_team_order_allies' ? 0 : 1;
@@ -238,8 +240,6 @@ function createValorantAdapter(opts = {}) {
       } else if (key === 'map' && MAPS[v]) s.map.name = MAPS[v];
       else if (key === 'observing') { const tp = ctx.byName.get(nameKey(v)); if (tp) s.observed = tp; }
       else if (key === 'kill_feed' || key === 'planted_location' || key === 'match_start' || key === 'match_end') events.push({ name: key, data: v });
-      else if (key === 'health' && playerId) { const p = P(s, ctx.slots.get(playerId)); if (p) p.hp = +v; }
-      else if (key === 'abilities' && playerId) { const p = P(s, ctx.slots.get(playerId)); if (p && v) { p.charges = ['C', 'Q', 'E'].map(k => v[k] === true || v[k] === 'true' ? 1 : Math.max(0, Number(v[k]) || 0)); p.chargesKnown = true; } }
     }
     for (const { name, data: d } of events) {
       if (name === 'kill_feed' && d) {
@@ -287,6 +287,7 @@ function createValorantAdapter(opts = {}) {
       else if (name === 'match_start') { s.rounds = []; ctx.lastScore = [0, 0]; ctx.overtimeFired = false; ctx.roundFirstKill = false; s.teams.forEach(T => { T.score = 0; T.lossStreak = 0; }); s.teamStats.forEach(T => { T.plants = 0; T.defuses = 0; T.clutches = 0; T.ecoWins = 0; T.firstKills = 0; }); s.players.flat().forEach(p => { p.fk = 0; p.acs = null; p.adr = null; p.hs = null; }); out.push({ type: 'match.start' }); }
       else if (name === 'match_end') out.push({ type: 'match.end' });
     }
+    coverage.apply(s, now);
     return { state: s, events: out };
   }
   return { ingest, ctx };

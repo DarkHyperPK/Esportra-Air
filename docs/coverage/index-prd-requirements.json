@@ -1,0 +1,267 @@
+[
+  {
+    "id": "E1.1",
+    "epic": "E1 · Production node and capture (phase P0)",
+    "requirement": "E1.1 Install and pair: as an ops lead, I pair a PC to my organization so it can run shows. (P0, screens 7, 19) - Given a fresh install, when the app starts, then it shows a pairing code valid for 10 minutes and single use. - When org staff enters the code on the web, then the node appears in Production nodes within 3 s with its name and capabilities. - Revoking the node on the web disconnects it within 5 s; it returns to the pairing screen. - The node token is stored in the OS credential store, never in plain files."
+  },
+  {
+    "id": "E1.2",
+    "epic": "E1 · Production node and capture (phase P0)",
+    "requirement": "E1.2 Local HUD server: as crew, I add browser sources that never need to change between matches. (P0, screen 12) - The node serves all 45 graphics at stable URLs per node (/o/<output>?k=<key>) on This PC and LAN addresses. - Switching matches on the node changes content, never URLs. - Each output reports its connection count and last frame time to the console and web. - The existing room protocol (snapshot, patch with v, event, resync) is unchanged; graphics from esportra-valorant-hud run without code changes."
+  },
+  {
+    "id": "E1.3",
+    "epic": "E1 · Production node and capture (phase P0)",
+    "requirement": "E1.3 Capture only mode: as an observer, I send game data without being able to change the show. (P0, screen 11) - Choosing Capture only hides all show controls; the window shows destination, latency, features and hotkeys. - GEP messages reach the node over LAN with median latency ≤ 50 ms. - F9 sends a replay marker, F10 a producer flag; both appear in the console within 300 ms. - If the production PC is unreachable, the app buffers up to 60 s of messages and retries; it says so."
+  },
+  {
+    "id": "E1.4",
+    "epic": "E1 · Production node and capture (phase P0)",
+    "requirement": "E1.4 Capture status and fallbacks: as a producer, I know what data I can trust. (P0, screen 10) - Each GEP feature shows Live or Covered, freshness and 60 s activity. - Spike timer derives from the plant event (45 s, with defuse markers); round timer counts locally and corrects on GEP time. - No events for 10 s during a live round marks the feed stale (console banner, web alert, on-screen \"feed paused\" tag)."
+  },
+  {
+    "id": "E1.5",
+    "epic": "E1 · Production node and capture (phase P0)",
+    "requirement": "E1.5 Simulator: as a producer, I rehearse without the game. (P1, screen 10) - Loads an .ndjson recording (from the room event log) or a scripted round; play, pause, speed 0.5–4×, scrub. - Drives graphics and autopilot; OBS switching only when \"Allow OBS\" is on."
+  },
+  {
+    "id": "E1.6",
+    "epic": "E1 · Production node and capture (phase P0)",
+    "requirement": "E1.6 Player PCs: as a producer, I can add exact health and ability charges. (P2) - Installing the capture app on player PCs adds per-player health and charges; the console shows which players are covered."
+  },
+  {
+    "id": "E2.1",
+    "epic": "E2 · OBS and vMix control (phase P1)",
+    "requirement": "E2.1 Connect to OBS (P0, screens 7, 9) - The node auto-detects OBS on the same PC (obs-websocket, port 4455) and asks only for the password; a LAN OBS needs IP and password once. - Connection state, version, Studio Mode and scene collection show on Scenes and Readiness. - Reconnect uses backoff 1, 2, 4, 8 s (max 10 s) and pauses autopilot while disconnected."
+  },
+  {
+    "id": "E2.2",
+    "epic": "E2 · OBS and vMix control (phase P1)",
+    "requirement": "E2.2 One-click scene build (P0, screens 5, 9) - Creates scenes Holding, Gameplay, Fullscreen, Replay, Casters in a new scene collection \"Esportra · \". - Adds the matching browser sources at 1920×1080 with \"shutdown when not visible\" off. - Adds labelled slots for game feed and caster cameras; detects when crew adds sources to them. - Never deletes or renames existing user scenes; rebuilding only touches Esportra-owned items."
+  },
+  {
+    "id": "E2.3",
+    "epic": "E2 · OBS and vMix control (phase P1)",
+    "requirement": "E2.3 Segment → scene mapping (P0, screen 9) - Each segment maps to a scene and a transition (Cut, Fade N ms, Stinger); the scene list is read live from OBS. - Missing scenes block Publish to that node with a clear message."
+  },
+  {
+    "id": "E2.4",
+    "epic": "E2 · OBS and vMix control (phase P1)",
+    "requirement": "E2.4 Takes (P0, screen 8) - Studio Mode on: load preview, then transition. Off: set program scene. - Take latency ≤ 100 ms on the same PC. - Tally on console, web and phone follows OBS events, never local assumptions."
+  },
+  {
+    "id": "E2.5",
+    "epic": "E2 · OBS and vMix control (phase P1)",
+    "requirement": "E2.5 Replays (P1) - Replay trigger saves the replay buffer, loads the clip into the Replay scene's media source, switches with stinger, and returns to the previous scene when the clip ends. - If the replay buffer is off, the trigger is disabled with the reason."
+  },
+  {
+    "id": "E2.6",
+    "epic": "E2 · OBS and vMix control (phase P1)",
+    "requirement": "E2.6 vMix (P1) - Same mapping with inputs instead of scenes via the HTTP API; tally from the XML state; Cut, Fade and Stinger 1–4 supported."
+  },
+  {
+    "id": "E2.7",
+    "epic": "E2 · OBS and vMix control (phase P1)",
+    "requirement": "E2.7 Multiple switchers (P2) - A node can hold several OBS or vMix connections; each segment targets one."
+  },
+  {
+    "id": "E3.1",
+    "epic": "E3 · Autopilot, rundowns and rules (phase P2)",
+    "requirement": "E3.1 Rundown templates (P0, screen 3) - Ship Bo1 and Bo3 templates with the segments in README §5.3. - Segments have trigger, graphics, scene, transition, hold window (Auto / N s / Manual) and mode."
+  },
+  {
+    "id": "E3.2",
+    "epic": "E3 · Autopilot, rundowns and rules (phase P2)",
+    "requirement": "E3.2 Triggers (P0) - Supported: match room opened, check-in complete, veto step, veto complete, agent select, round phase, kill and multi-kill, spike planted or defused, map end, series decided, rescheduled, forfeit, clock time, delay, hotkey, remote command, observer flag. - Each trigger has a test fire in the web editor and in the simulator."
+  },
+  {
+    "id": "E3.3",
+    "epic": "E3 · Autopilot, rundowns and rules (phase P2)",
+    "requirement": "E3.3 Hold windows (P0, screens 8, 17) - An armed automatic take shows the Next card with a countdown equal to its hold window. - H holds (waits for Take or Skip), S skips, Space takes now. All three work from the console, phone and web. - Holds and skips are audited with actor and time."
+  },
+  {
+    "id": "E3.4",
+    "epic": "E3 · Autopilot, rundowns and rules (phase P2)",
+    "requirement": "E3.4 In-round rules (P0) - Buy phase → economy board, round end → recap N s, spike planted → spike timer, multi-kill/clutch/flawless → banner, tech pause → pause panel. - In-round rules never switch OBS scenes unless a rule explicitly says so (e.g. tech pause → BRB)."
+  },
+  {
+    "id": "E3.5",
+    "epic": "E3 · Autopilot, rundowns and rules (phase P2)",
+    "requirement": "E3.5 Safety (P0) - No automatic take during tech pause or timeout, except the pause rule itself. - OBS disconnected → autopilot paused; queued takes are dropped, not replayed later. - Commands carry ids; duplicates are ignored."
+  },
+  {
+    "id": "E3.6",
+    "epic": "E3 · Autopilot, rundowns and rules (phase P2)",
+    "requirement": "E3.6 Publishing (P1) - Publish creates a new rundown version; nodes switch at the next segment boundary. - Nodes show which rundown version they run; the web shows nodes on an old version."
+  },
+  {
+    "id": "E3.7",
+    "epic": "E3 · Autopilot, rundowns and rules (phase P2)",
+    "requirement": "E3.7 Rule editor (P1, screen 3) - When / Only if / Then with ordered actions; actions limited to node capabilities; validation inline."
+  },
+  {
+    "id": "E4.1",
+    "epic": "E4 · Producer console (phases P1–P2)",
+    "requirement": "E4.1 Monitors and take bar (P0, screen 8): PVW (amber) and PGM (rose) mirror OBS; Take / Cut / Stinger with hotkeys. "
+  },
+  {
+    "id": "E4.2",
+    "epic": "E4 · Producer console (phases P1–P2)",
+    "requirement": "E4.2 Now / next / coming up (P0): the current segment, the armed next action with countdown, and the next three segments. "
+  },
+  {
+    "id": "E4.3",
+    "epic": "E4 · Producer console (phases P1–P2)",
+    "requirement": "E4.3 Graphic layers (P0): every graphic grouped by layer with On / Auto / Off and a hotkey. Manual override wins until the next segment. "
+  },
+  {
+    "id": "E4.4",
+    "epic": "E4 · Producer console (phases P1–P2)",
+    "requirement": "E4.4 Triggers pad (P0): F1–F8 for tech pause, timeout, replay, toast, caster lower third, poll, stinger, sponsor read. Toast and poll open a small inline form. "
+  },
+  {
+    "id": "E4.5",
+    "epic": "E4 · Producer console (phases P1–P2)",
+    "requirement": "E4.5 Lower thirds (P1): one-click talent and player spotlight from the show's talent list. "
+  },
+  {
+    "id": "E4.6",
+    "epic": "E4 · Producer console (phases P1–P2)",
+    "requirement": "E4.6 Live data strip and event log (P0): round, phase, score, alive, banks, spike; newest-first log of game and show events. "
+  },
+  {
+    "id": "E4.7",
+    "epic": "E4 · Producer console (phases P1–P2)",
+    "requirement": "E4.7 Fix data (P0, screen 13): - Covers score, names (Riot ID → display), sides, series and observed player. - Applies on air immediately, and the feed doesn't overwrite fixed fields until the next round. - A map score change asks \"On air only\" or \"Air and bracket\". - Undo last is available, and every change is audited. "
+  },
+  {
+    "id": "E4.8",
+    "epic": "E4 · Producer console (phases P1–P2)",
+    "requirement": "E4.8 Keyboard (P0): the full map in README §12; rebindable; window-focused by default."
+  },
+  {
+    "id": "E5.1",
+    "epic": "E5 · Web: shows and setup (phase P3)",
+    "requirement": "E5.1 Create a show from a tournament (P0, screens 19, 2): choose tournament and stages; matches become show entries; new matches join as the bracket advances. "
+  },
+  {
+    "id": "E5.2",
+    "epic": "E5 · Web: shows and setup (phase P3)",
+    "requirement": "E5.2 HUD pack and theme (P0): Esportra pack selection, team colours toggle, event bug, sponsor rotation, stinger. "
+  },
+  {
+    "id": "E5.3",
+    "epic": "E5 · Web: shows and setup (phase P3)",
+    "requirement": "E5.3 Sync from the tournament (P0): teams, logos, colours, rosters, schedule, veto steps and series score push to nodes within 5 s of a change. "
+  },
+  {
+    "id": "E5.4",
+    "epic": "E5 · Web: shows and setup (phase P3)",
+    "requirement": "E5.4 Brand and talent (P1): sponsors (logo, reads, rotation), casters and talent cards, per-show overrides of team display names. "
+  },
+  {
+    "id": "E5.5",
+    "epic": "E5 · Web: shows and setup (phase P3)",
+    "requirement": "E5.5 Node assignment (P0): assign matches to nodes; \"Needs a node\" blocks only that match; drag to reassign. "
+  },
+  {
+    "id": "E5.6",
+    "epic": "E5 · Web: shows and setup (phase P3)",
+    "requirement": "E5.6 Broadcast home (P0, screen 1): KPIs, live cards with autopilot line, auto-queued list, nodes, alerts."
+  },
+  {
+    "id": "E6.1",
+    "epic": "E6 · Web: live monitor (phase P3)",
+    "requirement": "E6.1 Tiles (P0, screen 4): per live node, PGM/PVW thumbnails (2 fps via OBS screenshots), score, tally, autopilot state, feed health. "
+  },
+  {
+    "id": "E6.2",
+    "epic": "E6 · Web: live monitor (phase P3)",
+    "requirement": "E6.2 Remote control (P0): Hold, Take now, Resume autopilot; node acknowledges in ≤ 300 ms; the UI shows pending until acked. "
+  },
+  {
+    "id": "E6.3",
+    "epic": "E6 · Web: live monitor (phase P3)",
+    "requirement": "E6.3 Node chat (P1): ops ↔ producer messages with system events inline. "
+  },
+  {
+    "id": "E6.4",
+    "epic": "E6 · Web: live monitor (phase P3)",
+    "requirement": "E6.4 Show timeline (P1): 60-minute strip with automatic takes, holds and manual takes. "
+  },
+  {
+    "id": "E6.5",
+    "epic": "E6 · Web: live monitor (phase P3)",
+    "requirement": "E6.5 Incidents (P0): OBS drops, stale feed, output dropped, data fixes, with time and actor."
+  },
+  {
+    "id": "E7.1",
+    "epic": "E7 · Crew, links and access (phase P3)",
+    "requirement": "E7.1 Roles (P0, screen 5): ops lead, producer, observer, crew, enforced server-side. "
+  },
+  {
+    "id": "E7.2",
+    "epic": "E7 · Crew, links and access (phase P3)",
+    "requirement": "E7.2 Invites (P0): email + in-app; role per show; revoke. "
+  },
+  {
+    "id": "E7.3",
+    "epic": "E7 · Crew, links and access (phase P3)",
+    "requirement": "E7.3 Browser source links (P0): per node and output, LAN / This PC / Cloud relay (relay is P2), copy and QR, tally. "
+  },
+  {
+    "id": "E7.4",
+    "epic": "E7 · Crew, links and access (phase P3)",
+    "requirement": "E7.4 Key rotation (P1): rotate pushes the new key to connected sources; old links die after 60 s. "
+  },
+  {
+    "id": "E7.5",
+    "epic": "E7 · Crew, links and access (phase P3)",
+    "requirement": "E7.5 Co-stream links (P1): watch-party overlay (score, series, veto), no controls, expires at series end."
+  },
+  {
+    "id": "E8.1",
+    "epic": "E8 · Reports and results loop (phase P4)",
+    "requirement": "E8.1 Results to the bracket (P0, screen 6): GEP map end with a final score creates a verified map result for the Esportra match; conflicts with a reported result open the existing dispute flow instead of overwriting. "
+  },
+  {
+    "id": "E8.2",
+    "epic": "E8 · Reports and results loop (phase P4)",
+    "requirement": "E8.2 Show report (P1): KPIs, sponsor time on air, VOD chapters, incidents, share cards. "
+  },
+  {
+    "id": "E8.3",
+    "epic": "E8 · Reports and results loop (phase P4)",
+    "requirement": "E8.3 Sponsor proof (P1): per-sponsor minutes, placements, timestamps and thumbnails; PDF export. "
+  },
+  {
+    "id": "E8.4",
+    "epic": "E8 · Reports and results loop (phase P4)",
+    "requirement": "E8.4 VOD chapters (P1): from segment and round events, YouTube-ready text."
+  },
+  {
+    "id": "E9.1",
+    "epic": "E9 · Offline and sync (phase P2)",
+    "requirement": "E9.1 Run offline (P0, screen 14): with no internet, graphics, autopilot, OBS control and LAN capture continue. "
+  },
+  {
+    "id": "E9.2",
+    "epic": "E9 · Offline and sync (phase P2)",
+    "requirement": "E9.2 Sync queue (P0): results, corrections and report data persist on disk and replay in order when online. "
+  },
+  {
+    "id": "E9.3",
+    "epic": "E9 · Offline and sync (phase P2)",
+    "requirement": "E9.3 Conflicts (P1): match assignment and results conflicts show both versions with who and when; config uses last-writer-wins."
+  },
+  {
+    "id": "E10.1",
+    "epic": "E10 · Phone remote (phase P5)",
+    "requirement": "E10.1 (P2, screen 18): QR pairing from the console; now/next with Hold, Skip, Take now; triggers; alerts; same session as the console."
+  },
+  {
+    "id": "E11.1",
+    "epic": "E11 · Onboarding (phase P3)",
+    "requirement": "E11.1 (P0, screen 19): nine-step checklist with progress and resume. Every step deep-links to where it happens. Target: a new org completes it in ≤ 30 min."
+  }
+]

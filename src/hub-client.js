@@ -10,6 +10,13 @@ const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 10000];
 const HEARTBEAT_INTERVAL_MS = 2000;
 const DRAIN_INTERVAL_MS = 10000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function validSponsorProof(payload) {
+  const impression = payload?.impression;
+  return payload?.type === 'SponsorProof' && UUID.test(payload.showId || '') && impression &&
+    UUID.test(impression.sponsorId || '') && (!impression.segmentId || UUID.test(impression.segmentId)) &&
+    ['lower_third', 'scorebug', 'break_fullscreen', 'custom'].includes(impression.slotType) &&
+    Number.isFinite(Date.parse(impression.startedAt)) && (!impression.endedAt || Number.isFinite(Date.parse(impression.endedAt)) && Date.parse(impression.endedAt) >= Date.parse(impression.startedAt));
+}
 
 // Custom IRetryPolicy — returns null to stop retrying, a number (ms) to keep going.
 // This policy retries indefinitely, capping at 10 s.
@@ -139,6 +146,7 @@ class HubClient extends EventEmitter {
     conn.on('ShowConfig', cfg => this._showConfigHandlers.forEach(h => h(cfg)));
     conn.on('MatchContext', ctx => this._matchContextHandlers.forEach(h => h(ctx)));
     conn.on('Command', cmd => this._commandHandlers.forEach(h => h(cmd)));
+    conn.on('NodeRevoked', () => { if (!this._stopped) this.emit('revoked'); });
 
     // Lifecycle: reconnecting (automatic reconnect is running)
     conn.onreconnecting(err => {
@@ -223,6 +231,7 @@ class HubClient extends EventEmitter {
       gepActive: s.gepActive ?? false,
       lanRelayActive: s.lanRelayActive ?? false,
       appVersion: s.appVersion || '',
+      runtime: s.runtime || null,
       ts: Date.now(),
     };
     this._connection.invoke('NodeHeartbeat', payload).catch(err => {
@@ -238,13 +247,20 @@ class HubClient extends EventEmitter {
     const token = this._nodeToken;
     if (typeof this._offlineQueue.drainBatches === 'function') {
       return this._offlineQueue.drainBatches(records => this._sendQueueBatch(records, token), { key: payload => {
+        if (validSponsorProof(payload)) return 'sponsor:' + payload.showId;
+        if (payload.type === 'ResultProposal') return 'proposal:' + payload.showId;
         if (payload.type === 'BroadcastCorrection' && UUID.test(payload.showId || '') && UUID.test(payload.idempotencyKey || '')) return 'correction:' + payload.showId;
         const entry = payload.type === 'BroadcastEvent' ? payload.event || {} : payload;
-        return REMOTE_EVENT_TYPES.has(entry.type) && UUID.test(entry.showId || '') ? 'event:' + entry.showId : 'retain';
+        return REMOTE_EVENT_TYPES.has(entry.type) && UUID.test(entry.showId || '') ? 'event:' + entry.showId + (['ProductionAction','ProductionIncident','RoundStarted','RoundEnded'].includes(entry.type) ? ':metadata:' + entry.type : ':legacy') : 'retain';
       } }).catch(error => this._logger.warn('[hub-client] Batch delivery failed:', error.message));
     }
     return this._offlineQueue.drain(async (payload, metadata = {}) => {
       if (!this._connected || this._nodeToken !== token) throw new Error('Platform connection changed');
+      if (payload.type === 'SponsorProof') {
+        if (!validSponsorProof(payload)) return false;
+        const response = await this._post(`/api/broadcast/shows/${payload.showId}/sponsor-impressions`, { impressions: [payload.impression] }, token);
+        return response.acknowledged === 1 || response.accepted === 1;
+      }
       if (payload.type === 'BroadcastCorrection') {
         // Older records lack showId: keep them rather than assign a later show.
         if (!UUID.test(payload.showId || '') || !UUID.test(payload.idempotencyKey || '')) return false;
@@ -257,6 +273,7 @@ class HubClient extends EventEmitter {
         const response = await this._post(`/api/broadcast/shows/${payload.showId}/corrections`, { corrections: [correction] }, token);
         return response.inserted === 1;
       }
+      if (payload.type === 'ResultProposal') return this._deliverResultProposal(payload, token);
       const isBroadcastEvent = payload.type === 'BroadcastEvent';
       const entry = isBroadcastEvent ? (payload.event || {}) : payload;
       if (!REMOTE_EVENT_TYPES.has(entry.type)) {
@@ -283,6 +300,20 @@ class HubClient extends EventEmitter {
   async _sendQueueBatch(records, token) {
     if (!this._connected || this._nodeToken !== token) throw new Error('Platform connection changed');
     const first = records[0].payload;
+    if (first.type === 'ResultProposal') {
+      for (const { payload } of records) if (!await this._deliverResultProposal(payload, token)) return false;
+      return true;
+    }
+    if (first.type === 'SponsorProof') {
+      if (!records.every(({ payload }) => validSponsorProof(payload) && payload.showId === first.showId)) return false;
+      // Proof API accepts at most 50 records; keep the queue's original batch identities.
+      for (let index = 0; index < records.length; index += 50) {
+        const impressions = records.slice(index, index + 50).map(({ payload }) => payload.impression);
+        const result = await this._post(`/api/broadcast/shows/${first.showId}/sponsor-impressions`, { impressions }, token);
+        if (result.acknowledged !== impressions.length && result.accepted !== impressions.length) return false;
+      }
+      return true;
+    }
     if (first.type === 'BroadcastCorrection') {
       if (!UUID.test(first.showId || '') || !records.every(({ payload }) => UUID.test(payload.idempotencyKey || ''))) return false;
       const corrections = records.map(({ payload, ts }) => ({ matchCode: payload.matchCode, mapIndex: payload.mapIndex, teamAScore: payload.teamAScore, teamBScore: payload.teamBScore, reason: payload.reason, idempotencyKey: payload.idempotencyKey, ts: new Date(payload.ts ?? ts).toISOString() }));
@@ -297,6 +328,17 @@ class HubClient extends EventEmitter {
     });
     const result = await this._post(`/api/broadcast/shows/${entry.showId}/events/drain`, { events }, token);
     return result.accepted === events.length && result.rejected === 0;
+  }
+
+  async _deliverResultProposal(payload, token) {
+    if (!UUID.test(payload.showId || '') || !UUID.test(payload.matchId || '') || !UUID.test(payload.idempotencyKey || '') ||
+        !UUID.test(payload.team1Id || '') || !UUID.test(payload.team2Id || '')) return false;
+    const result = await this._post(`/api/broadcast/nodes/shows/${payload.showId}/result-proposals`, {
+      clientKey: payload.idempotencyKey, nodeId: payload.nodeId, matchId: payload.matchId, matchCode: payload.matchCode,
+      team1Id: payload.team1Id, team2Id: payload.team2Id, bestOf: payload.bestOf,
+      mapNumber: payload.mapIndex, teamAScore: payload.teamAScore, teamBScore: payload.teamBScore, reason: payload.reason.trim(),
+    }, token);
+    return UUID.test(result.proposalId || '') && ['pending', 'applied', 'rejected'].includes(result.status);
   }
 
   async _post(route, body, token) {

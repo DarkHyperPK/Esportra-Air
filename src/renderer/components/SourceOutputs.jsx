@@ -4,8 +4,8 @@ import ConfirmDialog from "./air/ConfirmDialog.jsx";
 import CopyUrlButton from "./air/CopyUrlButton.jsx";
 const NAV = [
   { id: "readiness", label: "Readiness" },
-  { id: "producer", label: "Producer" },
-  { id: "outputs", label: "Outputs" },
+  { id: "producer", label: "Live production" },
+  { id: "outputs", label: "Browser sources" },
 ];
 
 export default function SourceOutputs({
@@ -19,6 +19,7 @@ export default function SourceOutputs({
   const [name, setName] = useState("");
   const [overlay, setOverlay] = useState("");
   const [matchCode, setMatchCode] = useState("MAIN");
+  const [followMatch, setFollowMatch] = useState(true);
   const [removing, setRemoving] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -33,6 +34,7 @@ export default function SourceOutputs({
         name,
         overlay: overlay || catalogue[0]?.name,
         matchCode,
+        followMatch,
       });
       if (!result.ok) throw new Error(result.error);
       setAdding(false);
@@ -65,6 +67,7 @@ export default function SourceOutputs({
   }
   return (
     <AirShell
+      show={status?.show}
       screenTitle="Browser outputs"
       nodeName={status?.nodeName}
       nav={NAV}
@@ -99,8 +102,8 @@ export default function SourceOutputs({
           </button>
         </div>
         <p className="air-empty-state">
-          Add these HTTP URLs as browser sources in OBS. Overlay content shares
-          the match’s local HUD state.
+          Add these stable HTTP URLs as browser sources in OBS. Outputs can follow
+          the selected match automatically.
         </p>
         {error && (
           <p className="broadcast-error" role="alert">
@@ -144,10 +147,12 @@ export default function SourceOutputs({
                   maxLength={64}
                   pattern="[A-Za-z0-9_-]+"
                   value={matchCode}
+                  disabled={followMatch}
                   onChange={(event) => setMatchCode(event.target.value)}
                 />
               </label>
             </div>
+            <label><input type="checkbox" checked={followMatch} onChange={event => setFollowMatch(event.target.checked)} /> Follow selected match</label>
             <div className="product-actions">
               <button
                 className="air-primary-btn"
@@ -169,8 +174,7 @@ export default function SourceOutputs({
           <section className="product-panel">
             <h2>Your first browser source.</h2>
             <p>
-              Add an existing overlay, choose its match code, then copy its URL
-              into OBS.
+              Choose an overlay, then copy its stable URL into OBS. It follows your selected match by default.
             </p>
           </section>
         ) : (
@@ -191,7 +195,7 @@ export default function SourceOutputs({
                     <small>{output.overlay}</small>
                   </td>
                   <td className="product-url">{address(output)}</td>
-                  <td>{output.matchCode}</td>
+                  <td>{output.followMatch ? 'Selected match' : output.matchCode}<small>{output.connectionCount ?? 0} connected · {output.lastFrameAt ? `Frame ${new Date(output.lastFrameAt).toLocaleTimeString()}` : 'Waiting for render'}</small></td>
                   <td>
                     <div className="product-actions">
                       <CopyUrlButton url={address(output)} />

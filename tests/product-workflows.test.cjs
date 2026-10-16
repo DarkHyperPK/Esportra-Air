@@ -10,7 +10,7 @@ function registry() {
 test('output catalogue, create and remove use existing overlays without secrets', () => {
   const store = registry(); assert.ok(store.catalogue().length >= 40);
   const item = store.add({ name: 'Gameplay', overlay: 'ingame', matchCode: 'GF1' });
-  assert.equal(store.list()[0].url, 'http://localhost:5300/overlays/ingame.html?match=GF1');
+  assert.equal(store.list()[0].url, 'http://localhost:5300/o/' + item.id);
   assert.ok(!store.list()[0].url.includes('key=')); store.remove(item.id); assert.equal(store.list().length, 0);
 });
 test('output creation rejects traversal, missing overlay and invalid match code', () => {

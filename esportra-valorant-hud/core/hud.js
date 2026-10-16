@@ -9,28 +9,53 @@
   function merge(a, b) { for (const k in b) { if (isObj(b[k]) && isObj(a[k])) merge(a[k], b[k]); else a[k] = b[k]; } return a; }
 
   const PREVIEW = Q.get('preview') === '1';
-  const MATCH = PREVIEW ? null : Q.get('match'); // previews are isolated from live rooms and browser storage
+  const EMPTY_PREVIEW = PREVIEW && Q.get('empty') === '1';
+  const SAMPLE_MOTION = PREVIEW && !EMPTY_PREVIEW && Q.get('sampleMotion') === '1';
+  let previewPatch = {};
+  try { if(Q.has('hudSettings'))previewPatch=window.AirHudSettings.validate(JSON.parse(Q.get('hudSettings'))); } catch (_) { /* Invalid preview settings never enter the match state. */ }
+  const previewSettings = state => {
+    const view=merge(clone(state),previewPatch),modules=(document.body.dataset.modules||'').split(',').map(name=>name.trim()).filter(Boolean);
+    // Dedicated screens are selected by the producer; Match HUD switches only govern the composite HUD.
+    if((PREVIEW||OUTPUT||Q.get('screen')==='1')&&modules.length===1&&modules[0]!=='ingame'){
+      const gates={scorebug:'scorebug',players:'players',observed:'observed',minimap:'minimap',economy:'economy',scoreboard:'scoreboard',lowerthird:'lowerThird',replay:'replay',ticker:'ticker',roundhistory:'roundHistory',winprob:'winProb',spiketimer:'spikeTimer',moments:'moments',sponsor:'sponsor',eventbug:'eventBug',poll:'poll',duel:'duel',teamcompare:'teamCompare',roundrecap:'roundRecap',playercams:'playerCams',killfeed:'killfeed'};
+      const gate=gates[modules[0]];
+      if(gate){view.show={...view.show,scoreboard:false,teamCompare:false,duel:false,roundRecap:false,economy:false,[gate]:true};}
+    }
+    return view;
+  };
+  const OUTPUT = /^\/o\/([0-9a-f-]{36})$/i.exec(location.pathname)?.[1] || null;
+  const MATCH = PREVIEW ? null : Q.get('match') || (OUTPUT ? 'MAIN' : null); // previews are isolated from live rooms and browser storage
   const previewNow = Date.now();
-  const HUD = window.HUD = { subs: [], mods: [], events: [], now: PREVIEW ? () => previewNow : () => Date.now(), preview: PREVIEW, demo: !PREVIEW && Q.has('demo'), live: !PREVIEW && !Q.has('demo') && !MATCH, match: MATCH };
+  const HUD = window.HUD = { subs: [], mods: [], events: [], now: PREVIEW && !SAMPLE_MOTION ? () => previewNow : () => Date.now(), preview: PREVIEW, demo: !PREVIEW && Q.has('demo'), live: !PREVIEW && !Q.has('demo') && !MATCH, match: MATCH };
+  if (!PREVIEW) HUD.now = () => {
+    const clock = HUD.state?.simulation;
+    return clock && Number.isFinite(clock.epoch) && Number.isFinite(clock.positionMs)
+      ? clock.epoch + clock.positionMs + (clock.playing ? Math.max(0, Date.now() - clock.wallAt) * clock.speed : 0)
+      : Date.now();
+  };
   function readStore() { try { const s = localStorage.getItem(KEY); if (s) return merge(clone(HUD_DEFAULT), JSON.parse(s)); } catch (e) {} return clone(HUD_DEFAULT); }
-  HUD.state = PREVIEW || HUD.demo || MATCH ? clone(HUD_DEFAULT) : readStore();
+  const liveBase = () => clone(typeof HUD_CLEAN !== 'undefined' ? HUD_CLEAN : HUD_DEFAULT);
+  let sourceState = MATCH || EMPTY_PREVIEW ? liveBase() : PREVIEW || HUD.demo ? clone(HUD_DEFAULT) : readStore();
+  HUD.state = previewSettings(sourceState);
+  let receivedMatch = false;
   let raw = '', bc = null;
   try { bc = new BroadcastChannel('esportra-hud'); } catch (e) {}
   HUD.commit = function (s, opts = {}) {
-    HUD.state = s;
+    sourceState = s;
+    HUD.state = previewSettings(s);
     if (MATCH && !opts.local && !opts.remote) HUD.send({ type: 'set', state: s });
     if (HUD.live && !opts.local) {
       raw = JSON.stringify(s);
       try { localStorage.setItem(KEY, raw); } catch (e) {}
       if (bc) bc.postMessage(s);
     }
-    HUD.subs.forEach(f => f(s));
+    HUD.subs.forEach(f => f(HUD.state));
   };
   HUD.set = function (patch) { HUD.commit(merge(clone(HUD.state), typeof patch === 'function' ? patch(clone(HUD.state)) : patch)); };
   HUD.reset = () => HUD.commit(clone(HUD_DEFAULT));
   HUD.resetClean = () => HUD.commit(clone(typeof HUD_CLEAN !== 'undefined' ? HUD_CLEAN : HUD_DEFAULT));
   HUD.on = f => { HUD.subs.push(f); f(HUD.state); };
-  function receive(s, opts = {}) { HUD.state = merge(clone(HUD_DEFAULT), s); HUD.subs.forEach(f => f(HUD.state, opts)); }
+  function receive(s, opts = {}) { if(MATCH){receivedMatch=true;document.getElementById('hud')?.style.setProperty('visibility','visible');document.getElementById('waiting-match-data')?.remove();} sourceState = merge(MATCH?liveBase():clone(HUD_DEFAULT), s); HUD.state = previewSettings(sourceState); HUD.subs.forEach(f => f(HUD.state, opts)); }
   if (HUD.live) {
     if (bc) bc.onmessage = e => receive(e.data);
     addEventListener('storage', e => { if (e.key === KEY && e.newValue) { raw = e.newValue; receive(JSON.parse(e.newValue)); } });
@@ -41,15 +66,20 @@
   if (MATCH) (function conn() {
     const base = Q.get('server') || ((location.protocol === 'https:' ? 'wss://' : 'ws://') + (location.host || 'localhost:5300'));
     const role = Q.get('role') || (document.body && document.body.dataset.role) || 'overlay';
-    const ws = new WebSocket(`${base}/ws?match=${encodeURIComponent(MATCH)}&role=${role}${Q.get('key') ? '&key=' + encodeURIComponent(Q.get('key')) : ''}`);
+    const ws = new WebSocket(`${base}/ws?${OUTPUT ? 'output=' + encodeURIComponent(OUTPUT) : 'match=' + encodeURIComponent(MATCH)}&role=${role}${Q.get('key') ? '&key=' + encodeURIComponent(Q.get('key')) : ''}`);
     let v = 0; HUD.send = m => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
+    let framePending = false;
+    const renderTimer = setInterval(() => {
+      if (framePending || ws.readyState !== 1 || !HUD.connected) return;
+      framePending = true; requestAnimationFrame(() => { framePending = false; HUD.send({ type: 'rendered', v }); });
+    }, 1000);
     ws.onopen = () => { HUD.connected = true; HUD.subs.forEach(f => f(HUD.state)); };
     ws.onmessage = e => { const m = JSON.parse(e.data);
       if (m.type === 'snapshot') { v = m.v; receive(m.state, {snapshot:true}); }
-      else if (m.type === 'patch') { if (m.v !== v + 1) return HUD.send({ type: 'resync' }); v = m.v; receive(mergePatch(clone(HUD.state), m.patch)); }
+      else if (m.type === 'patch') { if (m.v !== v + 1) return HUD.send({ type: 'resync' }); v = m.v; receive(mergePatch(clone(sourceState), m.patch)); }
       else if (m.type === 'event') HUD.events.forEach(f => f(m.event));
       else if (m.type === 'error') console.warn('Esportra server:', m.message); };
-    ws.onclose = () => { HUD.connected = false; HUD.subs.forEach(f => f(HUD.state)); setTimeout(conn, 1500); };
+    ws.onclose = () => { clearInterval(renderTimer); HUD.connected = false; HUD.subs.forEach(f => f(HUD.state)); setTimeout(conn, 1500); };
   })();
   if (!PREVIEW && Q.get('ws')) (function conn() {
     const ws = new WebSocket(Q.get('ws'));
@@ -102,6 +132,8 @@
     return Math.max(0, Math.min(16, Math.floor(Number(p.charges[k]) || 0)));
   };
   const chargeDots = count => count === null ? '' : count ? '<i></i>'.repeat(count) : '<i class="e"></i>';
+  const abilityDots = (p, k) => p.abilitiesKnown && !p.chargesKnown ? `<span style="font-size:8px" title="Ability availability">${p.abilityAvailability?.[k] ? 'READY' : 'OFF'}</span>` : chargeDots(chargeCount(p, k));
+  const knownHealth = p => !p.alive ? 0 : p.puuid && !p.hpKnown ? null : Math.max(0, Math.min(100, Number(p.hp) || 0));
   const vis = HUD.vis = {
     economy: s => s.show.economy === true || (s.show.economy === 'auto' && s.round.phase === 'buy'),
     focused: s => s.show.scoreboard || s.show.teamCompare || s.show.duel,
@@ -131,7 +163,7 @@
   function sceneFx(sc) { E('div', 'lines', sc); E('div', 'vig', sc); }
   function toggle(el, on) { el.classList.toggle('on', !!on); }
   // scenes only rebuild when the data they show changes (score edits etc. don't replay entrances)
-  const same = (o, s) => { const k = JSON.stringify([s.event, s.teams, s.players.map(t => t.map(p => [p.name, p.agent, p.k, p.d, p.a, p.acs, p.adr, p.hs])), s.map, s.series, s.veto, s.bracket, s.standings, s.casters, s.schedule, s.holding, s.rounds, s.firstSide, s.teamStats, s.champion, Q.get('mode')]);
+  const same = (o, s) => { const k = JSON.stringify([s.event, s.teams, s.players.map(t => t.map(p => [p.name, p.agent, p.k, p.d, p.a, p.acs, p.adr, p.hs])), s.registeredRoster, s.map, s.series, s.veto, s.bracket, s.standings, s.casters, s.schedule, s.holding, s.rounds, s.firstSide, s.teamStats, s.champion, Q.get('mode')]);
     if (o._k === k) return true; o._k = k; return false; };
 
   // ───── modules ─────
@@ -240,9 +272,9 @@
           const ringKey = `${u}/${um}`; if (o.uring.dataset.k !== ringKey) { o.uring.dataset.k = ringKey; o.uring.innerHTML = ultRingSVG(u, um, 44); }
           txt(o.nm, p.name);
           const armor = p.alive ? +p.armor || 0 : 0; txt(o.sh, armor > 0 ? armor : ''); o.sh.style.display = armor > 0 ? '' : 'none';
-          const hp = p.alive ? Math.max(0, Math.min(100, Number(p.hp) || 0)) : 0; txt(o.hpn, p.alive ? hp : ''); o.hpn.classList.toggle('low', hp > 0 && hp <= 30);
-          o.hpi.style.width = hp + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
-          o.abs.forEach((ab, k) => { const d = A && A.ab[k]; setImg(ab.im, d && d[1]); const c = chargeCount(p, k); ab.ab.classList.toggle('empty', c === 0); ab.cp.classList.toggle('chamber-q', c > 4); if (ab.cp.dataset.c !== String(c)) { ab.cp.dataset.c = String(c); ab.cp.innerHTML = chargeDots(c); } });
+          const hp = knownHealth(p); txt(o.hpn, p.alive ? hp === null ? '—' : hp : ''); o.hpn.classList.toggle('low', hp !== null && hp > 0 && hp <= 30);
+          o.hpi.style.width = (hp || 0) + '%'; o.hpi.classList.toggle('low', hp > 0 && hp <= 30);
+          o.abs.forEach((ab, k) => { const d = A && A.ab[k]; setImg(ab.im, d && d[1]); const c = chargeCount(p, k); ab.ab.classList.toggle('empty', c === 0); ab.cp.classList.toggle('chamber-q', c > 4); if (ab.cp.dataset.c !== `${c}:${p.abilityAvailability?.[k]}`) { ab.cp.dataset.c = `${c}:${p.abilityAvailability?.[k]}`; ab.cp.innerHTML = abilityDots(p, k); } });
           const W = weapon(p.weapon); setImg(o.wp, p.alive && W && W.kill);
           txt(o.cr, money(p.credits)); o.cri.src = s.teams[i].side === 'ATK' ? '../core/assets/misc/ValorantCreditsRed.svg' : '../core/assets/misc/ValorantCreditsGreen.svg';
           txt(o.dkda, `${p.k||0}/${p.d||0}/${p.a||0}`); txt(o.dcr, money(p.credits)); o.dcri.src = o.cri.src;
@@ -303,9 +335,9 @@
       const p = P(s, s.observed); if (!p) return; tv(ob, s, s.observed[0]); const A = agent(p.agent);
       setImg(pti, A && A.icon); txt(tg, `${s.teams[s.observed[0]].tag}  /  ${A ? A.name : p.agent}`); txt(nm, p.name);
       setImg(wp, weapon(p.weapon) && weapon(p.weapon).kill); txt(cr, money(p.credits)); txt(kda, `${p.k}/${p.d}/${p.a}`);
-      const h = p.alive ? +p.hp : 0; txt(hv, h); hv.classList.toggle('low', h <= 30); hbi.style.width = Math.min(100, h) + '%'; setImg(ar, armorIcon(p.alive ? p.armor : 0));
+      const h = knownHealth(p); txt(hv, h === null ? '—' : h); hv.classList.toggle('low', h !== null && h <= 30); hbi.style.width = Math.min(100, h || 0) + '%'; setImg(ar, armorIcon(p.alive ? p.armor : 0));
       slots.forEach((o, k) => { const a = A && A.ab[k]; setImg(o.im, a && a[1]);
-        if (k < 3) { const c = chargeCount(p, k); o.s.classList.toggle('empty', c === 0); o.ch.innerHTML = chargeDots(c); }
+        if (k < 3) { const c = chargeCount(p, k); o.s.classList.toggle('empty', c === 0); o.ch.innerHTML = abilityDots(p, k); }
         else { const um = +p.ultMax || 7, u = Math.min(um, +p.ult || 0); o.s.classList.toggle('ready', u >= um); txt(o.ch, u >= um ? 'READY' : `${u}/${um}`); } });
       ob.classList.toggle('isdead', !p.alive);
     } };
@@ -440,7 +472,7 @@
           const unchanged = delta == null || delta === 0;
           const change = unchanged ? '—' : `${delta > 0 ? '+' : ''}${money(delta)}`;
           const abilities = [0, 1, 2].map(k => { const ability = A && A.ab[k], count = chargeCount(p, k); if (!ability) return '';
-            return `<div class="ability ${count === 0 ? 'empty' : ''}" title="${ability[0]}"><img src="${ability[1]}"><div class="cp ${count > 4 ? 'chamber-q' : ''}">${chargeDots(count)}</div></div>`; }).join('');
+            return `<div class="ability ${count === 0 ? 'empty' : ''}" title="${ability[0]}"><img src="${ability[1]}"><div class="cp ${count > 4 ? 'chamber-q' : ''}">${abilityDots(p, k)}</div></div>`; }).join('');
           const kit = `<div class="kit"><div class="ult ${u >= um ? 'ready' : ''}">${A?.ab?.[3]?.[1] ? `<img src="${A.ab[3][1]}">` : ''}<span class="num">${u}/${um}</span></div><div class="weapon">${W ? `<img src="${W.kill}" title="${p.weapon}">` : `<span class="mono">${p.weapon || '—'}</span>`}</div><div class="armor">${armorIcon(p.armor) ? `<img src="${armorIcon(p.armor)}" title="${p.armor} armor">` : '<span class="mono">NO ARMOR</span>'}</div></div>`;
           const identity = `<div class="identity">${A ? `<img class="ag" src="${A.icon}">` : '<div class="ag empty"></div>'}<div class="person"><div class="n">${p.name || 'PLAYER ' + (j + 1)}</div><div class="agent mono">${A?.name || 'AGENT PENDING'}</div></div><div class="kda"><strong class="num">${p.k || 0} / ${p.d || 0} / ${p.a || 0}</strong><span class="mono">K / D / A</span></div></div>`;
           const econ = `<div class="econ"><span class="cr num">${money(p.credits)}</span><span class="change num ${unchanged ? 'neutral' : delta > 0 ? 'gain' : ''}" title="Credit change since the previous round">${change}</span></div>`;
@@ -453,14 +485,15 @@
     const m = E('div', 'mod', root); E('div', 'st-dim', m); const st = E('div', 'st fx-rise', m);
     const COLS = ['K', 'D', 'A', '+/-', 'FK', 'CREDITS', 'ULT', 'ACS'];
     return { update(s) {
-      toggle(m, !!s.show.scoreboard); const all = s.players.flat(); const hasAcs = all.some(p => Number(p.acs) > 0);
+      toggle(m, !!s.show.scoreboard); const all = s.players.flat().filter(p=>p.name); const hasAcs = all.some(p => Number(p.acs) > 0);
       const mvp = all.reduce((a, p) => (+(hasAcs ? p.acs : p.k) > +(hasAcs ? a.acs : a.k) ? p : a), all[0]);
-      st.innerHTML = `<div class="hd"><div class="t disp hl">SCOREBOARD</div><div class="m mono">MAP ${s.map.number}  /  ${s.map.name}<br>ROUND ${s.round.number}</div></div>` +
+      const matchMeta=all.length?`MAP ${s.map.number} / ${s.map.name}<br>ROUND ${s.round.number}`:'WAITING FOR GAME DATA';
+      st.innerHTML = `<div class="hd"><div class="t disp hl">SCOREBOARD</div><div class="m mono">${matchMeta}</div></div>` +
         [0, 1].map(i => { const T = s.teams[i]; const ps = [...s.players[i]].sort((a, b) => +(hasAcs ? b.acs : b.k) - +(hasAcs ? a.acs : a.k));
           return `<div class="tb" style="--c:${T.color}"><div class="row h"><div class="tn"><b>${T.score}</b>${T.name}</div><div></div>${COLS.map(c => `<div class="c mono">${c}</div>`).join('')}</div>` +
             ps.map(p => { const A = agent(p.agent); const pm = (+p.k || 0) - (+p.d || 0), acs = p.acs > 0 ? p.acs : '—';
-              const values = [p.k, p.d, p.a, (pm > 0 ? '+' : '') + pm, p.fk ?? '—', money(p.credits), `${p.ult || 0}/${p.ultMax || 7}`, acs];
-              return `<div class="row ${p.alive ? '' : 'dead'}">${A ? `<img src="${A.icon}">` : '<div></div>'}<div class="pn">${p.name}${p === mvp ? `<span class="mvp mono">${hasAcs ? 'MVP' : 'TOP FRAG'}</span>` : ''}</div><div class="ag mono">${A ? A.name : ''} / ${p.weapon || '—'}</div>` +
+              const values = p.name?[p.k, p.d, p.a, (pm > 0 ? '+' : '') + pm, p.fk ?? '—', p.creditsKnown===false?'—':money(p.credits), `${p.ult || 0}/${p.ultMax || 7}`, acs]:Array(8).fill('—');
+              return `<div class="row ${p.alive ? '' : 'dead'}">${A ? `<img src="${A.icon}">` : '<div></div>'}<div class="pn">${p.name||'Waiting for player'}${p === mvp ? `<span class="mvp mono">${hasAcs ? 'MVP' : 'TOP FRAG'}</span>` : ''}</div><div class="ag mono">${A ? A.name : ''} / ${p.name?p.weapon||'—':'—'}</div>` +
                 values.map((v, k) => `<div class="c num" style="${k === 3 ? `color:${pm >= 0 ? '#7ee0a0' : '#e0445e'}` : ''}">${v ?? '—'}</div>`).join('') + '</div>'; }).join('') + '</div>'; }).join('');
     } };
   };
@@ -508,7 +541,7 @@
     const m = E('div', 'mod on in', root); const sc = sceneBg(m); chrome(m, 'MATCH'); const box = E('div', '', m); sceneFx(sc);
     return { update(s) { if (same(this, s)) return;
       box.innerHTML = [0, 1].map(i => { const T = s.teams[i]; return `<div class="side ${i ? 'r' : 'l'}" style="--c:${T.color}"><div class="wash" style="background:radial-gradient(ellipse at ${i ? 70 : 30}% 45%,${T.color},transparent 60%)"></div><div class="tn disp hl">${T.name}</div><div class="ts mono">${T.series} ${T.series === 1 ? 'MAP' : 'MAPS'} WON</div></div>`; }).join('') +
-        `<div class="vs">vs</div><div class="ev mono">${s.event.name}</div><div class="st disp hl">${s.event.stage}   /   BEST OF ${s.event.bestOf}</div><div class="mp">` +
+        `<div class="vs">vs</div><div class="ev mono">${s.event.name}</div><div class="st disp hl">${s.event.stage}${EMPTY_PREVIEW ? '' : ' / BEST OF '+s.event.bestOf}</div><div class="mp">` +
         s.series.map((x, k) => { const Mm = mapA(x.map); const w = x.winner != null ? s.teams[x.winner].tag + ' ' + x.score.join('–') : (k === s.map.number - 1 ? 'LIVE' : 'UPCOMING');
           return `<div>${Mm ? `<img src="${Mm.list}">` : ''}<span>${x.map}</span><em>MAP ${k + 1}   /   ${w}</em></div>`; }).join('') + '</div>';
       box.querySelectorAll('.side').forEach((sd, i) => { const l = logo(s.teams[i], 260, sd); l.style.position = 'absolute'; l.style.left = '350px'; l.style.top = '300px'; });
@@ -581,7 +614,7 @@
     return { update(s) { if (same(this, s)) return;
       const md = mode(s); const W = { starting: ['STARTING SOON', 'Stay locked in.', 'BROADCAST BEGINS IN'], brb: ['BE RIGHT BACK', 'Grab a drink, don\u2019t go far.', 'WE RETURN IN'], ending: ['THANKS FOR WATCHING', 'GG to both teams.', 'SEE YOU NEXT TIME'] }[md] || ['STARTING SOON', '', ''];
       txt(big, W[0]); txt(sub, (s.holding.mode === md && s.holding.message) || W[1]); txt(cdl, W[2]); cd.style.display = md === 'ending' ? 'none' : '';
-      const [a, b] = s.teams; nx.innerHTML = `<div class="k mono">${md === 'ending' ? 'FINAL' : 'UP NEXT'}   /   ${s.event.stage}</div><div class="m"><span class="t" style="color:${a.color}">${a.tag}</span><span class="v">vs</span><span class="t" style="color:${b.color}">${b.tag}</span></div><div class="s mono">${a.name}  /  ${b.name}   ·   BO${s.event.bestOf}</div>`;
+      const [a, b] = s.teams; nx.innerHTML = `<div class="k mono">${md === 'ending' ? 'FINAL' : 'UP NEXT'}   /   ${s.event.stage}</div><div class="m"><span class="t" style="color:${a.color}">${a.tag}</span><span class="v">vs</span><span class="t" style="color:${b.color}">${b.tag}</span></div><div class="s mono">${a.name}  /  ${b.name}${EMPTY_PREVIEW ? '' : ' · BO'+s.event.bestOf}</div>`;
       sch.innerHTML = s.schedule.map(x => `<div class="r ${x.done ? 'done' : ''}"><span class="tm num">${x.time}</span><span>${x.a && x.b ? x.a + '  VS  ' + x.b : ''}</span><span class="lab mono">${x.label}</span></div>`).join('');
       txt(soc, `${s.event.handle}   /   ${s.event.site}`);
     }, tick(s) { const t = s.holding.target ? (s.holding.target - HUD.now()) / 1000 : (s.holding.minutes || 0) * 60; const v = fmt(t); txt(cd, t <= 0 ? '0:00' : v.length < 5 ? '0' + v : v); } };
@@ -729,8 +762,8 @@
   M.toast = root => { const m = E('div', 'mod', root), ts = E('div', 'ts', m); E('div', 'k mono', ts, 'UPDATE'); const t = E('div', 't', ts);
     return { update(s) { txt(t, s.toast.text || ''); }, tick(s) { ts.classList.toggle('on', !!(s.toast.ts && HUD.now() - s.toast.ts < 7000) || Q.get('toast') === '1'); } }; };
 
-  M.sponsor = root => { const m = E('div', 'mod', root), sp = E('div', 'spn fx-rise', m); E('div', 'k mono', sp, 'PRESENTED BY'); const v = E('div', 'v', sp); let cur = -1;
-    return { update(s) { toggle(m, s.show.sponsor && s.sponsors.length && vis.players(s)); cur = -1; this.tick(s); }, tick(s) { if (!s.sponsors.length) return; const i = Math.floor(HUD.now() / 8000) % s.sponsors.length; if (i === cur) return; cur = i; const x = s.sponsors[i];
+  M.sponsor = root => { const m = E('div', 'mod', root), sp = E('div', 'spn fx-rise', m); E('div', 'k mono', sp, 'PRESENTED BY'); const v = E('div', 'v', sp); let cur = -1, signature = '';
+    return { update(s) { toggle(m, s.show.sponsor && s.sponsors.length && vis.players(s)); const next = JSON.stringify([s.sponsors, s.layout?.sponsorRotation, s.layout?.sponsorSeconds]); if (signature !== next) { signature = next; cur = -1; } this.tick(s); }, tick(s) { if (!s.sponsors.length) return; const seconds = Number.isInteger(s.layout?.sponsorSeconds) && s.layout.sponsorSeconds >= 5 && s.layout.sponsorSeconds <= 120 ? s.layout.sponsorSeconds : 8; const i = s.layout?.sponsorRotation === false ? 0 : Math.floor(HUD.now() / (seconds * 1000)) % s.sponsors.length; if (i === cur) return; cur = i; const x = s.sponsors[i];
       v.style.animation = 'none'; void v.offsetWidth; v.style.animation = ''; v.innerHTML = x.logo ? `<img src="${x.logo}"><span class="mono">${x.line || ''}</span>` : `<b>${x.name}</b><span class="mono">${x.line || ''}</span>`; } }; };
 
   M.eventbug = root => { const m = E('div', 'mod', root), eb = E('div', 'eb fx-rise', m); const im = E('img', '', eb); im.src = '../core/brand/mark-44.png'; const a = E('div', 'a mono', eb);
@@ -786,8 +819,11 @@
 
   M.roster = root => { const m = E('div', 'mod on tr', root); const sc = sceneBg(m); chrome(m, 'TEAM'); const box = E('div', '', m); sceneFx(sc);
     return { update(s) { if (same(this, s)) return; const t = +(Q.get('team') || document.body.dataset.team || 0), T = s.teams[t];
+      const live = s.players[t].some(player => player.name), registered = (s.registeredRoster?.[t] || []).filter(player => ['starter', 'registered'].includes(player.role)).slice(0, 5);
+      const players = live || !registered.length ? s.players[t] : registered;
+      const text = value => String(value || '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
       box.innerHTML = `<div class="head" style="--c:${T.color}"><div class="lgx"></div><div><div class="t disp hl">${T.name}</div><div class="s mono">${s.event.name}   /   ${s.event.stage}</div></div></div><div class="cards" style="--c:${T.color}">` +
-        s.players[t].map((p, j) => { const A = agent(p.agent); return `<div class="cd" style="animation:tIn .6s ${.08 * j}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="n">${p.name}</div><div class="a mono">${A ? A.name + '  /  ' + A.role : ''}</div><div class="s mono">${p.acs} ACS   ${p.k}/${p.d}/${p.a}</div></div>`; }).join('') + '</div>';
+        players.map((p, j) => { const A = agent(p.agent); return `<div class="cd" style="animation:tIn .6s ${.08 * j}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="n">${text(p.name)}</div><div class="a mono">${A ? A.name + '  /  ' + A.role : ''}</div><div class="s mono">${live ? `${p.acs} ACS   ${p.k}/${p.d}/${p.a}` : 'REGISTERED LINEUP · WAITING FOR GAME DATA'}</div></div>`; }).join('') + '</div>';
       const l = logo(T, 120, box.querySelector('.lgx')); l.style.position = 'relative'; } }; };
 
   const mapBreak = half => root => { const m = E('div', 'mod on mb', root); const sc = sceneBg(m); chrome(m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const title = E('div', 'title disp hl', m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const box = E('div', '', m); sceneFx(sc);
@@ -891,21 +927,76 @@
   // ───── boot ─────
   function fit(el) { const k = Math.min(innerWidth / 1920, innerHeight / 1080); el.style.transform = `scale(${k})`; }
   function boot() {
-    const root = document.getElementById('hud'); if (!root) { window.HUD_READY = true; return; } fit(root); addEventListener('resize', () => fit(root));
+    const root = document.getElementById('hud'); if(MATCH&&root&&!receivedMatch){root.style.visibility='hidden';const waiting=document.createElement('p');waiting.id='waiting-match-data';waiting.textContent='Waiting for match data';Object.assign(waiting.style,{color:'#afbdd0',font:'24px Arial',padding:'48px'});document.body.appendChild(waiting);} if (!root) { window.HUD_READY = true; return; } fit(root); addEventListener('resize', () => fit(root));
     if (Q.has('bg')) { const u = Q.get('bg'); document.body.style.background = `#1a1a1d url(${u && u !== '1' ? u : (mapA(HUD.state.map.name) || {}).splash}) center/cover`; }
+    if(Q.get('canvas')==='1')document.body.classList.add('hud-editor-canvas');
     const list = (document.body.dataset.modules || '').split(',').map(x => x.trim()).filter(Boolean);
     const missing = list.filter(k => typeof M[k] !== 'function');
     if (missing.length) throw new Error('Unknown HUD module: ' + missing.join(', '));
     if (PREVIEW) {
-      HUD.state = previewState(list);
-      document.body.classList.add('hud-preview');
-      E('div', 'preview-label', document.body, 'PREVIEW · SAMPLE DATA');
+      HUD.state = EMPTY_PREVIEW ? liveBase() : previewState(list);
+      try { const teams=JSON.parse(Q.get('previewTeams')||'[]'); if(Array.isArray(teams)&&teams.length===2)teams.forEach((team,index)=>{ if(typeof team.name==='string'&&team.name.length<=80)HUD.state.teams[index].name=team.name.replace(/[<>]/g,''); if(typeof team.tag==='string'&&team.tag.length<=12)HUD.state.teams[index].tag=team.tag.replace(/[<>]/g,''); if(Array.isArray(team.players))team.players.slice(0,5).forEach((name,slot)=>{if(typeof name==='string'&&name.length<=80)HUD.state.players[index][slot].name=name.replace(/[<>]/g,'');}); if(typeof team.logo==='string'&&!/[<>\"'\s]/.test(team.logo)&&/^(https:\/\/|http:\/\/localhost:5300\/air-assets\/)/.test(team.logo))HUD.state.teams[index].logo=team.logo; }); } catch (_) { /* Keep safe preview defaults for invalid input. */ }
+      if (EMPTY_PREVIEW) { HUD.state.series=[];HUD.state.map.name='';HUD.state.map.number=0; }
+      sourceState = clone(HUD.state);
+      HUD.state=previewSettings(sourceState);
+      if(SAMPLE_MOTION){HUD.state.holding.target=previewNow+(HUD.state.holding.minutes||5)*60000;sourceState.holding.target=HUD.state.holding.target;}
+      if(!SAMPLE_MOTION)document.body.classList.add('hud-preview');
+      if(!EMPTY_PREVIEW) E('div', 'preview-label', document.body, 'PREVIEW · SAMPLE DATA');
     }
-    const mods = list.map(k => M[k](root)); HUD.mods = mods;
+    // Static screens still preview their real design with no game data.
+    const hideEmpty = EMPTY_PREVIEW && !list.every(name => ['holding','intro','casters','eventbug','sponsor','lowerthird','ticker'].includes(name));
+    if (EMPTY_PREVIEW) {
+      document.body.classList.add('hud-without-game-data');
+    }
+    if (hideEmpty) {
+      root.style.visibility = 'hidden';
+      const empty = E('div', 'empty-preview-message', document.body);
+      empty.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#a1a1aa;font:24px system-ui;text-align:center';
+      E('strong', '', empty, 'Game data hidden');
+      E('span', '', empty, 'Choose Sample data or Received match data to preview this screen.');
+    }
+    const mods = hideEmpty ? [] : list.map(k => M[k](root)); HUD.mods = mods;
+    const feedTag = E('div', 'feed-paused-tag mono', root, 'FEED PAUSED · LAST RECEIVED DATA');
+    feedTag.style.cssText = 'position:absolute;top:16px;left:50%;transform:translateX(-50%);padding:6px 12px;background:#1b1410;color:#fbbf24;font-size:12px;z-index:99;display:none';
+    const updateFeedTag = s => { feedTag.style.display = !PREVIEW && s.airDiagnostics?.feedPaused ? 'block' : 'none'; };
+    const rehearsalTag = E('div', 'feed-paused-tag mono', root, 'REHEARSAL · SAMPLE DATA');
+    rehearsalTag.style.cssText = feedTag.style.cssText;
+    const updateRehearsalTag = s => { rehearsalTag.style.display = !PREVIEW && s.airContext?.simulation ? 'block' : 'none'; };
+    HUD.on(updateRehearsalTag);
+    const pausePanel = E('div', 'pause', root), pauseCrest = E('div', 'pause-crest', pausePanel), pauseSymbol = E('img', 'pause-symbol', pauseCrest), pauseTitle = E('div', 'a', pausePanel), pauseTime = E('div', 'b mono', pausePanel);
+    E('div', 'pause-wing l', pausePanel); E('div', 'pause-wing r', pausePanel);
+    const updateAirPause = s => {
+      const panel = s.airPause, enabled = !PREVIEW && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);
+      pausePanel.classList.toggle('on', !!enabled);
+      pausePanel.style.visibility = enabled ? 'visible' : 'hidden';
+      pausePanel.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+      if (!enabled) return;
+      const technical = panel.kind === 'technical'; pausePanel.style.setProperty('--c', technical ? 'var(--red)' : 'var(--amber, #fbbf24)');
+      setImg(pauseSymbol, '../core/assets/banners/' + (technical ? 'technical-pause' : 'timeout') + '.svg');
+      txt(pauseTitle, technical ? 'TECHNICAL PAUSE' : 'TEAM TIMEOUT');
+      txt(pauseTime, 'ELAPSED ' + fmt(Math.max(0, (HUD.now() - panel.startedAt) / 1000)));
+    };
+    HUD.on(updateAirPause);
+    HUD.subs.push(updateFeedTag); updateFeedTag(HUD.state);
     HUD.subs.push((s, opts) => mods.forEach(m => m.update(s, opts))); mods.forEach(m => m.update(HUD.state, {snapshot:true}));
-    let lastT = 0; (function loop(t) { if (t - lastT > 90) { lastT = t; mods.forEach(m => m.tick && m.tick(HUD.state)); } mods.forEach(m => m.frame && m.frame(HUD.state)); requestAnimationFrame(loop); })(0);
-    if (HUD.demo) demo();
+    let lastT = 0; (function loop(t) { if (t - lastT > 90) { lastT = t; updateAirPause(HUD.state); mods.forEach(m => m.tick && m.tick(HUD.state)); } mods.forEach(m => m.frame && m.frame(HUD.state)); requestAnimationFrame(loop); })(0);
+    if (HUD.demo || SAMPLE_MOTION) demo();
     window.HUD_READY = true;
+    if(window.parent!==window)window.parent.postMessage({type:'AIR_HUD_PREVIEW_READY'},'*');
   }
+  addEventListener('message', event => {
+    if (event.source !== window.parent || window.parent === window) return;
+    if (event.data?.type === 'AIR_HUD_PREVIEW_PROBE' && window.HUD_READY)
+      window.parent.postMessage({type:'AIR_HUD_PREVIEW_READY'}, '*');
+    // Read-only editor views only. OBS outputs cannot accept draft commands.
+    if (event.data?.type !== 'AIR_HUD_PREVIEW_SETTINGS' || OUTPUT ||
+        Q.get('canvas') !== '1' || Q.get('screen') !== '1' ||
+        !Q.has('editorOrigin') || event.origin !== Q.get('editorOrigin')) return;
+    try {
+      previewPatch = event.data.settings == null ? {} : window.AirHudSettings.validate(event.data.settings);
+      HUD.state = previewSettings(sourceState);
+      HUD.subs.forEach(fn => fn(HUD.state, {snapshot:true}));
+    } catch (_) { /* Invalid drafts leave the last valid preview in place. */ }
+  });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

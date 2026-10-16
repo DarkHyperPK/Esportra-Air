@@ -1,0 +1,1064 @@
+[
+  {
+    "section": "Esportra Broadcast product requirements",
+    "cells": [
+      "",
+      ""
+    ]
+  },
+  {
+    "section": "Esportra Broadcast product requirements",
+    "cells": [
+      "Product",
+      "Esportra Broadcast (working name for the HUD tool)"
+    ]
+  },
+  {
+    "section": "Esportra Broadcast product requirements",
+    "cells": [
+      "Document",
+      "PRD v1.0"
+    ]
+  },
+  {
+    "section": "Esportra Broadcast product requirements",
+    "cells": [
+      "Status",
+      "Draft for CEO review"
+    ]
+  },
+  {
+    "section": "Esportra Broadcast product requirements",
+    "cells": [
+      "Date",
+      "3 October 2026"
+    ]
+  },
+  {
+    "section": "Esportra Broadcast product requirements",
+    "cells": [
+      "Owner",
+      "Product (CPO) · Design: Creative Lead · Engineering: CTO"
+    ]
+  },
+  {
+    "section": "Esportra Broadcast product requirements",
+    "cells": [
+      "Companion docs",
+      "UI/UX recipe and screens: README.md and the 19 pictures in this folder · HUD codebase: esportra-valorant-hud"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "Area",
+      "What",
+      "Where"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "Share cards",
+      "Esportra share cards made in-app from the Riot record (16:9 match, 4:5 player), downloadable by captains and organizers in the match room; broadcast redesign with MVP duel, team-colour lighting, angled boards",
+      "src/components/share-cards/*, commits 1bb540d5, 82d4dd76"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "OBS overlay theme",
+      "theme=esportra on the existing Riot OBS overlay routes, default on /debug/riot; old themes kept",
+      "src/pages/debug/EsportraOverlay.tsx, commit 5794c800"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "Architecture decision",
+      "Hybrid: desktop production node (GEP, local HUD server, OBS/vMix control, autopilot, offline) + web Broadcast section (plan, monitor, report). Graphics Studio deferred to desktop",
+      "§18"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "Industry research",
+      "LHM.gg, Singular.live, NodeCG, SuperConductor, community Valorant tools; our differentiators",
+      "README.md §3"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "UI/UX",
+      "19 high-fidelity screens: 6 web, 8 desktop, 5 system boards, with numbered callouts",
+      "design/hud-studio/*.png, commits 3a3f2830, 9f8679af"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "UX spec",
+      "Recipe and ingredients: flows, per-screen behaviour, motion, automation model, OBS/vMix contract, data, reliability, a11y",
+      "README.md"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "Design source",
+      "Editable HTML sources and kit, rebuilt by the design pipeline",
+      "design/source/hud-kit.mjs, design/source/hud/*.mjs"
+    ]
+  },
+  {
+    "section": "1.2 Done in this cycle",
+    "cells": [
+      "This PRD",
+      "Goal, scope, requirements, acceptance criteria, release plan",
+      "this file"
+    ]
+  },
+  {
+    "section": "4. Users and jobs to be done",
+    "cells": [
+      "Persona",
+      "Context",
+      "Jobs to be done",
+      "Pain today"
+    ]
+  },
+  {
+    "section": "4. Users and jobs to be done",
+    "cells": [
+      "Ops lead (organizer staff)",
+      "Runs 4–16 matches a day across 1–4 streams",
+      "\"Make sure every match that should be on stream is, with the right teams, without me babysitting each one\"",
+      "Spreadsheets, Discord pings, re-typing"
+    ]
+  },
+  {
+    "section": "4. Users and jobs to be done",
+    "cells": [
+      "Producer",
+      "One stream, one PC, often a volunteer",
+      "\"Keep the show clean and react to moments, not do busywork\"",
+      "Clicks every round; misses replays; panics when OBS drops"
+    ]
+  },
+  {
+    "section": "4. Users and jobs to be done",
+    "cells": [
+      "Observer",
+      "Spectates in Valorant",
+      "\"Watch the game; tell the producer when something deserves a replay\"",
+      "Shouts across the room"
+    ]
+  },
+  {
+    "section": "4. Users and jobs to be done",
+    "cells": [
+      "Crew",
+      "Sets up OBS, cameras, audio",
+      "\"Add the graphics once and never touch them again\"",
+      "URLs change, sources break between matches"
+    ]
+  },
+  {
+    "section": "4. Users and jobs to be done",
+    "cells": [
+      "Caster / talent",
+      "On the desk",
+      "\"Have my name right and the right stats on screen when I talk\"",
+      "Wrong lower thirds, no stats"
+    ]
+  },
+  {
+    "section": "4. Users and jobs to be done",
+    "cells": [
+      "Sponsor (indirect)",
+      "Pays for placement",
+      "\"Proof I was on screen and for how long\"",
+      "Screenshots, guesses"
+    ]
+  },
+  {
+    "section": "4. Users and jobs to be done",
+    "cells": [
+      "Team / creator (indirect)",
+      "Co-streams their matches",
+      "\"Show the live score on my stream\"",
+      "No official overlay"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "Metric",
+      "Definition",
+      "v1 target (90 days after GA)"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "North star: hands-free rate",
+      "Automatic takes ÷ all takes (automatic + manual), per show",
+      "≥ 80% median"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "Time to first show",
+      "Tournament linked → first match on air with autopilot",
+      "≤ 30 min median for a new org"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "Shows per week",
+      "Matches produced through Broadcast",
+      "150 / week"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "Active orgs",
+      "Orgs with ≥ 1 show in the last 30 days",
+      "25"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "On-air incidents",
+      "Wrong score or team name on air, per 10 shows",
+      "≤ 1"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "Recovery",
+      "Median time from OBS drop to resumed autopilot",
+      "≤ 30 s"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "Results loop",
+      "Map results confirmed from GEP without manual entry",
+      "≥ 90% of produced maps"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "Sponsor proof exports",
+      "Reports exported per sponsored show",
+      "≥ 50%"
+    ]
+  },
+  {
+    "section": "7. Success metrics",
+    "cells": [
+      "Producer satisfaction",
+      "\"How easy was today's show?\" (1–5) after each show",
+      "≥ 4.3"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Area",
+      "Requirement"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Performance",
+      "GEP → on screen ≤ 150 ms p95 on LAN. Take ≤ 100 ms same PC. Remote take ack ≤ 300 ms. Graphics at 60 fps on a GTX 1650 / i5-9400 class streaming PC while OBS encodes 1080p60. Node CPU ≤ 5% and RAM ≤ 400 MB idle with all outputs connected"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Reliability",
+      "Node crash rate < 1 per 50 show-hours. Auto-restart and resume the current segment after a crash in ≤ 10 s. No on-air blanking from any single failure (OBS link, internet, cloud, observer PC)"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Compatibility",
+      "Windows 10 22H2+ and 11. OBS 28+ (obs-websocket v5). vMix 26+. Valorant observer client. Browsers for web: last 2 versions of Chrome, Edge, Firefox, Safari"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Scalability",
+      "50 concurrent live nodes at GA, 500 within a year. Hub fan-out per show ≤ 20 web viewers"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Security",
+      "See §13"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Accessibility",
+      "WCAG 2.2 AA on web surfaces; keyboard-complete console; colour never the only signal"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Localization",
+      "English at GA; strings externalized; Urdu-ready layout (RTL not required for GA)"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Observability",
+      "Node heartbeats, structured logs (local, rotated 7 days), crash reports with consent, show event stream as metrics source"
+    ]
+  },
+  {
+    "section": "10. Non-functional requirements",
+    "cells": [
+      "Updates",
+      "Node checks for updates when idle, never during a live show; rollback to previous version available"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "Entity",
+      "Fields",
+      "Notes"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_shows",
+      "id, organization_id, tournament_id, name, stage_ids[], hud_pack, theme jsonb, rundown_template_id, status, created_by",
+      "One per covered tournament scope"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_show_matches",
+      "show_id, match_id, node_id?, starts_at, status (queued, live, done, skipped)",
+      "Created as the bracket produces matches"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_nodes",
+      "id, organization_id, name, capabilities jsonb, app_version, last_seen_at, token_hash, revoked_at",
+      "Pairing via RPC only"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_pairing_codes",
+      "code_hash, organization_id, expires_at, used_at",
+      "Single use, 10 min"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "rundown_templates",
+      "id, organization_id?, name, best_of, version, published_at",
+      "System templates have null org"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "rundown_segments",
+      "template_id, version, position, key, trigger jsonb, graphics jsonb, scene_key, transition jsonb, hold_seconds, mode, repeats_per_map",
+      "Immutable per version"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "automation_rules",
+      "id, template_id, version, segment_key?, when jsonb, only_if jsonb, actions jsonb, enabled",
+      "In-round rules attach to a segment"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_outputs",
+      "node_id, kind, key_hash, rotated_at",
+      "Keys shown once"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_crew",
+      "show_id, user_id, role",
+      "ops_lead, producer, observer, crew"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_talent",
+      "show_id, name, role, handle",
+      "Lower thirds"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_sponsors",
+      "show_id, name, logo_path, placements[], read_text, rotation_seconds",
+      "Sponsor proof joins events to these"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_events",
+      "id, show_id, node_id, match_id, type, payload jsonb, actor_id?, command_id?, created_at",
+      "Append-only; source of reports and metrics"
+    ]
+  },
+  {
+    "section": "11. Data model",
+    "cells": [
+      "broadcast_corrections",
+      "match_id, map_number, before jsonb, after jsonb, source (producer, gep), actor_id, created_at",
+      "Feeds bracket correction records"
+    ]
+  },
+  {
+    "section": "12. Interfaces and contracts",
+    "cells": [
+      "Interface",
+      "Contract"
+    ]
+  },
+  {
+    "section": "12. Interfaces and contracts",
+    "cells": [
+      "Web ↔ API",
+      "REST for CRUD on shows, templates, rules, crew, nodes; existing auth; Zod schemas shared with forms"
+    ]
+  },
+  {
+    "section": "12. Interfaces and contracts",
+    "cells": [
+      "Broadcast hub (SignalR)",
+      "Heartbeat, Event, CommandAck up; ShowConfig, MatchContext, Command down. Node-initiated connection, node token auth"
+    ]
+  },
+  {
+    "section": "12. Interfaces and contracts",
+    "cells": [
+      "Node ↔ graphics",
+      "Existing HUD room protocol (snapshot, patch with v, event, resync), unchanged"
+    ]
+  },
+  {
+    "section": "12. Interfaces and contracts",
+    "cells": [
+      "Observer → node",
+      "WebSocket role=ingest with node key; raw GEP messages; adapter runs on the node"
+    ]
+  },
+  {
+    "section": "12. Interfaces and contracts",
+    "cells": [
+      "Node → OBS",
+      "obs-websocket v5 requests and events (connect, read and build scenes, takes, transitions, replay flow, screenshots for monitor)"
+    ]
+  },
+  {
+    "section": "12. Interfaces and contracts",
+    "cells": [
+      "Node → vMix",
+      "HTTP API functions; XML state for tally"
+    ]
+  },
+  {
+    "section": "12. Interfaces and contracts",
+    "cells": [
+      "Results",
+      "Node posts result.verified with map number, score, Riot match id; API creates the verified map result or opens a dispute on conflict"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "Phase",
+      "Content",
+      "Exit criteria",
+      "Estimate"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "P0 · Node",
+      "Desktop app with embedded HUD server and graphics, pairing, Capture only, Outputs, capture status, simulator",
+      "A paired node serves all graphics to OBS from GEP on a real observer PC; LAN latency ≤ 150 ms p95",
+      "3 weeks"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "P1 · OBS control",
+      "Connect, one-click scene build, segment → scene, takes, replays, tally, console monitors and take bar",
+      "Producer can run a Bo3 manually from the console without touching OBS",
+      "3 weeks"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "P2 · Autopilot",
+      "Templates, triggers, hold windows, in-round rules, safety, Fix data, offline queue",
+      "A recorded Bo3 runs end to end on autopilot with ≥ 80% automatic takes in simulation",
+      "3 weeks"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "P3 · Web Broadcast",
+      "Migrations + RLS, shows, sync, nodes, assignment, live monitor, crew, links, onboarding",
+      "A new org goes from tournament to first live show in ≤ 30 min in a moderated test",
+      "4 weeks"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "P4 · Loop and reports",
+      "Results to the bracket, report, sponsor proof, VOD chapters, co-stream links",
+      "90% of produced maps confirm results without manual entry in alpha events",
+      "2 weeks"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "Alpha",
+      "Esportra-run events on 1–2 nodes",
+      "10 shows, ≤ 1 on-air incident per 10 shows",
+      "2 weeks (overlaps P4)"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "Beta",
+      "5–10 partner organizers",
+      "Success metrics trending to targets; no P0 bugs open for 7 days",
+      "4 weeks"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "GA",
+      "Public, paid tier on",
+      "Metrics in §7 tracked; support playbook ready",
+      "—"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "P5",
+      "Phone remote, vMix polish, multi-switcher",
+      "",
+      "2 weeks"
+    ]
+  },
+  {
+    "section": "14. Release plan and milestones",
+    "cells": [
+      "P6",
+      "Graphics Studio (desktop)",
+      "Separate PRD",
+      "—"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "Risk",
+      "Likelihood",
+      "Impact",
+      "Mitigation"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "Riot policy limits commercial use of art or data",
+      "Medium",
+      "High",
+      "Legal review before paid tier; art loaded at runtime, not redistributed; fallback to text-only graphics"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "Overwolf review slows releases",
+      "Medium",
+      "Medium",
+      "Decide distribution early (§19); keep capture a thin module so most code ships outside it"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "GEP gaps or changes (no round timer, limited health)",
+      "High",
+      "Medium",
+      "Fallback rules already designed; adapter covered by recorded-message tests; monitor Overwolf changelogs"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "OBS version differences",
+      "Medium",
+      "Medium",
+      "Target obs-websocket v5 only; test matrix; graceful capability detection"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "Venue networks block LAN traffic between PCs",
+      "Medium",
+      "Medium",
+      "Single-PC mode; diagnostics on Capture screen; documented firewall rule"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "Producers distrust autopilot",
+      "Medium",
+      "High",
+      "Hold windows everywhere, Manual segments, simulator rehearsal, visible audit"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "Scope creep into a full production suite",
+      "High",
+      "Medium",
+      "Non-goals in §6.3; Studio as separate PRD"
+    ]
+  },
+  {
+    "section": "16. Risks and mitigations",
+    "cells": [
+      "Single engineer bottleneck on desktop",
+      "Medium",
+      "High",
+      "P0 reuses the existing HUD; hire or contract a second desktop engineer before P2"
+    ]
+  },
+  {
+    "section": "17. Packaging and pricing hypotheses",
+    "cells": [
+      "Tier",
+      "For",
+      "Includes"
+    ]
+  },
+  {
+    "section": "17. Packaging and pricing hypotheses",
+    "cells": [
+      "Free",
+      "Community tournaments",
+      "1 node, Esportra pack, autopilot with manual-default rundown, Esportra watermark on holding screens"
+    ]
+  },
+  {
+    "section": "17. Packaging and pricing hypotheses",
+    "cells": [
+      "Pro",
+      "Organizers who stream weekly",
+      "4 nodes, full autopilot, sponsor proof, VOD chapters, co-stream links, no watermark"
+    ]
+  },
+  {
+    "section": "17. Packaging and pricing hypotheses",
+    "cells": [
+      "Event",
+      "One-off big events",
+      "Unlimited nodes for 7 days, priority support, custom theme setup"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "#",
+      "Decision",
+      "Why",
+      "Date"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "D1",
+      "Hybrid architecture: desktop production node + web Broadcast section",
+      "GEP and OBS are local; the show must survive internet drops; ops and monitoring belong on the web",
+      "3 Oct 2026"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "D2",
+      "OBS/vMix control via obs-websocket v5 / vMix HTTP API from the node, not webhooks or the web",
+      "OBS exposes a local WebSocket; the cloud can't reach venue LANs reliably",
+      "3 Oct 2026"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "D3",
+      "Autopilot with hold windows as the core interaction",
+      "Industry automates blindly; producers need to trust and stop it",
+      "3 Oct 2026"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "D4",
+      "Rounds never switch scenes; graphics update inside the in-game HUD",
+      "Fewer OBS changes, failures stay harmless",
+      "3 Oct 2026"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "D5",
+      "Reuse the existing HUD graphics, room server and adapter unchanged inside the node",
+      "Fastest path; already tested",
+      "3 Oct 2026"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "D6",
+      "Graphics Studio deferred to a desktop phase (Compositor as UX reference)",
+      "Better as a desktop app; not needed for automation value",
+      "3 Oct 2026"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "D7",
+      "Rose = on air only; amber = cued/hold",
+      "Interface must tell the truth about what viewers see",
+      "3 Oct 2026"
+    ]
+  },
+  {
+    "section": "18. Decisions log",
+    "cells": [
+      "D8",
+      "Esportra theme kept alongside old OBS overlay themes on /debug/riot",
+      "Test the new design without breaking existing setups",
+      "3 Oct 2026"
+    ]
+  },
+  {
+    "section": "19. Open questions",
+    "cells": [
+      "#",
+      "Question",
+      "Blocks",
+      "Owner"
+    ]
+  },
+  {
+    "section": "19. Open questions",
+    "cells": [
+      "Q1",
+      "Distribute the node through Overwolf (ow-electron app review) or as a signed installer with GEP support?",
+      "P0 packaging",
+      "CTO"
+    ]
+  },
+  {
+    "section": "19. Open questions",
+    "cells": [
+      "Q2",
+      "Riot terms for commercial broadcast use of Valorant art and GEP data in paid tiers",
+      "Paid launch",
+      "CEO / legal"
+    ]
+  },
+  {
+    "section": "19. Open questions",
+    "cells": [
+      "Q3",
+      "Supabase tables vs .NET-owned domain for broadcast data (the API already owns tournaments)",
+      "P3 migrations",
+      "CTO + database lead"
+    ]
+  },
+  {
+    "section": "19. Open questions",
+    "cells": [
+      "Q4",
+      "Cloud relay for remote productions at GA, or later?",
+      "E7.3 scope",
+      "CPO"
+    ]
+  },
+  {
+    "section": "19. Open questions",
+    "cells": [
+      "Q5",
+      "Is the phone remote needed at GA for floor producers?",
+      "P5 timing",
+      "CPO"
+    ]
+  },
+  {
+    "section": "19. Open questions",
+    "cells": [
+      "Q6",
+      "Which partner organizers join beta?",
+      "Beta",
+      "COO"
+    ]
+  },
+  {
+    "section": "19. Open questions",
+    "cells": [
+      "Q7",
+      "Pricing tiers and node limits",
+      "GA",
+      "CFO"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Term",
+      "Meaning"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Node",
+      "A paired production PC running the Esportra Broadcast desktop app"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Show",
+      "A tournament (or stages of it) covered with one look and rundown"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Rundown",
+      "Ordered segments for a match type (Bo1, Bo3)"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Segment",
+      "A part of the show with its trigger, graphics, scene, transition and hold window"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Rule",
+      "When + Only if + Then actions; in-round rules run inside a segment"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Hold window",
+      "Countdown before an automatic take, during which anyone can hold or skip"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Autopilot",
+      "The node running segments and rules on its own"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "PVW / PGM",
+      "Preview (next) and Program (on air), as in OBS Studio Mode or vMix"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Tally",
+      "Indicator of what is on air (rose) or in preview (amber)"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "GEP",
+      "Overwolf Game Events Provider: Valorant game data available to apps on the same PC"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Capture only",
+      "Desktop app mode on the observer PC that only sends game data"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "Browser source",
+      "A web page added to OBS/vMix as a video source"
+    ]
+  },
+  {
+    "section": "21. Glossary",
+    "cells": [
+      "obs-websocket",
+      "OBS's built-in remote-control WebSocket server (v5, OBS 28+)"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "Commit",
+      "Change",
+      "Env"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "9f8679af",
+      "Esportra Broadcast screens (web, desktop node, system)",
+      "staging"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "3a3f2830",
+      "Broadcast design kit and first web screens",
+      "staging"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "82d4dd76",
+      "Broadcast redesign of match and player share cards",
+      "staging"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "5794c800",
+      "Esportra theme for the Riot OBS overlay",
+      "staging"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "1bb540d5",
+      "Share cards for captains and organizers; tournament card image fix; Riot match id hidden in bracket results",
+      "staging"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "04153519",
+      "Riot stats window performance (cached catalogs, cheaper effects)",
+      "production"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "fd09fb2b",
+      "Full-height public bracket; full Riot match stats restored",
+      "production"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "e01ad451",
+      "Tournament card hover fix and compact card",
+      "production"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "95827e4a",
+      "One tournament card for browse, manage and profiles",
+      "production"
+    ]
+  },
+  {
+    "section": "22. Appendix: related work shipped this cycle",
+    "cells": [
+      "e22b68f8, 4315f0be",
+      "Notifications redesign",
+      "production"
+    ]
+  }
+]

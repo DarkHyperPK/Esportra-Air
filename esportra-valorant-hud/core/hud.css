@@ -16,6 +16,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:transparent}
 body.bg{background:#222 url() center/cover}
+body.hud-editor-canvas{background:repeating-conic-gradient(#18202b 0% 25%,#1e2733 0% 50%) 0 0/32px 32px;color-scheme:dark}
 body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 50%) 0 0/32px 32px}
 .preview-label{position:fixed;left:50%;bottom:8px;transform:translateX(-50%);padding:5px 9px;background:#101014;color:#aeb8c5;border:1px solid #3b4553;font:10px JB,monospace;letter-spacing:.12em;z-index:100;pointer-events:none}
 #hud{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;color:#fff;font-family:PSB,sans-serif}
@@ -695,3 +696,6 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 .sc2 .r.done{opacity:.4}.sc2 .r.live::before{content:'';position:absolute;left:-24px;top:20px;bottom:20px;width:5px;background:var(--red)}
 .sc2 .r .lv{display:inline-block;margin-left:16px;padding:5px 10px;background:var(--red);font-family:JB;font-size:12px;letter-spacing:.24em;color:#fff;vertical-align:middle}
 .conn{position:fixed;left:8px;bottom:8px;padding:4px 8px;font:10px JB,monospace;letter-spacing:.14em;background:rgba(224,68,94,.9);color:#fff;z-index:99}
+
+/* Layout preview excludes unreceived series statistics. */
+.hud-without-game-data .in .ts { visibility: hidden; }

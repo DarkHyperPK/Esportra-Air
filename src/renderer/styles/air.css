@@ -68,7 +68,7 @@
   width: 100vw;
   height: 100vh;
   background: var(--air-bg);
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   color: var(--air-fg);
   display: flex;
   flex-direction: column;
@@ -103,7 +103,7 @@
 }
 
 .air-titlebar-wordmark {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 700;
   font-size: 13px;
   color: var(--air-fg);
@@ -130,7 +130,7 @@
 }
 
 .air-screen-title {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 700;
   font-size: 15px;
   color: var(--air-fg);
@@ -197,7 +197,7 @@
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 12px;
   color: var(--air-fg-3);
@@ -233,7 +233,7 @@
   background: none;
   border: 1px solid var(--air-border-active);
   cursor: pointer;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 600;
   font-size: 12px;
   color: var(--air-fg-2);
@@ -275,7 +275,7 @@
   background: #F4F4F5;
   border: none;
   cursor: pointer;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 600;
   font-size: 12px;
   color: #09090B;
@@ -379,7 +379,7 @@
 }
 
 .health-label {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 13px;
   color: var(--air-fg);
@@ -521,7 +521,7 @@
 }
 
 .confirm-dialog-title {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 700;
   font-size: 14px;
   color: var(--air-fg);
@@ -529,7 +529,7 @@
 }
 
 .confirm-dialog-body {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 13px;
   color: var(--air-fg-2);
@@ -555,7 +555,7 @@
   background: #EF4444;
   border: none;
   cursor: pointer;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 600;
   font-size: 12px;
   color: var(--air-fg);
@@ -580,7 +580,7 @@
 }
 
 .confirm-dialog-error {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 12px;
   color: var(--air-red);
@@ -601,7 +601,7 @@
 
 /* ─── Empty states ───────────────────────────────────────────────────────────── */
 .air-empty-state {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 13px;
   color: var(--air-fg-3);
@@ -640,7 +640,7 @@
   width: 100vw;
   background: var(--air-bg);
   gap: 12px;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 13px;
   color: var(--air-fg-3);
@@ -664,7 +664,7 @@
 }
 
 .pair-card-title {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 700;
   font-size: 15px;
   color: var(--air-fg);
@@ -675,7 +675,7 @@
 
 .pair-field-label {
   display: block;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 11px;
   color: var(--air-fg-2);
@@ -688,7 +688,7 @@
   background: var(--air-bg);
   border: 1px solid var(--air-border-active);
   color: var(--air-fg);
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 13px;
   padding: 0 10px;
@@ -730,7 +730,7 @@
 }
 
 .pair-hint {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 12px;
   color: var(--air-fg-3);
@@ -744,7 +744,7 @@
   background: #F4F4F5;
   border: none;
   cursor: pointer;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 600;
   font-size: 13px;
   color: #09090B;
@@ -793,7 +793,7 @@
 }
 
 .pair-status-text {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 13px;
 }
@@ -832,7 +832,7 @@
 }
 
 .air-node-name {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 700;
   font-size: 14px;
   color: var(--air-fg);
@@ -840,7 +840,7 @@
 }
 
 .air-node-meta {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 12px;
   color: var(--air-fg-2);
@@ -895,7 +895,7 @@
 }
 
 .rundown-action {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 13px;
   color: var(--air-fg);
@@ -964,14 +964,14 @@
 }
 
 .capture-team-name {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 600;
   font-size: 14px;
   color: var(--air-fg);
 }
 
 .capture-vs {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 14px;
   color: var(--air-fg-3);
@@ -979,7 +979,7 @@
 }
 
 .capture-map-round {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 13px;
   color: var(--air-fg-2);
@@ -1049,7 +1049,7 @@
 }
 
 .hotkey-label {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 12px;
   color: var(--air-fg-2);
@@ -1077,7 +1077,7 @@
 }
 
 .prod-node-name {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 13px;
   color: var(--air-fg);
@@ -1094,7 +1094,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 12px;
   color: var(--air-fg-2);
@@ -1154,7 +1154,7 @@
 }
 
 .address-mode-label {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 12px;
   color: var(--air-fg-2);
@@ -1207,7 +1207,7 @@
 }
 
 .output-name {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 13px;
   color: var(--air-fg);
@@ -1302,7 +1302,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 12px;
   color: var(--air-fg-2);
@@ -1357,7 +1357,7 @@
 /* ─── Form inputs (shared P1+) ───────────────────────────────────────────────── */
 .air-field-label {
   display: block;
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 11px;
   color: var(--air-fg-2);
@@ -1447,7 +1447,7 @@
 }
 
 .producer-conn-error {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 11px;
   color: var(--air-red);
@@ -1476,7 +1476,7 @@
 .tally-dot--offline { background: var(--air-fg-3); }
 
 .producer-tally-text {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 12px;
   color: var(--air-fg);
@@ -1509,7 +1509,7 @@
 }
 
 .producer-tally-pvw-line {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 11px;
   color: var(--air-fg-2);
@@ -1636,7 +1636,7 @@
 }
 
 .trigger-btn-label {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 11px;
   color: var(--air-fg-2);
@@ -1691,7 +1691,7 @@
 }
 
 .autopilot-seg-name {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 500;
   font-size: 12px;
   color: var(--air-fg);
@@ -1747,7 +1747,7 @@
 }
 
 .autopilot-next-name {
-  font-family: 'Poppins', system-ui, sans-serif;
+  font-family: var(--air-font), system-ui, sans-serif;
   font-weight: 400;
   font-size: 11px;
   color: var(--air-fg-2);

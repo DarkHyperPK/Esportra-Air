@@ -3,10 +3,11 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 class OutputRegistry {
-  constructor({ config, hudRoot, port }) {
+  constructor({ config, hudRoot, port, currentMatch = () => 'MAIN' }) {
     this.config = config;
     this.hudRoot = hudRoot;
     this.port = port;
+    this.currentMatch = currentMatch;
   }
   catalogue() {
     try {
@@ -36,11 +37,13 @@ class OutputRegistry {
         name: output.name,
         overlay: output.overlay,
         matchCode: output.matchCode,
+        followMatch: output.followMatch === true,
         type: "Browser source",
-        url: `http://localhost:${this.port}/overlays/${output.overlay}.html?match=${encodeURIComponent(output.matchCode)}`,
+        url: `http://localhost:${this.port}/o/${encodeURIComponent(output.id)}`,
       }));
   }
-  add({ name, overlay, matchCode = "MAIN" } = {}) {
+  add({ name, overlay, matchCode = "MAIN", followMatch = true } = {}) {
+    if (typeof followMatch !== 'boolean') throw new Error('Choose whether this output follows the selected match.');
     if (typeof name !== "string" || !name.trim() || name.trim().length > 80)
       throw new Error("Enter an output name, up to 80 characters.");
     if (!this.catalogue().some((item) => item.name === overlay))
@@ -55,6 +58,7 @@ class OutputRegistry {
       name: name.trim(),
       overlay,
       matchCode,
+      followMatch,
     };
     this.config.set("outputs", [...saved, output]);
     return output;
@@ -67,6 +71,13 @@ class OutputRegistry {
       "outputs",
       saved.filter((item) => item.id !== id),
     );
+  }
+  resolve(id) {
+    if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) return null;
+    const output = this.list().find(item => item.id === id);
+    if (!output || !this.catalogue().some(item => item.name === output.overlay)) return null;
+    const code = output.followMatch ? this.currentMatch() || 'MAIN' : output.matchCode;
+    return { ...output, matchCode: /^[A-Za-z0-9_-]{1,64}$/.test(code) ? code : 'MAIN' };
   }
 }
 module.exports = OutputRegistry;

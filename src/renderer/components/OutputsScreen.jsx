@@ -4,7 +4,7 @@ import OutputRow from './air/OutputRow.jsx';
 import ConfirmDialog from './air/ConfirmDialog.jsx';
 
 const NAV = [
-  { id: 'readiness', label: 'Readiness' },
+  { id: 'readiness', label: 'Match setup' },
   { id: 'producer',  label: 'Producer' },
   { id: 'outputs',   label: 'Outputs' },
 ];

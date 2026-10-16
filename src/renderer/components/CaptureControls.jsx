@@ -6,11 +6,14 @@ export default function CaptureControls({
   broadcastApi,
   onChanged,
   configuredCode,
+  configuredRole = 'observer',
 }) {
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [matchCode, setMatchCode] = useState(configuredCode || "MAIN");
+  const [captureRole, setCaptureRole] = useState(configuredRole);
+  useEffect(() => { if (active) setCaptureRole(configuredRole); }, [active, configuredRole]);
   useEffect(() => {
     if (!active && configuredCode) setMatchCode(configuredCode);
   }, [configuredCode, active]);
@@ -19,7 +22,7 @@ export default function CaptureControls({
     setError("");
     try {
       const result = start
-        ? await broadcastApi.start({ matchCode })
+        ? await broadcastApi.start({ matchCode, captureRole })
         : await broadcastApi.stop();
       if (result && result.ok === false)
         throw new Error(result.error || "Capture could not change state.");
@@ -34,6 +37,7 @@ export default function CaptureControls({
   return (
     <section className="product-panel">
       <div className="product-actions">
+        <label htmlFor="capture-role">Capture from<select id="capture-role" className="product-input" value={captureRole} disabled={active || busy} onChange={event => setCaptureRole(event.target.value)}><option value="observer">Observer PC</option><option value="player">My player PC</option></select></label>
         <label>
           Match code{" "}
           <input
@@ -54,6 +58,7 @@ export default function CaptureControls({
           {busy ? "Working…" : active ? "Stop capture" : "Start capture"}
         </button>
       </div>
+      <p className="air-empty-state">{captureRole === 'player' ? 'Reads available game data for your player slot.' : 'Reads available match data from the observer.'}</p>
       {error && (
         <p className="broadcast-error" role="alert">
           {error}
@@ -62,7 +67,7 @@ export default function CaptureControls({
       {consent && (
         <ConfirmDialog
           title="Before starting capture"
-          body="Capture reads health, credits, weapons, kills and agents for players in the observed match. Raw game events stay on your LAN and are not sent to Esportra servers. Overwolf may collect operational telemetry under its privacy policy."
+          body={captureRole === 'player' ? 'Capture reads your Valorant identity, health and ability availability. This data stays on your LAN and is matched to your player slot in the selected broadcast. Overwolf may collect operational telemetry under its privacy policy.' : 'Capture reads health, credits, weapons, kills and agents for players in the observed match. Raw game events stay on your LAN and are not sent to Esportra servers. Overwolf may collect operational telemetry under its privacy policy.'}
           confirmLabel="Allow and start capture"
           confirmVariant="primary"
           onConfirm={() => change(true)}

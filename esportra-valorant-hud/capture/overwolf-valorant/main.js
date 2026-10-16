@@ -8,6 +8,7 @@
 'use strict';
 const { app } = require('electron');
 const WebSocket = require('ws');
+const { PlayerSource } = require('./player-source');
 
 const CONFIG = {
   server: process.env.ESPORTRA_SERVER || 'ws://localhost:5300',   // your Esportra server
@@ -15,23 +16,28 @@ const CONFIG = {
   showId: process.env.ESPORTRA_SHOW_ID || null,
   key: process.env.ESPORTRA_KEY || '',                             // only if the server sets ESPORTRA_KEY
   playerId: process.env.ESPORTRA_PLAYER_ID || '',                  // set on player PCs: the player's Riot PUUID
+  captureRole: process.env.ESPORTRA_CAPTURE_ROLE || (process.env.ESPORTRA_PLAYER_ID ? 'player' : 'observer'),
 };
 const VALORANT = 21640;                                            // Overwolf game ID for Valorant (22904 is alternate ID)
-const FEATURES = CONFIG.playerId ? ['me'] : ['match_info', 'me', 'game_info'];
+const playerSource = new PlayerSource({ role: CONFIG.captureRole, playerId: CONFIG.playerId });
+const FEATURES = CONFIG.captureRole === 'player' ? ['me'] : ['match_info', 'me', 'game_info'];
 
 // ── reliable socket: queue while offline, resend on reconnect ──
-let ws = null, queue = [];
+let ws = null;
+const queue = new (require('./capture-queue'))();
 function connect() {
-  const role = CONFIG.playerId ? 'player' : 'ingest';
+  const role = CONFIG.captureRole === 'player' ? 'player' : 'ingest';
   ws = new WebSocket(`${CONFIG.server}/ws?match=${encodeURIComponent(CONFIG.match)}&role=${role}&key=${encodeURIComponent(CONFIG.key)}`);
-  ws.on('open', () => { console.log('Connected to Esportra'); const q = queue; queue = []; q.forEach(send); });
+  ws.on('open', () => { console.log('Connected to Esportra'); queue.drain().forEach(sendPacket); });
   ws.on('close', () => setTimeout(connect, 1500));
   ws.on('error', e => console.warn('Esportra connection error:', e.message));
 }
 function send(message) {
-  if (CONFIG.playerId) message.playerId = CONFIG.playerId;      // lets the adapter attach health/abilities to the right player
-  const frame = JSON.stringify({ type: 'valorant', message, match: CONFIG.match, showId: CONFIG.showId });
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send(frame); else queue.push(message);
+  for (const packet of playerSource.prepare(message)) sendPacket(packet);
+}
+function sendPacket(message) {
+  const frame = JSON.stringify({ type: 'valorant', message, match: CONFIG.match, showId: CONFIG.showId, recovered: message.recovered === true, bufferedAgeMs: message.bufferedAgeMs || 0 });
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(frame); else queue.add(message);
 }
 
 // ── Overwolf game events ──
@@ -72,6 +78,7 @@ app.whenReady().then(() => {
     packages.on('package-update-pending', (_e, info) => console.log('Package update pending'));
 
     let gameConnected = false;
+    let captureGameId = VALORANT, infoPending = false;
 
     // log ALL game-detected events so we can see which ID fires for Valorant
     gep.on('game-detected', (e, gameId, name) => {
@@ -79,19 +86,22 @@ app.whenReady().then(() => {
       if (gameId !== VALORANT && gameId !== 22904) return;
       console.log(`Valorant detected (${name} / ${gameId}) — enabling GEP...`);
       e.enable();
+      gameConnected = true;
+      captureGameId = gameId;
       gep.setRequiredFeatures(gameId, FEATURES)
-        .then(() => console.log('GEP features registered for', gameId, ':', FEATURES))
+        .then(async () => { console.log('GEP features registered for', gameId, ':', FEATURES); const info = await gep.getInfo(gameId); if (info?.info) send(info); else if (info?.me) send({ info }); })
         .catch(err => console.error('setRequiredFeatures error:', err.message || err));
     });
 
     gep.on('elevated-privileges-required', (_e, gameId) => {
-      if (gameId !== VALORANT) return;
+      if (gameId !== VALORANT && gameId !== 22904) return;
       console.warn('⚠ Valorant is running as Administrator — restart this app as Administrator too.');
     });
 
     gep.on('game-exit', (_e, gameId) => {
-      if (gameId !== VALORANT) return;
+      if (gameId !== VALORANT && gameId !== 22904) return;
       gameConnected = false;
+      playerSource.reset();
       console.log('Valorant exited.');
     });
 
@@ -108,5 +118,14 @@ app.whenReady().then(() => {
       args.forEach(a => send(a.events ? a : { events: [a] }));
     });
     gep.on('error', (_e, gameId, err) => console.error('GEP error', gameId, err));
+    setInterval(async () => {
+      if (!gameConnected) return;
+      const packet = playerSource.heartbeat(); if (packet) sendPacket(packet);
+      if (CONFIG.captureRole !== 'player' || infoPending) return;
+      infoPending = true;
+      try { const info = await gep.getInfo(captureGameId); if (gameConnected) { if (info?.info) send(info); else if (info?.me) send({ info }); } }
+      catch { /* SDK updates remain the primary source; the next poll retries. */ }
+      finally { infoPending = false; }
+    }, 2000);
   });
 });

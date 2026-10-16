@@ -4,10 +4,13 @@ import HealthRow from "./air/HealthRow.jsx";
 import ConfirmDialog from "./air/ConfirmDialog.jsx";
 import ScoreCorrection from "./ScoreCorrection.jsx";
 import CaptureControls from "./CaptureControls.jsx";
+import RundownRevision from "./RundownRevision.jsx";
+import RegisteredLineup from "./RegisteredLineup.jsx";
 const NAV = [
-  { id: "readiness", label: "Readiness" },
-  { id: "producer", label: "Producer" },
-  { id: "outputs", label: "Outputs" },
+  { id: "readiness", label: "Match setup" },
+  { id: "template", label: "Customize broadcast" },
+  { id: "producer", label: "Live controls" },
+  { id: "outputs", label: "Advanced sources" },
   { id: "settings", label: "Machine" },
 ];
 const CHECKS = [
@@ -24,9 +27,6 @@ export default function ProductionReadiness({
   onScreenChange,
   onChanged,
 }) {
-  const [targets, setTargets] = useState(
-    (status?.lanRelayTargets || []).join(", "),
-  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -45,41 +45,22 @@ export default function ProductionReadiness({
       setBusy(false);
     }
   }
-  async function saveTargets() {
-    const connections = targets
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .map((value) => {
-        const [target, key] = value.split("=");
-        return { target: target.trim(), key: key?.trim() };
-      });
-    const result = await airApi.setRelayTargets(
-      connections.map((item) => item.target),
-      Object.fromEntries(
-        connections
-          .filter((item) => item.key)
-          .map((item) => [item.target, item.key]),
-      ),
-    );
-    if (!result.ok) throw new Error(result.error);
-    setTargets(connections.map((item) => item.target).join(", "));
-    setNotice("Observer addresses and keys saved. Restart Air to connect.");
-  }
+
   const segments = status?.runner?.segments || [],
     active = status?.runner?.activeSegment;
   return (
     <AirShell
-      screenTitle="Production readiness"
+      screenTitle="Match setup"
+      show={status?.show}
       nodeName={status?.nodeName}
       nav={NAV}
       activeTab="readiness"
       onTabChange={onScreenChange}
     >
-      <div className="air-content">
+      <div className="air-content readiness-workspace">
         <div className="product-page-head">
           <div>
-            <h1>Prepare this production desk.</h1>
+            <h1>Your match, ready for air.</h1>
             <p>
               {status?.show?.title ||
                 "Send a show configuration from Esportra Broadcast."}
@@ -87,9 +68,10 @@ export default function ProductionReadiness({
           </div>
           <button
             className="air-primary-btn"
-            onClick={() => onScreenChange("producer")}
+            disabled={!status?.show}
+            onClick={() => onScreenChange(status?.obsTemplate?.prepared ? "producer" : "template")}
           >
-            Open producer
+            {status?.obsTemplate?.prepared ? 'Open OBS controls' : 'Customize broadcast'}
           </button>
         </div>
         {error && (
@@ -122,8 +104,8 @@ export default function ProductionReadiness({
               ))}
             </select>
             <p>
-              Capture and browser sources must use this match code. Match
-              changes require an idle rundown.
+              This match supplies your teams, logos and broadcast screens. Stop
+              the broadcast screens and game capture before changing matches.
             </p>
             {status?.pendingShow && (
               <p>Waiting plan: {status.pendingShow.title}</p>
@@ -155,24 +137,29 @@ export default function ProductionReadiness({
               </button>
               <button
                 className="air-ghost-btn"
-                onClick={() => onScreenChange("outputs")}
+                onClick={() => onScreenChange("template")}
               >
-                Prepare browser sources
+                Preview and customize screens
               </button>
             </div>
           </section>
           <section className="product-panel">
-            <h2>Local rundown</h2>
+            <h2>Broadcast screens</h2>
+            {status?.tournamentSync && <p role="status">{status.tournamentSync.error || (status.tournamentSync.lastSuccessAt ? 'Tournament data checked every five seconds. Live round data and broadcast screens stay in Air.' : 'Waiting for the first tournament data check.')}</p>}
+            <RundownRevision publication={status?.rundownPublication} reason={status?.configuration?.reason} />
+            <RegisteredLineup show={status?.show} />
+            {status?.show?.scheduledAt && <p>Scheduled: {new Date(status.show.scheduledAt).toLocaleString()}</p>}
             <p>
               {status?.configuration?.applied
-                ? `${segments.length} segments loaded`
-                : status?.configuration?.reason || "No rundown received."}
+                ? `${segments.length} items loaded`
+                : status?.configuration?.reason || "No broadcast screens received."}
             </p>
             {segments.slice(0, 8).map((segment) => (
               <div className="product-data-row" key={segment.id}>
                 <span>{segment.name}</span>
                 <small>
                   {segment.scene} · {segment.state}
+                  {segment.planWarning && <span role="status"> · {segment.planWarning}</span>}
                 </small>
               </div>
             ))}
@@ -184,7 +171,7 @@ export default function ProductionReadiness({
                   perform(() => window.esportraBroadcast.runner.start())
                 }
               >
-                Start rundown
+                Start broadcast
               </button>
               <button
                 className="air-ghost-btn"
@@ -198,7 +185,7 @@ export default function ProductionReadiness({
                 }
               >
                 {status?.runner?.techPaused
-                  ? "Resume rundown"
+                  ? "Resume broadcast"
                   : "Technical pause"}
               </button>
               <button
@@ -206,58 +193,22 @@ export default function ProductionReadiness({
                 disabled={busy || !active}
                 onClick={() => setConfirmStop(true)}
               >
-                Stop rundown
+                Stop broadcast
               </button>
             </div>
           </section>
-          <section className="product-panel">
-            <h2>Observer machines</h2>
+          <section className="product-panel"><h2>Game feed & observer PCs</h2><p>Observe and produce on this PC, or connect another observer through Connections. One-PC production needs no network address.</p><button className="air-ghost-btn" onClick={()=>onScreenChange('connections')}>Open connection settings</button></section>
+          <details className="readiness-advanced"><summary>Fix on-air match data</summary><ScoreCorrection matchCode={status?.show?.matchCode || "MAIN"} context={status?.correctionContext} /></details>
+          <section aria-label="Game capture on this PC">
+            <h2>Game capture on this PC</h2>
             <p>
-              Copy the pairing key on each observer. Enter host:port=key,
-              separated by commas. Existing addresses can omit their saved key.
-              Keys are stored in the OS credential vault.
-            </p>
-            <input
-              className="product-input"
-              type="password"
-              autoComplete="off"
-              aria-label="Observer addresses and pairing keys"
-              placeholder="192.168.1.24:5301=observer-key"
-              value={targets}
-              onChange={(event) => setTargets(event.target.value)}
-            />
-            <p>
-              {status?.pendingRecords || 0} records queued for acknowledged
-              platform delivery.
-            </p>
-            <div className="product-actions">
-              <button
-                className="air-ghost-btn"
-                disabled={busy}
-                onClick={() => perform(saveTargets)}
-              >
-                Save addresses
-              </button>
-              {notice && (
-                <button
-                  className="air-primary-btn"
-                  onClick={() => perform(() => airApi.restart())}
-                >
-                  Restart Air
-                </button>
-              )}
-            </div>
-          </section>
-          <ScoreCorrection matchCode={status?.show?.matchCode || "MAIN"} />
-          <section className="product-panel">
-            <h2>Capture on this PC</h2>
-            <p>
-              Use only when this production computer is also the game observer.
-              Other observer computers relay over LAN.
+              Observing and producing on one PC? Start capture here. Capture is off until you approve it.
+              If another PC observes the game, use its LAN feed instead.
             </p>
             <CaptureControls
               active={status?.gepActive === true}
               configuredCode={status?.show?.matchCode}
+              configuredRole={status?.captureRole}
               broadcastApi={window.esportraBroadcast.broadcast}
               onChanged={onChanged}
             />
@@ -266,9 +217,9 @@ export default function ProductionReadiness({
       </div>
       {confirmStop && (
         <ConfirmDialog
-          title="Stop the local rundown?"
+          title="Stop the broadcast?"
           body="Timers stop and the local segment list clears. OBS keeps its current program scene. Reload the saved plan before starting again."
-          confirmLabel="Stop rundown"
+          confirmLabel="Stop broadcast"
           confirmVariant="destructive"
           confirming={busy}
           errorText={error || null}

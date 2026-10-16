@@ -1,6 +1,7 @@
 'use strict';
 const EventEmitter = require('events');
 const { performance } = require('perf_hooks');
+const { triggerMatches } = require('./segment-plan');
 
 // ─── Segment lifecycle states ─────────────────────────────────────────────────
 const SEG = Object.freeze({
@@ -55,6 +56,7 @@ class ShowRunner extends EventEmitter {
     this._logger       = logger;
     this._segments     = [];
     this._techPaused      = false;
+    this._timeoutPaused = false;
     this._techPausedByObs = false;
     this._holdEnd      = null;
     this._holdTimer    = null;
@@ -83,8 +85,7 @@ class ShowRunner extends EventEmitter {
 
   _handleObsDisconnect() {
     if (!this._techPaused) {
-      this._techPausedByObs = true;
-      this.techPause();
+      this.techPause({ source: 'obs' });
     }
   }
 
@@ -103,6 +104,8 @@ class ShowRunner extends EventEmitter {
 
   /** Forward GEP event to the rules engine (called by main.js on each ingest). */
   processGepEvent(gepEvent, matchCode = 'MAIN') {
+    const segment = this._segments.find(item => item.state === SEG.ARMED);
+    if (triggerMatches(segment, gepEvent)) this.queueAutomaticTake(segment.id);
     if (!this._rulesEngine) return;
     this._rulesEngine.processEvent(gepEvent, this, matchCode).catch(err => {
       this._logger.error('[show-runner] rules engine error:', err.message);
@@ -121,6 +124,32 @@ class ShowRunner extends EventEmitter {
     this.emit('stateChange', this.getState());
   }
 
+  /** A different prepared match starts without the previous match's pause state. */
+  resetForMatch() {
+    if (this._segments.some(segment => [SEG.ARMED, SEG.HOLDING, SEG.TAKING, SEG.ON_AIR].includes(segment.state))) {
+      throw new Error('Stop the active broadcast before preparing another match.');
+    }
+    this._clearTimers();
+    this._techPaused = false;
+    this._timeoutPaused = false;
+    this._techPausedByObs = false;
+    this._cmdIds = [];
+    this._cmdIdSet.clear();
+    this.emit('stateChange', this.getState());
+  }
+
+  /** Replace future items at a confirmed boundary without changing Program/history. */
+  replaceUpcoming(segments) {
+    if (this._segments.some(segment => [SEG.TAKING, SEG.HOLDING].includes(segment.state))) return { ok: false, error: 'Wait for the held item or transition to finish.' };
+    const retained = this._segments.filter(segment => [SEG.ON_AIR, SEG.DONE].includes(segment.state));
+    const ids = new Set(retained.map(segment => segment.id));
+    const upcoming = segments.filter(segment => !ids.has(segment.id)).map(segment => ({ ...segment, state: SEG.QUEUED }));
+    if (upcoming.length) upcoming[0].state = SEG.ARMED;
+    this._segments = [...retained, ...upcoming];
+    this.emit('stateChange', this.getState());
+    return { ok: true, count: upcoming.length };
+  }
+
   /** Arm the first queued segment, starting the rundown. */
   start() {
     const first = this._segments.find(s => s.state === SEG.QUEUED);
@@ -129,24 +158,30 @@ class ShowRunner extends EventEmitter {
     this.emit('stateChange', this.getState());
   }
 
-  /**
-   * Operator-triggered hold window. Arms segment into holding + starts countdown.
-   * @param {string} segmentId
-   * @returns {{ ok: boolean, error?: string }}
-   */
+  /** Operator hold freezes the item until an explicit Take or Skip. */
   hold(segmentId) {
+    if (this._techPaused || this._timeoutPaused) return { ok: false, error: this._techPaused ? 'tech_pause' : 'timeout' };
     const seg = this._findById(segmentId);
     if (!seg) return { ok: false, error: 'segment_not_found' };
-    if (seg.state !== SEG.ARMED && seg.state !== SEG.QUEUED) {
+    if (![SEG.ARMED, SEG.QUEUED, SEG.HOLDING].includes(seg.state)) {
       this._emitError(`hold() invalid state: ${seg.state}`);
       return { ok: false, error: `invalid_state:${seg.state}` };
     }
+    this._clearHoldCountdown();
     seg.state = SEG.HOLDING;
-    this._startHoldCountdown(seg);
-    this.emit('holdWindow', {
-      segment:   this._safe(seg),
-      remaining: seg.holdWindowMs || DEFAULT_HOLD_WINDOW,
-    });
+    seg.heldBy = 'operator';
+    this.emit('stateChange', this.getState());
+    return { ok: true };
+  }
+
+  /** A configured automation trigger may open a visible, cancellable window. */
+  queueAutomaticTake(segmentId) {
+    if (this._techPaused || this._timeoutPaused) return { ok: false, error: this._techPaused ? 'tech_pause' : 'timeout' };
+    const seg = this._findById(segmentId);
+    if (!seg || seg.state !== SEG.ARMED || !seg.autoTake) return { ok: false, error: 'automatic_item_not_armed' };
+    seg.state = SEG.HOLDING;
+    seg.heldBy = null;
+    if (seg.holdMode !== 'manual') this._startHoldCountdown(seg);
     this.emit('stateChange', this.getState());
     return { ok: true };
   }
@@ -166,6 +201,7 @@ class ShowRunner extends EventEmitter {
     }
     this._clearHoldCountdown();
     seg.state = SEG.DONE;
+    seg.heldBy = null;
     this.emit('segmentDone', { segment: this._safe(seg) });
     this._armNext(seg);
     this.emit('stateChange', this.getState());
@@ -181,12 +217,12 @@ class ShowRunner extends EventEmitter {
    * @param {{ commandId?: string }} [opts]
    * @returns {Promise<{ ok: boolean, error?: string }>}
    */
-  async take(segmentId, { commandId } = {}) {
+  async take(segmentId, { commandId, actor = 'operator', cause = 'manual' } = {}) {
     if (commandId && this._cmdIdSet.has(commandId)) {
       return { ok: false, error: 'duplicate_command' };
     }
-    if (this._techPaused) {
-      return { ok: false, error: 'tech_pause' };
+    if (this._techPaused || this._timeoutPaused) {
+      return { ok: false, error: this._techPaused ? 'tech_pause' : 'timeout' };
     }
     const seg = this._findById(segmentId);
     if (!seg) return { ok: false, error: 'segment_not_found' };
@@ -198,6 +234,8 @@ class ShowRunner extends EventEmitter {
     if (commandId) this._trackCmdId(commandId);
     this._clearHoldCountdown();
     seg.state = SEG.TAKING;
+    seg.heldBy = null;
+    seg.takeActor = actor; seg.takeCause = cause;
     this.emit('stateChange', this.getState());
     return this._execTake(seg);
   }
@@ -211,21 +249,29 @@ class ShowRunner extends EventEmitter {
   }
 
   /** Safety pause — blocks all auto-takes until resume() is called. */
-  techPause() {
+  techPause({ source = 'operator' } = {}) {
     this._clearHoldCountdown();
+    this._techPausedByObs = source === 'obs';
     this._techPaused = true;
     this.emit('stateChange', this.getState());
   }
 
   isTechPaused() { return this._techPaused; }
+  setTimeoutPaused(active) {
+    if (active) this._clearHoldCountdown();
+    this._timeoutPaused = active;
+    this.emit('stateChange', this.getState());
+  }
+  isTimeoutPaused() { return this._timeoutPaused; }
 
   /**
    * Renderer-safe state snapshot.
    * @returns {{ activeSegment, nextSegment, segments, techPaused, holdCountdown }}
    */
   getState() {
-    const live   = [SEG.ARMED, SEG.HOLDING, SEG.TAKING, SEG.ON_AIR];
-    const active = this._segments.find(s => live.includes(s.state)) || null;
+    const live   = [SEG.ARMED, SEG.HOLDING, SEG.TAKING];
+    const onAir = this._segments.find(s => s.state === SEG.ON_AIR) || null;
+    const active = this._segments.find(s => live.includes(s.state)) || onAir;
     const ai     = active ? this._segments.indexOf(active) : -1;
     const next   = ai >= 0
       ? (this._segments.slice(ai + 1).find(s => s.state === SEG.QUEUED) || null)
@@ -237,8 +283,12 @@ class ShowRunner extends EventEmitter {
     return {
       activeSegment: active ? this._safe(active) : null,
       nextSegment:   next   ? this._safe(next)   : null,
+      onAirSegment: onAir ? this._safe(onAir) : null,
+      comingUp: ai >= 0 ? this._segments.slice(ai + 1).filter(s => s.state === SEG.QUEUED).slice(0, 3).map(s => this._safe(s)) : [],
       segments:      this._segments.map(s => this._safe(s)),
       techPaused:    this._techPaused,
+      timeoutPaused: this._timeoutPaused,
+      pauseSource: this._techPaused ? this._techPausedByObs ? 'obs_disconnected' : 'operator' : null,
       holdCountdown,
     };
   }
@@ -249,7 +299,7 @@ class ShowRunner extends EventEmitter {
     if (this._obs) {
       let result;
       try {
-        result = await this._obs.take(seg.scene);
+        result = await this._obs.take(seg.scene, seg.transition, { stillAllowed: () => seg.takeActor !== 'automation' || this._segments.includes(seg) && !this._techPaused && !this._timeoutPaused });
       } catch (err) {
         result = { ok: false, error: err.message };
       }
@@ -260,13 +310,14 @@ class ShowRunner extends EventEmitter {
         return { ok: false, error: result.error };
       }
     }
-    this.emit('takeTriggered', { segment: this._safe(seg) });
+    this.emit('takeTriggered', { segment: this._safe(seg), actor: seg.takeActor, cause: seg.takeCause });
     // Tally confirmation fallback (T22 — force on_air after TALLY_CONFIRM_MS).
     this._takingTimer = setTimeout(() => {
       const s = this._findById(seg.id);
       if (s && s.state === SEG.TAKING) {
-        this._logger.warn('[show-runner] tally timeout — forcing on_air:', seg.id);
-        this._confirmOnAir(s);
+        s.state = SEG.ARMED;
+        this._emitError('OBS did not confirm the take. Check Program before retrying.');
+        this.emit('stateChange', this.getState());
       }
     }, TALLY_CONFIRM_MS);
     return { ok: true };
@@ -289,6 +340,7 @@ class ShowRunner extends EventEmitter {
       this.emit('segmentDone', { segment: this._safe(prev) });
     }
     seg.state = SEG.ON_AIR;
+    this.emit('takeConfirmed', { segment: this._safe(seg), actor: seg.takeActor, cause: seg.takeCause });
     this._armNext(seg);
     this.emit('stateChange', this.getState());
   }
@@ -297,11 +349,11 @@ class ShowRunner extends EventEmitter {
 
   _startHoldCountdown(seg) {
     this._clearHoldCountdown();
-    const windowMs    = seg.holdWindowMs || DEFAULT_HOLD_WINDOW;
+    const windowMs = seg.holdMode === 'immediate' ? 0 : seg.holdWindowMs || DEFAULT_HOLD_WINDOW;
     this._holdEnd     = performance.now() + windowMs;
     if (seg.autoTake) {
       this._holdTimer = setTimeout(() => {
-        if (!this._techPaused) this.take(seg.id).catch(() => {});
+        if (!this._techPaused && !this._timeoutPaused) this.take(seg.id, { actor: 'automation', cause: 'hold_expired' }).catch(() => {});
       }, windowMs);
     }
     this._holdTick = setInterval(() => {
@@ -342,9 +394,18 @@ class ShowRunner extends EventEmitter {
       id:           seg.id,
       name:         seg.name,
       scene:        seg.scene,
+      type: seg.type,
+      transition: seg.transition || null,
       state:        seg.state,
       autoTake:     seg.autoTake     ?? false,
       holdWindowMs: seg.holdWindowMs ?? DEFAULT_HOLD_WINDOW,
+      heldBy: seg.heldBy || null,
+      trigger: seg.trigger || 'manual',
+      mode: seg.mode || (seg.autoTake ? 'automatic' : 'manual'),
+      holdMode: seg.holdMode || 'window',
+      graphics: seg.graphics || [],
+      mapNumber: seg.mapNumber || null,
+      planWarning: seg.planWarning || null,
     };
   }
 

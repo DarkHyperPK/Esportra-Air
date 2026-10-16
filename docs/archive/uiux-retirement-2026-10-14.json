@@ -1,0 +1,17 @@
+﻿{
+    "date":  "2026-10-14",
+    "retiredNames":  [
+                         "PROJ-061-control-room-v3",
+                         "PROJ-061-esportra-air-uiux",
+                         "PROJ-061-system-grounded",
+                         "PROJ-061-control-room-v3.zip",
+                         "PROJ-061-esportra-air-uiux.zip",
+                         "esportra-air-screen-designs-2026-10-13.zip"
+                     ],
+    "verifiedFiles":  263,
+    "archive":  "docs/archive/retired-uiux-2026-10-14.zip",
+    "archiveSha256":  "dcfddcad8339d1a48470f4e777046b331e9446c24c230af6cc4eb8c23e7bc92d",
+    "originalIndexSha256":  "c12b4442c8667aa7849833af6ef4b3d20f7e83af7be00f3ba3291132af05e0b3",
+    "activeReference":  "design/implemented",
+    "originalScreensRetained":  true
+}

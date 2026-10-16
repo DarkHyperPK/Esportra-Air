@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import AirShell from './air/AirShell.jsx';
 
 const MAX_CODE_LEN = 8;
@@ -13,7 +13,9 @@ function sanitizeCode(raw) {
  * Shown when status.paired === false.
  * onPairSuccess: fn() — called after successful pairing so App can re-poll status.
  */
-export default function PairScreen({ airApi, onPairSuccess }) {
+export default function PairScreen({ airApi, onPairSuccess, notice, onSettings, onIndependent }) {
+  const pairedTimer=useRef(null);
+  useEffect(()=>()=>clearTimeout(pairedTimer.current),[]);
   const [code, setCode] = useState('');
   const [pairState, setPairState] = useState('idle');
   // idle | checking | success | error
@@ -32,7 +34,7 @@ export default function PairScreen({ airApi, onPairSuccess }) {
       const result = await airApi.pair(code);
       if (result?.ok) {
         setPairState('success');
-        setTimeout(() => onPairSuccess(), 800);
+        pairedTimer.current=setTimeout(() => onPairSuccess(), 800);
       } else {
         const msg = result?.error || '';
         if (msg.includes('already')) {
@@ -57,7 +59,10 @@ export default function PairScreen({ airApi, onPairSuccess }) {
     <AirShell screenTitle="" showHeader={false}>
       <div className="pair-screen-content">
         <div className="pair-card">
+          {onSettings && <button className="air-ghost-btn" onClick={onSettings}>PC role</button>}
           <div className="pair-card-title">Pair this node</div>
+          {onIndependent && <p>Create your own matches without a tournament connection. <button className="air-ghost-btn" onClick={onIndependent}>Create independent broadcast</button></p>}
+          {notice && <p role="alert">{notice}</p>}
 
           <div className="form-group">
             <label className="pair-field-label" htmlFor="pair-code">Pairing code</label>

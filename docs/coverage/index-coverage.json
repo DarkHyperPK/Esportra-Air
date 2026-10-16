@@ -1,0 +1,627 @@
+{
+  "date": "2026-10-15",
+  "source": "D:/Esportra-Air/index.html",
+  "sourceSha256": "c12b4442c8667aa7849833af6ef4b3d20f7e83af7be00f3ba3291132af05e0b3",
+  "methodology": "Each original E1â€“E11 numbered requirement counts once. Implemented means user-facing functional scope is present, not live acceptance. Partial means some code exists but acceptance functionality differs or is missing. Missing means no supported end-to-end workflow; placeholders do not count. This is not a percentage of product completion.",
+  "requirements": [
+    {
+      "id": "E1.1",
+      "status": "implemented",
+      "implemented": "Web-generated ten-minute/single-use pairing, keychain credentials, reported capabilities and authenticated revoke push with node-auth fallback. Confirmed revoke pauses automation/stops capture/clears show and returns to pairing.",
+      "remaining": "Web-generated direction is the accepted current workflow. Real staging/account timing and independent acceptance remain pending.",
+      "evidence": [
+        "Air/src/node-config.js",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastNodeEndpoints.cs",
+        "Air/src/node-session-monitor.js",
+        "Air/tools/product-desktop-smoke.cjs",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastPairingLifecycleTests.cs"
+      ]
+    },
+    {
+      "id": "E1.2",
+      "status": "partial",
+      "implemented": "Stable per-workstation /o output aliases follow the selected match on the existing WebSocket, with per-output connection counts/rendered-frame timestamps on desktop and fresh typed web health. Legacy match URLs remain valid.",
+      "remaining": "Output access keys/rotation remain part of user-reserved E7.4. Live output/LAN rendering acceptance remains pending.",
+      "evidence": [
+        "Air/src/output-registry.js",
+        "Air/esportra-valorant-hud/server/server.js",
+        "Air/tests/output-alias.test.cjs",
+        "Web/src/components/broadcast/NodeCard.tsx"
+      ]
+    },
+    {
+      "id": "E1.3",
+      "status": "partial",
+      "implemented": "Explicit observer role, authenticated LAN relay, bounded sixty-second recovery buffers, sequences/acknowledgments and match-scoped F9 replay/F10 flag markers. Recovered events do not replay automatic production actions.",
+      "remaining": "The reported delivery metric is acknowledgement round-trip median, not one-way event-to-frame latency. Actual game/LAN p95 acceptance is unverified.",
+      "evidence": [
+        "Air/src/lan-relay.js",
+        "Air/src/renderer/components/CaptureScreen.jsx",
+        "Air/src/capture-window.js",
+        "Air/src/renderer/components/ObserverMarkers.jsx",
+        "Air/tests/relay-network.test.cjs"
+      ]
+    },
+    {
+      "id": "E1.4",
+      "status": "implemented",
+      "implemented": "Feature freshness/activity, existing local round/spike timer fallback, ten-second live-round observer staleness, HUD feed-paused tag and fresh owner-scoped web health alerts. Player heartbeats cannot mask observer staleness.",
+      "remaining": "Live SDK/OBS timing and independent acceptance remain pending.",
+      "evidence": [
+        "Air/src/main.js",
+        "Air/src/renderer/components/ProductionReadiness.jsx",
+        "Air/tests/game-production.test.cjs",
+        "Air/esportra-valorant-hud/core/hud.js",
+        "Web/src/services/broadcast/nodeRuntimeHealth.ts"
+      ]
+    },
+    {
+      "id": "E1.5",
+      "status": "implemented",
+      "implemented": "Packaged scripted round rehearsal with play/pause, 0.5–4× and 10× speed, scrub and explicit Allow OBS. Separate HUD/RulesEngine/ShowRunner; dry-run tally is visibly simulated. Opt-in real takes require actual OBS tally and production/capture inactivity.",
+      "remaining": "Recorded Bo3 timing and live OBS rehearsal acceptance remain pending. No arbitrary file import; the PRD scripted-round alternative is shipped locally.",
+      "evidence": [
+        "Air/src/simulation/harness.js",
+        "Air/src/main.js",
+        "Air/src/simulation/rehearsal.js",
+        "Air/src/renderer/components/RehearsalScreen.jsx",
+        "Air/tests/rehearsal.test.cjs"
+      ]
+    },
+    {
+      "id": "E1.6",
+      "status": "partial",
+      "implemented": "The existing GEP pipeline now has observer/player setup, automatic player identity tagging, early health/ability buffering, per-player coverage/freshness and previous-round invalidation. Boolean availability stays separate from exact numerical charges.",
+      "remaining": "Exact numerical charges remain dependent on actual SDK reporting. Live player-PC/game verification is unexecuted.",
+      "evidence": [
+        "Air/esportra-valorant-hud/capture/overwolf-valorant/main.js",
+        "Air/esportra-valorant-hud/adapters/valorant-gep.js",
+        "Air/src/broadcast-gep.js",
+        "Air/src/renderer/components/CaptureScreen.jsx",
+        "Air/src/capture-settings.js",
+        "Air/esportra-valorant-hud/adapters/player-coverage.js",
+        "Air/tests/player-capture.test.cjs"
+      ]
+    },
+    {
+      "id": "E2.1",
+      "status": "implemented",
+      "implemented": "Local OBS discovery reads the v5 Hello handshake. Private LAN addresses require explicit per-desk permission. Connection credentials use OS keychain; address and port resume from workstation settings. OBS version, collection and Studio Mode appear in production and readiness; retry backoff remains 1/2/4/8/10 seconds through authentication failures.",
+      "remaining": "Live same-PC/LAN connection and reconnect timing acceptance remains unverified.",
+      "evidence": [
+        "Air/src/obs-discovery.js",
+        "Air/src/obs-controller.js",
+        "Air/src/main.js",
+        "Air/tests/obs-discovery.test.cjs",
+        "Air/tests/production-controls.test.cjs"
+      ]
+    },
+    {
+      "id": "E2.2",
+      "status": "implemented",
+      "implemented": "Customize broadcast keeps a selected-match draft with rename/order/design/HUD layout and existing OBS video/camera selection. Explicit Send to OBS generates stable browser-source URLs and matching scenes, maps show flow locally, preserves named transitions and current on-air output, rejects active streaming/recording/stale scope and retries without duplicate sources or resetting unchanged layouts. Existing owned collection/source-slot capabilities remain available under advanced settings.",
+      "remaining": "Actual OBS device/camera/game-source and live tournament acceptance remain pending. Air attaches an existing video/camera input; it does not create a game capture device or webcam transport.",
+      "evidence": [
+        "Air/src/obs-controller.js",
+        "Air/src/renderer/components/ProducerScreen.jsx",
+        "Air/src/obs-production-setup.js",
+        "Air/src/renderer/components/SceneSlots.jsx",
+        "Air/tests/obs-production-setup.test.cjs",
+        "Air/src/obs-template.js",
+        "Air/src/obs-template-push.js",
+        "Air/src/renderer/components/TemplateSetup.jsx",
+        "Air/src/renderer/components/TemplatePreview.jsx",
+        "Air/tests/obs-template.test.cjs",
+        "Air/tools/product-desktop-smoke.cjs"
+      ]
+    },
+    {
+      "id": "E2.3",
+      "status": "partial",
+      "implemented": "Desktop maps every selected rundown item to live OBS scenes and validated Cut/Fade/Stinger settings. Workstation mappings persist; active-run changes are blocked. Missing scenes block local rundown start.",
+      "remaining": "Per-node web publish readiness remains dependent on node assignment (E5.5).",
+      "evidence": [
+        "Air/src/rundown-config.js"
+      ]
+    },
+    {
+      "id": "E2.4",
+      "status": "partial",
+      "implemented": "Local Studio Mode/direct takes and actual OBS tally exist; timeout no longer assumes on-air success.",
+      "remaining": "Remote web/phone tally depends on E6.1 and E10.1; live latency acceptance remains pending.",
+      "evidence": [
+        "Air/src/obs-controller.js"
+      ]
+    },
+    {
+      "id": "E2.5",
+      "status": "implemented",
+      "implemented": "Replay checks the actual OBS buffer, saves the clip, prepares an Esportra-owned media input, takes with an available Stinger and returns on MediaInputPlaybackEnded. Disabled/unknown buffer state is explained. Manual scene changes cancel automatic return; failed saves remove listeners.",
+      "remaining": "Live playback with an actual OBS recording/Stinger remains unverified.",
+      "evidence": [
+        "Air/src/obs-replay.js",
+        "Air/src/obs-controller.js",
+        "Air/src/renderer/components/ProducerScreen.jsx",
+        "Air/tests/production-controls.test.cjs",
+        "Air/tools/product-desktop-smoke.cjs"
+      ]
+    },
+    {
+      "id": "E2.6",
+      "status": "missing",
+      "implemented": "A VMixController interface placeholder exists.",
+      "remaining": "Controller explicitly stubs HTTP calls; no implemented vMix production workflow.",
+      "evidence": [
+        "Air/src/vmix-controller.js"
+      ]
+    },
+    {
+      "id": "E2.7",
+      "status": "missing",
+      "implemented": "One controller is selected per node.",
+      "remaining": "No simultaneous multi-switcher connections or per-segment targets.",
+      "evidence": [
+        "Air/src/main.js"
+      ]
+    },
+    {
+      "id": "E3.1",
+      "status": "implemented",
+      "implemented": "Best of 1 and Best of 3 show flows cover opening, introduction, veto, each map/agent selection/results, breaks, series results, desk and closing. Imports are match-format scoped and retry-idempotent. Typed web item settings persist cue, manual/automatic mode, screen, scene, transition, map scope and Manual/countdown/immediate Hold. Supported live game/observer cues drive the local runner; templates default to manual. Unsupported cues are explicitly manual reminders. Invalid legacy settings project as manual with a warning.",
+      "remaining": "Live series and OBS transition acceptance remain pending. Full tournament-trigger delivery and test-fire remain E3.2; the full rule editor remains user-reserved E3.7.",
+      "evidence": [
+        "Air/src/rundown-config.js",
+        "Air/src/segment-plan.js",
+        "Backend/src/Esportra.Core/Broadcast/BroadcastRundownTemplates.cs",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastRundownTemplateEndpoints.cs",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastRundownTemplateEndpointsTests.cs",
+        "Web/src/components/broadcast/RundownTemplates.tsx",
+        "Web/src/components/broadcast/RundownPlanEditor.tsx"
+      ]
+    },
+    {
+      "id": "E3.2",
+      "status": "partial",
+      "implemented": "Typed round-live/end, spike planted/defused, map-end and match-scoped observer-flag cues open configured automatic windows. Wrong-map cues, duplicate active cues and cues during pause do not take; recovered packets do not replay automation. Other known cues are labeled manual reminders.",
+      "remaining": "Full tournament-trigger delivery, kill/multi-kill/agent-select/clock/delay/hotkey segment cues and isolated web/simulator test-fire remain unfinished. Remote commands depend on reserved E6.2.",
+      "evidence": [
+        "Air/src/rules-engine.js",
+        "Air/src/show-runner.js"
+      ]
+    },
+    {
+      "id": "E3.3",
+      "status": "partial",
+      "implemented": "Operator Hold cancels an automatic window and waits for explicit Take or Skip, with local operator/time attribution. Repeated triggers cannot restart a held item. Controls and editable bindings remain available locally.",
+      "remaining": "Remote web/phone actions depend on E6.2/E10.1. Other cue delivery and isolated test-fire remain under E3.2.",
+      "evidence": [
+        "Air/src/show-runner.js",
+        "Air/src/event-logger.js"
+      ]
+    },
+    {
+      "id": "E3.4",
+      "status": "implemented",
+      "implemented": "Parsed game rules drive economy, recap, spike and kill banners with editable timings. Manual technical pause/team timeout show delayed, elapsed-time panels; OBS disconnect alone does not declare a game pause. An explicitly configured existing pause scene is the sole pause exception and records only actual OBS tally. Scope-bound panel IDs reject old clears; panels are runtime-only. Resume leaves Program unchanged.",
+      "remaining": "Live game/OBS timing and independent acceptance remain pending. General ordered web rule editing remains user-reserved E3.7.",
+      "evidence": [
+        "Air/src/rules-engine.js",
+        "Air/src/pause-rules.js",
+        "Air/src/renderer/components/PauseRulesSettings.jsx",
+        "Air/tests/pause-rules.test.cjs",
+        "Air/tools/product-desktop-smoke.cjs"
+      ]
+    },
+    {
+      "id": "E3.5",
+      "status": "partial",
+      "implemented": "Pause/timeout independently block ordinary takes; only an explicitly configured pause rule can take while paused. Auto-takes recheck safety before Program, replay returns are dropped during pause, manual pause survives OBS reconnect, and old buffered flags do not replay. Local command IDs deduplicate and capture mode rejects production IPC.",
+      "remaining": "Remote command lifecycle depends on user-reserved E6.2. Live OBS/network disconnect acceptance remains unexecuted.",
+      "evidence": [
+        "Air/src/show-runner.js"
+      ]
+    },
+    {
+      "id": "E3.6",
+      "status": "implemented",
+      "implemented": "Published immutable rundown snapshots have monotonic versions. Same-match upcoming items activate at confirmed Take/Skip boundaries after OBS scene readiness checks; current Program/history and held/transitioning items remain unchanged. Desktop change review, guarded reconnect recovery and fresh owner-only node version reports distinguish pending, older and stale nodes. Other setup changes remain deferred until idle.",
+      "remaining": "Live OBS/network timing and independent acceptance remain pending. This version applies to the rundown; node assignment remains user-reserved E5.5.",
+      "evidence": [
+        "Air/src/main.js",
+        "Air/src/rundown-config.js",
+        "Air/src/rundown-publication.js",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastRundownPublication.cs",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastRundownPublicationTests.cs",
+        "Web/src/components/broadcast/RundownPublication.tsx"
+      ]
+    },
+    {
+      "id": "E3.7",
+      "status": "missing",
+      "implemented": "Rundown planning edits are available.",
+      "remaining": "No When / Only if / Then web rule editor.",
+      "evidence": [
+        "Web/src/components/broadcast/RundownPreparation.tsx"
+      ]
+    },
+    {
+      "id": "E4.1",
+      "status": "implemented",
+      "implemented": "OBS screenshots and event tally remain authoritative. The producer has Take, Cut, Fade and selected Stinger controls; transition availability and Studio Mode gate actions. Cut/Stinger have editable workstation shortcuts. A missing tally never becomes an assumed on-air item.",
+      "remaining": "Real OBS media/transition visuals and live latency acceptance remain unverified.",
+      "evidence": [
+        "Air/src/renderer/components/ProductionTakeBar.jsx",
+        "Air/src/renderer/components/ProducerScreen.jsx",
+        "Air/src/obs-transitions.js",
+        "Air/src/shortcuts.js",
+        "Air/tests/production-controls.test.cjs"
+      ]
+    },
+    {
+      "id": "E4.2",
+      "status": "implemented",
+      "implemented": "The console separates the current on-air segment, armed/held action and three coming-up segments. Controls advance to the armed next item while the previous segment remains on air.",
+      "remaining": "Live operator acceptance remains pending.",
+      "evidence": [
+        "Air/src/show-runner.js",
+        "Air/src/renderer/components/ComingUp.jsx",
+        "Air/src/renderer/components/ProducerScreen.jsx",
+        "Air/tests/production-controls.test.cjs"
+      ]
+    },
+    {
+      "id": "E4.3",
+      "status": "missing",
+      "implemented": "Existing HUD graphics are reusable.",
+      "remaining": "Paired producer has no complete On / Auto / Off graphics layer operator panel.",
+      "evidence": [
+        "Air/src/renderer/components/ProducerScreen.jsx"
+      ]
+    },
+    {
+      "id": "E4.4",
+      "status": "partial",
+      "implemented": "Editable focused shortcuts, existing scene/replay/pause/timeout/Stinger controls and inline toast/poll/assigned sponsor-read forms. Sponsor reads persist original-show start/end records for proof.",
+      "remaining": "Caster lower-third selection is user-reserved E4.5. Existing F1–F8 defaults are retained; added actions are rebindable.",
+      "evidence": [
+        "Air/src/renderer/components/ProducerScreen.jsx",
+        "Air/src/graphic-actions.js",
+        "Air/src/renderer/components/GraphicForms.jsx",
+        "Air/src/sponsor-ledger.js"
+      ]
+    },
+    {
+      "id": "E4.5",
+      "status": "missing",
+      "implemented": "Talent metadata is configured on web.",
+      "remaining": "No one-click talent/player spotlight control in the paired producer UI.",
+      "evidence": [
+        "Air/src/renderer/components/ProducerScreen.jsx",
+        "Web/src/components/broadcast/TalentRoster.tsx"
+      ]
+    },
+    {
+      "id": "E4.6",
+      "status": "implemented",
+      "implemented": "The selected match has round, phase, score, alive players, banks and spike status from the same HUD state. Only reported feature data is shown; absent values remain unknown. Parsed game and show events share a newest-first local log. Stale feed and feature activity are visible.",
+      "remaining": "Live observer accuracy and acceptance remain unverified; raw GEP stays on LAN.",
+      "evidence": [
+        "Air/src/production-feed.js",
+        "Air/src/renderer/components/LiveDataStrip.jsx",
+        "Air/esportra-valorant-hud/server/gep-features.js",
+        "Air/esportra-valorant-hud/server/server.js",
+        "Air/tests/game-production.test.cjs",
+        "Air/tests/hud-product-integration.test.cjs"
+      ]
+    },
+    {
+      "id": "E4.7",
+      "status": "implemented",
+      "implemented": "Scoped local score, team names/tags, received-player display names, sides, series wins, observed-player and map-result overrides preserve raw GEP and mask subsequent updates until the next round or explicit clear. Undo restores the latest source/current-round override and is audited. Map corrections choose Air only or Air plus official result review. Durable proposals carry original show/match/pairing/team identities; active can_submit_result crew approve/reject on the web with optimistic official-score checks, atomic writes and idempotent decisions. Local Undo does not retract a proposal or reverse an approved official result. Applied proposals write immutable before/after corrections and appear as manual in post-show reports.",
+      "remaining": "Live/independent acceptance remains pending. Finalized tournament result rewrites remain guarded and use existing tournament result management; local Undo is scoped to this session/round.",
+      "evidence": [
+        "Air/src/renderer/components/ScoreCorrection.jsx",
+        "Air/src/fix-data.js",
+        "Air/src/renderer/components/DisplayFixScreen.jsx",
+        "Air/esportra-valorant-hud/server/display-fixes.js",
+        "Air/tests/display-fixes.test.cjs",
+        "Air/tools/product-desktop-smoke.cjs",
+        "Air/src/correction-scope.js",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastResultProposalEndpoints.cs",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastResultProposalEndpointsTests.cs",
+        "Web/src/components/broadcast/BroadcastResultReview.tsx",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastReportEndpoints.cs"
+      ]
+    },
+    {
+      "id": "E4.8",
+      "status": "partial",
+      "implemented": "Focused rebindable shortcut map with conflict/reset checks now includes toast, poll and sponsor reads; observer has scoped F9/F10 markers.",
+      "remaining": "Full graphic-layer and talent/player actions depend on user-reserved E4.3/E4.5.",
+      "evidence": [
+        "Air/src/renderer/components/ProducerScreen.jsx",
+        "Air/src/shortcuts.js",
+        "Air/src/renderer/components/ShortcutSettings.jsx"
+      ]
+    },
+    {
+      "id": "E5.1",
+      "status": "implemented",
+      "implemented": "Owner selects existing tournament stages under Choose a match. Opt-in enrollment adds only eligible resolved matches as brackets advance, preserves existing slots and stops on terminal shows. Parent locks, idempotent inserts, revision guards, organization/stage validation, bounded capacity and retry status are enforced. Web and paired Air choices refresh without changing the selected on-air match.",
+      "remaining": "Actual bracket-event/live acceptance remains pending. Enrollment is opt-in, capped at 200 show entries and processed in bounded background batches; it does not create a rundown, take Program or assign nodes.",
+      "evidence": [
+        "Web/src/components/broadcast/FollowBracketSettings.tsx",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastEnrollmentEndpoints.cs",
+        "Backend/src/Esportra.Infrastructure/Database/BroadcastEnrollmentRepository.cs",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastEnrollmentEndpointsTests.cs"
+      ]
+    },
+    {
+      "id": "E5.2",
+      "status": "implemented",
+      "implemented": "Web setup selects the installed Esportra pack, four actual banner themes, team colors, event bug, sponsor rotation and an existing OBS Stinger by exact name. Preview uses unsaved choices in isolation. Saved Stingers apply to newly imported screens and Bo1/Bo3 plans; existing items retain their transitions. Air validates the actual OBS transition before taking Program.",
+      "remaining": "Only the currently installed Esportra Valorant pack is offered. Actual OBS clip visuals and live asset/operator acceptance remain unverified; there are no fictional packs or transition assets.",
+      "evidence": [
+        "Web/src/components/broadcast/HudAppearanceSetup.tsx",
+        "Web/src/components/broadcast/HudAppearanceFields.tsx",
+        "Backend/src/Esportra.Core/Broadcast/BroadcastAppearance.cs",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastScreenEndpoints.cs",
+        "Air/src/obs-controller.js",
+        "Air/tools/product-desktop-smoke.cjs"
+      ]
+    },
+    {
+      "id": "E5.3",
+      "status": "implemented",
+      "implemented": "Paired Air automatically checks the selected published show every five seconds for current team identity/logos, registered names and roles, display colors, schedule, veto, series scores, talent and sponsors. Updates preserve GEP players/round scores, manual display fixes, Program and the published rundown. Participant/scope changes reject replacement; played matches leave choices while their current output stays intact.",
+      "remaining": "Actual healthy-network delivery within five seconds and real tournament/game acceptance remain unverified. Registered lineups are planning/display names, not invented game telemetry. Offline failures retain current output and show an explicit warning.",
+      "evidence": [
+        "Backend/src/Esportra.Api/Endpoints/BroadcastAppearanceEndpoints.cs",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastRosterProjection.cs",
+        "Air/src/tournament-sync.js",
+        "Air/src/match-context.js",
+        "Air/tests/tournament-sync.test.cjs",
+        "Air/tests/hud-product-integration.test.cjs",
+        "Air/tools/product-desktop-smoke.cjs"
+      ]
+    },
+    {
+      "id": "E5.4",
+      "status": "implemented",
+      "implemented": "Existing sponsor assets and assigned talent/caster cards are reused. Optional sponsor setup saves logo rotation and duration; Air retains manual sponsor reads and durable read-proof delivery. Per-show, per-match display names/colors are saved separately from official teams and can be previewed. Revision guards preserve unsaved work on conflicts.",
+      "remaining": "Live asset/operator acceptance remains unverified. Automatic visibility proof belongs to E8.3 and selected lower-third actions to reserved E4.5.",
+      "evidence": [
+        "Web/src/components/broadcast/SetupSponsors.tsx",
+        "Web/src/components/broadcast/SponsorRotationSettings.tsx",
+        "Web/src/components/broadcast/TalentRoster.tsx",
+        "Web/src/components/broadcast/HudAppearanceSetup.tsx",
+        "Air/src/sponsor-ledger.js",
+        "Air/esportra-valorant-hud/core/hud.js"
+      ]
+    },
+    {
+      "id": "E5.5",
+      "status": "missing",
+      "implemented": "Organization nodes can be paired.",
+      "remaining": "No per-match/per-node assignments; config is sent organization-wide.",
+      "evidence": [
+        "Backend/src/Esportra.Api/Endpoints/BroadcastShowEndpoints.cs"
+      ]
+    },
+    {
+      "id": "E5.6",
+      "status": "partial",
+      "implemented": "Home aggregates stored shows, nodes and crew.",
+      "remaining": "No genuine live autopilot cards or automatic match queue.",
+      "evidence": [
+        "Web/src/pages/broadcast/BroadcastHomePage.tsx"
+      ]
+    },
+    {
+      "id": "E6.1",
+      "status": "missing",
+      "implemented": "Web shows registration/heartbeat.",
+      "remaining": "No remote OBS PVW/PGM/tally/autopilot/feed tiles.",
+      "evidence": [
+        "Web/src/components/broadcast/NodeCard.tsx"
+      ]
+    },
+    {
+      "id": "E6.2",
+      "status": "missing",
+      "implemented": "Hub acknowledgment primitive is present.",
+      "remaining": "No supported web Hold/Take/Resume dispatch and acknowledged control UI.",
+      "evidence": [
+        "Backend/src/Esportra.Api/Hubs/BroadcastHub.cs"
+      ]
+    },
+    {
+      "id": "E6.3",
+      "status": "missing",
+      "implemented": "General platform chat is separate.",
+      "remaining": "No broadcast ops-to-node chat workflow.",
+      "evidence": [
+        "Backend/src/Esportra.Api/Hubs/BroadcastHub.cs"
+      ]
+    },
+    {
+      "id": "E6.4",
+      "status": "implemented",
+      "implemented": "One-hour desktop and owner web timeline with confirmed automatic/manual takes, holds, time/actor/cause and accessible minute bins. Recent local history restores across restart without re-enqueuing old events. Old records lacking actor source remain unspecified.",
+      "remaining": "Live OBS/game/output incident rehearsal and independent acceptance remain pending. Actor categories identify the local operation/source; they do not certify a named employee. Timeline retention is explicitly bounded.",
+      "evidence": [
+        "Web/src/pages/broadcast/BroadcastActivityPage.tsx",
+        "Air/src/production-history.js",
+        "Air/src/renderer/components/ProductionTimeline.jsx",
+        "Web/src/components/broadcast/ProductionHistory.tsx",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastTimelineEndpoints.cs"
+      ]
+    },
+    {
+      "id": "E6.5",
+      "status": "implemented",
+      "implemented": "OBS connection loss/recovery, stale-feed and connected-output drops log typed transitions once. Data fixes distinguish applied versus queued-only. Time and actor category show in local/web history; backend metadata rejects raw capture and redacts unknown payloads.",
+      "remaining": "Live OBS/game/output incident rehearsal and independent acceptance remain pending. Actor categories identify the local operation/source; they do not certify a named employee. Timeline retention is explicitly bounded.",
+      "evidence": [
+        "Web/src/pages/broadcast/BroadcastActivityPage.tsx",
+        "Air/src/main.js",
+        "Air/src/production-history.js",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastTimelineEndpointsTests.cs"
+      ]
+    },
+    {
+      "id": "E7.1",
+      "status": "partial",
+      "implemented": "Owner administration and assigned crew access are server guarded.",
+      "remaining": "Role/capability matrix differs from PRD; no complete ops-staff/device control model.",
+      "evidence": [
+        "Backend/src/Esportra.Api/Endpoints/BroadcastCrewWorkspaceEndpoints.cs",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastCrewEndpoints.cs"
+      ]
+    },
+    {
+      "id": "E7.2",
+      "status": "implemented",
+      "implemented": "Owner-scoped email and in-app crew invitations with role per show, expiry, revoke and verified recipient binding. Private inbox/acceptance, provider-submission/failure feedback and single-use fallback links are wired. Legacy link-only flow remains; frontend cancels unbound responses from an older backend.",
+      "remaining": "Live configured email delivery, notification timing and independent acceptance remain pending; isolated tests do not send external messages.",
+      "evidence": [
+        "Web/src/pages/broadcast/BroadcastCrewPage.tsx",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastCrewInvitationInbox.cs",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastCrewDeliveryTests.cs",
+        "Web/src/pages/broadcast/BroadcastInvitationsPage.tsx",
+        "Web/src/hooks/__tests__/useBroadcastCrew.test.tsx"
+      ]
+    },
+    {
+      "id": "E7.3",
+      "status": "partial",
+      "implemented": "Local output inventory provides This PC/LAN URLs.",
+      "remaining": "No web crew-source catalogue, QR, per-source tally or cloud relay.",
+      "evidence": [
+        "Air/src/renderer/components/SourceOutputs.jsx"
+      ]
+    },
+    {
+      "id": "E7.4",
+      "status": "missing",
+      "implemented": "Observer LAN secrets are stored in keychain.",
+      "remaining": "No per-output live key rotation and 60-second grace contract.",
+      "evidence": [
+        "Air/src/output-registry.js"
+      ]
+    },
+    {
+      "id": "E7.5",
+      "status": "missing",
+      "implemented": "HUD score/veto graphics exist.",
+      "remaining": "No scoped, expiring co-stream/watch-party link product workflow.",
+      "evidence": [
+        "Air/src/output-registry.js",
+        "Web/src/pages/broadcast/BroadcastCrewPage.tsx"
+      ]
+    },
+    {
+      "id": "E8.1",
+      "status": "partial",
+      "implemented": "Existing result/conflict APIs now write map, series, audit and session metadata in one transaction, complete Bo3 at 2-0, reject inactive crew and require an explicit show when the match is enrolled in multiple shows. Air manual map corrections can queue an original-scope proposal for authorized web review; official updates are guarded against stale scores and finalized or changed participants. Selected-match HUD synchronization receives final series scores without listing played matches.",
+      "remaining": "Automatic GEP map-end proposal capture, Riot verification and the complete dispute/bracket-advancement loop remain open. Operator proposals are not presented as verified game results.",
+      "evidence": [
+        "Backend/src/Esportra.Api/Endpoints/DesktopBroadcastEndpoints.cs",
+        "Web/src/components/broadcast/ConflictCard.tsx",
+        "Air/src/main.js",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastResultProposalEndpoints.cs",
+        "Air/src/fix-data.js",
+        "Web/src/components/broadcast/BroadcastResultReview.tsx"
+      ]
+    },
+    {
+      "id": "E8.2",
+      "status": "partial",
+      "implemented": "Recorded post-show match/crew/sponsor/chapter/correction report exists.",
+      "remaining": "No complete automation/latency/incident KPIs or share-card workflow.",
+      "evidence": [
+        "Web/src/pages/broadcast/BroadcastPostShowReportPage.tsx",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastReportEndpoints.cs"
+      ]
+    },
+    {
+      "id": "E8.3",
+      "status": "partial",
+      "implemented": "Sponsor proof persists original-show placements through restart/offline delivery; API closes open starts on matching end and acknowledges idempotent retries. Sponsor/segment ownership and reversed-time validation added.",
+      "remaining": "Screenshot proof timeline and verified automatic visibility attribution remain unfinished. Current new read controls are explicitly operator-reported.",
+      "evidence": [
+        "Web/src/pages/broadcast/BroadcastSponsorProofPage.tsx",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastSponsorProofEndpoints.cs",
+        "Air/src/sponsor-ledger.js",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastSponsorProofReplayTests.cs"
+      ]
+    },
+    {
+      "id": "E8.4",
+      "status": "implemented",
+      "implemented": "Parsed round start/end produce bounded deduplicated metadata chapters with original capture time. Node drain rejects raw GEP fields; owner VOD/report reads combine round and segment chapters, preserving incomplete markers and existing YouTube copying.",
+      "remaining": "Live full match/recording alignment and independent acceptance remain pending.",
+      "evidence": [
+        "Web/src/pages/broadcast/BroadcastVodChaptersPage.tsx",
+        "Backend/src/Esportra.Api/Endpoints/BroadcastShowEndpoints.cs",
+        "Air/src/round-chapters.js",
+        "Backend/src/Esportra.Api.Tests/Endpoints/BroadcastRoundChapterEndpointsTests.cs",
+        "Backend/src/Esportra.Core/Broadcast/VodChapterCalculator.cs"
+      ]
+    },
+    {
+      "id": "E9.1",
+      "status": "implemented",
+      "implemented": "Cached config, local HUD/runner/OBS and LAN services survive cloud disconnect in code/local fixtures.",
+      "remaining": "Live game and cold-cache remote image availability remain unverified; no release acceptance.",
+      "evidence": [
+        "Air/src/hub-client.js",
+        "Air/src/main.js"
+      ]
+    },
+    {
+      "id": "E9.2",
+      "status": "partial",
+      "implemented": "Existing signed original-show event/correction queue now also delivers original-show sponsor proof durably, in grouped retryable batches with acknowledged duplicates. Active placements survive restart. Manual official-result proposals persist in the signed disk queue, retry with the same key and are removed only after a typed server acknowledgment; pairing/show/match/team identity remains original.",
+      "remaining": "Automatic GEP result capture remains open under E8.1. Full live offline game/OBS/proof rehearsal is unexecuted.",
+      "evidence": [
+        "Air/src/offline-queue.js",
+        "Air/src/hub-client.js",
+        "Air/src/main.js",
+        "Air/tests/sponsor-ledger.test.cjs"
+      ]
+    },
+    {
+      "id": "E9.3",
+      "status": "partial",
+      "implemented": "Score conflict comparison/resolution and deferred configuration exist.",
+      "remaining": "No assignment conflict workflow or versioned last-writer-wins reconciliation UI.",
+      "evidence": [
+        "Web/src/components/broadcast/ConflictCard.tsx",
+        "Air/src/main.js"
+      ]
+    },
+    {
+      "id": "E10.1",
+      "status": "missing",
+      "implemented": "Responsive web planning exists.",
+      "remaining": "No QR-paired phone production remote; it is a later phase in the original document.",
+      "evidence": [
+        "Web/src/components/broadcast/ShowPreparation.tsx"
+      ]
+    },
+    {
+      "id": "E11.1",
+      "status": "implemented",
+      "implemented": "Eight actionable preparation steps with the selected match kept visible, URL-based resume and completion/attention states. This replaces the older nine-step UI under the user-approved simplification.",
+      "remaining": "Thirty-minute moderated onboarding acceptance remains unmeasured.",
+      "evidence": [
+        "Web/src/components/broadcast/ShowPreparation.tsx",
+        "Web/src/hooks/useShowPreparation.ts",
+        "Web/src/components/broadcast/SetupSidebar.tsx",
+        "Web/src/components/broadcast/SetupReview.tsx"
+      ]
+    }
+  ],
+  "assessment": "Original audit 2 implemented / 38 partial / 13 missing; earlier production batch closed five. E1.6 was corrected to partial. Current continuation closes E1.1, E1.4, E1.5, E2.2 and E8.4 locally, with further progress on other partials. Current total: 12 implemented / 29 partial / 12 missing. Local functional checks, independent review, live acceptance and deployment remain separate. Crew invitation delivery E7.2 then closed locally: current total 13 implemented / 28 partial / 12 missing. Timeline/incident scopes E6.4/E6.5 then closed locally: current total 15 implemented / 26 partial / 12 missing."
+}

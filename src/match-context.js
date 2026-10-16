@@ -23,7 +23,8 @@
  * @returns {object} RFC 7386 merge patch for PATCH /api/{matchCode}
  */
 function buildShowPatch(showConfig, currentState = {}) {
-  const teams = Array.isArray(showConfig.teams) ? showConfig.teams : [];
+  const appearance = require('./show-appearance').appearancePatch(showConfig);
+  const teams = appearance.teams;
   const veto = Array.isArray(showConfig.veto) ? showConfig.veto : [];
   const bracketPosition = showConfig.bracketPosition || null;
 
@@ -34,6 +35,8 @@ function buildShowPatch(showConfig, currentState = {}) {
   const mapsPlayed = team0Score + team1Score;
 
   const patch = {
+    layout: appearance.layout,
+    show: appearance.show,
     event: {
       name: showConfig.eventLabel || showConfig.title || currentState.event?.name || '',
       stage: bracketPosition ? (bracketPosition.roundLabel || '') : (currentState.event?.stage || ''),
@@ -49,6 +52,13 @@ function buildShowPatch(showConfig, currentState = {}) {
     })) } : {}),
     ...(Array.isArray(showConfig.veto) ? { veto } : {}),
     ...(Array.isArray(showConfig.mapPool) ? { mapPool: showConfig.mapPool } : {}),
+    registeredRoster: teams.map(team => (team.roster || []).slice(0, 10).map(player => ({ name: player.name || '', role: player.role || 'registered' }))),
+    schedule: (showConfig.schedule || showConfig.matches || []).slice(0, 200).map(match => ({
+      time: match.scheduledAt ? new Date(match.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD',
+      a: typeof match.teams?.[0] === 'string' ? match.teams[0] : match.teams?.[0]?.name || '',
+      b: typeof match.teams?.[1] === 'string' ? match.teams[1] : match.teams?.[1]?.name || '',
+      label: `Best of ${match.bestOf || 1}`, done: ['completed', 'finished', 'ended'].includes(match.status),
+    })),
   };
   if (mapsPlayed > 0 && !Array.isArray(currentState.series) && veto.length) patch.series = _picksToSeriesMaps(veto);
   if (Array.isArray(showConfig.casters)) patch.casters = showConfig.casters.map(person => ({ name: person.name || '', handle: person.handle || '' }));

@@ -31,6 +31,8 @@ const OW_ELECTRON_BIN = path.join(
 
 let captureProcess = null;
 let statusCallback = null;
+let captureSettings = { captureRole: 'observer', playerId: '' };
+let captureContext = { matchCode: 'MAIN', showId: null };
 
 /**
  * Register a callback that is invoked whenever the capture process status changes.
@@ -52,6 +54,9 @@ function getStatus() {
   return {
     active: captureProcess !== null && captureProcess.exitCode === null,
     pid: captureProcess?.pid ?? null,
+    captureRole: captureSettings.captureRole,
+    matchCode: captureContext.matchCode,
+    showId: captureContext.showId,
   };
 }
 
@@ -64,7 +69,10 @@ function getStatus() {
  * @param {string} [opts.matchCode='MAIN']
  * @returns {Promise<{ ok: boolean, pid?: number, error?: string }>}
  */
-async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN', gepTargetUrl, showId }) {
+async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN', gepTargetUrl, showId, captureRole = 'observer', playerId = '' }) {
+  let settings;
+  try { settings = require('./capture-settings').normalizeCaptureSettings({ captureRole, playerId }); }
+  catch (failure) { return { ok: false, error: failure.message }; }
   if (captureProcess !== null && captureProcess.exitCode === null) {
     return { ok: false, error: 'Broadcast already active.' };
   }
@@ -96,8 +104,12 @@ async function start({ hudKey, hudPort = 5300, matchCode = 'MAIN', gepTargetUrl,
     ESPORTRA_SHOW_ID: showId || '',
     ESPORTRA_KEY: hudKey,
     ESPORTRA_API_URL: '',
+    ESPORTRA_CAPTURE_ROLE: settings.captureRole,
+    ESPORTRA_PLAYER_ID: settings.playerId,
   };
 
+  captureSettings = settings;
+  captureContext = { matchCode, showId: showId || null };
   captureProcess = spawn(
     OW_ELECTRON_BIN,
     [CAPTURE_APP, '--development', '--owepm-package-channel=gep:prod'],

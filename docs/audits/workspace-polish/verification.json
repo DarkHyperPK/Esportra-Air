@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-16",
+  "checks": [
+    "entry workflow, explicit lineup review, next action and direct shortcuts",
+    "semantic icons, system typeface and compact guide",
+    "guide expand, dismiss and resume",
+    "match search, recovery and history guards",
+    "dark/light and 960/1024/1280/1440/1920 layout fit",
+    "players/live/editor/connections inherit the same shell and control system",
+    "visible keyboard focus",
+    "official logo and five-screen template import, navigation retention, save and explicit send",
+    "OBS connection state has mutually exclusive Connect/Disconnect actions and hides credentials while connected"
+  ],
+  "screenshots": 16,
+  "rendererErrors": [],
+  "liveServices": false
+}

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; img-src 'self' data: blob: http://localhost:5300 https:; frame-src http://localhost:5300; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Esportra Air</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -11,6 +11,10 @@
   <link rel="stylesheet" href="styles/app.css" />
   <link rel="stylesheet" href="styles/air.css" />
   <link rel="stylesheet" href="styles/product.css" />
+  <link rel="stylesheet" href="styles/workspace.css" />
+  <link rel="stylesheet" href="styles/workspace-flows.css" />
+  <link rel="stylesheet" href="styles/workspace-editor.css" />
+  <link rel="stylesheet" href="styles/workspace-production.css" />
 </head>
 <body>
   <div id="root"></div>

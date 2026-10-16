@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "teams": [
+    {"id":"06100000-0000-4000-8000-000000000101","name":"Example North","tag":"NORTH","logoAssetId":null,"players":[]},
+    {"id":"06100000-0000-4000-8000-000000000102","name":"Example South","tag":"SOUTH","logoAssetId":null,"players":[]}
+  ],
+  "matches": [
+    {"id":"06100000-0000-4000-8000-000000000201","title":"Final","teamIds":["06100000-0000-4000-8000-000000000101","06100000-0000-4000-8000-000000000102"],"bestOf":3,"mapPool":["Haven","Ascent"],"status":"scheduled","scheduledAt":null,"scores":[0,0]}
+  ],
+  "screens": [
+    {"id":"06100000-0000-4000-8000-000000000301","title":"Opening","type":"pre_show","overlay":"starting-soon","matchId":null},
+    {"id":"06100000-0000-4000-8000-000000000302","title":"Map","type":"match","overlay":"ingame","matchId":null},
+    {"id":"06100000-0000-4000-8000-000000000303","title":"Bracket","type":"custom","overlay":"bracket","matchId":null}
+  ],
+  "bracket": {"format":"single_elimination","stages":[{"id":"06100000-0000-4000-8000-000000000401","label":"Finals","format":"single_elimination","matches":[{"id":"06100000-0000-4000-8000-000000000501","matchId":"06100000-0000-4000-8000-000000000201","round":0,"side":"final","nextMatchId":null}]}]},
+  "sponsors": [], "talent": [], "crew": []
+}

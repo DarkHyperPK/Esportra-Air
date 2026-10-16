@@ -1,6 +1,7 @@
 import React from 'react';
 import AirShell from './air/AirShell.jsx';
 import CaptureControls from './CaptureControls.jsx';
+import ObserverMarkers from './ObserverMarkers.jsx';
 
 /** Capture-only view of the fields actually supplied by GET_STATUS. */
 export default function CaptureScreen({ status, broadcastApi, onChanged, onSettings }) {
@@ -15,10 +16,11 @@ export default function CaptureScreen({ status, broadcastApi, onChanged, onSetti
   const relayClass = connected ? 'connected' : listening ? 'reconnecting' : 'disconnected';
 
   return (
-    <AirShell screenTitle="Capture" nodeName={status?.nodeName ?? null} contextualButton={onSettings && <button className="air-ghost-btn" onClick={onSettings}>Machine role</button>}>
+    <AirShell screenTitle="Capture" nodeName={status?.nodeName ?? null} contextualButton={onSettings && <button className="air-ghost-btn" onClick={onSettings}>PC role</button>}>
       <div className="capture-content">
-        <CaptureControls active={active} broadcastApi={broadcastApi} onChanged={onChanged} configuredCode={status?.show?.matchCode} />
+        <CaptureControls active={active} broadcastApi={broadcastApi} onChanged={onChanged} configuredCode={status?.show?.matchCode} configuredRole={status?.captureRole} />
         <ObserverPairing status={status} />
+        {status?.captureRole !== 'player' && <ObserverMarkers broadcastApi={broadcastApi} listening={listening} connected={connected} />}
         <div className="air-section-label">Game capture</div>
         <div className="gep-hero-row">
           <div className="gep-status-left" role="status">
@@ -40,6 +42,9 @@ export default function CaptureScreen({ status, broadcastApi, onChanged, onSetti
         <p className="air-empty-state">
           {consumers} production connection{consumers === 1 ? '' : 's'}
         </p>
+        {relay?.buffering && <p role="status">Buffering locally · {relay.retainedMessages} packets retained for up to 60 seconds. Production reconnects automatically.</p>}
+        {Number.isFinite(relay?.ackLatencyMs) && <p className="air-empty-state">Delivery acknowledgement median: {Math.round(relay.ackLatencyMs)} ms over the last 60 seconds.</p>}
+        {relay?.droppedMessages > 0 && <p className="broadcast-error">{relay.droppedMessages} old packets expired or exceeded buffer capacity. Current game data continues.</p>}
         {listening && !connected && (
           <p className="air-empty-state">Connect the production machine to this observer's LAN relay address.</p>
         )}
