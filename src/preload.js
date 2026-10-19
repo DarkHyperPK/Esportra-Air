@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('esportraBroadcast', {
+  artwork: {status:()=>ipcRenderer.invoke('ARTWORK_STATUS'), prepare:()=>ipcRenderer.invoke('ARTWORK_PREPARE')},
+  observers: {accept:id=>ipcRenderer.invoke('OBSERVER_CONTEXT_ACCEPT',{id}),select:target=>ipcRenderer.invoke('OBSERVER_PRIMARY_SET',{target})},
   shortcuts: {
     get: () => ipcRenderer.invoke('SHORTCUTS_GET'),
     set: (bindings) => ipcRenderer.invoke('SHORTCUTS_SET', bindings),
@@ -9,6 +11,7 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
   rules: { get: () => ipcRenderer.invoke('RULES_GET'), set: (durations) => ipcRenderer.invoke('RULES_SET', durations) },
   graphics: { fire: (kind, input) => ipcRenderer.invoke('GRAPHIC_FIRE', { kind, input }) },
   hudControls: { get:()=>ipcRenderer.invoke('HUD_CONTROLS_GET'), update:input=>ipcRenderer.invoke('HUD_CONTROLS_UPDATE',input) },
+  hudPresets: { get:()=>ipcRenderer.invoke('HUD_PRESETS_GET'), save:input=>ipcRenderer.invoke('HUD_PRESETS_SAVE',input), remove:id=>ipcRenderer.invoke('HUD_PRESETS_DELETE',{id}) },
   hud: {
     getStatus: () => ipcRenderer.invoke('HUD_STATUS'),
     getOverlayList: () => ipcRenderer.invoke('HUD_OVERLAY_LIST'),
@@ -17,13 +20,10 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     onHudPersistentError: (cb) => ipcRenderer.on('HUD_PERSISTENT_ERROR', (_e, data) => cb(data)),
     onHudRestarted: (cb) => ipcRenderer.on('HUD_RESTARTED', () => cb()),
   },
-  ops: {
-    login: (email, password) => ipcRenderer.invoke('OPS_LOGIN', { email, password }),
-    getMatches: () => ipcRenderer.invoke('OPS_GET_MATCHES'),
-    selectMatch: (tournamentSlug, matchId) => ipcRenderer.invoke('OPS_SELECT_MATCH', { tournamentSlug, matchId }),
-  },
   manual: {
     patch: (patch) => ipcRenderer.invoke('MANUAL_PATCH', { patch }),
+    get: () => ipcRenderer.invoke('MANUAL_GET'),
+    action: (input) => ipcRenderer.invoke('MANUAL_ACTION', input),
   },
   displayFixes: {
     get: () => ipcRenderer.invoke('DISPLAY_FIX_GET'),
@@ -35,10 +35,16 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     getStatus: () => ipcRenderer.invoke('BROADCAST_STATUS'),
     start: (opts) => ipcRenderer.invoke('START_BROADCAST', opts),
     stop: () => ipcRenderer.invoke('STOP_BROADCAST'),
+    setSending: (sending) => ipcRenderer.invoke('BROADCAST_SEND_SET', { sending }),
     marker: (kind) => ipcRenderer.invoke('CAPTURE_MARKER', kind),
     onStatusChange: (cb) => ipcRenderer.on('BROADCAST_STATUS_CHANGED', (_e, data) => cb(data)),
   },
   // P0: Air node management surface
+  production: {
+    discardProposal:clientKey=>ipcRenderer.invoke('PRODUCTION_PROPOSAL_DISCARD',{clientKey}),
+    savedRecords:()=>ipcRenderer.invoke('PRODUCTION_SAVED_RECORDS'),savedRecord:id=>ipcRenderer.invoke('PRODUCTION_SAVED_RECORD',{id}),
+    sponsors:()=>ipcRenderer.invoke('PRODUCTION_SPONSORS'), crew:()=>ipcRenderer.invoke('PRODUCTION_CREW'), invite:input=>ipcRenderer.invoke('PRODUCTION_CREW_INVITE',input), revoke:id=>ipcRenderer.invoke('PRODUCTION_CREW_REVOKE',{id}), results:()=>ipcRenderer.invoke('PRODUCTION_RESULTS'), proposeResult:input=>ipcRenderer.invoke('PRODUCTION_RESULT_PROPOSE',input), reviewResult:input=>ipcRenderer.invoke('PRODUCTION_RESULT_REVIEW',input), details:()=>ipcRenderer.invoke('PRODUCTION_DETAILS_GET'), save:input=>ipcRenderer.invoke('PRODUCTION_DETAILS_SAVE',input), reload:()=>ipcRenderer.invoke('PRODUCTION_DETAILS_RELOAD'), activity:()=>ipcRenderer.invoke('PRODUCTION_ACTIVITY'), invitations:()=>ipcRenderer.invoke('PRODUCTION_INVITATIONS'), acceptInvitation:(id,source)=>ipcRenderer.invoke('PRODUCTION_INVITATION_ACCEPT',{id,source}) },
+  tournaments: { listMatches:()=>ipcRenderer.invoke('AIR_MATCHES_LIST'), prepare:matchId=>ipcRenderer.invoke('AIR_MATCH_PREPARE',{matchId}), arm:matchId=>ipcRenderer.invoke('AIR_MATCH_ARM',{matchId}), select:matchId=>ipcRenderer.invoke('AIR_MATCH_SELECT',{matchId}), preview:matchId=>ipcRenderer.invoke('AIR_MATCH_PREVIEW',{matchId}), session:()=>ipcRenderer.invoke('AIR_MATCH_SESSION'), roster:matchId=>ipcRenderer.invoke('AIR_MATCH_ROSTER',{matchId}) },
   projects: {
     openSignup:()=>ipcRenderer.invoke('AIR_SIGNUP_OPEN'),
     session:()=>ipcRenderer.invoke('AIR_SESSION_GET'),
@@ -62,8 +68,8 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     setPlayerPreference: input => ipcRenderer.invoke('PLAYER_PREFERENCE_SET', input),
     clearPackets: () => ipcRenderer.invoke('PACKETS_CLEAR'),
     testObserver: input => ipcRenderer.invoke('OBSERVER_TEST', input),
-    // Exchange an organizer-generated pairing code for a node registration.
-    // Returns { ok, nodeId?, error? } — the token is NEVER returned.
+    // Retired: pairing codes were replaced by account sign-in (18 October 2026).
+    // Kept fail-closed so legacy renderer calls receive a clear error.
     pair: (pairingCode) => ipcRenderer.invoke('PAIR', { pairingCode }),
     // Full status snapshot: mode, paired state, hub and HUD online, GEP active.
     getStatus: () => ipcRenderer.invoke('GET_STATUS'),
@@ -85,6 +91,8 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     // ShowConfig pushed from BroadcastHub (safe to expose — no secrets in payload)
     onShowConfig: (cb) => { const handler = (_e, cfg) => cb(cfg); ipcRenderer.on('show-config', handler); return () => ipcRenderer.removeListener('show-config', handler); },
   },
+
+  studio: { end: input => ipcRenderer.invoke("STUDIO_END", input), get: () => ipcRenderer.invoke("STUDIO_GET"), select: input => ipcRenderer.invoke("STUDIO_SELECT", input), take: input => ipcRenderer.invoke("STUDIO_TAKE", input), setMode: input => ipcRenderer.invoke("STUDIO_MODE", input) },
 
   // P1: Video switcher (OBS / vMix) control surface
   obs: {
@@ -172,6 +180,36 @@ contextBridge.exposeInMainWorld('esportraBroadcast', {
     start: () => ipcRenderer.invoke('SIMULATION_START'),
     getStatus: () => ipcRenderer.invoke('SIMULATION_STATUS'),
     control: (input) => ipcRenderer.invoke('SIMULATION_CONTROL', input),
+    importRecording: () => ipcRenderer.invoke('SIMULATION_IMPORT'),
     stop:  ()                => ipcRenderer.invoke('SIMULATION_STOP'),
+  },
+
+  // P3: lifecycle state machine (PRD §10) — manual fallback + automation control.
+  lifecycle: {
+    get: () => ipcRenderer.invoke('LIFECYCLE_GET'),
+    setAutomation: (enabled, protectedScenes) => ipcRenderer.invoke('LIFECYCLE_SET_AUTOMATION', { enabled, protectedScenes }),
+    hold: (reason) => ipcRenderer.invoke('LIFECYCLE_HOLD', { reason }),
+    release: () => ipcRenderer.invoke('LIFECYCLE_RELEASE'),
+    manual: (state) => ipcRenderer.invoke('LIFECYCLE_MANUAL', { state }),
+    confirmResult: () => ipcRenderer.invoke('LIFECYCLE_RESULT_CONFIRM'),
+    onState: (cb) => {
+      const fn = (_e, snapshot) => cb(snapshot);
+      ipcRenderer.on('lifecycle-state', fn);
+      return () => ipcRenderer.removeListener('lifecycle-state', fn);
+    },
+  },
+
+  // P3: backend veto stream (VetoHub) mirrored for the operator console.
+  veto: {
+    get: () => ipcRenderer.invoke('VETO_GET'),
+    onState: (cb) => {
+      const fn = (_e, snapshot) => cb(snapshot);
+      ipcRenderer.on('veto-state', fn);
+      return () => ipcRenderer.removeListener('veto-state', fn);
+    },
+  },
+
+  diagnostics: {
+    export: () => ipcRenderer.invoke('DIAGNOSTICS_EXPORT'),
   },
 });

@@ -1,10 +1,14 @@
 # CLAUDE.md — Esportra-Air
 
+## gstack
+
+Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.
+
 ## What This Project Is
 
 Esportra-Air is Esportra's broadcast production system for Valorant tournaments. The current checkout has three parts:
 
-1. **HUD** (`esportra-valorant-hud/`) — 45 web overlays, a Node.js server, a Valorant GEP adapter and an operator control panel. Plain HTML/JS/CSS; no HUD build step. Production readiness requires current environment evidence.
+1. **HUD** (`esportra-valorant-hud/`) — 46 web overlays, a Node.js server, a Valorant GEP adapter and an operator control panel. Plain HTML/JS/CSS; no HUD build step. Production readiness requires current environment evidence.
 2. **Desktop runtime** (`src/`) — standard Electron + React, currently JavaScript/JSX. Includes node pairing/keychain, BroadcastHub, local OBS, rundown/rules, durable queue, Fix Data and a separate ow-electron capture child/LAN relay. Run `npm run build:renderer` and `npm test` for local verification. Web operations live in the main Esportra frontend.
 3. **UI reference** — `index.html` and its linked `screens/` images remain the original product brief. The only active implemented reference is `design/implemented/`: actual current component captures across A–Z workflows. Read `docs/coverage/INDEX-COVERAGE.md` before claiming original PRD completion: 53 requirements: the initial audit was 2 implemented, 38 partial and 13 missing. The local production follow-up closes five partial scopes, bringing that checkpoint to 7 implemented, 33 partial and 13 missing. Reinspection of existing player-PC GEP hooks corrects E1.6 from missing to partial: the subsequent continuation audit is 23 functionally implemented, 18 partial and 12 missing; live acceptance remains separate. Three older UI variants and duplicate ZIPs were retired into `docs/archive/retired-uiux-2026-10-14.zip` after every archived file was hash-verified. Historical packs must not direct current UI implementation.
 
