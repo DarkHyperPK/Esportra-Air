@@ -14,8 +14,12 @@
   },
   "dependencies": {
     "@microsoft/signalr": "^8.0.29",
+    "clsx": "^2.1.1",
     "dotenv": "^18.0.7",
+    "ffmpeg-static": "5.2.0",
+    "ffprobe-static": "3.1.0",
     "keytar": "^7.9.0",
+    "lucide-react": "^0.469.0",
     "node-fetch": "^2.7.0",
     "obs-websocket-js": "^5.0.8",
     "react": "^18.3.1",
@@ -23,9 +27,17 @@
     "ws": "^8.17.0"
   },
   "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
     "electron": "^28.0.0",
     "electron-builder": "^24.0.0",
-    "esbuild": "^0.21.5"
+    "esbuild": "^0.21.5",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7"
   },
   "build": {
     "appId": "gg.esportra.air",
@@ -44,18 +56,28 @@
       "!**/node_modules/**/{README*,CHANGELOG*,test,tests,docs}/**/*"
     ],
     "asarUnpack": [
-      "esportra-valorant-hud/**/*"
+      "esportra-valorant-hud/**/*",
+      "node_modules/ffmpeg-static/**/*",
+      "node_modules/ffprobe-static/bin/win32/x64/**/*"
     ],
     "extraResources": [
       {
         "from": "esportra-valorant-hud/capture/overwolf-valorant/node_modules/@overwolf/ow-electron/dist",
         "to": "app.asar.unpacked/esportra-valorant-hud/capture/overwolf-valorant/node_modules/@overwolf/ow-electron/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "esportra-valorant-hud/capture/overwolf-valorant/node_modules/ws",
         "to": "app.asar.unpacked/esportra-valorant-hud/capture/overwolf-valorant/node_modules/ws",
-        "filter": ["lib/**/*", "index.js", "wrapper.mjs", "package.json", "LICENSE"]
+        "filter": [
+          "lib/**/*",
+          "index.js",
+          "wrapper.mjs",
+          "package.json",
+          "LICENSE"
+        ]
       }
     ],
     "win": {
@@ -76,6 +98,15 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Esportra Air",
       "deleteAppDataOnUninstall": false
-    }
-  }
+    },
+    "protocols": [
+      {
+        "name": "Esportra Air",
+        "schemes": [
+          "esportra-air"
+        ]
+      }
+    ]
+  },
+  "packageManager": "pnpm@12.11.2+sha512.25a51652a196785af5f28bda6dfe8dc582ebefa4ac1d180221ce1390231c5fb76637822ea4b6e4633ce74acdcb0a77f725af11bad38177fdeddaee818a955cb9"
 }
