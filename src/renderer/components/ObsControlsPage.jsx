@@ -120,7 +120,7 @@ export default function ObsControlsPage({ mode = 'operation', embedded = false }
 <p className="oc-help"><TriangleAlert size={13} />{!local ? 'Replay preparation requires OBS on this PC. Scene controls still work over LAN.' : 'GEP detects events, not camera coverage. Replays contain the observer output OBS recorded, including existing graphics and audio.'}</p><button className="air-text-btn" onClick={() => navigate('shortcuts')}>Edit control shortcuts<ArrowRight size={13} /></button></section>
         </div><footer><p>{dirty.current ? 'Unsaved settings' : 'Settings saved locally'} · Changes affect optional controls, never HUD essentials.</p><WorkspaceAction variant="primary" className="" disabled={working} onClick={() => void save(draft)}>Save control settings</WorkspaceAction></footer>
       </details>}
-      <p className="oc-bottom-note"><CircleHelp size={14} />OBS remains available at all times. vMix controls are unavailable in this build. Rehearse replay video and audio in OBS before going live.</p>
+      <p className="oc-bottom-note"><CircleHelp size={14} />OBS remains available at all times. vMix is supported as an alternative backend — configure <code>obsBackend: "vmix"</code> in Node Settings and connect via the Connections page. Rehearse replay video and audio before going live.</p>
     </Body>;
   return embedded ? content : <AirShell screenTitle={setup ? 'OBS & replay setup' : 'OBS controls'}>{content}</AirShell>;
 }
