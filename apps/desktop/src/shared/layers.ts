@@ -37,6 +37,7 @@ export const LAYER_DEFS: LayerDef[] = [
   { id: 'fs:standings', label: 'Standings', group: 'fullscreen', hotkey: 'G' },
   { id: 'fs:agent-select', label: 'Agent select', group: 'fullscreen', hotkey: 'Shift+H' },
   { id: 'fs:champion', label: 'Champion', group: 'fullscreen', hotkey: 'J' },
+  { id: 'fs:cam-grid', label: 'Player cams', group: 'fullscreen', hotkey: 'K' },
 ];
 
 /** Layers where Auto means something (rules or the HUD decide until the producer overrides). */

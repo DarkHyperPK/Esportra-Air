@@ -82,7 +82,9 @@ export interface EngineStatus {
     lastFeedAt: number | null;
     feedAgeMs: number | null;
     feedPaused: boolean;
-    testRound: { running: boolean; startedAt?: number; durationMs: number };
+    testRound: { running: boolean; startedAt?: number; durationMs: number; speed?: number; fromMs?: number };
+    /** Per team, per player slot: is the camera connected on an overlay page. */
+    cams?: boolean[][];
   }>;
   outputs: Array<{ id: string; connections: number; lastFrameAt: number | null }>;
 }

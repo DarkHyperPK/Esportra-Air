@@ -224,6 +224,15 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 .player-cams.l{left:344px}.player-cams.r{right:344px}
 .player-cams .cam{height:92px;position:relative;border:1px solid var(--c)}
 .player-cams .cam.observed{border-width:2px}
+.player-cams .camview,.camrow .camview{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+.player-cams .cam,.camrow .cam{background:rgba(9,9,11,.55);overflow:hidden}
+.camwall{position:absolute;inset:0;background:#09090b;display:flex;flex-direction:column;justify-content:center;gap:28px;padding:0 60px}
+.camwall-title{position:absolute;top:44px;left:60px;letter-spacing:.3em;font-size:14px;color:#a1a1aa}
+.camrow{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+.camrow .cam{height:auto;aspect-ratio:16/9;position:relative;border:1px solid var(--c)}
+.camrow .cam.observed{border-width:2px}
+.camrow .name{position:absolute;left:-1px;bottom:-1px;max-width:100%;padding:3px 7px;background:var(--c);color:var(--ci);font-size:11px;letter-spacing:.12em;overflow:hidden;text-overflow:ellipsis;z-index:1}
+.player-cams .name{z-index:1}
 .player-cams .name{position:absolute;left:-1px;bottom:-1px;max-width:100%;padding:2px 5px;background:var(--c);color:var(--ci);font-size:8px;letter-spacing:.12em;overflow:hidden;text-overflow:ellipsis}
 .bn{position:absolute;left:0;top:340px;width:1920px;height:230px;opacity:0}
 .bn.on{opacity:1}

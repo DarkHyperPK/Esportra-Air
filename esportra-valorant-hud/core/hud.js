@@ -343,24 +343,87 @@
     } };
   };
 
+  // ── Player cameras ────────────────────────────────────────────────────────────────────────────
+  // A camera is a VDO.Ninja view (a push link the player opens) named in state.airCams.slots[team][slot].
+  // Nothing is drawn or loaded for a slot with no link, so pages without cameras are unchanged.
+  const camFrames = new Set();
+  let camBeat = null;
+  const camUrl = (id, ms) => 'https://vdo.ninja/?view=' + encodeURIComponent(id) + '&solo&noaudio&cleanoutput&api=esportra-air' + (ms > 0 ? '&buffer=' + ms : '');
+  window.addEventListener('message', ev => {
+    const d = ev.data; if (!d || typeof d !== 'object') return;
+    camFrames.forEach(c => { if (c.iframe && c.iframe.contentWindow === ev.source) c.heard(d); });
+  });
+  const camReport = c => { if (c.id) HUD.send({ type: 'cam', team: c.team, slot: c.slot, connected: c.connected }); };
+  // One camera window: shows the stream for its slot, and tells the engine whether it is connected.
+  function camWindow(parent, team, slot) {
+    const c = { team, slot, id: '', ms: 0, connected: false, iframe: null, parent };
+    c.heard = d => {
+      const on = d.action === 'view-connection' ? !!d.value : ['video-loaded', 'track-added', 'peer-connected'].includes(d.action) ? true : ['end-view-connection', 'view-connection-lost', 'peer-disconnected'].includes(d.action) ? false : null;
+      if (on !== null && on !== c.connected) { c.connected = on; parent.classList.toggle('live', on); camReport(c); }
+    };
+    c.set = (id, ms) => {
+      id = id || ''; ms = +ms || 0;
+      if (id === c.id && ms === c.ms) return;
+      c.id = id; c.ms = ms; c.connected = false; parent.classList.remove('live');
+      if (c.iframe) { c.iframe.remove(); c.iframe = null; }
+      if (id) { const f = document.createElement('iframe'); f.className = 'camview'; f.allow = 'autoplay'; f.setAttribute('scrolling', 'no'); f.src = camUrl(id, ms); parent.insertBefore(f, parent.firstChild); c.iframe = f; }
+      if (!camBeat) camBeat = setInterval(() => camFrames.forEach(camReport), 5000);
+    };
+    camFrames.add(c);
+    return c;
+  }
+
   M.playercams = root => {
     const m = E('div', 'mod', root);
     const teams = [0, 1].map(team => {
       const column = E('div', 'player-cams ' + (team ? 'r fx-right' : 'l fx-left'), m);
-      const frames = Array.from({length:5}, () => {
+      const frames = Array.from({length:5}, (_, slot) => {
         const frame = E('div', 'cam', column), name = E('span', 'name mono', frame);
-        return {frame, name};
+        return {frame, name, cam: camWindow(frame, team, slot)};
       });
       return {column, frames};
     });
     return {update(s) {
-      toggle(m, s.show.playerCams && vis.players(s));
+      const cams = s.airCams, ingame = !cams || cams.layout === 'ingame';
+      toggle(m, s.show.playerCams && vis.players(s) && ingame);
       teams.forEach((team, i) => {
         tv(team.column, s, i);
-        team.frames.forEach(({frame, name}, j) => {
+        team.frames.forEach(({frame, name, cam}, j) => {
           const player = s.players[i][j]; frame.style.visibility = player ? '' : 'hidden';
           txt(name, player?.name || 'PLAYER ' + (j + 1));
           frame.classList.toggle('observed', s.observed[0] === i && s.observed[1] === j);
+          cam.set(ingame && cams?.slots?.[i]?.[j], cams?.delayMs);
+        });
+      });
+    }};
+  };
+
+  // Full-screen camera wall: the observed team's five (5-up) or both teams' ten (10-up).
+  M.camgrid = root => {
+    const m = E('div', 'mod', root), wall = E('div', 'camwall fx-rise', m);
+    E('div', 'camwall-title mono', wall, 'PLAYER CAMS');
+    const rows = [0, 1].map(team => {
+      const row = E('div', 'camrow', wall);
+      const frames = Array.from({length:5}, (_, slot) => {
+        const frame = E('div', 'cam', row), name = E('span', 'name mono', frame);
+        return {frame, name, cam: camWindow(frame, team, slot)};
+      });
+      return {row, frames};
+    });
+    return {update(s) {
+      const cams = s.airCams, layout = cams?.layout, wanted = layout === 'grid5' || layout === 'grid10';
+      toggle(m, wanted);
+      wall.classList.toggle('one', layout === 'grid5');
+      const first = s.observed && s.observed[0] === 1 ? 1 : 0;
+      rows.forEach((r, i) => {
+        r.row.style.display = layout === 'grid5' && i !== first ? 'none' : '';
+        tv(r.row, s, i);
+        r.frames.forEach(({frame, name, cam}, j) => {
+          const player = s.players[i][j];
+          txt(name, player?.name || 'PLAYER ' + (j + 1));
+          frame.classList.toggle('observed', s.observed[0] === i && s.observed[1] === j);
+          const shown = wanted && (layout === 'grid10' || i === first);
+          cam.set(shown && cams?.slots?.[i]?.[j], cams?.delayMs);
         });
       });
     }};

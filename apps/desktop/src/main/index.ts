@@ -9,6 +9,7 @@ import { dispatch } from './api.ts';
 import { EngineSupervisor } from './engine-supervisor.ts';
 import { GepBridge, type OverwolfPackages } from './gep.ts';
 import { IngestClient } from './ingest.ts';
+import { CaptureStats } from './capture-stats.ts';
 import { ObsLink, type ObsSocket } from './obs.ts';
 import { engineEnv, realProcess } from './process.ts';
 import { Production } from './production.ts';
@@ -40,10 +41,11 @@ async function main() {
   const store = new Store(join(app.getPath('userData'), 'air.json'));
   const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, env: engineEnv(), ...realProcess });
   const ingest = new IngestClient();
+  const stats = new CaptureStats();
   const packages = ((app as unknown as { overwolf?: { packages?: OverwolfPackages } }).overwolf?.packages) ?? null;
-  const capture = new GepBridge({ packages, send: (m) => ingest.send(m), log: (m) => console.warn('[gep]', m) });
+  const capture = new GepBridge({ packages, send: (m) => { stats.record(m); ingest.send(m); }, log: (m) => console.warn('[gep]', m) });
   const obs = new ObsLink(() => new OBSWebSocket() as unknown as ObsSocket);
-  const production = new Production({ store, engine, obs, capture, ingest, version: app.getVersion() });
+  const production = new Production({ store, engine, obs, capture, ingest, stats, version: app.getVersion() });
   const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text) };
 
   ipcMain.handle(CHANNELS.call, async (event, method: ApiMethod, args: unknown[]) => {

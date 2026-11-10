@@ -148,7 +148,44 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await rail('Console');
   await btn('Run manually');
 
+  // Player cameras (S5): make links, copy one, 10-up; the overlay pages show the streams and report connection.
+  await rail('Console');
+  await page.getByLabel('Player cameras').getByRole('button', { name: 'Make link' }).first().click();
+  await page.getByLabel('Player cameras').getByRole('button', { name: 'Copy link' }).first().waitFor();
+  await page.getByLabel('Player cameras').getByRole('button', { name: 'Make link' }).first().click();
+  await page.getByLabel('Player cameras').getByRole('button', { name: 'Make link' }).first().click();
+  await page.getByLabel('Player cameras').getByRole('button', { name: 'Copy link' }).first().click();
+  await page.getByLabel('Player cameras').getByRole('button', { name: 'Copied' }).waitFor();
+  await page.getByLabel('Player cameras').getByRole('button', { name: '10-up' }).click();
+  await page.getByLabel('Player cameras').getByRole('button', { name: '10-up' }).and(page.locator('[aria-pressed=true]')).waitFor();
+  await page.getByLabel('Player cameras').scrollIntoViewIfNeeded();
+  await shot('cameras');
+  for (const [name, selector] of [['cam-grid', '.camwall .cam iframe'], ['ingame', '.player-cams .cam iframe']]) {
+    if (name === 'ingame') await fetch(`http://127.0.0.1:5399/control/action`, { method: 'POST', headers: { 'X-Esportra-Key': 'dev-host-key-0123456789abcdef', 'Content-Type': 'application/json' }, body: JSON.stringify({ match: code, name: 'cams.set', args: { layout: 'ingame' } }) });
+    const overlay = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    await overlay.goto(`http://127.0.0.1:5399/overlays/${name === 'ingame' ? 'ingame' : 'cam-grid'}.html?match=${code}&screen=1`);
+    await overlay.waitForSelector(selector, { state: 'attached' });
+    const srcs = await overlay.$$eval(selector, (f) => f.map((x) => x.src));
+    if (srcs.length !== 3 || !srcs.every((u) => u.startsWith('https://vdo.ninja/?view=') && u.includes('noaudio'))) throw new Error(`${name}: expected 3 camera views, got ${JSON.stringify(srcs)}`);
+    // A camera reporting in through VDO.Ninja's iframe API turns its window live and reaches the engine.
+    await overlay.evaluate((sel) => { const f = document.querySelector(sel); window.dispatchEvent(new MessageEvent('message', { data: { action: 'view-connection', value: true }, source: f.contentWindow })); }, selector);
+    await overlay.waitForTimeout(400);
+    const status = await (await fetch('http://127.0.0.1:5399/control/status', { headers: { 'X-Esportra-Key': 'dev-host-key-0123456789abcdef' } })).json();
+    const cams = status.rooms.find((r) => r.match === code.toUpperCase()).cams;
+    if (cams.flat().filter(Boolean).length !== 1) throw new Error(`${name}: one camera should report connected, got ${JSON.stringify(cams)}`);
+    if (name === 'cam-grid') { await overlay.locator('.camwall-title').waitFor({ state: 'visible' }); await overlay.waitForTimeout(1500); }
+    if (name === 'cam-grid') await overlay.screenshot({ path: path.join(OUT, `${String(++n).padStart(2, '0')}-cam-wall-output.png`) });
+    await overlay.close();
+  }
+  await page.getByLabel('Player cameras').locator('.cdot.connected').first().waitFor();
+  await page.getByLabel('Player cameras').getByRole('button', { name: 'In-game cams' }).click();
+
   await rail('Capture');
+  await btn('Stop capture');
+  await page.getByRole('button', { name: '4×' }).click();
+  await btn('Play');
+  await page.getByText(/^\d+:\d\d \/ /).waitFor();
+  await page.waitForTimeout(3500);
   await shot('capture');
   await rail('Sync');
   await rail('Setup');

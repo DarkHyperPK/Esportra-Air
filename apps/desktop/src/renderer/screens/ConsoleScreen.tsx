@@ -6,6 +6,7 @@ import { air } from '../bridge.ts';
 import { Monitor, sceneLabel, useMonitor } from '../components/Monitor.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
 import { AutopilotCard } from '../components/Autopilot.tsx';
+import { CamerasPanel } from '../components/Cameras.tsx';
 import type { PageProps } from '../App.tsx';
 
 function nextSponsor(s: Snapshot) {
@@ -235,6 +236,8 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
           {form === 'toast' && <ToastForm run={run} close={() => setForm(null)} />}
           {form === 'poll' && <PollForm run={run} close={() => setForm(null)} active={s.triggers.poll} />}
         </section>
+
+        <CamerasPanel s={s} run={run} />
 
         <div className="datastrip" aria-label="Live data">
           <span className="k">Live data</span>

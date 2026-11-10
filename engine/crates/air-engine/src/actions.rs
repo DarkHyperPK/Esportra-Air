@@ -111,8 +111,47 @@ pub fn run(room: &Arc<Room>, name: &str, args: &Value) -> Result<u64, String> {
             state["stinger"] = air_state::js::num(now_ms());
             Ok(())
         }
+        // Player cameras: which VDO.Ninja stream sits in each of the ten player frames, and how they are laid out.
+        "cams.set" => cams_set(state, args),
         _ => Err("Unknown action.".into()),
     })
+}
+
+fn camera_id(v: &Value) -> Result<Value, String> {
+    match v {
+        Value::Null => Ok(Value::Null),
+        Value::String(s) if (6..=40).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') => Ok(v.clone()),
+        _ => Err("A camera link id uses letters, numbers, - and _ (6–40 characters).".into()),
+    }
+}
+
+/// `{ layout?: "ingame"|"grid5"|"grid10", delayMs?: 0..=10000, slots?: [[id|null; 5]; 2] }`, each part optional.
+fn cams_set(state: &mut Value, args: &Value) -> Result<(), String> {
+    if !state.get("airCams").is_some_and(Value::is_object) {
+        state["airCams"] = json!({ "layout": "ingame", "delayMs": 0, "slots": [[null, null, null, null, null], [null, null, null, null, null]] });
+    }
+    if let Some(layout) = args.get("layout") {
+        match layout.as_str() {
+            Some("ingame" | "grid5" | "grid10") => state["airCams"]["layout"] = layout.clone(),
+            _ => return Err("Choose In-game, 5-up or 10-up.".into()),
+        }
+    }
+    if let Some(delay) = args.get("delayMs") {
+        let ms = delay.as_f64().filter(|n| *n == n.trunc() && (0.0..=10_000.0).contains(n)).ok_or("Camera delay is 0–10,000 ms.")?;
+        state["airCams"]["delayMs"] = json!(ms as u64);
+    }
+    if let Some(slots) = args.get("slots") {
+        let teams = slots.as_array().filter(|t| t.len() == 2 && t.iter().all(|x| x.as_array().is_some_and(|a| a.len() == 5))).ok_or("Provide five camera slots per team.")?;
+        let clean: Result<Vec<Vec<Value>>, String> = teams.iter().map(|t| t.as_array().into_iter().flatten().map(camera_id).collect()).collect();
+        state["airCams"]["slots"] = json!(clean?);
+    }
+    // The in-game frames show when that layout has at least one camera; the camera wall has its own page.
+    let any = state["airCams"]["slots"].as_array().is_some_and(|t| t.iter().flat_map(|x| x.as_array().into_iter().flatten()).any(|c| !c.is_null()));
+    if !state.get("show").is_some_and(Value::is_object) {
+        state["show"] = json!({});
+    }
+    state["show"]["playerCams"] = json!(any && state["airCams"]["layout"] == json!("ingame"));
+    Ok(())
 }
 
 #[cfg(test)]

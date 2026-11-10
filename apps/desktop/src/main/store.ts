@@ -18,6 +18,8 @@ export interface Saved {
   enginePort: number;
   /** The producer's rundown edits, per match. Whether autopilot is on is never saved. */
   rundown?: Record<string, RundownEdits>;
+  /** Player camera links (VDO.Ninja ids) per player slot, and how the cameras are laid out. */
+  cams?: { layout: 'ingame' | 'grid5' | 'grid10'; delayMs: number; ids: Array<Array<string | null>> };
 }
 
 const full = { x: 0, y: 0, width: 1920, height: 1080 };
@@ -38,6 +40,7 @@ export const DEFAULT_SCREENS: Screen[] = [
   screen('standings', 'standings', 'Standings', 'fullscreen'),
   screen('player-profile', 'player-profile', 'Player profile', 'fullscreen'),
   screen('champion', 'champion', 'Champion', 'fullscreen'),
+  screen('cam-grid', 'cam-grid', 'Player cams', 'fullscreen'),
   screen('replay-bug', 'replay', 'Replay bug', 'replay', true),
   screen('casters', 'casters', 'Casters', 'casters', true),
 ];

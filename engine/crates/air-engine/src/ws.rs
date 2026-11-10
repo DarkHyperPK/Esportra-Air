@@ -184,6 +184,11 @@ async fn finish(engine: &Engine, id: u64, then: impl std::future::Future<Output 
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .remove(&id);
+    engine
+        .cam_reports
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .remove(&id);
 }
 
 /// One client message. Returns a direct reply (only `resync` has one).
@@ -210,6 +215,18 @@ fn handle(
             {
                 entry.1 = Some(now_ms());
             }
+        }
+        return None;
+    }
+    // An overlay page says whether each player camera it shows is connected.
+    if role == "overlay" && kind == "cam" {
+        let (team, slot) = (m.get("team").and_then(Value::as_u64), m.get("slot").and_then(Value::as_u64));
+        if let (Some(team @ 0..=1), Some(slot @ 0..=4)) = (team, slot) {
+            let on = m.get("connected").and_then(Value::as_bool).unwrap_or(false);
+            let mut reports = engine.cam_reports.lock().unwrap_or_else(|p| p.into_inner());
+            let entry = reports.entry(id).or_insert_with(|| (room.code.clone(), Default::default()));
+            entry.0 = room.code.clone();
+            entry.1.insert((team as u8, slot as u8), (on, now_ms()));
         }
         return None;
     }

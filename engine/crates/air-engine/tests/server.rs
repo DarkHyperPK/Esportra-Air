@@ -1009,3 +1009,77 @@ async fn observers_receive_events_but_are_not_counted_as_viewers() {
         .clone();
     assert_eq!(room["clients"], json!(0));
 }
+
+#[tokio::test]
+async fn test_round_can_start_late_and_fast_then_restore() {
+    let r = engine(temp_dir()).await;
+    let before = request(&r, "GET", "/api/SK", None, false).await.json()["state"].clone();
+    let post = |body: Value| {
+        let r = &r;
+        async move { request(r, "POST", "/control/test-round", Some(&body), true).await }
+    };
+    let start = post(json!({ "match": "SK", "action": "start", "speed": 8.0, "from": 37000.0 })).await;
+    assert_eq!(start.status, 200, "{}", start.body);
+    let status = start.json();
+    assert_eq!((status["speed"].as_f64(), status["fromMs"].as_f64()), (Some(8.0), Some(37000.0)));
+    // Speed and position are bounded.
+    post(json!({ "match": "SK", "action": "stop" })).await;
+    let wild = post(json!({ "match": "SK", "action": "start", "speed": 500.0, "from": 99999999.0 })).await.json();
+    assert_eq!(wild["speed"].as_f64(), Some(8.0));
+    assert_eq!(wild["fromMs"].as_f64(), Some(38140.0));
+    // Seeking restarts from a new position without a 409.
+    let seek = post(json!({ "match": "SK", "action": "seek", "from": 10000.0, "speed": 2.0 })).await;
+    assert_eq!(seek.status, 200, "{}", seek.body);
+    assert_eq!(seek.json()["fromMs"].as_f64(), Some(10000.0));
+    // Earlier steps were applied at once, so the HUD already shows a played state.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let playing = request(&r, "GET", "/api/SK", None, false).await.json()["state"].clone();
+    assert_eq!(playing["airContext"]["simulation"], json!(true));
+    post(json!({ "match": "SK", "action": "stop" })).await;
+    let after = request(&r, "GET", "/api/SK", None, false).await.json()["state"].clone();
+    assert_eq!(after, before, "the match is exactly as it was");
+}
+
+#[tokio::test]
+async fn player_cameras_are_validated_and_report_connection() {
+    let r = engine(temp_dir()).await;
+    let ids = |a: &str| json!([[a, null, null, null, null], [null, null, null, null, "bravo-five"]]);
+    let ok = action(&r, "CM", "cams.set", json!({ "layout": "grid10", "delayMs": 1500, "slots": ids("alpha-one") })).await;
+    assert_eq!(ok.status, 200, "{}", ok.body);
+    let cams = show(&r, "CM").await["airCams"].clone();
+    assert_eq!(cams["layout"], json!("grid10"));
+    assert_eq!(cams["delayMs"], json!(1500));
+    assert_eq!(cams["slots"][1][4], json!("bravo-five"));
+    for bad in [
+        json!({ "layout": "wall" }),
+        json!({ "delayMs": 20000 }),
+        json!({ "delayMs": 1.5 }),
+        json!({ "slots": ids("bad id!") }),
+        json!({ "slots": ids("x") }),
+        json!({ "slots": [[null]] }),
+    ] {
+        assert_eq!(action(&r, "CM", "cams.set", bad.clone()).await.status, 400, "{bad}");
+    }
+    // Partial updates keep the rest.
+    action(&r, "CM", "cams.set", json!({ "layout": "ingame" })).await;
+    let cams = show(&r, "CM").await["airCams"].clone();
+    assert_eq!((cams["layout"].clone(), cams["slots"][0][0].clone()), (json!("ingame"), json!("alpha-one")));
+
+    // An overlay page reports which cameras are connected; the control status shows it, and it lapses with the page.
+    let outputs = json!({ "outputs": [{ "id": "cams-page", "overlay": "player-cams", "matchCode": "CM" }] });
+    request(&r, "PUT", "/control/outputs", Some(&outputs), true).await;
+    let mut page = ws(&r, "output=cams-page").await;
+    next_json(&mut page).await;
+    page.send(Message::Text(json!({ "type": "cam", "team": 0, "slot": 0, "connected": true }).to_string().into())).await.unwrap();
+    page.send(Message::Text(json!({ "type": "cam", "team": 3, "slot": 9, "connected": true }).to_string().into())).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let status = request(&r, "GET", "/control/status", None, true).await.json();
+    let room = status["rooms"].as_array().unwrap().iter().find(|x| x["match"] == "CM").unwrap();
+    assert_eq!(room["cams"][0][0], json!(true));
+    assert_eq!(room["cams"][1][4], json!(false));
+    drop(page);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let status = request(&r, "GET", "/control/status", None, true).await.json();
+    let room = status["rooms"].as_array().unwrap().iter().find(|x| x["match"] == "CM").unwrap();
+    assert_eq!(room["cams"][0][0], json!(false), "a closed page no longer reports connected cameras");
+}

@@ -11,6 +11,7 @@ import { extname, join, resolve } from 'node:path';
 import { dispatch } from '../src/main/api.ts';
 import { EngineSupervisor } from '../src/main/engine-supervisor.ts';
 import { IngestClient } from '../src/main/ingest.ts';
+import { CaptureStats } from '../src/main/capture-stats.ts';
 import { ObsLink } from '../src/main/obs.ts';
 import { engineEnv, realProcess } from '../src/main/process.ts';
 import { Production } from '../src/main/production.ts';
@@ -32,7 +33,8 @@ class SimulatedCapture extends EventEmitter {
   reason: string | null = null;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private readonly ingest: IngestClient;
-  constructor(ingest: IngestClient) { super(); this.ingest = ingest; }
+  private readonly stats: CaptureStats;
+  constructor(ingest: IngestClient, stats: CaptureStats) { super(); this.ingest = ingest; this.stats = stats; }
   start() {
     this.state = 'waiting';
     this.reason = 'Simulated: Valorant starts in 2 s.';
@@ -42,7 +44,7 @@ class SimulatedCapture extends EventEmitter {
     for (const step of steps.filter((s: any) => s.kind === 'ingest')) {
       this.timers.push(setTimeout(() => {
         if (this.state === 'waiting') { this.state = 'live'; this.reason = null; this.emit('change'); }
-        for (const m of step.input) this.ingest.send(m);
+        for (const m of step.input) { this.stats.record(m); this.ingest.send(m); }
       }, 2000 + (step.t - t0)));
     }
   }
@@ -62,9 +64,10 @@ const fakeObs = new FakeObs();
 fakeObs.transitionMs = 400;
 const obs = new ObsLink(() => fakeObs);
 const ingest = new IngestClient();
-const capture = new SimulatedCapture(ingest);
+const stats = new CaptureStats();
+const capture = new SimulatedCapture(ingest, stats);
 const store = new Store(join(dir, 'air.json'));
-const production = new Production({ store, engine, obs, capture, ingest, version: 'dev' });
+const production = new Production({ store, engine, obs, capture, ingest, stats, version: 'dev' });
 const secrets = new Secrets(join(dir, 'secrets.json'), { isEncryptionAvailable: () => false, encryptString: () => Buffer.alloc(0), decryptString: () => '' });
 let clipboard = '';
 const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; } };

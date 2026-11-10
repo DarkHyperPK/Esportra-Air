@@ -151,6 +151,43 @@ export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'c
 
 import type { AutopilotView, SegmentEdit } from './autopilot.ts';
 
+export interface FeatureStat {
+  id: string;
+  label: string;
+  detail: string;
+  kind: 'stream' | 'event';
+  /** live: arriving (events: seen this match) · quiet: a stream went silent · waiting: not seen yet · player-pc: needs a player PC. */
+  status: 'live' | 'quiet' | 'waiting' | 'player-pc';
+  ageMs: number | null;
+  /** Messages per second over the last 60 s, oldest first. */
+  spark: number[];
+}
+
+export interface CaptureView {
+  messagesPerSec: number;
+  total: number;
+  gaps: number;
+  lastAgeMs: number | null;
+  features: FeatureStat[];
+}
+
+export interface CamSlot {
+  team: number;
+  slot: number;
+  name: string;
+  /** Link id once a link has been made for this player. */
+  id: string | null;
+  /** The link the player opens on their own PC (VDO.Ninja). */
+  pushUrl: string | null;
+  connected: boolean;
+}
+
+export interface CamsView {
+  layout: 'ingame' | 'grid5' | 'grid10';
+  delayMs: number;
+  slots: CamSlot[];
+}
+
 export interface Snapshot {
   version: string;
   engine: { state: 'starting' | 'running' | 'restarting' | 'failed'; port: number | null; reattached: boolean; error: string | null };
@@ -178,7 +215,9 @@ export interface Snapshot {
     videoInputs: string[];
   };
   outputs: OutputHealth[];
-  testRound: { running: boolean; startedAt: number | null; durationMs: number };
+  testRound: { running: boolean; startedAt: number | null; durationMs: number; speed: number; fromMs: number };
+  capture: CaptureView;
+  cams: CamsView;
   /** What is on screen right now, read from the engine so external controllers show up too. */
   triggers: {
     pause: 'technical' | 'timeout' | null;
@@ -247,7 +286,10 @@ export interface AirApi {
   installGraphics(): Promise<Snapshot>;
   startCapture(input: { consent: true }): Promise<Snapshot>;
   stopCapture(): Promise<Snapshot>;
-  testRound(action: 'start' | 'stop'): Promise<Snapshot>;
+  testRound(action: 'start' | 'stop' | 'seek', options?: { speed?: number; from?: number }): Promise<Snapshot>;
+  camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }): Promise<Snapshot>;
+  camCreate(team: number, slot: number): Promise<Snapshot>;
+  camRemove(team: number, slot: number): Promise<Snapshot>;
   pause(kind: 'technical' | 'timeout' | null): Promise<Snapshot>;
   casterStrap(on: boolean): Promise<Snapshot>;
   sponsorRead(sponsor: string | null): Promise<Snapshot>;

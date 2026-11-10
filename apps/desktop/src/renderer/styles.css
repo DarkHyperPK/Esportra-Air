@@ -267,3 +267,20 @@ h1, h2, h3, p { margin: 0; }
 .seg-table tr.next td { background: var(--amber-soft); }
 .seg-table select.cell { min-width: 112px; }
 .seg-table td:first-child { min-width: 130px; }
+
+/* ── player cameras ── */
+.cams-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.camrow-item { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 36px; border-top: 1px solid var(--hair); font-size: 13px; }
+.cname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbtns { display: flex; gap: 4px; }
+.cdot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); }
+.cdot.waiting { background: transparent; border: 2px solid var(--amber); }
+.cdot.connected { background: var(--ok); }
+.stats4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--hair); background: var(--panel); }
+.stats4 .stat { padding: 14px 16px; border-right: 1px solid var(--hair); }
+.stats4 .stat:last-child { border-right: 0; }
+.stats4 .v { font-family: var(--display, 'Poppins'), sans-serif; font-weight: 800; font-size: 26px; margin: 4px 0 2px; }
+.seg-table.feat td { vertical-align: middle; padding: 8px; }
+.readout { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 13px; margin: 0; }
+.readout dt { color: var(--text-3); font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; align-self: center; }
+.readout dd { margin: 0; font-family: var(--mono); }

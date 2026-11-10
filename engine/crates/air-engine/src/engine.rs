@@ -110,6 +110,32 @@ struct TestRun {
     backup_fixes: DisplayFixes,
     adapter: ValorantAdapter,
     started_at: f64,
+    /// Playback speed (1.0 = real time) and the script position it started from.
+    speed: f64,
+    from_ms: f64,
+}
+
+/// What one overlay page last said about each player camera it shows.
+pub type CamReports = (String, HashMap<(u8, u8), (bool, f64)>);
+
+/// A report older than this no longer counts (the page sends one every few seconds).
+pub const CAM_REPORT_TTL_MS: f64 = 15_000.0;
+
+impl Engine {
+    /// `[[bool; 5]; 2]`: is each player camera connected, per the overlay pages on air for this room.
+    pub fn cam_status(&self, room: &str) -> Value {
+        let now = now_ms();
+        let reports = self.cam_reports.lock().unwrap_or_else(|p| p.into_inner());
+        let connected = |team: u8, slot: u8| {
+            reports.values().any(|(code, map)| {
+                code == room
+                    && map
+                        .get(&(team, slot))
+                        .is_some_and(|(on, at)| *on && now - at < CAM_REPORT_TTL_MS)
+            })
+        };
+        json!([0u8, 1u8].map(|t| (0u8..5).map(|s| connected(t, s)).collect::<Vec<_>>()))
+    }
 }
 
 /// One scripted step of the Check screen's test round (`test-round.json`).
@@ -434,7 +460,7 @@ impl Room {
     }
 
     /// Starts a test round on this match. Returns its generation, used by the player task.
-    pub fn start_test(&self) -> Result<u64, &'static str> {
+    pub fn start_test(&self, speed: f64, from_ms: f64) -> Result<u64, &'static str> {
         let mut inner = self.lock();
         if inner.test.is_some() {
             return Err("A test round is already playing.");
@@ -446,6 +472,8 @@ impl Room {
             backup_fixes: inner.fixes.clone(),
             adapter: ValorantAdapter::new(),
             started_at: now_ms(),
+            speed,
+            from_ms,
         });
         self.testing.store(true, Ordering::SeqCst);
         // The HUD shows its "REHEARSAL · SAMPLE DATA" tag for simulated context.
@@ -482,7 +510,8 @@ impl Room {
             }
             state
         } else {
-            let mut patch = rebase_times(&step.body, test.started_at);
+            // Script times map onto the wall clock from the position playback started at.
+            let mut patch = rebase_times(&step.body, test.started_at - test.from_ms);
             keep_team_identity(&mut patch, &test.backup_state);
             merge(inner.state.clone(), &patch)
         };
@@ -537,7 +566,7 @@ impl Room {
         let duration = test_round_script().last().map_or(0.0, |s| s.at);
         match &inner.test {
             Some(t) => {
-                json!({ "running": true, "startedAt": t.started_at, "durationMs": duration })
+                json!({ "running": true, "startedAt": t.started_at, "durationMs": duration, "speed": t.speed, "fromMs": t.from_ms })
             }
             None => json!({ "running": false, "durationMs": duration }),
         }
@@ -632,6 +661,8 @@ pub struct Engine {
     pub outputs_changed: watch::Sender<u64>,
     /// Per output alias: connected overlay count and last rendered frame time.
     pub frames: Mutex<HashMap<u64, (String, Option<f64>)>>,
+    /// Camera connection reports from overlay pages, per client: (room, {(team, slot): (connected, at)}).
+    pub cam_reports: Mutex<HashMap<u64, CamReports>>,
     pub started_at: f64,
     pub feed_stale_ms: f64,
 }
@@ -654,6 +685,7 @@ impl Engine {
             outputs: Mutex::new(outputs),
             outputs_changed: watch::channel(0).0,
             frames: Mutex::new(HashMap::new()),
+            cam_reports: Mutex::new(HashMap::new()),
             started_at: now_ms(),
             feed_stale_ms: FEED_STALE_MS,
         })
@@ -761,13 +793,21 @@ impl Engine {
     }
 
     /// Plays the test round on `room` at real pace, then holds the last frame briefly and restores.
-    pub fn play_test_round(room: Arc<Room>) -> Result<(), &'static str> {
-        let generation = room.start_test()?;
+    pub fn play_test_round(
+        room: Arc<Room>,
+        speed: f64,
+        from_ms: f64,
+    ) -> Result<(), &'static str> {
+        let generation = room.start_test(speed, from_ms)?;
         tokio::spawn(async move {
             let start = tokio::time::Instant::now();
             for step in test_round_script() {
-                tokio::time::sleep_until(start + std::time::Duration::from_millis(step.at as u64))
-                    .await;
+                // Steps before the start position are applied at once, so the state is where it would be.
+                if step.at >= from_ms {
+                    let wait = (step.at - from_ms) / speed;
+                    tokio::time::sleep_until(start + std::time::Duration::from_millis(wait as u64))
+                        .await;
+                }
                 if !room.test_step(generation, step) {
                     return;
                 }

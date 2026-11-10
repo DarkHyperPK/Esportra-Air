@@ -645,15 +645,33 @@ async fn control(
             };
             let room = engine.room(input.get("match").and_then(Value::as_str));
             match input.get("action").and_then(Value::as_str) {
-                Some("start") => match Engine::play_test_round(room.clone()) {
-                    Ok(()) => send(StatusCode::OK, room.test_status()),
-                    Err(e) => error(StatusCode::CONFLICT, e),
-                },
+                Some(action @ ("start" | "seek")) => {
+                    let duration = crate::engine::test_round_script()
+                        .last()
+                        .map_or(0.0, |s| s.at);
+                    let speed = input
+                        .get("speed")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(1.0)
+                        .clamp(0.25, 8.0);
+                    let from = input
+                        .get("from")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.0)
+                        .clamp(0.0, duration);
+                    if action == "seek" {
+                        room.stop_test(None);
+                    }
+                    match Engine::play_test_round(room.clone(), speed, from) {
+                        Ok(()) => send(StatusCode::OK, room.test_status()),
+                        Err(e) => error(StatusCode::CONFLICT, e),
+                    }
+                }
                 Some("stop") => {
                     room.stop_test(None);
                     send(StatusCode::OK, room.test_status())
                 }
-                _ => error(StatusCode::BAD_REQUEST, "Choose start or stop."),
+                _ => error(StatusCode::BAD_REQUEST, "Choose start, seek or stop."),
             }
         }
         ("POST", Some("shutdown")) => {
@@ -692,6 +710,7 @@ fn control_status(engine: &Engine) -> Value {
             drop(inner);
             let mut room_status = room_status;
             room_status["testRound"] = room.test_status();
+            room_status["cams"] = engine.cam_status(&room.code);
             room_status
         })
         .collect();

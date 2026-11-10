@@ -4,7 +4,7 @@ import { CHANNELS, type AirApi, type ApiMethod, type MonitorFrame, type Snapshot
 
 const METHODS: ApiMethod[] = [
   'snapshot', 'monitor', 'setLayer', 'toast', 'poll', 'stingerPlay', 'lowerThird', 'autopilotStart', 'autopilotStop', 'autopilotHold', 'autopilotSkip', 'autopilotTake', 'autopilotResume', 'segmentUpdate', 'segmentMove', 'obsStudioMode', 'obsPreview', 'obsTake', 'obsCut', 'obsStinger', 'replay', 'useSlotSource', 'createQuickMatch', 'selectMatch', 'updateMatch', 'updateSetup', 'connectObs', 'disconnectObs', 'installGraphics',
-  'startCapture', 'stopCapture', 'testRound', 'pause', 'casterStrap', 'sponsorRead', 'correct', 'copy',
+  'startCapture', 'stopCapture', 'testRound', 'camsSet', 'camCreate', 'camRemove', 'pause', 'casterStrap', 'sponsorRead', 'correct', 'copy',
 ];
 
 // Electron prefixes errors with "Error invoking remote method …: Error: "; keep only the message.

@@ -16,6 +16,9 @@ import { SCENE_KEYS, SCENES, sourceName, type SlotId } from '../shared/scenes.ts
 import { AUTO_LAYERS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
+import { CaptureStats } from './capture-stats.ts';
+import { randomBytes } from 'node:crypto';
+import type { CamsView } from '../shared/api.ts';
 import type { SegmentEdit } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 
@@ -25,6 +28,8 @@ export interface ProductionDeps {
   obs: ObsLink;
   capture: { state: GepBridge['state']; reason: string | null; start(): void; stop(): void; on(event: 'change', listener: () => void): unknown };
   ingest: Pick<IngestClient, 'target'>;
+  /** What the capture delivers; the app records every game message here. */
+  stats?: CaptureStats;
   version: string;
   now?: () => number;
 }
@@ -69,12 +74,14 @@ export class Production extends EventEmitter {
   readonly log: EventLog;
   readonly replay: Replay;
   readonly autopilot: Autopilot;
+  readonly stats: CaptureStats;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
   private monitorBusy = false;
 
   constructor(deps: ProductionDeps) {
     super();
     this.deps = deps;
+    this.stats = deps.stats ?? new CaptureStats();
     const changed = () => this.emit('change');
     deps.engine.on('change', changed);
     deps.engine.on('status', () => void this.readRoom());
@@ -92,6 +99,9 @@ export class Production extends EventEmitter {
     this.replay = new Replay(deps.obs, { canReturn: () => !this.room?.airPause, stinger: () => this.setup.obs.stinger });
     this.replay.on('error-message', (message: string) => this.emit('notice', message));
     deps.capture.on('change', changed);
+    // The Capture page's sparklines move once a second while data is flowing.
+    const tick = setInterval(() => deps.capture.state === 'live' && this.emit('change'), 1000);
+    tick.unref?.();
   }
 
   get setup() {
@@ -135,6 +145,7 @@ export class Production extends EventEmitter {
     if (Object.keys(plain).length) await this.client.patch(`/api/${code}`, { show: plain });
     // Setup decides where each layer starts; after that the console owns them for the match.
     await this.act('layers.init', { modes: this.initialModes() }, false);
+    await this.pushCams();
     this.log.target(this.client.observeUrl(match.code));
     this.roomV = -1;
     await this.readRoom();
@@ -386,6 +397,7 @@ export class Production extends EventEmitter {
   // ── capture, test round, triggers ──
 
   startCapture() {
+    this.stats.reset();
     if (!this.match) throw new Error('Choose or create a match first, so game data goes to the right place.');
     this.deps.capture.start();
   }
@@ -400,9 +412,12 @@ export class Production extends EventEmitter {
     return match;
   }
 
-  async testRound(action: 'start' | 'stop') {
+  async testRound(action: 'start' | 'stop' | 'seek', options: { speed?: number; from?: number } = {}) {
     const match = this.requireMatch();
-    await this.client.post('/control/test-round', { match: match.code, action });
+    const speed = Number.isFinite(options.speed) ? Math.min(8, Math.max(0.25, options.speed!)) : 1;
+    const from = Number.isFinite(options.from) ? Math.max(0, options.from!) : 0;
+    if (action === 'start' || action === 'seek') this.stats.reset();
+    await this.client.post('/control/test-round', { match: match.code, action, speed, from });
     this.roomV = -1;
     await this.readRoom();
   }
@@ -421,6 +436,71 @@ export class Production extends EventEmitter {
     }
     this.roomV = -1;
     await this.readRoom();
+  }
+
+  // ── player cameras ──
+
+  private get cams() {
+    return (this.deps.store.data.cams ??= { layout: 'ingame', delayMs: 0, ids: [[null, null, null, null, null], [null, null, null, null, null]] });
+  }
+
+  /** The link a player opens on their own PC to send their camera (VDO.Ninja, no account needed). */
+  private pushUrl(id: string, label: string) {
+    return `https://vdo.ninja/?push=${id}&webcam&autostart&quality=0&label=${encodeURIComponent(label)}`;
+  }
+
+  private camsView(connected?: boolean[][]): CamsView {
+    const cams = this.cams;
+    const slots = [0, 1].flatMap((team) => [0, 1, 2, 3, 4].map((slot) => {
+      const id = cams.ids[team]?.[slot] ?? null;
+      const name = this.room?.players?.[team]?.[slot]?.name || `${this.match?.teams[team]?.tag ?? (team ? 'B' : 'A')} · Player ${slot + 1}`;
+      return { team, slot, name, id, pushUrl: id ? this.pushUrl(id, name) : null, connected: !!id && !!connected?.[team]?.[slot] };
+    }));
+    return { layout: cams.layout, delayMs: cams.delayMs, slots };
+  }
+
+  /** Sends the camera setup to the engine (the HUD pages show the streams from it). */
+  private async pushCams() {
+    if (!this.match) return;
+    const cams = this.cams;
+    await this.act('cams.set', { layout: cams.layout, delayMs: cams.delayMs, slots: cams.ids });
+  }
+
+  async camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }) {
+    const cams = this.cams;
+    if (patch.layout !== undefined) {
+      if (!['ingame', 'grid5', 'grid10'].includes(patch.layout)) throw new Error('Choose In-game, 5-up or 10-up.');
+      cams.layout = patch.layout;
+    }
+    if (patch.delayMs !== undefined) {
+      if (!Number.isInteger(patch.delayMs) || patch.delayMs < 0 || patch.delayMs > 10_000) throw new Error('Camera delay is 0–10,000 ms.');
+      cams.delayMs = patch.delayMs;
+    }
+    this.deps.store.save();
+    await this.pushCams();
+    // A grid layout is a full-screen graphic: line it up in Preview like the other full-screen layers.
+    if (patch.layout && patch.layout !== 'ingame') await this.fullscreen('cam-grid', true).catch(() => {});
+    else if (patch.layout === 'ingame' && this.deps.obs.status.fullscreenSource === sourceName(this.setup.screens.find((x) => x.id === 'cam-grid')?.title ?? '')) await this.deps.obs.showFullscreen(null).catch(() => {});
+  }
+
+  private slot(team: number, slot: number) {
+    if (![0, 1].includes(team) || !Number.isInteger(slot) || slot < 0 || slot > 4) throw new Error('Choose a team and player slot.');
+  }
+
+  /** Makes (or replaces) the camera link for a player. The old link stops working. */
+  async camCreate(team: number, slot: number) {
+    this.slot(team, slot);
+    this.cams.ids[team]![slot] = randomBytes(9).toString('base64url');
+    this.deps.store.save();
+    await this.pushCams();
+    this.log.add(`Camera link made · ${this.camsView().slots[team * 5 + slot]!.name}`);
+  }
+
+  async camRemove(team: number, slot: number) {
+    this.slot(team, slot);
+    this.cams.ids[team]![slot] = null;
+    this.deps.store.save();
+    await this.pushCams();
   }
 
   // ── autopilot ──
@@ -512,6 +592,11 @@ export class Production extends EventEmitter {
       const observed = this.observedPlayer();
       if (!observed) throw new Error('No player is being observed yet. The player profile needs the game’s roster.');
       await this.act('spotlight.set', { team: observed.team, player: observed.player });
+    }
+    if (on && screenId === 'cam-grid' && this.cams.layout === 'ingame') {
+      this.cams.layout = 'grid10';
+      this.deps.store.save();
+      await this.pushCams();
     }
     await this.deps.obs.showFullscreen(on ? sourceName(screen.title) : null);
     // Studio Mode: line it up in Preview so Take puts it on air.
@@ -629,7 +714,9 @@ export class Production extends EventEmitter {
         installed, missingScenes, scenes: sceneStatus, sceneNames: obs.status.scenes, videoInputs: obs.status.videoInputs,
       },
       outputs,
-      testRound: { running: roomStatus?.testRound.running ?? false, startedAt: roomStatus?.testRound.startedAt ?? null, durationMs: roomStatus?.testRound.durationMs ?? 0 },
+      testRound: { running: roomStatus?.testRound.running ?? false, startedAt: roomStatus?.testRound.startedAt ?? null, durationMs: roomStatus?.testRound.durationMs ?? 0, speed: roomStatus?.testRound.speed ?? 1, fromMs: roomStatus?.testRound.fromMs ?? 0 },
+      capture: this.stats.view(),
+      cams: this.camsView(roomStatus?.cams),
       triggers: this.liveTriggers(),
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),

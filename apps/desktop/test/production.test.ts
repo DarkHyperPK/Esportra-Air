@@ -157,7 +157,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.deepEqual(['scorebug', 'economy', 'scoreboard', 'spikeTimer'].map((id) => row(id).mode), ['on', 'auto', 'off', 'auto']);
     assert.equal(rows.filter((x) => x.group === 'ingame').length, 8);
     assert.equal(rows.filter((x) => x.group === 'between').length, 8);
-    assert.equal(rows.filter((x) => x.group === 'fullscreen').length, 7);
+    assert.equal(rows.filter((x) => x.group === 'fullscreen').length, 8);
     await production.setLayer('economy', 'off');
     assert.equal(row('economy').manual, true);
     assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.show.economy, false);
@@ -305,6 +305,33 @@ test('autopilot walks the rundown through the real engine and a fake OBS, with h
     assert.equal(view().next, null);
     production.autopilot.loadForMatch();
     assert.equal(view().enabled, false);
+
+    // Player cameras: links are made per player, pushed to the engine, and replace-able.
+    const cams0 = production.snapshot().cams;
+    assert.equal(cams0.slots.length, 10);
+    assert.equal(cams0.slots.every((x) => !x.id && !x.connected), true);
+    await production.camCreate(0, 2);
+    const made = production.snapshot().cams.slots[2]!;
+    assert.match(made.id!, /^[A-Za-z0-9_-]{12}$/);
+    assert.match(made.pushUrl!, new RegExp(`^https://vdo.ninja/\\?push=${made.id}&`));
+    let room = (await engine.client.get<any>(`/api/${code}`)).state;
+    assert.equal(room.airCams.slots[0][2], made.id);
+    assert.equal(room.show.playerCams, true, 'in-game frames show once a camera exists');
+    await production.camCreate(0, 2);
+    assert.notEqual(production.snapshot().cams.slots[2]!.id, made.id, 'a new link replaces the old one');
+    await production.camsSet({ delayMs: 1500 });
+    assert.equal((await engine.client.get<any>(`/api/${code}`)).state.airCams.delayMs, 1500);
+    await assert.rejects(production.camsSet({ delayMs: 99999 }), /0–10,000/);
+    await assert.rejects(production.camCreate(2, 0), /team and player/);
+    await production.camsSet({ layout: 'grid10' });
+    room = (await engine.client.get<any>(`/api/${code}`)).state;
+    assert.equal(room.airCams.layout, 'grid10');
+    assert.equal(room.show.playerCams, false, 'the grid replaces the in-game frames');
+    assert.equal(production.snapshot().obs.previewScene, 'Esportra · Fullscreen', 'the grid is lined up in Preview');
+    await production.camsSet({ layout: 'ingame' });
+    await production.camRemove(0, 2);
+    assert.equal(production.snapshot().cams.slots[2]!.id, null);
+    assert.equal((await engine.client.get<any>(`/api/${code}`)).state.show.playerCams, false);
 
     // Edits are saved for the match and rebuild with it.
     production.segmentUpdate('map1-live', { holdSeconds: 8, transition: 'cut' });

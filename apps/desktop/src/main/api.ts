@@ -55,7 +55,10 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
       p.startCapture();
       break;
     case 'stopCapture': p.stopCapture(); break;
-    case 'testRound': await p.testRound(a[0] === 'stop' ? 'stop' : 'start'); break;
+    case 'testRound': await p.testRound(a[0] === 'stop' ? 'stop' : a[0] === 'seek' ? 'seek' : 'start', a[1] ?? {}); break;
+    case 'camsSet': await p.camsSet(a[0] ?? {}); break;
+    case 'camCreate': await p.camCreate(Number(a[0]), Number(a[1])); break;
+    case 'camRemove': await p.camRemove(Number(a[0]), Number(a[1])); break;
     case 'pause': await p.pause(a[0] === 'technical' || a[0] === 'timeout' ? a[0] : null); break;
     case 'casterStrap': await p.casterStrap(a[0] === true); break;
     case 'sponsorRead': await p.sponsorRead(typeof a[0] === 'string' ? a[0] : null); break;
