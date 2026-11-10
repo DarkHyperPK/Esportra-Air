@@ -20,13 +20,14 @@ Esportra-Air/
 │   ├── core/                    ← hud.js client, state defaults, catalog, brand, assets
 │   ├── server/server.js         ← current HUD server (protocol the Rust engine must keep)
 │   ├── adapters/valorant-gep.js ← GEP → state parser (pure; parity reference for Rust)
-│   └── capture/overwolf-valorant/ ← legacy ow-electron capture child (retired in Stage 4)
-├── src/                         ← legacy Electron + React app (retired in Stage 4)
-├── tests/                       ← legacy Node tests (`npm test`)
-└── tools/                       ← legacy smoke/verification scripts
+│   └── adapters/test-valorant.js ← already failing (see Known facts)
+├── engine/                      ← Rust graphics engine
+├── apps/desktop/                ← the app
+├── screens/, index.html         ← PRD pictures and the PRD
+└── tools/                       ← PRD/UI reference scripts
 ```
 
-New app (built alongside the legacy one):
+The app:
 
 ```
 engine/                 Rust workspace: air-state (JSON semantics, merge/diff), air-valorant (parser),
@@ -63,7 +64,7 @@ Overlays: `http://localhost:5300/overlays/<name>.html?match=CODE`. WebSocket `ws
 | Per-player health/abilities | Only from player-PC capture (GEP `me` is local-player only) |
 | `observing` | Custom games only |
 | Overwolf | Developer account exists; app not yet approved. GEP in production depends on approval |
-| Legacy renderer | Does not build at `49a0f7d` (imports three deleted components); not being repaired |
+| Legacy app | Removed in Stage 4 (the old Electron app in `src/`, its tests, the capture child and root build files). Recoverable from git history before commit "Stage 4" |
 | Output aliases | `hud.js` only recognises UUID aliases (`/o/<uuid>`); Air's screens carry a UUID `outputId` |
 | `adapters/test-valorant.js` | Already failing before this work: it expects player-PC data from non-UUID ids, which `player-coverage.js` rejects |
 
@@ -73,7 +74,6 @@ See the decision table in `docs/PRODUCT.md`. In short: one ow-electron app plus 
 
 ## Verification
 
-- Legacy: `npm test` and `npm run build:renderer` (the latter currently fails, see above).
 - Local tests do not certify OBS, GEP, live game or deployment behaviour. Say which checks ran and which need the user's Windows machine.
 
 ## Reference material
