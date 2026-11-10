@@ -5,7 +5,8 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Match, Screen, Setup } from '../shared/api.ts';
-import type { Owned } from './obs.ts';
+import { emptyOwned, type Owned } from './scene-build.ts';
+import type { SceneKey } from '../shared/scenes.ts';
 
 export interface Saved {
   version: 1;
@@ -17,18 +18,25 @@ export interface Saved {
 }
 
 const full = { x: 0, y: 0, width: 1920, height: 1080 };
-const screen = (id: string, overlay: string, title: string, gameplay = false): Screen => ({ id, outputId: '', overlay, title, enabled: true, frame: { ...full }, gameplay });
+const screen = (id: string, overlay: string, title: string, scene: SceneKey, primary = false): Screen => ({ id, outputId: '', scene, primary, overlay, title, enabled: true, frame: { ...full } });
 
+/** Every graphic Air puts in OBS, grouped by the scene it lives in (PRD picture 9). */
 export const DEFAULT_SCREENS: Screen[] = [
-  screen('starting-soon', 'starting-soon', 'Starting soon'),
-  screen('match-intro', 'match-intro', 'Match intro'),
-  screen('map-veto', 'map-veto', 'Map veto'),
-  screen('in-game', 'ingame', 'In-game', true),
-  screen('map-result', 'map-result', 'Map result'),
-  screen('series', 'series', 'Series score'),
-  screen('break', 'break-clock', 'Break'),
-  screen('casters', 'casters', 'Casters'),
-  screen('ending', 'ending', 'Ending'),
+  screen('holding', 'holding', 'Holding', 'holding', true),
+  screen('ticker', 'ticker', 'Ticker', 'holding'),
+  screen('in-game', 'ingame', 'In-game HUD', 'gameplay', true),
+  screen('stinger', 'stinger', 'Stinger (live)', 'gameplay'),
+  screen('match-intro', 'match-intro', 'Match intro', 'fullscreen', true),
+  screen('map-veto', 'map-veto', 'Map veto', 'fullscreen'),
+  screen('agent-select', 'agent-select', 'Agent select', 'fullscreen'),
+  screen('map-result', 'map-result', 'Map result', 'fullscreen'),
+  screen('series', 'series', 'Series', 'fullscreen'),
+  screen('halftime', 'halftime', 'Halftime', 'fullscreen'),
+  screen('standings', 'standings', 'Standings', 'fullscreen'),
+  screen('player-profile', 'player-profile', 'Player profile', 'fullscreen'),
+  screen('champion', 'champion', 'Champion', 'fullscreen'),
+  screen('replay-bug', 'replay', 'Replay bug', 'replay', true),
+  screen('casters', 'casters', 'Casters', 'casters', true),
 ];
 
 /** HUD elements the producer can switch, with the HUD's own defaults (core/state.clean.js `show`). */
@@ -47,12 +55,12 @@ export function defaultSetup(): Setup {
     screens: DEFAULT_SCREENS.map((s) => ({ ...s, outputId: randomUUID(), frame: { ...s.frame } })),
     hud: { ...DEFAULT_HUD },
     minimap: { x: 24, y: 24, size: 400 },
-    obs: { host: '127.0.0.1', port: 4455, gameplaySource: null },
+    obs: { host: '127.0.0.1', port: 4455, stinger: null },
   };
 }
 
 export function defaults(): Saved {
-  return { version: 1, setup: defaultSetup(), matches: [], selectedMatchId: null, owned: {}, enginePort: 5300 };
+  return { version: 1, setup: defaultSetup(), matches: [], selectedMatchId: null, owned: emptyOwned(), enginePort: 5300 };
 }
 
 export class Store {
@@ -66,10 +74,22 @@ export class Store {
       const saved = JSON.parse(readFileSync(file, 'utf8')) as Partial<Saved>;
       if (saved.version === 1) this.data = { ...defaults(), ...saved, setup: { ...defaultSetup(), ...saved.setup } as Setup };
       // Every screen needs a UUID output alias (older saves may lack one).
-      for (const screen of this.data.setup.screens) if (!/^[0-9a-f-]{36}$/i.test(screen.outputId ?? '')) screen.outputId = randomUUID();
+      this.migrate();
     } catch {
       // First run, or an unreadable file: start from defaults (the old file is overwritten on save).
     }
+  }
+
+  /** Brings an older save up to the current scene model, keeping what the producer chose. */
+  private migrate() {
+    const setup = this.data.setup;
+    const known = new Map((setup.screens ?? []).map((x) => [x.id, x]));
+    setup.screens = DEFAULT_SCREENS.map((def) => {
+      const old = known.get(def.id);
+      return { ...def, outputId: /^[0-9a-f-]{36}$/i.test(old?.outputId ?? '') ? old!.outputId : randomUUID(), enabled: old?.enabled ?? def.enabled, frame: old?.frame ?? { ...def.frame }, title: old?.title ?? def.title };
+    });
+    setup.obs = { host: setup.obs?.host ?? '127.0.0.1', port: setup.obs?.port ?? 4455, stinger: setup.obs?.stinger ?? null };
+    if (!this.data.owned || typeof this.data.owned !== 'object' || !('scenes' in this.data.owned)) this.data.owned = emptyOwned();
   }
 
   save() {

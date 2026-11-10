@@ -64,6 +64,8 @@ async function main() {
   window.webContents.on('will-navigate', (e) => e.preventDefault());
   await window.loadFile(join(__dirname, 'renderer/index.html'));
 
+  production.on('monitor', (frame) => window?.webContents.send(CHANNELS.monitor, frame));
+  production.on('notice', (message: string) => window?.webContents.send(CHANNELS.snapshot, { ...production.snapshot(), notice: message }));
   let pending: ReturnType<typeof setTimeout> | null = null;
   production.on('change', () => {
     if (pending) return;

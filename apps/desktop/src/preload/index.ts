@@ -1,9 +1,9 @@
 // Exposes `window.air` to the interface. The renderer has no Node access.
 import { contextBridge, ipcRenderer } from 'electron';
-import { CHANNELS, type AirApi, type ApiMethod, type Snapshot } from '../shared/api.ts';
+import { CHANNELS, type AirApi, type ApiMethod, type MonitorFrame, type Snapshot } from '../shared/api.ts';
 
 const METHODS: ApiMethod[] = [
-  'snapshot', 'createQuickMatch', 'selectMatch', 'updateMatch', 'updateSetup', 'connectObs', 'disconnectObs', 'installGraphics',
+  'snapshot', 'monitor', 'obsStudioMode', 'obsPreview', 'obsTake', 'obsCut', 'obsStinger', 'replay', 'useSlotSource', 'createQuickMatch', 'selectMatch', 'updateMatch', 'updateSetup', 'connectObs', 'disconnectObs', 'installGraphics',
   'startCapture', 'stopCapture', 'testRound', 'pause', 'casterStrap', 'sponsorRead', 'correct', 'copy',
 ];
 
@@ -18,6 +18,12 @@ api.onSnapshot = (listener: (snapshot: Snapshot) => void) => {
   const handler = (_event: unknown, snapshot: Snapshot) => listener(snapshot);
   ipcRenderer.on(CHANNELS.snapshot, handler);
   return () => ipcRenderer.removeListener(CHANNELS.snapshot, handler);
+};
+
+api.onMonitor = (listener: (frame: MonitorFrame) => void) => {
+  const handler = (_event: unknown, frame: MonitorFrame) => listener(frame);
+  ipcRenderer.on(CHANNELS.monitor, handler);
+  return () => ipcRenderer.removeListener(CHANNELS.monitor, handler);
 };
 
 contextBridge.exposeInMainWorld('air', api);

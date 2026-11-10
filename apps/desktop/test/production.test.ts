@@ -35,6 +35,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
   assert.equal(engine.state, 'running', engine.error ?? '');
   const obsServer = new FakeObs();
   const obs = new ObsLink(() => obsServer);
+  obsServer.scenes.set('Scene', []);
   const capture = new FakeCapture();
   const targets: Array<string | null> = [];
   const store = new Store(join(dir, 'air.json'));
@@ -75,14 +76,40 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     let checks = production.snapshot().checks;
     assert.equal(checks.find((c) => c.id === 'obs')!.action!.id, 'connect-obs');
     await obs.connect('127.0.0.1', 4455, 'secret');
-    await production.updateSetup({ obs: { host: '127.0.0.1', port: 4455, gameplaySource: 'Game Capture' } });
     checks = production.snapshot().checks;
     assert.equal(checks.find((c) => c.id === 'scenes')!.action!.id, 'install-graphics');
     await production.installGraphics();
     const snap = production.snapshot();
     assert.equal(snap.obs.installed, true);
-    assert.ok(obsServer.scenes.has('Air · In-game'));
-    assert.equal(obsServer.inputs.get('Air · In-game · Graphics')!.settings.url, `http://127.0.0.1:${port}/o/${ingameOutput}`);
+    assert.ok(obsServer.scenes.has('Esportra · Gameplay'));
+    assert.equal(obsServer.inputs.get('Esportra · In-game HUD')!.settings.url, `http://127.0.0.1:${port}/o/${ingameOutput}`);
+    assert.deepEqual(snap.obs.scenes.map((x) => [x.key, x.inObs]), [['holding', true], ['gameplay', true], ['fullscreen', true], ['replay', true], ['casters', true]]);
+    assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'casters')!.slots.map((x) => [x.id, x.source]), [['cam1', null], ['cam2', null]], 'slots wait for the crew’s sources');
+    await production.useSlotSource('game', 'Game Capture');
+    assert.equal(production.snapshot().obs.scenes.find((x) => x.key === 'gameplay')!.slots[0]!.source, 'Game Capture');
+
+    // Switching: Studio Mode, preview a scene, take it; the tally follows OBS.
+    await assert.rejects(production.take(), /Studio Mode/);
+    await production.studioMode(true);
+    await production.preview('Esportra · Holding');
+    await production.take();
+    assert.equal(production.snapshot().obs.programScene, 'Esportra · Holding');
+    await assert.rejects(production.preview('Some other scene'), /Esportra scenes/);
+    await production.preview('Esportra · Gameplay');
+    await production.cut();
+    assert.equal(production.snapshot().obs.programScene, 'Esportra · Gameplay');
+    await production.stinger();
+
+    // The monitors read OBS screenshots only while the console asks.
+    const frames: Array<{ pvw: string | null; pgm: string | null }> = [];
+    production.on('monitor', (f) => frames.push(f));
+    production.setMonitoring(true);
+    await new Promise((r) => setTimeout(r, 400));
+    production.setMonitoring(false);
+    const count = frames.length;
+    assert.ok(count >= 1 && frames[0]!.pgm?.startsWith('data:image/'), 'program frame arrives');
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(frames.length, count, 'no screenshots once the console stops asking');
     assert.equal(snap.checks.find((c) => c.id === 'scenes')!.health, 'ok');
     assert.equal(snap.checks.find((c) => c.id === 'feed')!.action!.id, 'start-capture');
     production.startCapture();

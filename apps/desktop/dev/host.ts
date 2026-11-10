@@ -59,6 +59,7 @@ const dir = mkdtempSync(join(tmpdir(), 'air-dev-'));
 const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: dir, port: ENGINE_PORT, key: 'dev-host-key-0123456789abcdef', env: engineEnv(), ...realProcess });
 await engine.start();
 const fakeObs = new FakeObs();
+fakeObs.transitionMs = 400;
 const obs = new ObsLink(() => fakeObs);
 const ingest = new IngestClient();
 const capture = new SimulatedCapture(ingest);
@@ -69,6 +70,8 @@ let clipboard = '';
 const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; } };
 await production.syncEngine();
 
+const monitors = new Set<(data: string) => void>();
+production.on('monitor', (frame) => { const data = JSON.stringify(frame); for (const l of monitors) l(data); });
 const listeners = new Set<(data: string) => void>();
 production.on('change', () => { const data = JSON.stringify(production.snapshot()); for (const l of listeners) l(data); });
 
@@ -81,6 +84,13 @@ createServer(async (req, res) => {
     send(JSON.stringify(production.snapshot()));
     listeners.add(send);
     req.on('close', () => listeners.delete(send));
+    return;
+  }
+  if (url.pathname === '/monitor-events') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+    const send = (data: string) => res.write(`data: ${data}\n\n`);
+    monitors.add(send);
+    req.on('close', () => monitors.delete(send));
     return;
   }
   if (url.pathname.startsWith('/call/') && req.method === 'POST') {

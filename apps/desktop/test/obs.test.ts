@@ -1,57 +1,229 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ObsLink, type Owned, type SceneRow } from '../src/main/obs.ts';
+import { ObsLink } from '../src/main/obs.ts';
+import { emptyOwned, type BuildScene, type Owned } from '../src/main/scene-build.ts';
+import { Replay } from '../src/main/replay.ts';
+import { REPLAY_CLIP, SCENES } from '../src/shared/scenes.ts';
 import { FakeObs } from './fake-obs.ts';
 
-const SWITCHING = ['SetCurrentProgramScene', 'SetCurrentPreviewScene', 'TriggerStudioModeTransition', 'StartStream', 'StopStream', 'StartRecord', 'StopRecord', 'SetCurrentSceneCollection'];
+const FORBIDDEN = ['StartStream', 'StopStream', 'StartRecord', 'StopRecord', 'SetCurrentSceneCollection', 'StartReplayBuffer', 'StopReplayBuffer'];
+const FULL = { x: 0, y: 0, width: 1920, height: 1080 };
+const src = (id: string, enabled = true) => ({ id, inputName: `Esportra · ${id}`, url: `http://127.0.0.1:5300/o/${id}`, frame: FULL, enabled });
 
-const rows = (background: string | null = 'Game Capture'): SceneRow[] => [
-  { sceneName: 'Air · Starting soon', url: 'http://127.0.0.1:5300/o/soon', x: 0, y: 0, width: 1920, height: 1080, background: null },
-  { sceneName: 'Air · In-game', url: 'http://127.0.0.1:5300/o/ingame', x: 0, y: 0, width: 1920, height: 1080, background },
+const plan = (): BuildScene[] => [
+  { name: SCENES.holding.name, exclusive: false, sources: [src('holding'), src('ticker')], slots: [] },
+  { name: SCENES.gameplay.name, exclusive: false, sources: [src('in-game')], slots: [{ id: 'game', sceneName: 'Esportra · Game feed', frame: FULL }] },
+  { name: SCENES.fullscreen.name, exclusive: true, sources: [src('match-intro'), src('map-veto'), src('series')], slots: [] },
+  { name: SCENES.replay.name, exclusive: false, sources: [src('replay-bug')], slots: [] },
+  { name: SCENES.casters.name, exclusive: false, sources: [src('casters')], slots: [
+    { id: 'cam1', sceneName: 'Esportra · Caster cam 1', frame: { x: 120, y: 250, width: 820, height: 462 } },
+    { id: 'cam2', sceneName: 'Esportra · Caster cam 2', frame: { x: 980, y: 250, width: 820, height: 462 } },
+  ] },
 ];
+const SLOT_SCENES = ['Esportra · Game feed', 'Esportra · Caster cam 1', 'Esportra · Caster cam 2'];
 
-test('connects, installs Air scenes over gameplay, and never switches', async () => {
+async function connected(setup: (obs: FakeObs) => void = () => {}) {
   const obs = new FakeObs();
-  const link = new ObsLink(() => obs);
+  setup(obs);
+  const link = new ObsLink(() => obs, { backoffMs: [10, 10] });
+  link.watchSlots(SLOT_SCENES);
+  await link.connect('127.0.0.1', 4455, 'secret');
+  return { obs, link };
+}
+
+test('connects, reads status, and rejects a wrong password without retrying', async () => {
+  const obs = new FakeObs();
+  const link = new ObsLink(() => obs, { backoffMs: [5] });
   await assert.rejects(link.connect('localhost', 4455, 'wrong'), /rejected the password/);
+  assert.equal(link.status.state, 'error');
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(obs.requests.length, 0, 'no automatic retry with a wrong password');
   await link.connect('localhost', 4455, 'secret');
   assert.equal(link.status.state, 'connected');
-  assert.deepEqual(link.status.videoInputs, ['Game Capture'], 'audio and browser sources are not offered as gameplay');
-
-  let owned: Owned = {};
-  const result = await link.install(rows(), owned, (o) => { owned = o; });
-  assert.deepEqual(result.scenes, ['Air · Starting soon', 'Air · In-game']);
-  const ingame = obs.scenes.get('Air · In-game')!;
-  assert.deepEqual(ingame.map((i) => i.sourceName).sort(), ['Air · In-game · Graphics', 'Game Capture']);
-  assert.equal(ingame.find((i) => i.sourceName === 'Game Capture')!.index, 0, 'gameplay sits under the graphics');
-  assert.equal(obs.inputs.get('Air · In-game · Graphics')!.settings.url, 'http://127.0.0.1:5300/o/ingame');
-  assert.ok(link.status.scenes.includes('Air · In-game'));
-  assert.equal(obs.program, 'Scene');
-  assert.deepEqual(obs.requests.filter((r) => SWITCHING.includes(r)), []);
-
-  // Re-installing keeps a transform edited in OBS when Air's own layout did not change.
-  const graphics = ingame.find((i) => i.sourceName === 'Air · In-game · Graphics')!;
-  graphics.transform = { edited: 'in OBS' };
-  await link.install(rows(), owned, (o) => { owned = o; });
-  assert.deepEqual(graphics.transform, { edited: 'in OBS' });
-  assert.equal(obs.scenes.get('Air · In-game')!.length, 2, 'nothing duplicated');
-});
-
-test('refuses collisions, unknown gameplay sources, and changes while live', async () => {
-  const obs = new FakeObs();
-  obs.scenes.set('Air · Starting soon', []);
-  const link = new ObsLink(() => obs);
-  await link.connect('127.0.0.1', 4455, 'secret');
-  await assert.rejects(link.install(rows(), {}, () => {}), /did not create/);
-  obs.scenes.delete('Air · Starting soon');
-  await assert.rejects(link.install(rows('Desktop Audio'), {}, () => {}), /not an available video source/);
-  obs.streaming = true;
-  await assert.rejects(link.install(rows(), {}, () => {}), /Stop streaming and recording/);
-  assert.equal(obs.scenes.has('Air · Starting soon'), false, 'nothing created when a check fails');
-});
-
-test('rejects malformed addresses before connecting', async () => {
-  const link = new ObsLink(() => new FakeObs());
+  assert.equal(link.status.version, '31.0.0');
+  assert.equal(link.status.collection, 'Test collection');
+  assert.deepEqual(link.status.videoInputs, ['Game Capture']);
+  assert.deepEqual(link.status.transitions.map((t) => t.kind), ['cut', 'fade', 'stinger']);
   await assert.rejects(link.connect('bad host', 4455, ''), /address/);
-  await assert.rejects(link.connect('localhost', 70000, ''), /port/i);
+});
+
+test('builds the five scenes with video slots under the graphics and never switches', async () => {
+  const { obs, link } = await connected();
+  let owned: Owned = emptyOwned();
+  const result = await link.build(plan(), owned, (o) => { owned = o; });
+  assert.equal(result.created.length, 5 + 3);
+  for (const scene of [SCENES.holding.name, SCENES.gameplay.name, SCENES.fullscreen.name, SCENES.replay.name, SCENES.casters.name, ...SLOT_SCENES]) assert.ok(obs.scenes.has(scene), scene);
+
+  const gameplay = obs.scenes.get(SCENES.gameplay.name)!;
+  assert.deepEqual(gameplay.map((i) => i.sourceName).sort(), ['Esportra · Game feed', 'Esportra · in-game']);
+  assert.equal(gameplay.find((i) => i.sourceName === 'Esportra · Game feed')!.index, 0, 'the game feed sits below the HUD');
+  const cam1 = obs.scenes.get(SCENES.casters.name)!.find((i) => i.sourceName === 'Esportra · Caster cam 1')!;
+  assert.deepEqual((cam1.transform as { positionX: number; boundsWidth: number }).positionX, 120, 'the camera sits in the casters graphic’s window');
+
+  const fullscreen = obs.scenes.get(SCENES.fullscreen.name)!;
+  assert.deepEqual(fullscreen.map((i) => i.enabled), [true, false, false], 'only one full-screen graphic is visible');
+  assert.equal(obs.inputs.get('Esportra · in-game')!.settings.url, 'http://127.0.0.1:5300/o/in-game');
+  assert.deepEqual(obs.requests.filter((r) => FORBIDDEN.includes(r) || r.startsWith('SetCurrent')), []);
+  assert.equal(obs.program, 'Scene');
+
+  // Re-installing is idempotent and keeps layout edits made in OBS.
+  const ingame = gameplay.find((i) => i.sourceName === 'Esportra · in-game')!;
+  ingame.transform = { edited: 'in OBS' };
+  const before = obs.scenes.get(SCENES.gameplay.name)!.length;
+  await link.build(plan(), owned, (o) => { owned = o; });
+  assert.deepEqual(ingame.transform, { edited: 'in OBS' });
+  assert.equal(obs.scenes.get(SCENES.gameplay.name)!.length, before);
+});
+
+test('rebuilding after the crew deleted a scene restores its placement', async () => {
+  const { obs, link } = await connected();
+  let owned: Owned = emptyOwned();
+  await link.build(plan(), owned, (o) => { owned = o; });
+  obs.scenes.delete(SCENES.casters.name);
+  obs.scenes.delete('Esportra · Caster cam 1');
+  obs.inputs.delete('Esportra · casters');
+  await link.build(plan(), owned, (o) => { owned = o; });
+  const items = obs.scenes.get(SCENES.casters.name)!;
+  assert.deepEqual(items.map((i) => i.sourceName).sort(), ['Esportra · Caster cam 1', 'Esportra · Caster cam 2', 'Esportra · casters']);
+  for (const item of items) assert.ok(item.transform, `${item.sourceName} is positioned`);
+  assert.equal(items.find((i) => i.sourceName === 'Esportra · Caster cam 1')!.index, 0);
+});
+
+test('slots read "add your source" until the crew fills them, and update from OBS events', async () => {
+  const { obs, link } = await connected();
+  let owned: Owned = emptyOwned();
+  await link.build(plan(), owned, (o) => { owned = o; });
+  assert.deepEqual(link.status.slots, { 'Esportra · Game feed': null, 'Esportra · Caster cam 1': null, 'Esportra · Caster cam 2': null });
+  obs.addSource('Esportra · Caster cam 1', 'Cam A');
+  await new Promise((r) => setTimeout(r, 250));
+  assert.equal(link.status.slots['Esportra · Caster cam 1'], 'Cam A');
+  await link.useSource('Esportra · Game feed', 'Game Capture');
+  assert.equal(link.status.slots['Esportra · Game feed'], 'Game Capture');
+  await assert.rejects(link.useSource('Esportra · Game feed', 'Desktop Audio'), /not an available video source/);
+});
+
+test('refuses collisions, foreign sources and building while streaming', async () => {
+  const { obs, link } = await connected((o) => o.scenes.set(SCENES.holding.name, []));
+  await assert.rejects(link.build(plan(), emptyOwned(), () => {}), /did not create/);
+  obs.scenes.delete(SCENES.holding.name);
+  obs.inputs.set('Esportra · holding', { inputKind: 'image_source', settings: {} });
+  await assert.rejects(link.build(plan(), emptyOwned(), () => {}), /already exists/);
+  obs.inputs.delete('Esportra · holding');
+  obs.streaming = true;
+  await assert.rejects(link.build(plan(), emptyOwned(), () => {}), /Stop streaming and recording/);
+  assert.equal(obs.scenes.has(SCENES.gameplay.name), false, 'nothing created when a check fails');
+});
+
+test('Take, Cut and Stinger go through Studio Mode and OBS’s own transition is restored', async () => {
+  const { obs, link } = await connected((o) => { o.scenes.set('A', []); o.scenes.set('B', []); });
+  assert.equal((await link.take()).ok, false);
+  assert.match((await link.take()).error ?? '', /Studio Mode/);
+  await link.setStudioMode(true);
+  assert.equal(link.status.studioMode, true);
+  assert.equal(link.status.previewScene, 'Scene');
+
+  await link.setPreview('A');
+  assert.equal(link.status.previewScene, 'A');
+  assert.equal((await link.take()).ok, true);
+  assert.equal(link.status.programScene, 'A', 'tally follows OBS events');
+  assert.equal(obs.currentTransition, 'Fade');
+
+  await link.setPreview('B');
+  assert.equal((await link.take(link.cutChoice())).ok, true);
+  assert.equal(link.status.programScene, 'B');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(obs.currentTransition, 'Fade', 'a forced Cut does not leave OBS on Cut');
+
+  await link.setPreview('A');
+  assert.equal((await link.take(link.stingerChoice(null))).ok, true);
+  assert.equal(link.status.programScene, 'A');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(obs.currentTransition, 'Fade');
+
+  // A change made in OBS itself shows up without Air doing anything.
+  obs.program = 'B';
+  obs.emit('CurrentProgramSceneChanged', { sceneName: 'B' });
+  assert.equal(link.status.programScene, 'B');
+  obs.transitions = obs.transitions.filter((t) => t.transitionKind !== 'obs_stinger_transition');
+  await link.refresh();
+  assert.equal(link.stingerChoice(null), null);
+  assert.deepEqual(obs.requests.filter((r) => FORBIDDEN.includes(r)), []);
+});
+
+test('a take waits for the running transition instead of stacking', async () => {
+  const { obs, link } = await connected((o) => { o.scenes.set('A', []); o.transitionMs = 80; });
+  await link.setStudioMode(true);
+  await link.setPreview('A');
+  assert.equal((await link.take()).ok, true);
+  const again = await link.take();
+  assert.equal(again.ok, false);
+  assert.match(again.error ?? '', /finish/);
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(link.status.transitionActive, false);
+  assert.equal(obs.program, 'A');
+});
+
+test('reconnects by itself after OBS drops', async () => {
+  const { obs, link } = await connected();
+  obs.drop();
+  assert.equal(link.status.state, 'error');
+  assert.match(link.status.error ?? '', /lost/);
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(link.status.state, 'connected');
+  await link.disconnect();
+  obs.drop();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(link.status.state, 'disconnected', 'an intentional disconnect stays disconnected');
+});
+
+test('replay saves the buffer, plays through the stinger and returns to the previous scene', async () => {
+  const { obs, link } = await connected();
+  let owned: Owned = emptyOwned();
+  await link.build(plan(), owned, (o) => { owned = o; });
+  await link.setStudioMode(true);
+  await link.setPreview(SCENES.gameplay.name);
+  await link.take();
+  assert.equal(link.status.programScene, SCENES.gameplay.name);
+
+  let allowed = true;
+  const replay = new Replay(link, { canReturn: () => allowed });
+  const errors: string[] = [];
+  replay.on('error-message', (m: string) => errors.push(m));
+  const result = await replay.play();
+  assert.deepEqual(result, { ok: true });
+  assert.equal(link.status.programScene, SCENES.replay.name);
+  assert.equal(obs.inputs.get(REPLAY_CLIP)!.settings.local_file, '/tmp/replay.mp4');
+  assert.ok(obs.requests.includes('TriggerMediaInputAction'));
+  assert.equal(replay.busy, true);
+
+  obs.emit('MediaInputPlaybackEnded', { inputName: REPLAY_CLIP });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(link.status.programScene, SCENES.gameplay.name, 'returns to the scene that was on air');
+  assert.equal(replay.busy, false);
+
+  // Finished during a pause: do not return on its own.
+  assert.deepEqual(await replay.play(), { ok: true });
+  allowed = false;
+  obs.emit('MediaInputPlaybackEnded', { inputName: REPLAY_CLIP });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(link.status.programScene, SCENES.replay.name);
+  assert.match(errors[0] ?? '', /during a pause/);
+});
+
+test('replay explains what to fix in OBS', async () => {
+  const { obs, link } = await connected();
+  let owned: Owned = emptyOwned();
+  await link.build(plan(), owned, (o) => { owned = o; });
+  await link.setStudioMode(true);
+  await link.setPreview(SCENES.gameplay.name);
+  await link.take();
+  const replay = new Replay(link);
+  obs.replayBuffer = 'unconfigured';
+  assert.match((await replay.play()).error ?? '', /no replay buffer/);
+  obs.replayBuffer = false;
+  assert.match((await replay.play()).error ?? '', /Start the replay buffer/);
+  obs.replayBuffer = true;
+  obs.transitions = obs.transitions.filter((t) => t.transitionKind !== 'obs_stinger_transition');
+  await link.refresh();
+  assert.match((await replay.play()).error ?? '', /Add a Stinger/);
 });

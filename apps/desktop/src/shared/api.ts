@@ -1,3 +1,5 @@
+import type { SceneKey, SlotId } from './scenes.ts';
+
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
@@ -33,13 +35,15 @@ export interface Screen {
   id: string;
   /** Output alias (`/o/<uuid>`): the URL OBS loads. The HUD only recognises UUID aliases. */
   outputId: string;
+  /** The OBS scene this graphic is placed in. */
+  scene: SceneKey;
+  /** The graphic previewed for its scene on the Outputs page. */
+  primary?: boolean;
   overlay: string;
   title: string;
   enabled: boolean;
   /** Position and size of the graphic inside its OBS scene (1920×1080 canvas). */
   frame: { x: number; y: number; width: number; height: number };
-  /** Only the in-game screen sits on gameplay video. */
-  gameplay: boolean;
 }
 
 export const BANNER_THEMES = ['broadcast', 'compact', 'monument', 'impact'] as const;
@@ -57,7 +61,7 @@ export interface Setup {
   /** HUD element switches, written to the match state's `show` flags. */
   hud: Record<string, boolean>;
   minimap: { x: number; y: number; size: number };
-  obs: { host: string; port: number; gameplaySource: string | null };
+  obs: { host: string; port: number; /** Name of the OBS stinger transition to use for Stinger takes. */ stinger: string | null };
 }
 
 export interface RoundReadout {
@@ -68,6 +72,29 @@ export interface RoundReadout {
   playersFound: [number, number];
   sides: [string | null, string | null];
   roster: Array<Array<{ name: string; inGameName: string }>>;
+}
+
+export interface SlotStatus {
+  id: SlotId;
+  label: string;
+  scene: string;
+  /** First source the crew added to the slot, or null while it still waits for one. */
+  source: string | null;
+}
+
+export interface SceneStatus {
+  key: SceneKey;
+  name: string;
+  inObs: boolean;
+  slots: SlotStatus[];
+}
+
+/** A live frame pair for the PVW / PGM monitors (JPEG data URIs from OBS). */
+export interface MonitorFrame {
+  pvw: string | null;
+  pgm: string | null;
+  previewScene: string | null;
+  programScene: string | null;
 }
 
 export interface OutputHealth {
@@ -102,9 +129,16 @@ export interface Snapshot {
     state: 'disconnected' | 'connecting' | 'connected' | 'error';
     error: string | null;
     version: string | null;
+    collection: string | null;
+    studioMode: boolean;
     programScene: string | null;
+    previewScene: string | null;
+    transitions: Array<{ name: string; kind: 'cut' | 'fade' | 'stinger' | 'other' }>;
+    transitionActive: boolean;
+    replay: { bufferActive: boolean | null; busy: boolean };
     installed: boolean;
     missingScenes: string[];
+    scenes: SceneStatus[];
     videoInputs: string[];
   };
   outputs: OutputHealth[];
@@ -131,6 +165,16 @@ export type CorrectionCall = CorrectionInput | { clear: true } | { undo: true };
 export interface AirApi {
   snapshot(): Promise<Snapshot>;
   onSnapshot(listener: (snapshot: Snapshot) => void): () => void;
+  onMonitor(listener: (frame: MonitorFrame) => void): () => void;
+  /** Starts or stops the PVW/PGM screenshot loop (only while the Console is on screen). */
+  monitor(on: boolean): Promise<void>;
+  obsStudioMode(on: boolean): Promise<Snapshot>;
+  obsPreview(scene: string): Promise<Snapshot>;
+  obsTake(): Promise<Snapshot>;
+  obsCut(): Promise<Snapshot>;
+  obsStinger(): Promise<Snapshot>;
+  replay(): Promise<Snapshot>;
+  useSlotSource(slot: SlotId, source: string): Promise<Snapshot>;
   createQuickMatch(input: QuickMatchInput): Promise<Snapshot>;
   selectMatch(id: string): Promise<Snapshot>;
   updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title'>>): Promise<Snapshot>;
@@ -151,6 +195,7 @@ export interface AirApi {
 export const CHANNELS = {
   call: 'air:call',
   snapshot: 'air:snapshot',
+  monitor: 'air:monitor',
 } as const;
 
-export type ApiMethod = Exclude<keyof AirApi, 'onSnapshot'>;
+export type ApiMethod = Exclude<keyof AirApi, 'onSnapshot' | 'onMonitor'>;

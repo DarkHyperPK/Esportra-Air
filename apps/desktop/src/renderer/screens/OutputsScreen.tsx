@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
 
 /** A live, scaled view of an overlay. Loaded by match code, so it does not count as an OBS connection. */
-function Preview({ src, onAir }: { src: string | null; onAir: boolean }) {
+function Preview({ src, onAir, pvw }: { src: string | null; onAir: boolean; pvw: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.17);
   useEffect(() => {
@@ -17,7 +18,7 @@ function Preview({ src, onAir }: { src: string | null; onAir: boolean }) {
     return () => observer.disconnect();
   }, []);
   return (
-    <div ref={box} className={`shot ${onAir ? 'onair' : ''}`} style={{ overflow: 'hidden' }}>
+    <div ref={box} className={`shot ${onAir ? 'onair' : ''}`} style={{ overflow: 'hidden', ...(pvw && !onAir ? { borderColor: 'var(--amber)' } : {}) }}>
       {src ? (
         <iframe title="Live preview" src={src} tabIndex={-1} style={{ position: 'absolute', left: 0, top: 0, width: 1920, height: 1080, border: 0, transform: `scale(${scale})`, transformOrigin: '0 0', pointerEvents: 'none', background: 'transparent', colorScheme: 'normal' }} />
       ) : (
@@ -36,19 +37,35 @@ export function OutputsScreen({ s, run }: PageProps) {
         <p className="muted" style={{ marginTop: 6 }}>Add each once in OBS. They never need to change: the content follows the match.</p>
       </div>
       <div className="out-grid">
-        {s.outputs.map((o) => {
-          const inObs = connected && !s.obs.missingScenes.includes(`Air · ${o.title}`);
-          const onAir = s.obs.programScene === `Air · ${o.title}`;
-          const ago = o.lastFrameAt ? Math.max(0, (Date.now() - o.lastFrameAt) / 1000) : null;
+        {SCENE_KEYS.map((key) => {
+          const def = SCENES[key];
+          const st = s.obs.scenes.find((x) => x.key === key);
+          const outs = s.outputs.filter((o) => s.setup.screens.find((x) => x.id === o.screenId)?.scene === key);
+          const primary = outs.find((o) => s.setup.screens.find((x) => x.id === o.screenId)?.primary) ?? outs[0];
+          const onAir = s.obs.programScene === def.name;
+          const pvw = s.obs.previewScene === def.name;
+          const loading = outs.filter((o) => o.connections > 0).length;
           return (
-            <article className="out-card" key={o.screenId}>
-              <Preview onAir={onAir} src={s.match ? `http://127.0.0.1:${s.engine.port}/overlays/${o.overlay}.html?match=${encodeURIComponent(s.match.code)}&screen=1` : null} />
+            <article className="out-card" key={key}>
+              {primary ? <Preview onAir={onAir} pvw={pvw} src={s.match ? `http://127.0.0.1:${s.engine.port}/overlays/${primary.overlay}.html?match=${encodeURIComponent(s.match.code)}&screen=1` : null} /> : <div className="shot">No graphics enabled</div>}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <h2 className="title-sm" style={{ fontSize: 15 }}>{o.title}</h2>
-                {onAir ? <Tally kind="onair" /> : o.connections > 0 ? <Tally kind="live">{o.connections} connected</Tally> : inObs ? <Tally kind="covered">Not loaded</Tally> : <Tally kind="bad" />}
+                <h2 className="title-sm" style={{ fontSize: 15 }}>{def.label}</h2>
+                {onAir ? <Tally kind="onair" /> : pvw ? <Tally kind="pvw" /> : st?.inObs ? <Tally kind={loading === outs.length ? 'live' : 'covered'}>{loading} of {outs.length} loading</Tally> : connected ? <Tally kind="bad" /> : <Tally kind="ready" />}
               </div>
-              <div className="url"><span>{o.url}</span><button className="btn quiet small" aria-label={`Copy URL for ${o.title}`} onClick={() => void run(() => air.copy(o.url))}>Copy</button></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }} className="mono muted"><span style={{ fontSize: 11 }}>1920×1080 · 60 fps</span><span style={{ fontSize: 11 }}>{ago === null ? 'no frame yet' : `last frame ${ago.toFixed(1)} s`}</span></div>
+              <div>
+                {outs.map((o) => {
+                  const ago = o.lastFrameAt ? Math.max(0, (Date.now() - o.lastFrameAt) / 1000) : null;
+                  return (
+                    <div key={o.screenId} className="out-card" style={{ border: 0, padding: '6px 0', gap: 4, background: 'transparent' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span className={`dot ${o.connections > 0 ? 'ok' : 'off'}`} /><span>{o.title}</span></span>
+                        <span className="mono muted" style={{ fontSize: 10.5 }}>{ago === null ? 'no frame yet' : `${ago.toFixed(1)} s`}</span>
+                      </div>
+                      <div className="url"><span>{o.url}</span><button className="btn quiet small" aria-label={`Copy URL for ${o.title}`} onClick={() => void run(() => air.copy(o.url))}>Copy</button></div>
+                    </div>
+                  );
+                })}
+              </div>
             </article>
           );
         })}

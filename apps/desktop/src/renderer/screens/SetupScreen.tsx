@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BANNER_THEMES, type Screen, type Setup } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
+import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { Cap } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
 
@@ -39,8 +40,13 @@ function Graphics({ s, run }: Pick<PageProps, 's' | 'run'>) {
           </button>
         ))}
       </div></section>
-      <section className="panel"><div className="head"><Cap>Broadcast screens</Cap></div><div className="body-pad" style={{ padding: '10px 0 8px' }}>
-        {setup.screens.map((screen) => <Toggle key={screen.id} label={screen.title} on={screen.enabled} flip={() => update({ screens: setup.screens.map((x) => (x.id === screen.id ? { ...x, enabled: !x.enabled } : x)) })} />)}
+      <section className="panel"><div className="head"><Cap>Graphics in OBS</Cap></div><div className="body-pad" style={{ padding: '10px 0 8px' }}>
+        {SCENE_KEYS.map((key) => (
+          <div key={key}>
+            <p className="cap" style={{ padding: '8px 12px 2px' }}>{SCENES[key].label}</p>
+            {setup.screens.filter((x) => x.scene === key).map((screen) => <Toggle key={screen.id} label={screen.title} on={screen.enabled} flip={() => update({ screens: setup.screens.map((x) => (x.id === screen.id ? { ...x, enabled: !x.enabled } : x)) })} />)}
+          </div>
+        ))}
       </div></section>
       <section className="panel"><div className="head"><Cap>In-game HUD</Cap></div><div className="body-pad" style={{ padding: '10px 0 8px' }}>
         {Object.keys(setup.hud).map((key) => <Toggle key={key} label={HUD_LABELS[key] ?? key} on={setup.hud[key]!} flip={() => update({ hud: { ...setup.hud, [key]: !setup.hud[key] } })} />)}
@@ -81,30 +87,30 @@ function Brand({ s, run }: Pick<PageProps, 's' | 'run'>) {
 
 function Layout({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const [screens, setScreens] = useState<Screen[]>(s.setup.screens);
-  const [selected, setSelected] = useState(s.setup.screens.find((x) => x.gameplay)?.id ?? s.setup.screens[0]!.id);
+  const [selected, setSelected] = useState(s.setup.screens.find((x) => x.id === 'in-game')?.id ?? s.setup.screens[0]!.id);
   const [minimap, setMinimap] = useState(s.setup.minimap);
   useEffect(() => setScreens(s.setup.screens), [s.setup.screens]);
   const dirty = JSON.stringify(screens) !== JSON.stringify(s.setup.screens) || JSON.stringify(minimap) !== JSON.stringify(s.setup.minimap);
   const set = (id: string, patch: Partial<Screen>) => setScreens(screens.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const frame = (id: string, key: keyof Screen['frame'], value: string) => set(id, { frame: { ...screens.find((x) => x.id === id)!.frame, [key]: Math.round(Number(value) || 0) } });
-  const move = (i: number, d: number) => { const n = screens.slice(); const j = i + d; if (j < 0 || j >= n.length) return; [n[i], n[j]] = [n[j]!, n[i]!]; setScreens(n); };
   const current = screens.find((x) => x.id === selected) ?? screens[0]!;
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   return (
     <div className="cols" style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
       <section className="panel body-pad">
-        <Cap>Screens · order, names and placement</Cap>
-        <p className="muted" style={{ fontSize: 12.5, margin: '6px 0 12px' }}>Order and names of Air’s OBS scenes, and where each graphic sits on the 1920 × 1080 canvas. Renaming creates a new scene on the next install.</p>
-        <div className="screen-row screen-head" aria-hidden="true"><span /><span>Name</span><span>X</span><span>Y</span><span>Width</span><span>Height</span><span /></div>
-        {screens.map((screen, i) => (
-          <div className="screen-row" key={screen.id} onFocus={() => setSelected(screen.id)}>
-            <span className="mono muted">{i + 1}</span>
-            <input className="cell" aria-label={`Screen ${i + 1} name`} value={screen.title} maxLength={40} onChange={(e) => set(screen.id, { title: e.target.value })} />
-            {(['x', 'y', 'width', 'height'] as const).map((k) => <input className="cell" key={k} type="number" aria-label={`${screen.title} ${k}`} value={screen.frame[k]} onChange={(e) => frame(screen.id, k, e.target.value)} />)}
-            <span style={{ display: 'flex', gap: 2 }}>
-              <button className="btn quiet small" aria-label={`Move ${screen.title} up`} onClick={() => move(i, -1)}>↑</button>
-              <button className="btn quiet small" aria-label={`Move ${screen.title} down`} onClick={() => move(i, 1)}>↓</button>
-            </span>
+        <Cap>Graphics · placement</Cap>
+        <p className="muted" style={{ fontSize: 12.5, margin: '6px 0 12px' }}>Where each graphic sits in its OBS scene on the 1920 × 1080 canvas. Saved placement reaches OBS when you rebuild the scenes.</p>
+        <div className="screen-row screen-head" aria-hidden="true"><span /><span>Graphic</span><span>X</span><span>Y</span><span>Width</span><span>Height</span></div>
+        {SCENE_KEYS.map((key) => (
+          <div key={key}>
+            <p className="cap" style={{ margin: '12px 0 6px' }}>{SCENES[key].label}</p>
+            {screens.filter((x) => x.scene === key).map((screen) => (
+              <div className="screen-row" key={screen.id} onFocus={() => setSelected(screen.id)}>
+                <span />
+                <span>{screen.title}</span>
+                {(['x', 'y', 'width', 'height'] as const).map((k) => <input className="cell" key={k} type="number" aria-label={`${screen.title} ${k}`} value={screen.frame[k]} onChange={(e) => frame(screen.id, k, e.target.value)} />)}
+              </div>
+            ))}
           </div>
         ))}
       </section>
@@ -121,7 +127,7 @@ function Layout({ s, run }: Pick<PageProps, 's' | 'run'>) {
           <button className="btn primary" disabled={!dirty} onClick={() => void run(() => air.updateSetup({ screens, minimap }))}>Save layout</button>
           <button className="btn quiet" disabled={!dirty} onClick={() => { setScreens(s.setup.screens); setMinimap(s.setup.minimap); }}>Discard</button>
         </div>
-        <p className="muted" style={{ fontSize: 12.5 }}>Saved layout reaches OBS the next time you update scenes.</p>
+        <p className="muted" style={{ fontSize: 12.5 }}>Saved layout reaches OBS the next time you rebuild the scenes.</p>
       </div>
     </div>
   );

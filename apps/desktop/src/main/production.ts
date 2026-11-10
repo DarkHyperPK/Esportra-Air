@@ -4,12 +4,15 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type QuickMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
+import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type MonitorFrame, type SceneStatus, type QuickMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
 import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from './gep.ts';
 import type { IngestClient } from './ingest.ts';
-import type { ObsLink, SceneRow } from './obs.ts';
+import type { ObsLink } from './obs.ts';
+import { Replay } from './replay.ts';
+import type { BuildScene } from './scene-build.ts';
+import { SCENE_KEYS, SCENES, sourceName, type SlotId } from '../shared/scenes.ts';
 import type { Store } from './store.ts';
 
 export interface ProductionDeps {
@@ -55,16 +58,15 @@ export function tagsFor(a: string, b: string): [string, string] {
   return [first, second];
 }
 
-export function sceneName(title: string) {
-  return `Air · ${title}`;
-}
-
 export class Production extends EventEmitter {
   private readonly deps: ProductionDeps;
   private room: any = null;
   private roomV = -1;
   private pauseId: string | null = null;
   triggers: Snapshot['triggers'] = { pause: null, strap: false, sponsor: null };
+  readonly replay: Replay;
+  private monitorTimer: ReturnType<typeof setInterval> | null = null;
+  private monitorBusy = false;
 
   constructor(deps: ProductionDeps) {
     super();
@@ -75,6 +77,9 @@ export class Production extends EventEmitter {
     // A restarted engine has the saved state; re-send outputs and context so nothing drifts.
     deps.engine.on('restarted', () => void this.syncEngine().catch(() => {}));
     deps.obs.on('change', changed);
+    deps.obs.watchSlots(SCENE_KEYS.flatMap((key) => SCENES[key].slots.map((slot) => slot.scene)));
+    this.replay = new Replay(deps.obs, { canReturn: () => !this.triggers.pause, stinger: () => this.setup.obs.stinger });
+    this.replay.on('error-message', (message: string) => this.emit('notice', message));
     deps.capture.on('change', changed);
   }
 
@@ -204,9 +209,9 @@ export class Production extends EventEmitter {
       setup.minimap = { x, y, size };
     }
     if (patch.obs !== undefined) {
-      const source = patch.obs.gameplaySource;
-      if (source !== null && (typeof source !== 'string' || source.length > 200)) throw new Error('Choose a gameplay source from OBS.');
-      setup.obs = { host: patch.obs.host || setup.obs.host, port: patch.obs.port || setup.obs.port, gameplaySource: source };
+      const stinger = patch.obs.stinger;
+      if (stinger !== null && (typeof stinger !== 'string' || stinger.length > 200)) throw new Error('Choose a stinger transition from OBS.');
+      setup.obs = { host: patch.obs.host || setup.obs.host, port: patch.obs.port || setup.obs.port, stinger };
     }
     this.save();
     await this.syncEngine();
@@ -234,25 +239,97 @@ export class Production extends EventEmitter {
 
   // ── OBS ──
 
-  sceneRows(): SceneRow[] {
+  /** The scenes Air builds, with each enabled graphic in its scene (PRD picture 9). */
+  buildPlan(): BuildScene[] {
     const port = this.deps.engine.port;
-    return this.setup.screens
-      .filter((s) => s.enabled)
-      .map((s) => ({
-        sceneName: sceneName(s.title),
-        url: `http://127.0.0.1:${port}/o/${s.outputId}`,
-        ...s.frame,
-        background: s.gameplay ? this.setup.obs.gameplaySource : null,
-      }));
+    return SCENE_KEYS.map((key) => {
+      const def = SCENES[key];
+      return {
+        name: def.name,
+        exclusive: def.exclusive,
+        slots: def.slots.map((slot) => ({ id: slot.id, sceneName: slot.scene, frame: slot.frame })),
+        sources: this.setup.screens
+          .filter((x) => x.scene === key && x.enabled)
+          .map((x) => ({ id: x.id, inputName: sourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
+      };
+    });
   }
 
   async installGraphics() {
     const data = this.deps.store.data;
-    await this.deps.obs.install(this.sceneRows(), data.owned, (owned) => {
+    await this.deps.obs.build(this.buildPlan(), data.owned, (owned) => {
       data.owned = owned;
       this.deps.store.save();
     });
+    this.replay.attach();
     this.emit('change');
+  }
+
+  async useSlotSource(slot: SlotId, source: string) {
+    const def = SCENE_KEYS.flatMap((k) => SCENES[k].slots).find((x) => x.id === slot);
+    if (!def) throw new Error('Unknown source slot.');
+    await this.deps.obs.useSource(def.scene, source);
+  }
+
+  async studioMode(on: boolean) {
+    await this.deps.obs.setStudioMode(on);
+  }
+
+  async preview(scene: string) {
+    if (!SCENE_KEYS.some((k) => SCENES[k].name === scene)) throw new Error('Choose one of the Esportra scenes.');
+    await this.deps.obs.setPreview(scene);
+  }
+
+  private async takeWith(choice: ReturnType<ObsLink['cutChoice']>, missing: string) {
+    if (!choice) throw new Error(missing);
+    const result = await this.deps.obs.take(choice);
+    if (!result.ok) throw new Error(result.error);
+  }
+
+  async take() {
+    const result = await this.deps.obs.take();
+    if (!result.ok) throw new Error(result.error);
+  }
+
+  cut() {
+    return this.takeWith(this.deps.obs.cutChoice(), 'OBS has no Cut transition.');
+  }
+
+  stinger() {
+    return this.takeWith(this.deps.obs.stingerChoice(this.setup.obs.stinger), 'Add a Stinger transition in OBS (Scene Transitions › + › Stinger) to use Stinger.');
+  }
+
+  async playReplay() {
+    const result = await this.replay.play();
+    if (!result.ok) throw new Error(result.error);
+  }
+
+  /** Starts or stops the PVW / PGM screenshot loop (the Console asks for it while it is on screen). */
+  setMonitoring(on: boolean) {
+    if (!on) {
+      if (this.monitorTimer) clearInterval(this.monitorTimer);
+      this.monitorTimer = null;
+      return;
+    }
+    if (this.monitorTimer) return;
+    this.monitorTimer = setInterval(() => void this.pump(), 350);
+    this.monitorTimer.unref?.();
+    void this.pump();
+  }
+
+  private async pump() {
+    const obs = this.deps.obs;
+    if (this.monitorBusy || !obs.connected) return;
+    this.monitorBusy = true;
+    try {
+      const { previewScene, programScene, studioMode } = obs.status;
+      const pvw = studioMode ? await obs.screenshot(previewScene) : null;
+      const pgm = await obs.screenshot(programScene);
+      const frame: MonitorFrame = { pvw, pgm, previewScene, programScene };
+      this.emit('monitor', frame);
+    } finally {
+      this.monitorBusy = false;
+    }
   }
 
   // ── capture, test round, triggers ──
@@ -355,8 +432,15 @@ export class Production extends EventEmitter {
       const o = status?.outputs.find((x) => x.id === s.outputId);
       return { screenId: s.id, title: s.title, overlay: s.overlay, url: `http://127.0.0.1:${engine.port}/o/${s.outputId}`, connections: o?.connections ?? 0, lastFrameAt: o?.lastFrameAt ?? null };
     });
-    const missingScenes = enabled.map((s) => sceneName(s.title)).filter((n) => !obs.status.scenes.includes(n));
+    const wanted = SCENE_KEYS.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.map((slot) => slot.scene)]);
+    const missingScenes = wanted.filter((n) => !obs.status.scenes.includes(n));
     const installed = obs.status.state === 'connected' && missingScenes.length === 0;
+    const sceneStatus: SceneStatus[] = SCENE_KEYS.map((k) => ({
+      key: k,
+      name: SCENES[k].name,
+      inObs: obs.status.scenes.includes(SCENES[k].name),
+      slots: SCENES[k].slots.map((slot) => ({ id: slot.id, label: slot.label, scene: slot.scene, source: obs.status.slots[slot.scene] ?? null })),
+    }));
     const feedState = capture.state === 'live' && roomStatus?.lastFeedAt == null ? 'waiting' : capture.state;
     const snapshot: Snapshot = {
       version,
@@ -366,7 +450,13 @@ export class Production extends EventEmitter {
       match,
       readout,
       feed: { state: feedState, reason: capture.reason, ageMs: roomStatus?.feedAgeMs ?? null, paused: roomStatus?.feedPaused ?? false },
-      obs: { state: obs.status.state, error: obs.status.error, version: obs.status.version, programScene: obs.status.programScene, installed, missingScenes, videoInputs: obs.status.videoInputs },
+      obs: {
+        state: obs.status.state, error: obs.status.error, version: obs.status.version, collection: obs.status.collection,
+        studioMode: obs.status.studioMode, programScene: obs.status.programScene, previewScene: obs.status.previewScene,
+        transitions: obs.status.transitions.map((t) => ({ name: t.name, kind: t.kind })), transitionActive: obs.status.transitionActive,
+        replay: { bufferActive: obs.status.replayBufferActive, busy: this.replay.busy },
+        installed, missingScenes, scenes: sceneStatus, videoInputs: obs.status.videoInputs,
+      },
       outputs,
       testRound: { running: roomStatus?.testRound.running ?? false, startedAt: roomStatus?.testRound.startedAt ?? null, durationMs: roomStatus?.testRound.durationMs ?? 0 },
       triggers: { ...this.triggers },

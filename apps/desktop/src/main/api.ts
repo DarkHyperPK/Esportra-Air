@@ -28,6 +28,14 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
       break;
     }
     case 'disconnectObs': await ctx.obs.disconnect(); break;
+    case 'obsStudioMode': await p.studioMode(a[0] === true); break;
+    case 'obsPreview': await p.preview(String(a[0])); break;
+    case 'obsTake': await p.take(); break;
+    case 'obsCut': await p.cut(); break;
+    case 'obsStinger': await p.stinger(); break;
+    case 'replay': await p.playReplay(); break;
+    case 'useSlotSource': await p.useSlotSource(a[0], String(a[1])); break;
+    case 'monitor': p.setMonitoring(a[0] === true); return;
     case 'installGraphics': await p.installGraphics(); break;
     case 'startCapture':
       if (a[0]?.consent !== true) throw new Error('Read and accept the capture notice first.');

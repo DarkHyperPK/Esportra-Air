@@ -1,6 +1,6 @@
 // `window.air` in the app. In a plain browser (development and automated walkthroughs), an HTTP
 // bridge to the dev host (dev/host.ts) provides the same calls.
-import type { AirApi, ApiMethod, Snapshot } from '../shared/api.ts';
+import type { AirApi, ApiMethod, MonitorFrame, Snapshot } from '../shared/api.ts';
 
 declare global {
   interface Window {
@@ -15,15 +15,16 @@ function httpBridge(base: string): AirApi {
     if (!res.ok) throw new Error(body.error ?? 'Request failed');
     return body;
   };
+  const stream = <T,>(path: string) => (listener: (value: T) => void) => {
+    const source = new EventSource(`${base}${path}`);
+    source.onmessage = (e) => listener(JSON.parse(e.data));
+    return () => source.close();
+  };
   const api = new Proxy({} as AirApi, {
     get: (_t, name: string) =>
-      name === 'onSnapshot'
-        ? (listener: (s: Snapshot) => void) => {
-            const source = new EventSource(`${base}/events`);
-            source.onmessage = (e) => listener(JSON.parse(e.data));
-            return () => source.close();
-          }
-        : (...args: unknown[]) => call(name as ApiMethod, args),
+      name === 'onSnapshot' ? stream<Snapshot>('/events')
+      : name === 'onMonitor' ? stream<MonitorFrame>('/monitor-events')
+      : (...args: unknown[]) => call(name as ApiMethod, args),
   });
   return api;
 }

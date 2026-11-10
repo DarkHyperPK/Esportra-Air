@@ -92,6 +92,7 @@ Outside the build: Overwolf app approval (developer account exists, app not yet 
 |---|---|---|
 | Graphics engine (Rust) | `engine/` | Stage 1 built. Golden parity with the JS parser on three recorded fixtures; 14 overlays render pixel-identical to the JS server; test round; feed-paused tag; control API. |
 | Desktop app (ow-electron, React + TypeScript) | `apps/desktop/` | Stage 1 built on quick matches: Match → Check → Live, production setup, OBS install/status, GEP capture with consent, triggers, engine supervision and re-attach. Walkthrough passes in Chromium against the real engine with a simulated game and in-memory OBS. |
+| OBS control (S2) | `apps/desktop/src/main/{obs,scene-build,replay}.ts` | Studio Mode, PVW/PGM tally from OBS events, Take / Cut / Stinger with the transition restored afterwards, screenshots for the monitors, replay (F3), automatic reconnect. Builds the PRD scene model: Holding, Gameplay, Fullscreen, Replay, Casters, with empty slots for the game feed and caster cams that read "Add your source" until OBS reports a source. Never starts the stream, recording or replay buffer. Tested against an in-memory OBS only. |
 | HUD overlays | `esportra-valorant-hud/` | Unchanged. |
 | Legacy app | `src/`, `tests/` | Untouched until Stage 4. Its renderer does not build at `49a0f7d` (three deleted components are still imported). |
 | Windows build | `.github/workflows/air-windows.yml` | Tests, engine build and installer packaging on a Windows runner. Not yet run. |

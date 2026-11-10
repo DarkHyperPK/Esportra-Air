@@ -38,14 +38,17 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await btn('Save casters');
   await page.getByText('2 casters ready').waitFor();
 
-  // Scenes: connect + add for me
+  // Scenes: connect, Studio Mode, add for me, fill the game-feed slot
   await rail('Scenes');
   await page.getByLabel('Password').fill('secret');
   await btn('Connect', { exact: true });
   await page.getByText('Connected', { exact: true }).first().waitFor();
-  await page.getByLabel(/Game feed/).selectOption('Game Capture');
+  await page.getByRole('switch', { name: 'Studio Mode' }).click();
+  await page.getByText('On · takes go through Preview').waitFor();
   await btn('Add for me');
-  await page.getByRole('button', { name: 'Update', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Rebuild', exact: true }).waitFor();
+  await page.getByLabel('Use an existing OBS source for Game feed').selectOption('Game Capture');
+  await page.getByText('Game Capture').first().waitFor();
   await shot('scenes');
 
   // OBS opens each browser source once
@@ -60,7 +63,7 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await page.waitForTimeout(2500);
 
   await rail('Outputs');
-  await page.getByText(/9 connected|1 connected/).first().waitFor();
+  await page.getByText(/\d of \d loading/).first().waitFor();
   await shot('outputs');
 
   // Readiness: start capture through its fix button
@@ -74,6 +77,16 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
 
   // Console
   await btn('Run manually');
+  // Switching: Preview a scene, Take it; then Cut to another
+  await page.getByRole('button', { name: /^Gameplay/ }).click();
+  await page.getByRole('button', { name: 'Take', exact: true }).click();
+  await page.getByText(/OBS scene · Gameplay on air/).waitFor();
+  await page.waitForTimeout(700);
+  await page.getByRole('button', { name: /^Holding/ }).click();
+  await page.getByRole('button', { name: 'Stinger', exact: true }).click();
+  await page.getByText(/OBS scene · Holding on air/).waitFor();
+  await page.waitForTimeout(700);
+  await page.getByRole('button', { name: /^Gameplay/ }).click();
   await page.getByText('Waiting for game data').or(page.getByText(/R\d+/)).first().waitFor();
   await page.waitForTimeout(9000);
   await page.keyboard.press('F5');

@@ -1,142 +1,86 @@
-// OBS WebSocket (v5): connect, install Air's graphics, read what is on air.
+// OBS WebSocket (v5): one connection with live status and the switching controls.
 //
-// Air never switches scenes, transitions, streams or records. It only creates and updates its own
-// scenes ("Air · <screen>") and their browser sources, and reads the program scene for status.
-// Installation logic is ported from src/obs-template-push.js.
+// Status mirrors what OBS reports through its events; the console never animates a take OBS
+// did not make. Ported from the legacy src/obs-controller.js and src/obs-transitions.js.
 
 import { EventEmitter } from 'node:events';
+import type { ObsSocket } from './obs-types.ts';
+import { buildScenes, readSlots, type BuildScene, type Owned } from './scene-build.ts';
 
-export interface ObsSocket {
-  connect(url: string, password?: string, identification?: { rpcVersion: number }): Promise<{ obsWebSocketVersion: string }>;
-  disconnect(): Promise<void>;
-  call(request: string, data?: Record<string, unknown>): Promise<any>;
-  on(event: string, listener: (...args: any[]) => void): unknown;
-}
+export type { ObsSocket } from './obs-types.ts';
 
-export interface SceneRow {
-  sceneName: string;
-  url: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  /** Existing OBS video input placed underneath (the in-game screen's gameplay). */
-  background: string | null;
-}
+export type TransitionKind = 'cut' | 'fade' | 'stinger' | 'other';
 
-export interface Owned {
-  [sceneName: string]: { inputName?: string; geometry?: string; background?: string | null; backgroundItem?: number | null };
-}
-
-const geometry = (row: SceneRow) => JSON.stringify([row.x, row.y, row.width, row.height]);
-const AUDIO_OR_BROWSER = /audio|wasapi|pulse|alsa|coreaudio|browser_source/i;
-
-/** Creates or updates Air's scenes. Checks every collision before changing anything. */
-export async function installScenes(options: { socket: ObsSocket; rows: SceneRow[]; owned: Owned; saveOwned: (owned: Owned) => void }) {
-  const { socket, rows, saveOwned } = options;
-  const call = (name: string, data?: Record<string, unknown>) => socket.call(name, data);
-  const [stream, record, sceneList, inputList] = await Promise.all(['GetStreamStatus', 'GetRecordStatus', 'GetSceneList', 'GetInputList'].map((name) => call(name)));
-  if (stream.outputActive !== false || record.outputActive !== false) {
-    throw new Error('Stop streaming and recording in OBS before installing or updating Air graphics, so nothing on air reloads.');
-  }
-  const scenes = new Set<string>((sceneList.scenes ?? []).map((s: { sceneName: string }) => s.sceneName));
-  const inputs = new Map<string, { inputKind: string }>((inputList.inputs ?? []).map((i: { inputName: string; inputKind: string }) => [i.inputName, i]));
-  const owned: Owned = { ...options.owned };
-  for (const row of rows) {
-    const inputName = `${row.sceneName} · Graphics`;
-    if (scenes.has(row.sceneName) && !owned[row.sceneName]) {
-      throw new Error(`OBS already has a scene called “${row.sceneName}” that Air did not create. Rename it in OBS or rename the screen in Air.`);
-    }
-    const existing = inputs.get(inputName);
-    if (existing && (!owned[row.sceneName] || existing.inputKind !== 'browser_source')) throw new Error(`The OBS source “${inputName}” already exists. Rename it in OBS.`);
-    if (row.background) {
-      const video = inputs.get(row.background);
-      if (!video || AUDIO_OR_BROWSER.test(video.inputKind) || row.background.startsWith('Air · ')) {
-        throw new Error(`“${row.background}” is not an available video source in OBS. Choose your game capture in Setup › OBS.`);
-      }
-    }
-  }
-  const installed: string[] = [];
-  for (const row of rows) {
-    const inputName = `${row.sceneName} · Graphics`;
-    if (!scenes.has(row.sceneName)) {
-      await call('CreateScene', { sceneName: row.sceneName });
-      owned[row.sceneName] = {};
-      saveOwned(owned);
-    }
-    let sceneItemId: number | undefined;
-    if (!inputs.has(inputName)) {
-      const created = await call('CreateInput', {
-        sceneName: row.sceneName,
-        inputName,
-        inputKind: 'browser_source',
-        inputSettings: { url: row.url, width: 1920, height: 1080, fps: 60, reroute_audio: false, shutdown: false },
-        sceneItemEnabled: true,
-      });
-      sceneItemId = created.sceneItemId;
-    } else {
-      const settings = await call('GetInputSettings', { inputName });
-      if (settings.inputSettings?.url !== row.url) await call('SetInputSettings', { inputName, inputSettings: { url: row.url }, overlay: true });
-      const items = await call('GetSceneItemList', { sceneName: row.sceneName });
-      sceneItemId = (items.sceneItems ?? []).find((i: { sourceName: string }) => i.sourceName === inputName)?.sceneItemId;
-      if (sceneItemId === undefined) sceneItemId = (await call('CreateSceneItem', { sceneName: row.sceneName, sourceName: inputName, sceneItemEnabled: true })).sceneItemId;
-    }
-    if (!Number.isInteger(sceneItemId)) throw new Error('OBS did not confirm the graphics source. Try again.');
-    const mine = owned[row.sceneName] ?? {};
-    let backgroundItem = mine.backgroundItem ?? null;
-    if (Number.isInteger(backgroundItem) && mine.background !== row.background) {
-      const list = await call('GetSceneItemList', { sceneName: row.sceneName });
-      if ((list.sceneItems ?? []).some((i: { sceneItemId: number; sourceName: string }) => i.sceneItemId === backgroundItem && i.sourceName === mine.background)) {
-        await call('RemoveSceneItem', { sceneName: row.sceneName, sceneItemId: backgroundItem });
-      }
-      backgroundItem = null;
-    }
-    if (row.background) {
-      const list = await call('GetSceneItemList', { sceneName: row.sceneName });
-      if (!(list.sceneItems ?? []).some((i: { sourceName: string }) => i.sourceName === row.background)) {
-        backgroundItem = (await call('CreateSceneItem', { sceneName: row.sceneName, sourceName: row.background, sceneItemEnabled: true })).sceneItemId;
-        if (!Number.isInteger(backgroundItem)) throw new Error('OBS did not confirm the gameplay source. Try again.');
-        await call('SetSceneItemTransform', {
-          sceneName: row.sceneName,
-          sceneItemId: backgroundItem,
-          sceneItemTransform: { positionX: 0, positionY: 0, alignment: 5, boundsAlignment: 5, boundsType: 'OBS_BOUNDS_SCALE_INNER', boundsWidth: 1920, boundsHeight: 1080 },
-        });
-        await call('SetSceneItemIndex', { sceneName: row.sceneName, sceneItemId: backgroundItem, sceneItemIndex: 0 });
-      }
-    }
-    // Re-installing keeps layout edits made directly in OBS unless Air's own layout changed.
-    if (mine.geometry !== geometry(row)) {
-      await call('SetSceneItemTransform', {
-        sceneName: row.sceneName,
-        sceneItemId,
-        sceneItemTransform: { positionX: row.x, positionY: row.y, alignment: 5, boundsAlignment: 5, boundsType: 'OBS_BOUNDS_STRETCH', boundsWidth: row.width, boundsHeight: row.height },
-      });
-    }
-    owned[row.sceneName] = { inputName, geometry: geometry(row), background: row.background, backgroundItem };
-    saveOwned(owned);
-    installed.push(row.sceneName);
-  }
-  return { scenes: installed, owned };
+export interface TransitionInfo {
+  name: string;
+  kind: TransitionKind;
 }
 
 export interface ObsStatus {
   state: 'disconnected' | 'connecting' | 'connected' | 'error';
   error: string | null;
   version: string | null;
+  collection: string | null;
+  studioMode: boolean;
   programScene: string | null;
+  previewScene: string | null;
   scenes: string[];
   videoInputs: string[];
+  transitions: TransitionInfo[];
+  currentTransition: string | null;
+  transitionActive: boolean;
+  replayBufferActive: boolean | null;
+  /** First source in each watched slot scene (null while empty). */
+  slots: Record<string, string | null>;
 }
 
-/** One OBS connection with read-only status. */
+export interface TransitionChoice {
+  mode: 'cut' | 'fade' | 'stinger';
+  name: string;
+  durationMs?: number;
+}
+
+export interface TakeResult {
+  ok: boolean;
+  error?: string;
+  latencyMs?: number;
+}
+
+const AUDIO_OR_BROWSER = /audio|wasapi|pulse|alsa|coreaudio|browser_source/i;
+const KINDS: Record<string, TransitionKind> = { cut_transition: 'cut', fade_transition: 'fade', obs_stinger_transition: 'stinger' };
+const BACKOFF_MS = [1000, 2000, 4000, 8000, 10000];
+
+export function validateTransition(input: TransitionChoice | null | undefined): TransitionChoice | null {
+  if (input == null) return null;
+  if (!['cut', 'fade', 'stinger'].includes(input.mode)) throw new Error('Choose Cut, Fade or Stinger.');
+  if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 256) throw new Error('Choose a transition available in OBS.');
+  if (input.mode === 'fade' && (!Number.isInteger(input.durationMs) || input.durationMs! < 50 || input.durationMs! > 10_000)) throw new Error('Fade duration must be 50–10,000 milliseconds.');
+  return { mode: input.mode, name: input.name, ...(input.mode === 'fade' ? { durationMs: input.durationMs } : {}) };
+}
+
+const initial = (): ObsStatus => ({
+  state: 'disconnected', error: null, version: null, collection: null, studioMode: false, programScene: null, previewScene: null,
+  scenes: [], videoInputs: [], transitions: [], currentTransition: null, transitionActive: false, replayBufferActive: null, slots: {},
+});
+
 export class ObsLink extends EventEmitter {
-  status: ObsStatus = { state: 'disconnected', error: null, version: null, programScene: null, scenes: [], videoInputs: [] };
+  status: ObsStatus = initial();
   private socket: ObsSocket | null = null;
   private readonly create: () => ObsSocket;
+  private args: { host: string; port: number; password: string } | null = null;
+  private watched: string[] = [];
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private attempt = 0;
+  private wantConnected = false;
+  private busy = false;
+  private restoreTransition: string | null = null;
+  private readonly backoff: number[];
 
-  constructor(create: () => ObsSocket) {
+  constructor(create: () => ObsSocket, options: { backoffMs?: number[] } = {}) {
     super();
     this.create = create;
+    this.backoff = options.backoffMs ?? BACKOFF_MS;
   }
 
   private update(patch: Partial<ObsStatus>) {
@@ -144,16 +88,34 @@ export class ObsLink extends EventEmitter {
     this.emit('change');
   }
 
+  get connected() {
+    return this.status.state === 'connected';
+  }
+
+  /** Slot scenes whose contents Air watches (to turn "Add your source" into the real name). */
+  watchSlots(sceneNames: string[]) {
+    this.watched = sceneNames;
+  }
+
   async connect(host: string, port: number, password: string) {
     await this.disconnect();
     if (!/^[a-zA-Z0-9.-]{1,253}$/.test(host) || !Number.isInteger(port) || port < 1 || port > 65535) {
       throw new Error('Enter the OBS computer’s address and WebSocket port (OBS › Tools › WebSocket Server Settings).');
     }
+    this.args = { host, port, password };
+    this.wantConnected = true;
+    this.attempt = 0;
+    await this.open();
+  }
+
+  private async open() {
+    const args = this.args;
+    if (!args) return;
     const socket = this.create();
     this.socket = socket;
     this.update({ state: 'connecting', error: null });
     try {
-      await socket.connect(`ws://${host}:${port}`, password || undefined, { rpcVersion: 1 });
+      await socket.connect(`ws://${args.host}:${args.port}`, args.password || undefined, { rpcVersion: 1 });
     } catch (error) {
       this.socket = null;
       const text = String((error as Error)?.message ?? error);
@@ -161,51 +123,216 @@ export class ObsLink extends EventEmitter {
         ? 'OBS rejected the password. Copy it from OBS › Tools › WebSocket Server Settings › Show Connect Info.'
         : 'Could not reach OBS. Check that OBS is open and its WebSocket server is enabled on this port.';
       this.update({ state: 'error', error: message });
+      this.scheduleReconnect(/auth/i.test(text));
       throw new Error(message);
     }
-    socket.on('CurrentProgramSceneChanged', (e: { sceneName: string }) => this.update({ programScene: e.sceneName }));
-    socket.on('SceneListChanged', () => void this.refresh());
-    socket.on('InputCreated', () => void this.refresh());
-    socket.on('InputRemoved', () => void this.refresh());
-    socket.on('InputNameChanged', () => void this.refresh());
-    socket.on('ConnectionClosed', () => {
+    this.listen(socket);
+    const version = await socket.call('GetVersion');
+    this.update({ state: 'connected', error: null, version: version.obsVersion ?? null });
+    this.attempt = 0;
+    await this.refresh();
+  }
+
+  private listen(socket: ObsSocket) {
+    const on = (event: string, fn: (e: any) => void) => socket.on(event, fn);
+    on('CurrentProgramSceneChanged', (e) => this.update({ programScene: e.sceneName }));
+    on('CurrentPreviewSceneChanged', (e) => this.update({ previewScene: e.sceneName }));
+    on('StudioModeStateChanged', (e) => {
+      this.update({ studioMode: !!e.studioModeEnabled, ...(e.studioModeEnabled ? {} : { previewScene: null }) });
+      void this.refresh();
+    });
+    on('SceneTransitionStarted', () => this.update({ transitionActive: true }));
+    on('SceneTransitionEnded', () => {
+      this.update({ transitionActive: false });
+      void this.restoreBase();
+    });
+    on('CurrentSceneTransitionChanged', (e) => this.update({ currentTransition: e.transitionName }));
+    for (const event of ['SceneListChanged', 'SceneCreated', 'SceneRemoved', 'SceneNameChanged', 'InputCreated', 'InputRemoved', 'InputNameChanged', 'SceneItemCreated', 'SceneItemRemoved', 'ReplayBufferStateChanged', 'CurrentSceneCollectionChanged']) {
+      on(event, () => this.scheduleRefresh());
+    }
+    on('ConnectionClosed', () => {
       if (this.socket !== socket) return;
       this.socket = null;
-      this.update({ state: 'error', error: 'The connection to OBS was lost. Reconnect in Setup › OBS.', programScene: null });
+      this.update({ ...initial(), state: 'error', error: 'The connection to OBS was lost. Air reconnects automatically.' });
+      this.scheduleReconnect(false);
     });
-    const version = await socket.call('GetVersion');
-    this.update({ state: 'connected', version: version.obsVersion ?? null });
-    await this.refresh();
+  }
+
+  private scheduleRefresh() {
+    if (this.refreshTimer) return;
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = null;
+      void this.refresh();
+    }, 120);
+    this.refreshTimer.unref?.();
+  }
+
+  private scheduleReconnect(authFailure: boolean) {
+    // A wrong password will not fix itself: stop and let the producer correct it.
+    if (!this.wantConnected || authFailure || this.reconnectTimer) return;
+    const delay = this.backoff[Math.min(this.attempt, this.backoff.length - 1)]!;
+    this.attempt += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.open().catch(() => {
+        // open() schedules the next attempt itself.
+      });
+    }, delay);
+    this.reconnectTimer.unref?.();
   }
 
   async refresh() {
     const socket = this.socket;
     if (!socket) return;
+    const call = (name: string) => socket.call(name).catch(() => null);
     try {
-      const [scenes, inputs] = await Promise.all([socket.call('GetSceneList'), socket.call('GetInputList')]);
+      const [scenes, inputs, transitions, studio, replay, collections] = await Promise.all([
+        call('GetSceneList'), call('GetInputList'), call('GetSceneTransitionList'), call('GetStudioModeEnabled'), call('GetReplayBufferStatus'), call('GetSceneCollectionList'),
+      ]);
+      const studioMode = !!studio?.studioModeEnabled;
+      const preview = studioMode ? await call('GetCurrentPreviewScene') : null;
+      const slots = await readSlots(socket, this.watched);
       this.update({
-        programScene: scenes.currentProgramSceneName ?? null,
-        scenes: (scenes.scenes ?? []).map((s: { sceneName: string }) => s.sceneName),
-        videoInputs: (inputs.inputs ?? [])
-          .filter((i: { inputName: string; inputKind: string }) => !AUDIO_OR_BROWSER.test(i.inputKind) && !i.inputName.startsWith('Air · '))
+        programScene: scenes?.currentProgramSceneName ?? this.status.programScene,
+        previewScene: studioMode ? preview?.currentPreviewSceneName ?? null : null,
+        studioMode,
+        collection: collections?.currentSceneCollectionName ?? null,
+        scenes: (scenes?.scenes ?? []).map((s: { sceneName: string }) => s.sceneName),
+        videoInputs: (inputs?.inputs ?? [])
+          .filter((i: { inputName: string; inputKind: string }) => !AUDIO_OR_BROWSER.test(i.inputKind) && !i.inputName.startsWith('Esportra · '))
           .map((i: { inputName: string }) => i.inputName),
+        transitions: (transitions?.transitions ?? []).map((t: { transitionName: string; transitionKind: string }) => ({ name: t.transitionName, kind: KINDS[t.transitionKind] ?? 'other' })),
+        currentTransition: transitions?.currentSceneTransitionName ?? null,
+        // OBS answers 604 when its replay buffer is not configured; that reads as unavailable.
+        replayBufferActive: replay ? !!replay.outputActive : null,
+        slots,
       });
     } catch {
-      // A failed read leaves the last known status; ConnectionClosed reports real loss.
+      // A failed read keeps the last known status; ConnectionClosed reports real loss.
     }
   }
 
-  async install(rows: SceneRow[], owned: Owned, saveOwned: (owned: Owned) => void) {
+  async disconnect() {
+    this.wantConnected = false;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    const socket = this.socket;
+    this.socket = null;
+    if (socket) await socket.disconnect().catch(() => {});
+    this.update(initial());
+  }
+
+  // ── building ──
+
+  async build(scenes: BuildScene[], owned: Owned, saveOwned: (owned: Owned) => void) {
     if (!this.socket) throw new Error('Connect to OBS first.');
-    const result = await installScenes({ socket: this.socket, rows, owned, saveOwned });
+    this.watchSlots(scenes.flatMap((s) => s.slots.map((slot) => slot.sceneName)));
+    const result = await buildScenes({ socket: this.socket, scenes, owned, saveOwned });
     await this.refresh();
     return result;
   }
 
-  async disconnect() {
-    const socket = this.socket;
-    this.socket = null;
-    if (socket) await socket.disconnect().catch(() => {});
-    this.update({ state: 'disconnected', error: null, programScene: null, scenes: [], videoInputs: [], version: null });
+  /** Puts an existing OBS source into a slot scene (the in-app shortcut for "add your source"). */
+  async useSource(slotScene: string, source: string) {
+    if (!this.socket) throw new Error('Connect to OBS first.');
+    if (!this.status.videoInputs.includes(source)) throw new Error(`“${source}” is not an available video source in OBS.`);
+    if (!this.status.scenes.includes(slotScene)) throw new Error('Add the Esportra scenes to OBS first.');
+    await this.socket.call('CreateSceneItem', { sceneName: slotScene, sourceName: source, sceneItemEnabled: true });
+    await this.refresh();
+  }
+
+  // ── switching ──
+
+  async setStudioMode(on: boolean) {
+    if (!this.socket) throw new Error('Connect to OBS first.');
+    await this.socket.call('SetStudioModeEnabled', { studioModeEnabled: on });
+    await this.refresh();
+  }
+
+  async setPreview(sceneName: string) {
+    const socket = this.requireStudio();
+    if (!this.status.scenes.includes(sceneName)) throw new Error('That scene is not in OBS.');
+    await socket.call('SetCurrentPreviewScene', { sceneName });
+  }
+
+  private requireStudio() {
+    if (!this.socket) throw new Error('Connect to OBS first.');
+    if (!this.status.studioMode) throw new Error('Turn on Studio Mode so takes go through Preview.');
+    return this.socket;
+  }
+
+  /**
+   * Puts the preview scene on air. With a transition choice, uses that transition for this take only
+   * and restores OBS's own transition afterwards.
+   */
+  async take(choice?: TransitionChoice | null, options: { scene?: string; stillAllowed?: () => boolean } = {}): Promise<TakeResult> {
+    if (this.busy || this.status.transitionActive) return { ok: false, error: 'Wait for the current OBS transition to finish.' };
+    this.busy = true;
+    const started = Date.now();
+    try {
+      const socket = this.requireStudio();
+      const forced = validateTransition(choice);
+      if (forced) {
+        const wanted = this.status.transitions.find((t) => t.name === forced.name && t.kind === forced.mode);
+        if (!wanted) return { ok: false, error: `The ${forced.mode} transition “${forced.name}” is not available in OBS.` };
+        this.restoreTransition = this.status.currentTransition && this.status.currentTransition !== forced.name ? this.status.currentTransition : null;
+        await socket.call('SetCurrentSceneTransition', { transitionName: forced.name });
+        if (forced.mode === 'fade') await socket.call('SetCurrentSceneTransitionDuration', { transitionDuration: forced.durationMs });
+      }
+      if (options.scene) await socket.call('SetCurrentPreviewScene', { sceneName: options.scene });
+      if (options.stillAllowed && !options.stillAllowed()) {
+        await this.restoreBase();
+        return { ok: false, error: 'Take cancelled because production changed.' };
+      }
+      if (!this.status.previewScene && !options.scene) {
+        await this.restoreBase();
+        return { ok: false, error: 'Choose a scene for Preview first.' };
+      }
+      await socket.call('TriggerStudioModeTransition');
+      return { ok: true, latencyMs: Date.now() - started };
+    } catch (error) {
+      await this.restoreBase();
+      return { ok: false, error: (error as Error).message, latencyMs: Date.now() - started };
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** The cut transition, if OBS has one. */
+  cutChoice(): TransitionChoice | null {
+    const cut = this.status.transitions.find((t) => t.kind === 'cut');
+    return cut ? { mode: 'cut', name: cut.name } : null;
+  }
+
+  stingerChoice(preferred: string | null): TransitionChoice | null {
+    const stingers = this.status.transitions.filter((t) => t.kind === 'stinger');
+    const pick = stingers.find((t) => t.name === preferred) ?? stingers[0];
+    return pick ? { mode: 'stinger', name: pick.name } : null;
+  }
+
+  private async restoreBase() {
+    const name = this.restoreTransition;
+    this.restoreTransition = null;
+    if (name && this.socket) await this.socket.call('SetCurrentSceneTransition', { transitionName: name }).catch(() => {});
+  }
+
+  // ── monitors ──
+
+  /** A small JPEG of a scene as OBS renders it, or null. */
+  async screenshot(sceneName: string | null, width = 480): Promise<string | null> {
+    if (!this.socket || !sceneName) return null;
+    try {
+      const { imageData } = await this.socket.call('GetSourceScreenshot', {
+        sourceName: sceneName, imageFormat: 'jpg', imageWidth: width, imageHeight: Math.round((width * 9) / 16), imageCompressionQuality: 55,
+      });
+      return typeof imageData === 'string' ? imageData : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The raw socket, for the replay helper. */
+  get raw(): ObsSocket | null {
+    return this.socket;
   }
 }
