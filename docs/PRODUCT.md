@@ -32,6 +32,7 @@ Studios with their own in-house graphics teams are out of scope.
 | Games | Valorant only in v1, built as a game module so another title can be added. |
 | Customisation | Curated graphics package, tournament brand, each screen and HUD element on/off, and layout adjustments (move/resize HUD elements, reorder/rename screens). |
 | Transport | **Local** (default): one PC or same-network PCs; game data never leaves the local network. **Remote**: observer and producer in different places; the game feed travels through an Esportra relay and the producer's Air draws the HUD with an adjustable delay. Remote mode has its own consent. |
+| Other PCs | **Esportra Air is standalone production only.** Capture on observer and player PCs is a separate app, Esportra Player (see `docs/PLAYER-CLIENT.md`), that connects to Air with a join code. Air's capture-only mode stays until the Player app has the observer role, then is removed. |
 | Getting in | Producer signs in with an Esportra account. Observer and player PCs join with a short code shown in the producer's Air. |
 | Setup unit | Tournament setup once (graphics, brand, layout, OBS). A short routine for each match. |
 | Checks | Warn, never block. Problems stay visible on air. |
