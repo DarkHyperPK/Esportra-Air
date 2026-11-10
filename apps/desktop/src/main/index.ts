@@ -1,5 +1,5 @@
 // Esportra Air main process (ow-electron). Kept thin: the graphics engine is a separate process.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, safeStorage, shell } from 'electron';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { mkdirSync } from 'node:fs';
@@ -59,7 +59,14 @@ async function main() {
     store, secrets, deviceId: store.data.deviceId, deviceName: hostname().slice(0, 80) || 'Air PC',
     changed: () => production.emit('change'),
   });
-  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, version: app.getVersion() });
+  // Logos and player photos: any common image, stored as PNG no wider than 512 px.
+  const toPng = (bytes: Buffer) => {
+    const image = nativeImage.createFromBuffer(bytes);
+    if (image.isEmpty()) return null;
+    const { width } = image.getSize();
+    return (width > 512 ? image.resize({ width: 512, quality: 'best' }) : image).toPNG();
+  };
+  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, toPng, version: app.getVersion() });
   void esportra.start();
   if (store.data.mode === 'capture') production.link.resume();
   const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text) };

@@ -11,13 +11,15 @@ export interface ApiContext {
   copy: (text: string) => void;
 }
 
-export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | void> {
+export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | void> {
   const p = ctx.production;
   const a = args as any[];
   switch (method) {
     case 'snapshot': break;
     case 'createQuickMatch': await p.createQuickMatch(a[0]); break;
     case 'selectMatch': await p.selectMatch(String(a[0])); break;
+    case 'createMatch': await p.createMatch(a[0]); break;
+    case 'uploadImage': return p.uploadImage(String(a[0]));
     case 'updateMatch': await p.updateMatch(String(a[0]), a[1] ?? {}); break;
     case 'updateSetup': await p.updateSetup(a[0] ?? {}); break;
     case 'connectObs': {

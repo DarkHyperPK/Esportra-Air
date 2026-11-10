@@ -6,6 +6,7 @@
 //! existing overlays run unchanged.
 
 pub mod join;
+pub mod roster;
 pub mod actions;
 pub mod engine;
 pub mod features;

@@ -266,6 +266,16 @@ export interface Snapshot {
   art: 'checking' | 'ok' | 'offline';
 }
 
+export interface NewMatchInput {
+  game: GameId;
+  bestOf: 1 | 3 | 5;
+  teams: [Team, Team];
+  players: [Array<Omit<PlayerInfo, 'id'> & { id?: string }>, Array<Omit<PlayerInfo, 'id'> & { id?: string }>];
+  casters: Caster[];
+  event: { name: string; stage: string };
+  sponsors: string[];
+}
+
 export interface QuickMatchInput {
   teamA: string;
   teamB: string;
@@ -310,7 +320,10 @@ export interface AirApi {
   useSlotSource(slot: SlotId, source: string): Promise<Snapshot>;
   createQuickMatch(input: QuickMatchInput): Promise<Snapshot>;
   selectMatch(id: string): Promise<Snapshot>;
-  updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players'>>): Promise<Snapshot>;
+  updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players' | 'teams' | 'bestOf'>>): Promise<Snapshot>;
+  createMatch(input: NewMatchInput): Promise<Snapshot>;
+  /** Stores an image (data URL) and resolves to its URL on the engine. */
+  uploadImage(dataUrl: string): Promise<string>;
   updateSetup(patch: Partial<Setup>): Promise<Snapshot>;
   connectObs(input: { host: string; port: number; password: string }): Promise<Snapshot>;
   disconnectObs(): Promise<Snapshot>;

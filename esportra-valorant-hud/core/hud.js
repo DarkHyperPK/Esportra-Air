@@ -101,6 +101,8 @@
   const fmtHundredths = sec => { const value = Math.max(0, Math.ceil(Math.round(sec * 1000) / 10)); return `${String(Math.floor(value / 100)).padStart(2, '0')}:${String(value % 100).padStart(2, '0')}`; };
   const money = n => Number(n || 0).toLocaleString('en-US');
   const setImg = (im, url) => { if (!url) { im.style.visibility = 'hidden'; return; } im.style.visibility = ''; if (im.dataset.u !== url) { im.dataset.u = url; im.src = url; } };
+  // A player photo from the producer's lineup (served by Air's engine). Only its own asset paths are trusted.
+  const photoOk = v => typeof v === 'string' && /^\/air-assets\/[0-9a-f-]{36}$/i.test(v);
   const txt = (e, v) => { v = String(v); if (e.textContent !== v) e.textContent = v; };
   const timeLeft = HUD.timeLeft = r => r.endsAt ? Math.max(0, (r.endsAt - HUD.now()) / 1000) : (r.remaining || 0);
   // Align CSS motion once per plant; the compositor keeps it smooth between HUD ticks.
@@ -876,7 +878,7 @@
   M.profile = root => { const m = E('div', 'mod on pp', root); const sc = sceneBg(m); const wash = E('div', 'wash', sc); chrome(m, 'PLAYER SPOTLIGHT'); const box = E('div', '', m); sceneFx(sc);
     return { update(s) { if (same(this, s) && this._sp === JSON.stringify(s.spotlight)) return; this._sp = JSON.stringify(s.spotlight); const sp = s.spotlight, p = P(s, [sp.team, sp.player]); if (!p) return; const A = agent(p.agent), T = s.teams[sp.team], se = sp.season || {};
       wash.style.background = `radial-gradient(ellipse at 60% 40%,#${A && A.grad[0] || '444'},transparent 65%)`;
-      box.innerHTML = `${A ? `<img class="por" src="${A.full}">` : ''}<div class="k mono" style="--c:${T.color}">${T.name}   /   ${A ? A.role : ''}</div><div class="n disp hl">${p.name}</div><div class="a mono">${A ? A.name : ''}   /   ${s.event.stage}</div>` +
+      box.innerHTML = `${photoOk(p.photo) ? `<img class="por photo" src="${p.photo}">` : A ? `<img class="por" src="${A.full}">` : ''}<div class="k mono" style="--c:${T.color}">${T.name}   /   ${A ? A.role : ''}</div><div class="n disp hl">${p.name}</div><div class="a mono">${A ? A.name : ''}   /   ${s.event.stage}</div>` +
         `<div class="grid">${[[p.acs, 'ACS THIS MAP'], [`${p.k}/${p.d}/${p.a}`, 'K / D / A'], [p.adr, 'ADR'], [se.rating, 'EVENT RATING'], [se.kpr, 'KILLS PER ROUND'], [se.clutches, 'CLUTCHES WON']].map(([v, l]) => `<div>${v ?? '–'}<small>${l}</small></div>`).join('')}</div>${sp.quote ? `<div class="q">“${sp.quote}”</div>` : ''}`;
       box.querySelector('.k').style.color = T.color; } }; };
 
@@ -886,7 +888,7 @@
       const players = live || !registered.length ? s.players[t] : registered;
       const text = value => String(value || '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
       box.innerHTML = `<div class="head" style="--c:${T.color}"><div class="lgx"></div><div><div class="t disp hl">${T.name}</div><div class="s mono">${s.event.name}   /   ${s.event.stage}</div></div></div><div class="cards" style="--c:${T.color}">` +
-        players.map((p, j) => { const A = agent(p.agent); return `<div class="cd" style="animation:tIn .6s ${.08 * j}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="n">${text(p.name)}</div><div class="a mono">${A ? A.name + '  /  ' + A.role : ''}</div><div class="s mono">${live ? `${p.acs} ACS   ${p.k}/${p.d}/${p.a}` : 'REGISTERED LINEUP · WAITING FOR GAME DATA'}</div></div>`; }).join('') + '</div>';
+        players.map((p, j) => { const A = agent(p.agent); return `<div class="cd" style="animation:tIn .6s ${.08 * j}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${photoOk(p.photo) ? `<img class="photo" src="${p.photo}">` : A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="n">${text(p.name)}</div><div class="a mono">${A ? A.name + '  /  ' + A.role : ''}</div><div class="s mono">${live ? `${p.acs} ACS   ${p.k}/${p.d}/${p.a}` : 'REGISTERED LINEUP · WAITING FOR GAME DATA'}</div></div>`; }).join('') + '</div>';
       const l = logo(T, 120, box.querySelector('.lgx')); l.style.position = 'relative'; } }; };
 
   const mapBreak = half => root => { const m = E('div', 'mod on mb', root); const sc = sceneBg(m); chrome(m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const title = E('div', 'title disp hl', m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const box = E('div', '', m); sceneFx(sc);

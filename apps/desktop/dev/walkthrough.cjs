@@ -10,6 +10,19 @@ const HOST = process.argv[3] || 'http://127.0.0.1:5320';
 fs.mkdirSync(OUT, { recursive: true });
 const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', body: '[]' })).json();
 
+// A small solid-colour PNG, for logo and photo uploads.
+function makePng(hex) {
+  const zlib = require('node:zlib');
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const w = 64, h = 64, raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = y * (w * 3 + 1) + 1 + x * 3; const edge = x < 6 || y < 6 || x > 57 || y > 57; raw[o] = edge ? 255 : r; raw[o + 1] = edge ? 255 : g; raw[o + 2] = edge ? 255 : b; }
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (buf) => { let c = 0xffffffff; for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
@@ -23,20 +36,47 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   const btn = (name, opts) => page.getByRole('button', { name, ...opts }).first().click();
 
   await page.goto(`${HOST}/?host=${HOST}`);
-  await page.getByRole('heading', { name: 'Almost ready' }).waitFor();
-  await shot('readiness-first-run');
-
-  // Match
-  await page.getByLabel('Team A').fill('Night Owls');
-  await page.getByLabel('Team B').fill('Crimson Five');
-  await btn('Create match');
-  await page.getByText('Night Owls vs Crimson Five').first().waitFor();
-  // Talent → casters drawer
-  await btn('Add casters');
-  await page.getByLabel('Play-by-play').fill('Sara Malik');
-  await page.getByLabel('Analyst').fill('Omar Sheikh');
-  await btn('Save casters');
+  // First run: the New match wizard opens by itself.
+  const wizard = page.getByRole('dialog', { name: 'New match' });
+  await wizard.waitFor();
+  await shot('wizard-game');
+  await wizard.getByRole('button', { name: 'Continue' }).click();
+  // Teams: names, colours and logos.
+  const png = (hex) => { const fs = require('node:fs'); const f = path.join(OUT, `img-${hex.slice(1)}.png`); fs.writeFileSync(f, require('node:zlib') && makePng(hex)); return f; };
+  const teamCards = wizard.locator('.team-card');
+  await teamCards.nth(0).getByLabel('Team name').fill('Night Owls');
+  await teamCards.nth(1).getByLabel('Team name').fill('Crimson Five');
+  await teamCards.nth(0).locator('input[type=file]').setInputFiles(png('#22d3ee'));
+  await teamCards.nth(1).locator('input[type=file]').setInputFiles(png('#f43f5e'));
+  await teamCards.nth(1).locator('.imgpick-btn img').waitFor();
+  await shot('wizard-teams');
+  await wizard.getByRole('button', { name: 'Continue' }).click();
+  // Players: display names, Riot IDs and a photo (the sample match's in-game names).
+  const roster = [['JUNO', 'MIRA', 'DAX', 'RIKU', 'ECHO'], ['KAIRO', 'SOL', 'VEX', 'NYX', 'ZEN']];
+  for (const t of [0, 1]) {
+    const rows = wizard.locator('.lineup').nth(t).locator('.player-row');
+    for (let i = 0; i < 5; i++) {
+      await rows.nth(i).getByLabel('Display name').fill(roster[t][i][0] + roster[t][i].slice(1).toLowerCase());
+      await rows.nth(i).getByLabel('Riot ID').fill(`${roster[t][i]}#${t ? "FNC" : "PRX"}`);
+    }
+  }
+  await wizard.locator('.lineup').nth(0).locator('.player-row').nth(0).locator('input[type=file]').setInputFiles(png('#a78bfa'));
+  await wizard.locator('.lineup').nth(0).locator('.player-row .imgpick-btn img').first().waitFor();
+  await shot('wizard-players');
+  await wizard.getByRole('button', { name: 'Continue' }).click();
+  await wizard.getByLabel('Play-by-play').fill('Sara Malik');
+  await wizard.getByLabel('Analyst').fill('Omar Sheikh');
+  await wizard.getByLabel('Event name (event bug)').fill('Community Cup');
+  await wizard.getByLabel('Sponsor name').fill('Acme Energy');
+  await wizard.getByRole('button', { name: 'Add', exact: true }).click();
+  await shot('wizard-talent');
+  await wizard.getByRole('button', { name: 'Create match' }).click();
+  await wizard.waitFor({ state: 'detached' });
   await page.getByText('2 casters ready').waitFor();
+  await shot('readiness-first-run');
+  await page.getByRole('tab', { name: 'Teams and players' }).click();
+  await shot('match-teams');
+  await page.getByRole('tab', { name: 'Readiness' }).click();
 
   // Settings: connect OBS (software settings), then Scenes: add for me, fill the game-feed slot
   await rail('Settings');
@@ -190,7 +230,7 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await page.waitForTimeout(3500);
   await shot('capture');
   await rail('Matches');
-  await btn('Graphics, event and sponsors');
+  await page.getByRole('tab', { name: 'Graphics' }).click();
   await shot('match-graphics');
   await page.getByRole('tab', { name: 'Event and sponsors' }).click();
   await page.getByLabel('Event name (on the event bug)').fill('Community Cup');

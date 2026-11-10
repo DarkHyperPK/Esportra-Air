@@ -427,3 +427,52 @@ test('an Esportra match becomes the match on this PC, with its tournament, teams
     await backend.stop();
   }
 });
+
+test('the New match wizard: teams with logos, lineups with Riot IDs and photos reach the HUD', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-wizard-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'wizard-test-key-0123456789ab', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  try {
+    await assert.rejects(production.uploadImage('data:image/gif;base64,R0lGOD'), /PNG, JPEG or WebP/);
+    await assert.rejects(production.uploadImage('data:image/jpeg;base64,/9j/4AAQ'), /only read PNG/, 'without a converter only PNG is accepted');
+    const logo = await production.uploadImage(PNG);
+    const photo = await production.uploadImage(PNG);
+    assert.match(logo, /^\/air-assets\/[0-9a-f-]{36}$/);
+    const served = await fetch(`http://127.0.0.1:${port}${logo}`);
+    assert.equal(served.status, 200);
+    assert.equal(served.headers.get('content-type'), 'image/png');
+
+    const base = {
+      game: 'valorant' as const, bestOf: 3 as const,
+      teams: [{ name: 'Night Owls', tag: 'NOW', color: '#22d3ee', logo }, { name: 'Crimson Five', tag: '', color: '#f43f5e', logo: '' }] as never,
+      players: [[{ name: 'Juno Park', realName: 'June Park', gameId: 'Juno#EU1', photo }], []] as never,
+      casters: [{ name: 'Sara Malik', handle: '' }], event: { name: 'Community Cup', stage: 'Playoffs' }, sponsors: ['Acme'],
+    };
+    await assert.rejects(production.createMatch({ ...base, game: 'cs2' }), /coming to Air/);
+    await assert.rejects(production.createMatch({ ...base, teams: [{ name: 'Same', tag: '', color: '#ffffff', logo: '' }, { name: 'same', tag: '', color: '#000000', logo: '' }] as never }), /different names/);
+    await assert.rejects(production.createMatch({ ...base, teams: [{ name: 'A', tag: '', color: '#fff', logo: 'javascript:alert(1)' }, { name: 'B', tag: '', color: '#000', logo: '' }] as never }), /logo again/);
+    await production.createMatch(base);
+    const match = production.match!;
+    assert.deepEqual([match.game, match.title, match.teams[0].logo, match.teams[1].tag, match.casters.length], ['valorant', 'Night Owls vs Crimson Five', logo, 'CF', 1]);
+
+    // Game data with the Riot ID shows the producer's display name and photo.
+    await engine.client.post(`/api/${match.code}/ingest/valorant`, [{ feature: 'match_info', key: 'scoreboard_0', data: JSON.stringify({ player_id: 'p0', name: 'Juno #EU1', character: 'Clay', team: 0, alive: true, money: 3900 }) }]);
+    const state = (await engine.client.get<any>(`/api/${match.code}`)).state;
+    assert.equal(state.players[0][0].name, 'Juno Park');
+    assert.equal(state.players[0][0].photo, photo);
+    assert.equal(state.teams[0].logo, logo);
+    assert.equal(state.event.name, 'Community Cup');
+
+    // Editing the teams later renames the match.
+    await production.updateMatch(match.id, { teams: [{ ...match.teams[0], name: 'Night Owls Academy' }, match.teams[1]] });
+    assert.equal(production.match!.title, 'Night Owls Academy vs Crimson Five');
+  } finally {
+    production.autopilot.stopAll();
+    production.log.stop();
+    await engine.stop(true);
+  }
+});

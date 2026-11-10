@@ -60,6 +60,21 @@ export class EngineClient {
     return this.request<T>('PATCH', path, body);
   }
 
+  /** Uploads raw bytes (an image for the asset store). */
+  async putBytes(path: string, bytes: Uint8Array, timeoutMs = 10_000) {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(this.base + path, { method: 'PUT', headers: { 'X-Esportra-Key': this.key, 'Content-Type': 'application/octet-stream' }, body: bytes, signal: AbortSignal.timeout(timeoutMs) });
+    } catch {
+      throw new EngineError('The graphics engine is not responding.', 0);
+    }
+    if (!response.ok) {
+      let message = `Engine request failed (${response.status}).`;
+      try { message = String(((await response.json()) as { error?: string }).error ?? message); } catch { /* keep */ }
+      throw new EngineError(message, response.status);
+    }
+  }
+
   /** Read-only WebSocket URL: receives a room's events without being counted as an on-air viewer. */
   observeUrl(matchCode: string) {
     return `${this.base.replace(/^http/, 'ws')}/ws?match=${encodeURIComponent(matchCode)}&role=observe`;

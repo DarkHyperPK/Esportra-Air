@@ -5,7 +5,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
-import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type LayerRow, type MonitorFrame, type PollInput, type SceneStatus, type QuickMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
+import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type LayerRow, type MonitorFrame, type PollInput, type SceneStatus, type QuickMatchInput, type NewMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
 import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from '../../../../packages/capture/src/gep.ts';
@@ -17,6 +17,7 @@ import { AUTO_LAYERS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode 
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
+import { GAMES } from '../shared/games.ts';
 import { ArtCheck } from './art-check.ts';
 import type { EsportraAccount } from './esportra.ts';
 import { JoinHost } from './join.ts';
@@ -40,6 +41,8 @@ export interface ProductionDeps {
   secrets?: Pick<Secrets, 'get' | 'set'>;
   /** Sends this PC's game data to a producer's Air, when this PC only captures. */
   linkIngest?: IngestClient;
+  /** Converts an uploaded image to PNG (Electron's nativeImage in the app). Without it only PNG is accepted. */
+  toPng?: (bytes: Buffer) => Buffer | null;
   /** Overrides for tests. */
   lanAddresses?: () => string[];
   artFetch?: typeof fetch;
@@ -86,9 +89,28 @@ export function tagsFor(a: string, b: string): [string, string] {
 }
 
 const RIOT_ID = /^[^#<>\x00-\x1f]{3,16}#[A-Za-z0-9]{2,5}$/;
-const PHOTO = /^(https:\/\/[^\s"'<>]{1,500}|\/assets\/[0-9a-f-]{36}\.png)$/i;
+/** Images Air stored in the engine's asset store, or an https URL (Esportra logos). */
+const IMAGE = /^(https:\/\/[^\s"'<>]{1,500}|\/air-assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Two lineups of up to seven players each, plain text, optional Riot ID and photo. */
+/** Two teams: name, tag, colour and logo. */
+export function validTeams(input: unknown): [Team, Team] {
+  if (!Array.isArray(input) || input.length !== 2) throw new Error('A match has two teams.');
+  const teams = input.map((t: any, i: number) => {
+    const label = `Team ${i ? 'B' : 'A'}`;
+    const name = text(t?.name, 40, `${label} name`);
+    const tag = typeof t?.tag === 'string' && t.tag.trim() ? text(t.tag.toUpperCase(), 5, `${label} tag`) : tagFor(name);
+    const color = typeof t?.color === 'string' && HEX.test(t.color) ? t.color.toLowerCase() : COLORS[i]!;
+    const logo = typeof t?.logo === 'string' ? t.logo : '';
+    if (logo && !IMAGE.test(logo)) throw new Error(`${label}: choose the logo again.`);
+    return { name, tag, color, logo };
+  }) as [Team, Team];
+  if (teams[0].name.toLowerCase() === teams[1].name.toLowerCase()) throw new Error('The two teams need different names.');
+  if (teams[0].tag === teams[1].tag) teams[1].tag = tagsFor(teams[0].name, teams[1].name)[1];
+  return teams;
+}
+
 export function validPlayers(input: unknown): Match['players'] {
   if (!Array.isArray(input) || input.length !== 2) throw new Error('Provide a lineup for each team.');
   return input.map((team, t) => {
@@ -98,7 +120,7 @@ export function validPlayers(input: unknown): Match['players'] {
       const gameId = typeof p?.gameId === 'string' ? p.gameId.trim() : '';
       if (gameId && !RIOT_ID.test(gameId)) throw new Error(`${label}: write the Riot ID as Name#TAG.`);
       const photo = typeof p?.photo === 'string' ? p.photo : '';
-      if (photo && !PHOTO.test(photo)) throw new Error(`${label}: choose the photo again.`);
+      if (photo && !IMAGE.test(photo)) throw new Error(`${label}: choose the photo again.`);
       return { id: typeof p?.id === 'string' && /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : randomUUID(), name: text(p?.name, 32, `${label} name`), realName: p?.realName ? text(p.realName, 60, `${label} real name`) : '', gameId, photo };
     });
   }) as Match['players'];
@@ -192,6 +214,8 @@ export class Production extends EventEmitter {
     const managed = new Set<string>(SETUP_LAYER_KEYS);
     const plain = Object.fromEntries(Object.entries(setup.hud).filter(([k]) => !managed.has(k)));
     if (Object.keys(plain).length) await this.client.patch(`/api/${code}`, { show: plain });
+    // The lineups: the engine puts display names and photos on the players the game reports.
+    await this.client.patch(`/api/${code}`, { airRoster: match.players.map((team) => team.map((p) => ({ gameId: p.gameId, name: p.name, photo: p.photo }))) });
     // Setup decides where each layer starts; after that the console owns them for the match.
     await this.act('layers.init', { modes: this.initialModes() }, false);
     await this.pushCams();
@@ -262,6 +286,45 @@ export class Production extends EventEmitter {
     await this.syncEngine();
   }
 
+  /** The New match wizard: game, teams, lineups, talent, event and sponsors in one go. */
+  async createMatch(input: NewMatchInput) {
+    const game = GAMES.find((g) => g.id === input?.game);
+    if (!game) throw new Error('Choose a game.');
+    if (!game.available) throw new Error(`${game.name} is coming to Air. Choose VALORANT for now.`);
+    if (![1, 3, 5].includes(input.bestOf)) throw new Error('Choose best of 1, 3 or 5.');
+    const teams = validTeams(input.teams);
+    const players = validPlayers(input.players ?? [[], []]);
+    if (!Array.isArray(input.casters) || input.casters.length > 2) throw new Error('Add up to two casters.');
+    const casters = input.casters.filter((c) => c?.name?.trim()).map((c, i) => ({ name: text(c.name, 40, `Caster ${i + 1}`), handle: c.handle ? text(c.handle, 40, `Caster ${i + 1} handle`) : '' }));
+    if (!Array.isArray(input.sponsors) || input.sponsors.length > 12) throw new Error('Add up to 12 sponsors.');
+    const id = randomUUID();
+    const match: Match = {
+      id, code: `Q${id.replace(/-/g, '').slice(0, 7).toUpperCase()}`, kind: 'quick', title: `${teams[0].name} vs ${teams[1].name}`,
+      bestOf: input.bestOf, teams, casters, createdAt: (this.deps.now ?? Date.now)(), game: game.id, players,
+      event: { name: input.event?.name ? text(input.event.name, 60, 'Event name') : '', stage: input.event?.stage ? text(input.event.stage, 60, 'Stage') : '' },
+      sponsors: input.sponsors.map((s, i) => text(s, 40, `Sponsor ${i + 1}`)),
+    };
+    const data = this.deps.store.data;
+    data.matches = [match, ...data.matches].slice(0, 50);
+    data.selectedMatchId = id;
+    this.save();
+    await this.syncEngine();
+    this.log.add(`Match created · ${match.title}`);
+  }
+
+  /** Stores an image (logo or player photo) in the engine and returns its URL. JPEG and WebP are converted to PNG. */
+  async uploadImage(dataUrl: string): Promise<string> {
+    const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
+    if (!m) throw new Error('Choose a PNG, JPEG or WebP image.');
+    const raw = Buffer.from(m[2]!, 'base64');
+    if (raw.length > 6_000_000) throw new Error('That image is larger than 6 MB. Choose a smaller one.');
+    const png = this.deps.toPng ? this.deps.toPng(raw) : m[1] === 'png' ? raw : null;
+    if (!png) throw new Error('This build can only read PNG images.');
+    const id = randomUUID();
+    await this.client.putBytes(`/control/assets/${id}`, png);
+    return `/air-assets/${id}`;
+  }
+
   async selectMatch(id: string) {
     if (!this.deps.store.data.matches.some((m) => m.id === id)) throw new Error('That match is no longer available.');
     this.deps.store.data.selectedMatchId = id;
@@ -276,7 +339,7 @@ export class Production extends EventEmitter {
     return { event: { ...(from?.event ?? { name: '', stage: '' }) }, sponsors: [...(from?.sponsors ?? [])] };
   }
 
-  async updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players'>>) {
+  async updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players' | 'teams' | 'bestOf'>>) {
     const match = this.deps.store.data.matches.find((m) => m.id === id);
     if (!match) throw new Error('That match is no longer available.');
     if (patch.title !== undefined) match.title = text(patch.title, 80, 'Match title');
@@ -292,6 +355,14 @@ export class Production extends EventEmitter {
       match.sponsors = patch.sponsors.map((s, i) => text(s, 40, `Sponsor ${i + 1}`));
     }
     if (patch.players !== undefined) match.players = validPlayers(patch.players);
+    if (patch.teams !== undefined) {
+      match.teams = validTeams(patch.teams);
+      match.title = `${match.teams[0].name} vs ${match.teams[1].name}`;
+    }
+    if (patch.bestOf !== undefined) {
+      if (![1, 3, 5].includes(patch.bestOf)) throw new Error('Choose best of 1, 3 or 5.');
+      match.bestOf = patch.bestOf;
+    }
     this.save();
     if (match.id === this.match?.id) await this.syncEngine();
   }

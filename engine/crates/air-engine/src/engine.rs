@@ -277,6 +277,7 @@ impl Room {
     /// or `None` when nothing changed.
     pub fn apply(&self, inner: &mut RoomInner, mut next: Value, source: &str) -> Option<u64> {
         layers::sync(&inner.state, &mut next);
+        crate::roster::apply(&mut next);
         let before = inner.fixes.view(&inner.state);
         let patch = diff(&inner.state, &next);
         let capture = if source == "valorant-gep" {
