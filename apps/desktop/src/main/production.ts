@@ -10,7 +10,6 @@ import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from '../../../../packages/capture/src/gep.ts';
 import type { ObsLink } from './obs.ts';
-import { Replay } from './replay.ts';
 import type { BuildScene } from './scene-build.ts';
 import { SCENE_KEYS, SCENES, sourceName, type SlotId } from '../shared/scenes.ts';
 import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
@@ -30,7 +29,7 @@ import type { PcMode, PcRole } from '../shared/join.ts';
 import { signedOut } from '../shared/esportra.ts';
 import { randomBytes } from 'node:crypto';
 import type { CamsView } from '../shared/api.ts';
-import type { SegmentEdit } from '../shared/autopilot.ts';
+import type { Preset, SegmentEdit } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 
 export interface ProductionDeps {
@@ -127,12 +126,19 @@ export function validPlayers(input: unknown): Match['players'] {
   }) as Match['players'];
 }
 
+/** Which on-air slot a change fills: a later cued change for the same slot replaces it. */
+function cueKey(actions: Array<{ name: string; args: Record<string, unknown> }>): string {
+  const last = actions.at(-1)!;
+  if (last.name === 'layer.set') return `layer:${String(last.args.layer)}`;
+  if (last.name === 'fullscreen.show') return 'fs';
+  return last.name.split('.')[0]!;
+}
+
 export class Production extends EventEmitter {
   private readonly deps: ProductionDeps;
   private room: any = null;
   private roomV = -1;
   readonly log: EventLog;
-  readonly replay: Replay;
   readonly autopilot: Autopilot;
   readonly stats: CaptureStats;
   readonly art: ArtCheck;
@@ -160,16 +166,20 @@ export class Production extends EventEmitter {
     // A restarted engine has the saved state; re-send outputs and context so nothing drifts.
     deps.engine.on('restarted', () => void this.syncEngine().catch(() => {}));
     deps.obs.on('change', changed);
-    deps.obs.on('change', () => this.autopilot.onObs());
     this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => this.autopilot.onGameEvent(event) });
     this.autopilot = new Autopilot({
-      store: deps.store, obs: deps.obs, match: () => this.match, screens: () => this.setup.screens, stinger: () => this.setup.obs.stinger,
+      store: deps.store, match: () => this.match, screens: () => this.setup.screens,
+      showGraphic: async (id, transition) => {
+        if (transition === 'stinger') {
+          await this.act('stinger.play', {}, false);
+          await new Promise((r) => setTimeout(r, 450));
+        }
+        await this.fullscreen(id, id !== null, true);
+      },
+      showing: () => this.room?.airFullscreen ?? null,
       log: (line) => this.log.add(line), changed,
-      showGraphic: (id) => this.fullscreen(id, true),
     });
     deps.obs.watchSlots(SCENE_KEYS.flatMap((key) => SCENES[key].slots.map((slot) => slot.scene)));
-    this.replay = new Replay(deps.obs, { canReturn: () => !this.room?.airPause, stinger: () => this.setup.obs.stinger });
-    this.replay.on('error-message', (message: string) => this.emit('notice', message));
     deps.capture.on('change', changed);
     // The Capture page's sparklines move once a second while data is flowing.
     const tick = setInterval(() => deps.capture.state === 'live' && this.emit('change'), 1000);
@@ -260,6 +270,7 @@ export class Production extends EventEmitter {
       const data = await this.client.get<{ v: number; state: any }>(`/api/${encodeURIComponent(match.code)}`);
       this.room = data.state;
       this.roomV = data.v;
+      this.scheduleCueSync();
       this.autopilot.onRoom(this.room);
     } catch {
       // Engine unavailable; the supervisor reports it.
@@ -481,9 +492,13 @@ export class Production extends EventEmitter {
         name: def.name,
         exclusive: def.exclusive,
         slots: def.slots.map((slot) => ({ id: slot.id, sceneName: slot.scene, frame: slot.frame })),
-        sources: this.setup.screens
-          .filter((x) => x.scene === key && x.enabled && !x.hosted)
-          .map((x) => ({ id: x.id, inputName: sourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
+        sources: [
+          ...this.setup.screens
+            .filter((x) => x.scene === key && x.enabled && !x.hosted)
+            .map((x) => ({ id: x.id, inputName: sourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
+          // Full-screen graphics also cover the game: Take shows them without switching OBS scenes.
+          ...(key === 'gameplay' ? this.setup.screens.filter((x) => x.id === 'fullscreen' && x.enabled).map((x) => ({ id: 'fullscreen-over-game', inputName: sourceName('Full screen over game'), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })) : []),
+        ],
       };
     });
   }
@@ -494,7 +509,6 @@ export class Production extends EventEmitter {
       data.owned = owned;
       this.deps.store.save();
     });
-    this.replay.attach();
     this.emit('change');
   }
 
@@ -504,42 +518,110 @@ export class Production extends EventEmitter {
     await this.deps.obs.useSource(def.scene, source);
   }
 
-  async studioMode(on: boolean) {
-    await this.deps.obs.setStudioMode(on);
+  /** F3: saves the last moments to OBS's replay buffer. Air does not switch scenes to play it. */
+  async saveReplay() {
+    const socket = this.deps.obs.raw;
+    if (!socket || this.deps.obs.status.state !== 'connected') throw new Error('Connect OBS first.');
+    if (this.deps.obs.status.replayBufferActive !== true) throw new Error('Start the replay buffer in OBS first (Controls › Start Replay Buffer).');
+    await socket.call('SaveReplayBuffer');
+    this.log.add('Replay saved in OBS');
   }
 
-  async preview(scene: string) {
-    if (!SCENE_KEYS.some((k) => SCENES[k].name === scene)) throw new Error('Choose one of the Esportra scenes.');
-    await this.deps.obs.setPreview(scene);
+  // ── cue and take (graphics only) ──
+
+  /** Changes go to the Cued column first (Take puts them on air), or straight on air. */
+  private cueMode = true;
+  private pending: Array<{ key: string; label: string; actions: Array<{ name: string; args: Record<string, unknown> }> }> = [];
+  private cueTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private get cueRoom() {
+    return `__ESA_SIM_CUE_${this.requireMatch().code}`;
   }
 
-  private async takeWith(choice: ReturnType<ObsLink['cutChoice']>, missing: string) {
-    if (!choice) throw new Error(missing);
-    const scene = this.deps.obs.status.previewScene;
-    const result = await this.deps.obs.take(choice);
-    if (!result.ok) throw new Error(result.error);
-    this.log.add(`${choice.mode === 'cut' ? 'Cut' : 'Stinger'} · ${scene?.replace('Esportra · ', '') ?? 'scene'}`);
+  /**
+   * A graphic change: queued while cueing, applied at once otherwise. A cued change replaces an
+   * earlier one for the same slot (one lower third, one full-screen graphic, one mode per layer), and
+   * a change that would leave the slot as it is on air simply uncues it.
+   */
+  private async graphic(label: string, actions: Array<{ name: string; args: Record<string, unknown> }>) {
+    this.requireMatch();
+    if (this.cueMode) {
+      const key = cueKey(actions);
+      const replaced = this.pending.some((c) => c.key === key);
+      this.pending = this.pending.filter((c) => c.key !== key);
+      if (this.matchesAir(actions)) {
+        if (replaced) this.log.add(`Uncued · ${label}`);
+      } else {
+        this.pending.push({ key, label, actions });
+        this.log.add(`Cued · ${label}`);
+      }
+      await this.syncCue();
+      this.emit('change');
+      return;
+    }
+    for (const a of actions) await this.act(a.name, a.args, false);
+    this.roomV = -1;
+    await this.readRoom();
+    this.log.add(label);
   }
 
-  async take() {
-    const scene = this.deps.obs.status.previewScene;
-    const result = await this.deps.obs.take();
-    if (!result.ok) throw new Error(result.error);
-    this.log.add(`Take · ${scene?.replace('Esportra · ', '') ?? 'scene'}`);
+  /** True when applying these actions would leave the on-air graphics as they are. */
+  private matchesAir(actions: Array<{ name: string; args: Record<string, unknown> }>) {
+    const last = actions.at(-1)!;
+    const room = this.room ?? {};
+    if (last.name === 'layer.set') return this.layerRows().find((r) => r.id === last.args.layer)?.mode === last.args.mode;
+    if (last.name === 'fullscreen.show') return (room.airFullscreen ?? null) === (last.args.screen ?? null);
+    if (last.name === 'lowerthird.hide') return !room.show?.lowerThird;
+    if (last.name === 'poll.hide') return !room.show?.poll;
+    return false;
   }
 
-  cut() {
-    return this.takeWith(this.deps.obs.cutChoice(), 'OBS has no Cut transition.');
+  /** The Cued monitor's room: the live state with the cued changes applied. */
+  async syncCue() {
+    const match = this.match;
+    if (!match || this.deps.engine.state !== 'running') return;
+    const { state } = await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`);
+    await this.client.put(`/api/${this.cueRoom}`, state);
+    for (const change of this.pending) for (const a of change.actions) await this.client.post('/control/action', { match: this.cueRoom, name: a.name, args: a.args }).catch(() => {});
   }
 
-  stinger() {
-    return this.takeWith(this.deps.obs.stingerChoice(this.setup.obs.stinger), 'Add a Stinger transition in OBS (Scene Transitions › + › Stinger) to use Stinger.');
+  /** Keeps the cue room following the live match (throttled). */
+  private scheduleCueSync() {
+    if (this.cueTimer || !this.match) return;
+    this.cueTimer = setTimeout(() => {
+      this.cueTimer = null;
+      void this.syncCue().catch(() => {});
+    }, 800);
+    this.cueTimer.unref?.();
   }
 
-  async playReplay() {
-    const result = await this.replay.play();
-    if (!result.ok) throw new Error(result.error);
-    this.log.add('Replay played');
+  setCueMode(on: boolean) {
+    this.cueMode = on === true;
+    if (!this.cueMode && this.pending.length) this.pending = [];
+    this.emit('change');
+  }
+
+  clearCue() {
+    this.pending = [];
+    void this.syncCue().catch(() => {});
+    this.log.add('Cue cleared');
+    this.emit('change');
+  }
+
+  /** Take: everything cued goes on air. With the stinger, the HUD wipe plays first and the change lands behind it. */
+  async takeCue(how: 'take' | 'cut' | 'stinger' = 'take') {
+    if (!this.pending.length) throw new Error('Nothing is cued. Choose a graphic first.');
+    const changes = this.pending;
+    this.pending = [];
+    if (how === 'stinger') {
+      await this.act('stinger.play', {}, false);
+      await new Promise((r) => setTimeout(r, 450));
+    }
+    for (const change of changes) for (const a of change.actions) await this.act(a.name, a.args, false);
+    this.roomV = -1;
+    await this.readRoom();
+    this.log.add(`${how === 'stinger' ? 'Stinger' : how === 'cut' ? 'Cut' : 'Take'} · ${changes.map((c) => c.label).join(', ')}`);
+    await this.syncCue().catch(() => {});
   }
 
   /** Starts or stops the PVW / PGM screenshot loop (the Console asks for it while it is on screen). */
@@ -757,8 +839,8 @@ export class Production extends EventEmitter {
     this.deps.store.save();
     await this.pushCams();
     // A grid layout is a full-screen graphic: line it up in Preview like the other full-screen layers.
-    if (patch.layout && patch.layout !== 'ingame') await this.fullscreen('cam-grid', true).catch(() => {});
-    else if (patch.layout === 'ingame' && this.room?.airFullscreen === 'cam-grid') await this.fullscreen('cam-grid', false).catch(() => {});
+    if (patch.layout && patch.layout !== 'ingame') await this.fullscreen('cam-grid', true, true).catch(() => {});
+    else if (patch.layout === 'ingame' && this.room?.airFullscreen === 'cam-grid') await this.fullscreen('cam-grid', false, true).catch(() => {});
   }
 
   private slot(team: number, slot: number) {
@@ -803,6 +885,10 @@ export class Production extends EventEmitter {
     if (this.room?.airPause) await this.pause(null);
     this.autopilot.resume();
   }
+  autopilotPreset(preset: Preset) {
+    this.autopilot.setPreset(preset);
+    this.log.add(`Autopilot preset · ${preset}`);
+  }
   segmentUpdate(id: string, edit: SegmentEdit) {
     this.autopilot.edit(id, edit);
   }
@@ -813,41 +899,30 @@ export class Production extends EventEmitter {
   async casterStrap(on: boolean) {
     const match = this.requireMatch();
     if (on && !match.casters.some((c) => c.name)) throw new Error('Add the casters’ names first.');
-    await this.act(on ? 'lowerthird.caster' : 'lowerthird.hide', {});
-    this.log.add(on ? 'Caster lower third on' : 'Lower third off');
+    await this.graphic(on ? 'Caster lower third' : 'Lower third off', [{ name: on ? 'lowerthird.caster' : 'lowerthird.hide', args: {} }]);
   }
 
   async sponsorRead(sponsor: string | null) {
     if (sponsor !== null && !this.requireMatch().sponsors.includes(sponsor)) throw new Error('Add this sponsor to the match first.');
-    await this.act(sponsor ? 'lowerthird.generic' : 'lowerthird.hide', sponsor ? { title: sponsor, sub: 'Presented by', team: -1 } : {});
-    this.log.add(sponsor ? `Sponsor read · ${sponsor}` : 'Lower third off');
+    await this.graphic(sponsor ? `Sponsor read · ${sponsor}` : 'Lower third off', [sponsor ? { name: 'lowerthird.generic', args: { title: sponsor, sub: 'Presented by', team: -1 } } : { name: 'lowerthird.hide', args: {} }]);
   }
 
   async lowerThird(input: { kind: 'caster' } | { kind: 'person'; name: string; role: string } | { kind: 'player' } | null) {
-    if (input === null) return this.act('lowerthird.hide', {}).then(() => this.log.add('Lower third off'));
+    if (input === null) return this.graphic('Lower third off', [{ name: 'lowerthird.hide', args: {} }]);
     if (input.kind === 'caster') return this.casterStrap(true);
-    if (input.kind === 'person') {
-      await this.act('lowerthird.generic', { title: input.name, sub: input.role, team: -1 });
-      return this.log.add(`Lower third · ${input.name}`);
-    }
+    if (input.kind === 'person') return this.graphic(`Lower third · ${input.name}`, [{ name: 'lowerthird.generic', args: { title: input.name, sub: input.role, team: -1 } }]);
     const observed = this.observedPlayer();
     if (!observed) throw new Error('No player is being observed yet. Spotlight needs the game’s roster.');
-    await this.act('lowerthird.player', { team: observed.team, player: observed.player });
-    this.log.add(`Spotlight · ${observed.name}`);
+    await this.graphic(`Spotlight · ${observed.name}`, [{ name: 'lowerthird.player', args: { team: observed.team, player: observed.player } }]);
   }
 
   async toast(text: string) {
-    await this.act('toast.show', { text });
-    this.log.add(`Toast · ${text}`);
+    await this.graphic(`Toast · ${text}`, [{ name: 'toast.show', args: { text } }]);
   }
 
   async poll(input: PollInput | null) {
-    if (input === null) {
-      await this.act('poll.hide', {});
-      return this.log.add('Poll hidden');
-    }
-    await this.act('poll.show', { question: input.question, options: input.options, firstPercent: input.firstPercent });
-    this.log.add(`Poll · ${input.question}`);
+    if (input === null) return this.graphic('Poll hidden', [{ name: 'poll.hide', args: {} }]);
+    await this.graphic(`Poll · ${input.question}`, [{ name: 'poll.show', args: { question: input.question, options: input.options, firstPercent: input.firstPercent } }]);
   }
 
   async stingerPlay() {
@@ -858,27 +933,36 @@ export class Production extends EventEmitter {
   /** Sets a console layer. Full-screen rows choose which graphic the Fullscreen scene shows. */
   async setLayer(id: string, mode: LayerMode) {
     if (id.startsWith('fs:')) return this.fullscreen(id.slice(3), mode === 'on');
-    await this.act('layer.set', { layer: id, mode });
     const label = LAYER_DEFS.find((d) => d.id === id)?.label ?? id;
-    this.log.add(`${label} · ${mode}`);
+    await this.graphic(`${label} · ${mode}`, [{ name: 'layer.set', args: { layer: id, mode } }]);
   }
 
-  private async fullscreen(screenId: string, on: boolean) {
-    const screen = this.setup.screens.find((x) => x.id === screenId && x.scene === 'fullscreen');
-    if (!screen) throw new Error('Unknown full-screen graphic.');
+  /**
+   * Shows a full-screen graphic in the full-screen host (null: back to the game). OBS is not touched
+   * (decision R1). From the console it is cued like any graphic; autopilot and the camera layout
+   * apply it directly.
+   */
+  private async fullscreen(screenId: string | null, on: boolean, direct = false) {
+    const screen = screenId ? this.setup.screens.find((x) => x.id === screenId && x.scene === 'fullscreen') : null;
+    if (screenId && !screen) throw new Error('Unknown full-screen graphic.');
+    const actions: Array<{ name: string; args: Record<string, unknown> }> = [];
     if (on && screenId === 'player-profile') {
       const observed = this.observedPlayer();
       if (!observed) throw new Error('No player is being observed yet. The player profile needs the game’s roster.');
-      await this.act('spotlight.set', { team: observed.team, player: observed.player });
+      actions.push({ name: 'spotlight.set', args: { team: observed.team, player: observed.player } });
     }
     if (on && screenId === 'cam-grid' && this.cams.layout === 'ingame') {
       this.cams.layout = 'grid10';
       this.deps.store.save();
       await this.pushCams();
     }
-    // The full-screen host page shows it; OBS is not touched (decision R1).
-    await this.act('fullscreen.show', { screen: on ? screen.id : null });
-    this.log.add(on ? `Full screen · ${screen.title}` : 'Full screen hidden');
+    actions.push({ name: 'fullscreen.show', args: { screen: on && screen ? screen.id : null } });
+    const label = on && screen ? `Full screen · ${screen.title}` : 'Back to the game';
+    if (!direct) return this.graphic(label, actions);
+    for (const a of actions) await this.act(a.name, a.args, false);
+    this.roomV = -1;
+    await this.readRoom();
+    this.log.add(label);
   }
 
   async correct(input: CorrectionCall) {
@@ -926,11 +1010,14 @@ export class Production extends EventEmitter {
       if (def.id.startsWith('fs:')) {
         const screen = this.setup.screens.find((x) => x.id === def.id.slice(3));
         const on = !!screen && this.room?.airFullscreen === screen.id;
-        return { ...def, mode: on ? 'on' : 'off', auto: false, manual: false, available: !!screen?.enabled && !!this.match } as LayerRow;
+        const fs = this.pending.find((c) => c.key === 'fs')?.actions.at(-1)?.args.screen;
+        const cued: LayerMode | undefined = fs === undefined ? undefined : fs === screen?.id ? 'on' : 'off';
+        return { ...def, mode: on ? 'on' : 'off', ...(cued && cued !== (on ? 'on' : 'off') ? { cued } : {}), auto: false, manual: false, available: !!screen?.enabled && !!this.match } as LayerRow;
       }
       const auto = AUTO_LAYERS.has(def.id);
       const mode: LayerMode = layers[def.id] ?? (auto ? 'auto' : 'off');
-      return { ...def, mode, auto, manual: auto && mode !== 'auto', available: !!this.match };
+      const cued = this.pending.find((c) => c.key === `layer:${def.id}`)?.actions.at(-1)?.args.mode as LayerMode | undefined;
+      return { ...def, mode, ...(cued ? { cued } : {}), auto, manual: auto && mode !== 'auto', available: !!this.match };
     });
   }
 
@@ -984,7 +1071,7 @@ export class Production extends EventEmitter {
         state: obs.status.state, error: obs.status.error, version: obs.status.version, collection: obs.status.collection,
         studioMode: obs.status.studioMode, programScene: obs.status.programScene, previewScene: obs.status.previewScene,
         transitions: obs.status.transitions.map((t) => ({ name: t.name, kind: t.kind })), transitionActive: obs.status.transitionActive,
-        replay: { bufferActive: obs.status.replayBufferActive, busy: this.replay.busy },
+        replay: { bufferActive: obs.status.replayBufferActive, busy: false },
         installed, missingScenes, scenes: sceneStatus, sceneNames: obs.status.scenes, videoInputs: obs.status.videoInputs,
       },
       outputs,
@@ -994,6 +1081,7 @@ export class Production extends EventEmitter {
       triggers: this.liveTriggers(),
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),
+      cue: { mode: this.cueMode, pending: this.pending.map((c) => c.label), room: match ? `__ESA_SIM_CUE_${match.code}` : null },
       esportra: this.deps.esportra?.view() ?? signedOut(),
       mode: this.mode,
       join: this.joinHost.view(),

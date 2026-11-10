@@ -26,12 +26,6 @@ function ObsConnection({ s, run }: Pick<PageProps, 's' | 'run'>) {
       <div className="body-pad stack" style={{ gap: 14 }}>
         <p className="muted" style={{ fontSize: 12.5 }}>OBS’s built-in WebSocket server (OBS › Tools › WebSocket Server Settings). Air installs its scenes and reads what is on air. It never streams or records.</p>
         {connected && <div><h2 className="title-sm">OBS Studio {s.obs.version}</h2><p className="muted" style={{ fontSize: 12.5 }}>ws://{s.setup.obs.host}:{s.setup.obs.port} · scene collection {s.obs.collection ?? '—'}</p></div>}
-        {connected && (
-          <div className="row-item" style={{ padding: 0, border: 0, maxWidth: 520 }}>
-            <span><b>Studio Mode</b><br /><span className="muted" style={{ fontSize: 12 }}>{s.obs.studioMode ? 'On · takes go through Preview' : 'Off · turn on to use Take, Cut and Stinger'}</span></span>
-            <button className="switch" role="switch" aria-checked={s.obs.studioMode} aria-label="Studio Mode" onClick={() => void run(() => air.obsStudioMode(!s.obs.studioMode))} />
-          </div>
-        )}
         <form className="stack" style={{ gap: 12, maxWidth: 520 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.connectObs({ host, port: Number(port), password })); }}>
           <div className="grid3" style={{ gridTemplateColumns: '2fr 1fr' }}>
             <label className="field"><span>Address</span><input value={host} onChange={(e) => setHost(e.target.value)} required /></label>
@@ -50,7 +44,7 @@ function ObsConnection({ s, run }: Pick<PageProps, 's' | 'run'>) {
 }
 
 const KEYS: Array<[string, string]> = [
-  ['Space', 'Take'],
+  ['Space', 'Take what is cued'],
   ['H / S', 'Hold / skip the next autopilot step'],
   ['F1 – F8', 'Tech pause, timeout, replay, toast, caster lower third, poll, stinger, sponsor read'],
   ['Ctrl + D', 'Fix data'],

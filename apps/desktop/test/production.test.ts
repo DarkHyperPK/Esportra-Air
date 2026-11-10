@@ -97,17 +97,51 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await production.useSlotSource('game', 'Game Capture');
     assert.equal(production.snapshot().obs.scenes.find((x) => x.key === 'gameplay')!.slots[0]!.source, 'Game Capture');
 
-    // Switching: Studio Mode, preview a scene, take it; the tally follows OBS.
-    await assert.rejects(production.take(), /Studio Mode/);
-    await production.studioMode(true);
-    await production.preview('Esportra · Holding');
-    await production.take();
-    assert.equal(production.snapshot().obs.programScene, 'Esportra · Holding');
-    await assert.rejects(production.preview('Some other scene'), /Esportra scenes/);
-    await production.preview('Esportra · Gameplay');
-    await production.cut();
-    assert.equal(production.snapshot().obs.programScene, 'Esportra · Gameplay');
-    await production.stinger();
+    // Graphics only: changes are cued, the cue room shows them, Take puts them on air. OBS is never switched.
+    const live = async () => (await engine.client.get<any>(`/api/${match.code}`)).state;
+    const cueRoom = async () => (await engine.client.get<any>(`/api/__ESA_SIM_CUE_${match.code}`)).state;
+    const programBefore = obsServer.program;
+    assert.equal(production.snapshot().cue.mode, true, 'cueing is on by default');
+    await assert.rejects(production.takeCue('take'), /Nothing is cued/);
+    await production.toast('Cued first');
+    assert.deepEqual(production.snapshot().cue.pending, ['Toast · Cued first']);
+    assert.notEqual((await live()).toast.text, 'Cued first', 'not on air yet');
+    assert.equal((await cueRoom()).toast.text, 'Cued first', 'the Cued monitor shows it');
+    await production.takeCue('cut');
+    assert.equal((await live()).toast.text, 'Cued first');
+    assert.deepEqual(production.snapshot().cue.pending, []);
+    await production.setLayer('fs:map-result', 'on');
+    assert.equal((await live()).airFullscreen ?? null, null);
+    assert.equal((await cueRoom()).airFullscreen, 'map-result');
+    await production.takeCue('stinger');
+    assert.equal((await live()).airFullscreen, 'map-result', 'lands behind the stinger');
+    await production.setLayer('fs:map-result', 'off');
+    production.clearCue();
+    assert.deepEqual(production.snapshot().cue.pending, []);
+    // One change per slot: a later cue replaces an earlier one, and going back to what is on air uncues it.
+    const layer = (id: string) => production.snapshot().layers.find((x) => x.id === id)!;
+    await production.setLayer('economy', 'off');
+    assert.deepEqual([layer('economy').mode, layer('economy').cued], ['auto', 'off']);
+    await production.setLayer('economy', 'on');
+    assert.deepEqual(production.snapshot().cue.pending, ['Economy board · on']);
+    await production.setLayer('economy', 'auto');
+    assert.deepEqual(production.snapshot().cue.pending, [], 'back to the on-air mode: nothing cued');
+    assert.equal(layer('economy').cued, undefined);
+    await production.setLayer('fs:series', 'on');
+    await production.setLayer('fs:champion', 'on');
+    assert.deepEqual(production.snapshot().cue.pending, ['Full screen · Champion'], 'one full-screen graphic at a time');
+    assert.deepEqual([layer('fs:champion').cued, layer('fs:map-result').cued], ['on', 'off']);
+    production.clearCue();
+    assert.equal((await live()).airFullscreen, 'map-result', 'clearing the cue changes nothing on air');
+    await production.saveReplay();
+    assert.ok(obsServer.requests.includes('SaveReplayBuffer'), 'F3 saves the replay buffer');
+    assert.equal(obsServer.program, programBefore, 'no OBS scene change');
+    assert.deepEqual(obsServer.requests.filter((r) => /^(SetCurrentProgramScene|SetCurrentPreviewScene|TriggerStudioModeTransition|SetStudioModeEnabled|SetCurrentSceneTransition)$/.test(r)), [], 'Air never switches');
+    // The rest of this test checks each change on air directly.
+    production.setCueMode(false);
+    assert.equal(production.snapshot().cue.mode, false);
+    await production.setLayer('fs:map-result', 'off');
+    assert.equal((await live()).airFullscreen ?? null, null);
 
     // The monitors read OBS screenshots only while the console asks.
     const frames: Array<{ pvw: string | null; pgm: string | null }> = [];
@@ -200,7 +234,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await new Promise((r) => setTimeout(r, 400));
     const log = production.snapshot().log.map((x) => x.text);
     assert.ok(log.some((t) => /^Kill · P0 ▸ P5 · Vandal · HS$/.test(t)), log.join(' | '));
-    assert.ok(log.some((t) => t.startsWith('Take · Holding')) || log.some((t) => t.startsWith('Cut · ') || t.startsWith('Stinger · ')), 'takes are logged');
+    for (const line of ['Cued · Toast · Cued first', 'Cut · Toast · Cued first', 'Stinger · Full screen · Map result', 'Cue cleared']) assert.ok(log.includes(line), `${line} in ${log.join(' | ')}`);
     const status = await engine.client.get<any>('/control/status');
     assert.ok(status.rooms.find((x: any) => x.match === match.code).clients <= 2, 'the log connection is not an on-air viewer');
     const readout = production.snapshot().readout!;
@@ -227,7 +261,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
   }
 });
 
-test('autopilot walks the rundown through the real engine and a fake OBS, with hold, skip and safety pauses', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+test('autopilot puts graphics up through the real engine, with hold, skip, presets and safety pauses; OBS is never switched', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'air-auto-'));
   const port = await freePort();
   (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
@@ -236,9 +270,9 @@ test('autopilot walks the rundown through the real engine and a fake OBS, with h
   const obsServer = new FakeObs();
   const obs = new ObsLink(() => obsServer, { backoffMs: [50] });
   const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs, capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
-  const wait = async (check: () => boolean, label: string, ms = 4000) => {
+  const wait = async (check: () => boolean | Promise<boolean>, label: string, ms = 4000) => {
     const end = Date.now() + ms;
-    while (!check()) {
+    while (!(await check())) {
       if (Date.now() > end) assert.fail(`timed out: ${label}`);
       await new Promise((r) => setTimeout(r, 25));
     }
@@ -247,74 +281,65 @@ test('autopilot walks the rundown through the real engine and a fake OBS, with h
   try {
     await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
     const code = production.match!.code;
+    const showing = async () => (await engine.client.get<any>(`/api/${code}`)).state.airFullscreen ?? null;
     assert.equal(view().enabled, false, 'off by default');
-    assert.equal(production.snapshot().autopilotBlock, 'Connect OBS first.');
-    assert.throws(() => production.autopilotStart(), /Connect OBS/);
+    assert.equal(production.snapshot().autopilotBlock, null, 'autopilot needs a match, not OBS');
     await obs.connect('127.0.0.1', 4455, 'secret');
-    assert.match(production.snapshot().autopilotBlock!, /Esportra scenes/);
     await production.installGraphics();
-    assert.equal(production.snapshot().autopilotBlock, null, 'Studio Mode is not required');
-    // Without Studio Mode a take goes straight to Program.
-    production.autopilotStart();
-    await production.autopilotTake();
-    await wait(() => view().now?.id === 'starting-soon', 'direct take without Studio Mode');
-    assert.equal(obsServer.program, 'Esportra · Holding');
-    production.autopilotStop();
-    production.autopilot.loadForMatch();
-    await production.studioMode(true);
-    assert.deepEqual(view().segments.map((x) => x.id), ['starting-soon', 'intro', 'map1-live', 'map1-result', 'series', 'casters', 'ending']);
+    const program = obsServer.program;
+    assert.equal(view().preset, 'standard');
+    assert.deepEqual(view().segments.map((x) => x.id), ['intro', 'map1-live', 'map1-half', 'map1-result', 'champion']);
 
-    // Off means off: a round going live takes nothing.
+    // Off means off: a round going live changes nothing.
     await engine.client.post(`/api/${code}/ingest/valorant`, [{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
     await new Promise((r) => setTimeout(r, 300));
-    assert.equal(obsServer.program, 'Esportra · Holding');
+    assert.equal(await showing(), null);
 
+    // A timed result: back to the game by itself after one second.
+    production.segmentUpdate('map1-result', { forSeconds: 1 });
     production.autopilotStart();
-    assert.equal(view().next!.id, 'starting-soon');
-    await production.autopilotTake();
-    await wait(() => view().now?.id === 'starting-soon', 'Holding on air');
-    assert.equal(obsServer.program, 'Esportra · Holding');
+    assert.equal(view().next!.id, 'intro');
     await production.autopilotTake();
     await wait(() => view().now?.id === 'intro', 'intro on air');
-    assert.equal(obsServer.program, 'Esportra · Fullscreen');
-    assert.equal(production.snapshot().obs.scenes.length, 5);
+    assert.equal(await showing(), 'match-intro', 'the full-screen host shows the intro');
     assert.equal(view().next!.id, 'map1-live');
 
     // The round going live opens a hold window the producer stops with Hold.
     await engine.client.post(`/api/${code}/ingest/valorant`, [{ feature: 'match_info', key: 'round_phase', data: 'shopping' }]);
     await engine.client.post(`/api/${code}/ingest/valorant`, [{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
     await wait(() => view().next?.state === 'holding', 'hold window opens');
-    assert.ok(view().holdEndsAt! > Date.now() && view().holdTotalMs === 5000);
+    assert.ok(view().holdEndsAt! > Date.now() && view().holdTotalMs === 3000);
     production.autopilotHold();
     assert.equal(view().next!.heldBy, 'operator');
     await new Promise((r) => setTimeout(r, 500));
-    assert.equal(obsServer.program, 'Esportra · Fullscreen', 'held: nothing taken');
+    assert.equal(await showing(), 'match-intro', 'held: nothing changed');
 
-    // A technical pause blocks Take; resuming clears the panel too.
+    // A technical pause blocks Take; resuming clears the panel too. Presets cannot change while running.
     await production.pause('technical');
     await wait(() => view().paused === 'tech', 'pause reaches autopilot');
     await assert.rejects(production.autopilotTake(), /Technical pause/);
     await production.autopilotResume();
     assert.equal(view().paused, null);
     assert.equal((await engine.client.get<any>(`/api/${code}`)).state.airPause, undefined);
+    assert.throws(() => production.autopilotPreset('minimal'), /Run manually first/);
 
     await production.autopilotTake();
-    await wait(() => view().now?.id === 'map1-live', 'gameplay on air');
-    assert.equal(obsServer.program, 'Esportra · Gameplay');
+    await wait(() => view().now?.id === 'map1-live', 'back to the game');
+    assert.equal(await showing(), null);
 
-    // OBS dropping pauses autopilot; reconnecting resumes it. Nothing is queued meanwhile.
-    obsServer.drop();
-    await wait(() => view().paused === 'obs', 'paused when OBS drops');
-    await wait(() => view().paused === null, 'resumed when OBS returns');
-
-    // The map ending arms its result; skip moves to the series, and the log tells the story.
+    // Skip halftime; the map ending arms the result, which clears itself after its time.
+    production.autopilotSkip();
+    assert.equal(view().next!.id, 'map1-result');
     await engine.client.post(`/api/${code}/ingest/valorant`, [{ events: [{ name: 'match_end', data: '' }] }]);
     await wait(() => view().next?.id === 'map1-result' && view().next?.state === 'holding', 'result hold opens');
-    production.autopilotSkip();
-    assert.equal(view().next!.id, 'series');
-    assert.equal(view().next!.state, 'armed', 'manual segments arm but never take themselves');
+    await production.autopilotTake();
+    await wait(async () => (await showing()) === 'map-result', 'map result on air');
+    await wait(async () => (await showing()) === null, 'timed graphic clears', 3000);
+    assert.equal(view().next!.id, 'champion');
+    assert.equal(view().next!.state, 'armed', 'manual steps arm but never take themselves');
+    assert.equal(obsServer.program, program, 'autopilot never switched an OBS scene');
     const log = production.snapshot().log.map((x) => x.text);
-    for (const line of ['Autopilot started', 'Held by operator · Map 1 live', 'Skipped · Map 1 result']) assert.ok(log.includes(line), `${line} in ${log.join(' | ')}`);
+    for (const line of ['Autopilot started', 'Held by operator · Map 1 · back to the game', 'Skipped · Map 1 · halftime', 'Full screen · Map result']) assert.ok(log.includes(line), `${line} in ${log.join(' | ')}`);
     assert.ok(log.some((l) => l.startsWith('Autopilot paused')), 'pause logged');
 
     // Run manually clears everything; autopilot is never on after a restart.
@@ -323,6 +348,15 @@ test('autopilot walks the rundown through the real engine and a fake OBS, with h
     assert.equal(view().next, null);
     production.autopilot.loadForMatch();
     assert.equal(view().enabled, false);
+
+    // Presets: Minimal keeps the result and the return to the game; Manual leaves nothing automatic.
+    production.autopilotPreset('minimal');
+    assert.equal(view().preset, 'minimal');
+    assert.deepEqual(view().segments.filter((x) => x.mode === 'automatic').map((x) => x.id), ['map1-live', 'map1-result']);
+    production.autopilotPreset('manual');
+    assert.deepEqual(view().segments.filter((x) => x.mode === 'automatic').map((x) => x.id), []);
+    assert.throws(() => production.autopilotPreset('wild' as never), /Standard, Minimal or Manual/);
+    production.autopilotPreset('standard');
 
     // Player cameras: links are made per player, pushed to the engine, and replace-able.
     const cams0 = production.snapshot().cams;
@@ -358,7 +392,7 @@ test('autopilot walks the rundown through the real engine and a fake OBS, with h
     production.autopilot.loadForMatch();
     const live = view().segments.find((x) => x.id === 'map1-live')!;
     assert.deepEqual([live.holdSeconds, live.transition], [8, 'cut']);
-    assert.equal(view().segments[2]!.id, 'intro');
+    assert.equal(view().segments[1]!.id, 'intro');
     assert.throws(() => production.segmentUpdate('map1-live', { holdSeconds: 500 }), /valid/);
   } finally {
     production.autopilot.stopAll();

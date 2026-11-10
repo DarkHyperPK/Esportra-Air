@@ -2,8 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ObsLink } from '../src/main/obs.ts';
 import { emptyOwned, type BuildScene, type Owned } from '../src/main/scene-build.ts';
-import { Replay } from '../src/main/replay.ts';
-import { REPLAY_CLIP, SCENES } from '../src/shared/scenes.ts';
+import { SCENES } from '../src/shared/scenes.ts';
 import { FakeObs } from './fake-obs.ts';
 
 const FORBIDDEN = ['StartStream', 'StopStream', 'StartRecord', 'StopRecord', 'SetCurrentSceneCollection', 'StartReplayBuffer', 'StopReplayBuffer'];
@@ -114,55 +113,6 @@ test('refuses collisions, foreign sources and building while streaming', async (
   assert.equal(obs.scenes.has(SCENES.gameplay.name), false, 'nothing created when a check fails');
 });
 
-test('Take, Cut and Stinger go through Studio Mode and OBS’s own transition is restored', async () => {
-  const { obs, link } = await connected((o) => { o.scenes.set('A', []); o.scenes.set('B', []); });
-  assert.equal((await link.take()).ok, false);
-  assert.match((await link.take()).error ?? '', /Studio Mode/);
-  await link.setStudioMode(true);
-  assert.equal(link.status.studioMode, true);
-  assert.equal(link.status.previewScene, 'Scene');
-
-  await link.setPreview('A');
-  assert.equal(link.status.previewScene, 'A');
-  assert.equal((await link.take()).ok, true);
-  assert.equal(link.status.programScene, 'A', 'tally follows OBS events');
-  assert.equal(obs.currentTransition, 'Fade');
-
-  await link.setPreview('B');
-  assert.equal((await link.take(link.cutChoice())).ok, true);
-  assert.equal(link.status.programScene, 'B');
-  await new Promise((r) => setTimeout(r, 30));
-  assert.equal(obs.currentTransition, 'Fade', 'a forced Cut does not leave OBS on Cut');
-
-  await link.setPreview('A');
-  assert.equal((await link.take(link.stingerChoice(null))).ok, true);
-  assert.equal(link.status.programScene, 'A');
-  await new Promise((r) => setTimeout(r, 30));
-  assert.equal(obs.currentTransition, 'Fade');
-
-  // A change made in OBS itself shows up without Air doing anything.
-  obs.program = 'B';
-  obs.emit('CurrentProgramSceneChanged', { sceneName: 'B' });
-  assert.equal(link.status.programScene, 'B');
-  obs.transitions = obs.transitions.filter((t) => t.transitionKind !== 'obs_stinger_transition');
-  await link.refresh();
-  assert.equal(link.stingerChoice(null), null);
-  assert.deepEqual(obs.requests.filter((r) => FORBIDDEN.includes(r)), []);
-});
-
-test('a take waits for the running transition instead of stacking', async () => {
-  const { obs, link } = await connected((o) => { o.scenes.set('A', []); o.transitionMs = 80; });
-  await link.setStudioMode(true);
-  await link.setPreview('A');
-  assert.equal((await link.take()).ok, true);
-  const again = await link.take();
-  assert.equal(again.ok, false);
-  assert.match(again.error ?? '', /finish/);
-  await new Promise((r) => setTimeout(r, 120));
-  assert.equal(link.status.transitionActive, false);
-  assert.equal(obs.program, 'A');
-});
-
 test('reconnects by itself after OBS drops', async () => {
   const { obs, link } = await connected();
   obs.drop();
@@ -176,54 +126,7 @@ test('reconnects by itself after OBS drops', async () => {
   assert.equal(link.status.state, 'disconnected', 'an intentional disconnect stays disconnected');
 });
 
-test('replay saves the buffer, plays through the stinger and returns to the previous scene', async () => {
-  const { obs, link } = await connected();
-  let owned: Owned = emptyOwned();
-  await link.build(plan(), owned, (o) => { owned = o; });
-  await link.setStudioMode(true);
-  await link.setPreview(SCENES.gameplay.name);
-  await link.take();
-  assert.equal(link.status.programScene, SCENES.gameplay.name);
-
-  let allowed = true;
-  const replay = new Replay(link, { canReturn: () => allowed });
-  const errors: string[] = [];
-  replay.on('error-message', (m: string) => errors.push(m));
-  const result = await replay.play();
-  assert.deepEqual(result, { ok: true });
-  assert.equal(link.status.programScene, SCENES.replay.name);
-  assert.equal(obs.inputs.get(REPLAY_CLIP)!.settings.local_file, '/tmp/replay.mp4');
-  assert.ok(obs.requests.includes('TriggerMediaInputAction'));
-  assert.equal(replay.busy, true);
-
-  obs.emit('MediaInputPlaybackEnded', { inputName: REPLAY_CLIP });
-  await new Promise((r) => setTimeout(r, 50));
-  assert.equal(link.status.programScene, SCENES.gameplay.name, 'returns to the scene that was on air');
-  assert.equal(replay.busy, false);
-
-  // Finished during a pause: do not return on its own.
-  assert.deepEqual(await replay.play(), { ok: true });
-  allowed = false;
-  obs.emit('MediaInputPlaybackEnded', { inputName: REPLAY_CLIP });
-  await new Promise((r) => setTimeout(r, 50));
-  assert.equal(link.status.programScene, SCENES.replay.name);
-  assert.match(errors[0] ?? '', /during a pause/);
-});
-
-test('replay explains what to fix in OBS', async () => {
-  const { obs, link } = await connected();
-  let owned: Owned = emptyOwned();
-  await link.build(plan(), owned, (o) => { owned = o; });
-  await link.setStudioMode(true);
-  await link.setPreview(SCENES.gameplay.name);
-  await link.take();
-  const replay = new Replay(link);
-  obs.replayBuffer = 'unconfigured';
-  assert.match((await replay.play()).error ?? '', /no replay buffer/);
-  obs.replayBuffer = false;
-  assert.match((await replay.play()).error ?? '', /Start the replay buffer/);
-  obs.replayBuffer = true;
-  obs.transitions = obs.transitions.filter((t) => t.transitionKind !== 'obs_stinger_transition');
-  await link.refresh();
-  assert.match((await replay.play()).error ?? '', /Add a Stinger/);
+test('the link has no way to switch scenes', async () => {
+  const { link } = await connected();
+  for (const name of ['take', 'setPreview', 'setStudioMode', 'cutChoice', 'stingerChoice', 'showFullscreen']) assert.equal(name in link, false, name);
 });

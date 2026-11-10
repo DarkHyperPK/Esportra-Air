@@ -45,12 +45,11 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'autopilotResume': await p.autopilotResume(); break;
     case 'segmentUpdate': p.segmentUpdate(String(a[0]), a[1] ?? {}); break;
     case 'segmentMove': p.segmentMove(String(a[0]), Number(a[1])); break;
-    case 'obsStudioMode': await p.studioMode(a[0] === true); break;
-    case 'obsPreview': await p.preview(String(a[0])); break;
-    case 'obsTake': await p.take(); break;
-    case 'obsCut': await p.cut(); break;
-    case 'obsStinger': await p.stinger(); break;
-    case 'replay': await p.playReplay(); break;
+    case 'replay': await p.saveReplay(); break;
+    case 'cueMode': p.setCueMode(a[0] === true); break;
+    case 'cueTake': await p.takeCue(a[0] === 'cut' || a[0] === 'stinger' ? a[0] : 'take'); break;
+    case 'cueClear': p.clearCue(); break;
+    case 'autopilotPreset': p.autopilotPreset(a[0]); break;
     case 'useSlotSource': await p.useSlotSource(a[0], String(a[1])); break;
     case 'monitor': p.setMonitoring(a[0] === true); return;
     case 'installGraphics': await p.installGraphics(); break;

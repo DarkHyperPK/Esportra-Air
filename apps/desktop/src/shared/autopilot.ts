@@ -2,13 +2,15 @@
 
 export type SegmentState = 'queued' | 'armed' | 'holding' | 'taking' | 'on_air' | 'done';
 
-/** What arms an automatic take. Esportra triggers (room opened, veto, series) arrive with Stage 2. */
-export const TRIGGERS = ['manual', 'round_live', 'round_end', 'spike_planted', 'spike_defused', 'map_end', 'delay'] as const;
+/** What arms an automatic take. Esportra triggers (room opened, veto, series) come later. */
+export const TRIGGERS = ['manual', 'match_start', 'round_live', 'round_end', 'halftime', 'spike_planted', 'spike_defused', 'map_end', 'delay'] as const;
 export type Trigger = (typeof TRIGGERS)[number];
 
 export const TRIGGER_LABEL: Record<Trigger, string> = {
   manual: 'Manual take',
+  match_start: 'The map starts',
   round_live: 'Round goes live',
+  halftime: 'Halftime (after round 12)',
   round_end: 'Round ends',
   spike_planted: 'Spike planted',
   spike_defused: 'Spike defused',
@@ -16,15 +18,20 @@ export const TRIGGER_LABEL: Record<Trigger, string> = {
   delay: 'After a delay',
 };
 
-export type TransitionPick = 'default' | 'cut' | 'stinger';
+/** How the graphic arrives: straight away, or behind the HUD's stinger wipe. */
+export type TransitionPick = 'cut' | 'stinger';
+
+/** Rule sets: Standard runs the whole show, Minimal only results, Manual never takes by itself. */
+export const PRESETS = ['standard', 'minimal', 'manual'] as const;
+export type Preset = (typeof PRESETS)[number];
 
 export interface Segment {
   id: string;
   name: string;
-  /** OBS scene that goes on air. */
-  scene: string;
-  /** A Fullscreen graphic (a screen id such as `map-result`) shown before the take, or null. */
-  graphic: string | null;
+  /** The full-screen graphic it shows (a screen id such as `map-result`), or null to go back to the game. */
+  show: string | null;
+  /** Back to the game after this many seconds (0 = stays until the next step). */
+  forSeconds: number;
   trigger: Trigger;
   /** Seconds after the previous take, for the `delay` trigger. */
   delaySeconds: number;
@@ -39,7 +46,7 @@ export interface Segment {
   heldBy: 'operator' | null;
 }
 
-export type AutopilotPause = 'tech' | 'timeout' | 'obs' | null;
+export type AutopilotPause = 'tech' | 'timeout' | null;
 
 export interface AutopilotView {
   /** Off until the producer chooses Start autopilot; never restored after a restart. */
@@ -49,6 +56,7 @@ export interface AutopilotView {
   now: Segment | null;
   /** Armed, holding or taking: what happens next. */
   next: Segment | null;
+  preset: Preset;
   /** Absolute time the hold window ends (null while held, or when none is running). */
   holdEndsAt: number | null;
   holdTotalMs: number | null;
@@ -62,8 +70,8 @@ export interface AutopilotView {
 export type AutopilotBlock = string | null;
 
 export interface SegmentEdit {
-  scene?: string;
-  graphic?: string | null;
+  show?: string | null;
+  forSeconds?: number;
   trigger?: Trigger;
   delaySeconds?: number;
   mode?: 'automatic' | 'manual';

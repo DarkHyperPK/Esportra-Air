@@ -1,7 +1,8 @@
-// OBS WebSocket (v5): one connection with live status and the switching controls.
+// OBS WebSocket (v5): one connection with live status, scene building and screenshots.
 //
-// Status mirrors what OBS reports through its events; the console never animates a take OBS
-// did not make. Ported from the legacy src/obs-controller.js and src/obs-transitions.js.
+// Air never switches OBS scenes (decision R1): it installs its scenes and sources, reads which scene
+// is on air, takes screenshots for the Live monitors and saves the replay buffer. Status mirrors
+// what OBS reports through its events.
 
 import { EventEmitter } from 'node:events';
 import type { ObsSocket } from './obs-types.ts';
@@ -32,37 +33,15 @@ export interface ObsStatus {
   replayBufferActive: boolean | null;
   /** First source in each watched slot scene (null while empty). */
   slots: Record<string, string | null>;
-  /** The graphic currently visible in the Fullscreen scene, if any. */
-  fullscreenSource: string | null;
-}
-
-export interface TransitionChoice {
-  mode: 'cut' | 'fade' | 'stinger';
-  name: string;
-  durationMs?: number;
-}
-
-export interface TakeResult {
-  ok: boolean;
-  error?: string;
-  latencyMs?: number;
 }
 
 const AUDIO_OR_BROWSER = /audio|wasapi|pulse|alsa|coreaudio|browser_source/i;
 const KINDS: Record<string, TransitionKind> = { cut_transition: 'cut', fade_transition: 'fade', obs_stinger_transition: 'stinger' };
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 10000];
 
-export function validateTransition(input: TransitionChoice | null | undefined): TransitionChoice | null {
-  if (input == null) return null;
-  if (!['cut', 'fade', 'stinger'].includes(input.mode)) throw new Error('Choose Cut, Fade or Stinger.');
-  if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 256) throw new Error('Choose a transition available in OBS.');
-  if (input.mode === 'fade' && (!Number.isInteger(input.durationMs) || input.durationMs! < 50 || input.durationMs! > 10_000)) throw new Error('Fade duration must be 50–10,000 milliseconds.');
-  return { mode: input.mode, name: input.name, ...(input.mode === 'fade' ? { durationMs: input.durationMs } : {}) };
-}
-
 const initial = (): ObsStatus => ({
   state: 'disconnected', error: null, version: null, collection: null, studioMode: false, programScene: null, previewScene: null,
-  scenes: [], videoInputs: [], transitions: [], currentTransition: null, transitionActive: false, replayBufferActive: null, slots: {}, fullscreenSource: null,
+  scenes: [], videoInputs: [], transitions: [], currentTransition: null, transitionActive: false, replayBufferActive: null, slots: {},
 });
 
 export class ObsLink extends EventEmitter {
@@ -71,13 +50,10 @@ export class ObsLink extends EventEmitter {
   private readonly create: () => ObsSocket;
   private args: { host: string; port: number; password: string } | null = null;
   private watched: string[] = [];
-  private fullscreenScene: string | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
   private wantConnected = false;
-  private busy = false;
-  private restoreTransition: string | null = null;
   private readonly backoff: number[];
 
   constructor(create: () => ObsSocket, options: { backoffMs?: number[] } = {}) {
@@ -98,11 +74,6 @@ export class ObsLink extends EventEmitter {
   /** Slot scenes whose contents Air watches (to turn "Add your source" into the real name). */
   watchSlots(sceneNames: string[]) {
     this.watched = sceneNames;
-  }
-
-  /** The exclusive Fullscreen scene whose visible graphic Air reports and changes. */
-  watchFullscreen(sceneName: string) {
-    this.fullscreenScene = sceneName;
   }
 
   async connect(host: string, port: number, password: string) {
@@ -150,10 +121,7 @@ export class ObsLink extends EventEmitter {
       void this.refresh();
     });
     on('SceneTransitionStarted', () => this.update({ transitionActive: true }));
-    on('SceneTransitionEnded', () => {
-      this.update({ transitionActive: false });
-      void this.restoreBase();
-    });
+    on('SceneTransitionEnded', () => this.update({ transitionActive: false }));
     on('CurrentSceneTransitionChanged', (e) => this.update({ currentTransition: e.transitionName }));
     for (const event of ['SceneListChanged', 'SceneCreated', 'SceneRemoved', 'SceneNameChanged', 'InputCreated', 'InputRemoved', 'InputNameChanged', 'SceneItemCreated', 'SceneItemRemoved', 'ReplayBufferStateChanged', 'CurrentSceneCollectionChanged']) {
       on(event, () => this.scheduleRefresh());
@@ -200,11 +168,6 @@ export class ObsLink extends EventEmitter {
       const studioMode = !!studio?.studioModeEnabled;
       const preview = studioMode ? await call('GetCurrentPreviewScene') : null;
       const slots = await readSlots(socket, this.watched);
-      let fullscreenSource: string | null = null;
-      if (this.fullscreenScene && (scenes?.scenes ?? []).some((x: { sceneName: string }) => x.sceneName === this.fullscreenScene)) {
-        const items = await socket.call('GetSceneItemList', { sceneName: this.fullscreenScene }).catch(() => null);
-        fullscreenSource = (items?.sceneItems ?? []).find((i: { sceneItemEnabled?: boolean; sourceName: string }) => i.sceneItemEnabled && i.sourceName.startsWith('Esportra · '))?.sourceName ?? null;
-      }
       this.update({
         programScene: scenes?.currentProgramSceneName ?? this.status.programScene,
         previewScene: studioMode ? preview?.currentPreviewSceneName ?? null : null,
@@ -219,7 +182,6 @@ export class ObsLink extends EventEmitter {
         // OBS answers 604 when its replay buffer is not configured; that reads as unavailable.
         replayBufferActive: replay ? !!replay.outputActive : null,
         slots,
-        fullscreenSource,
       });
     } catch {
       // A failed read keeps the last known status; ConnectionClosed reports real loss.
@@ -253,102 +215,6 @@ export class ObsLink extends EventEmitter {
     if (!this.status.scenes.includes(slotScene)) throw new Error('Add the Esportra scenes to OBS first.');
     await this.socket.call('CreateSceneItem', { sceneName: slotScene, sourceName: source, sceneItemEnabled: true });
     await this.refresh();
-  }
-
-  /** Shows one graphic in the Fullscreen scene and hides the others (null hides all). Only Air's own items change. */
-  async showFullscreen(sourceName: string | null) {
-    const socket = this.socket;
-    const scene = this.fullscreenScene;
-    if (!socket || !scene) throw new Error('Connect to OBS first.');
-    if (!this.status.scenes.includes(scene)) throw new Error('Add the Esportra scenes to OBS first.');
-    const { sceneItems = [] } = await socket.call('GetSceneItemList', { sceneName: scene });
-    const ours = (sceneItems as Array<{ sourceName: string; sceneItemId: number }>).filter((i) => i.sourceName.startsWith('Esportra · '));
-    if (sourceName && !ours.some((i) => i.sourceName === sourceName)) throw new Error('That graphic is not in the Fullscreen scene. Rebuild the scenes.');
-    for (const item of ours) await socket.call('SetSceneItemEnabled', { sceneName: scene, sceneItemId: item.sceneItemId, sceneItemEnabled: item.sourceName === sourceName });
-    await this.refresh();
-  }
-
-  // ── switching ──
-
-  async setStudioMode(on: boolean) {
-    if (!this.socket) throw new Error('Connect to OBS first.');
-    await this.socket.call('SetStudioModeEnabled', { studioModeEnabled: on });
-    await this.refresh();
-  }
-
-  async setPreview(sceneName: string) {
-    const socket = this.requireStudio();
-    if (!this.status.scenes.includes(sceneName)) throw new Error('That scene is not in OBS.');
-    await socket.call('SetCurrentPreviewScene', { sceneName });
-  }
-
-  private requireSocket() {
-    if (!this.socket) throw new Error('Connect to OBS first.');
-    return this.socket;
-  }
-
-  private requireStudio() {
-    if (!this.socket) throw new Error('Connect to OBS first.');
-    if (!this.status.studioMode) throw new Error('Turn on Studio Mode so takes go through Preview.');
-    return this.socket;
-  }
-
-  /**
-   * Puts the preview scene on air. With a transition choice, uses that transition for this take only
-   * and restores OBS's own transition afterwards.
-   */
-  async take(choice?: TransitionChoice | null, options: { scene?: string; stillAllowed?: () => boolean } = {}): Promise<TakeResult> {
-    if (this.busy || this.status.transitionActive) return { ok: false, error: 'Wait for the current OBS transition to finish.' };
-    this.busy = true;
-    const started = Date.now();
-    try {
-      // Autopilot names its scene: with Studio Mode off it goes straight to Program.
-      const direct = !!options.scene && !this.status.studioMode;
-      const socket = direct ? this.requireSocket() : this.requireStudio();
-      const forced = validateTransition(choice);
-      if (forced) {
-        const wanted = this.status.transitions.find((t) => t.name === forced.name && t.kind === forced.mode);
-        if (!wanted) return { ok: false, error: `The ${forced.mode} transition “${forced.name}” is not available in OBS.` };
-        this.restoreTransition = this.status.currentTransition && this.status.currentTransition !== forced.name ? this.status.currentTransition : null;
-        await socket.call('SetCurrentSceneTransition', { transitionName: forced.name });
-        if (forced.mode === 'fade') await socket.call('SetCurrentSceneTransitionDuration', { transitionDuration: forced.durationMs });
-      }
-      if (options.scene && !direct) await socket.call('SetCurrentPreviewScene', { sceneName: options.scene });
-      if (options.stillAllowed && !options.stillAllowed()) {
-        await this.restoreBase();
-        return { ok: false, error: 'Take cancelled because production changed.' };
-      }
-      if (!this.status.previewScene && !options.scene) {
-        await this.restoreBase();
-        return { ok: false, error: 'Choose a scene for Preview first.' };
-      }
-      if (direct) await socket.call('SetCurrentProgramScene', { sceneName: options.scene });
-      else await socket.call('TriggerStudioModeTransition');
-      return { ok: true, latencyMs: Date.now() - started };
-    } catch (error) {
-      await this.restoreBase();
-      return { ok: false, error: (error as Error).message, latencyMs: Date.now() - started };
-    } finally {
-      this.busy = false;
-    }
-  }
-
-  /** The cut transition, if OBS has one. */
-  cutChoice(): TransitionChoice | null {
-    const cut = this.status.transitions.find((t) => t.kind === 'cut');
-    return cut ? { mode: 'cut', name: cut.name } : null;
-  }
-
-  stingerChoice(preferred: string | null): TransitionChoice | null {
-    const stingers = this.status.transitions.filter((t) => t.kind === 'stinger');
-    const pick = stingers.find((t) => t.name === preferred) ?? stingers[0];
-    return pick ? { mode: 'stinger', name: pick.name } : null;
-  }
-
-  private async restoreBase() {
-    const name = this.restoreTransition;
-    this.restoreTransition = null;
-    if (name && this.socket) await this.socket.call('SetCurrentSceneTransition', { transitionName: name }).catch(() => {});
   }
 
   // ── monitors ──

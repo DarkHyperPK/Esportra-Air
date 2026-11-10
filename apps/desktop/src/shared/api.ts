@@ -119,6 +119,8 @@ export interface LayerRow {
   /** An Auto layer the producer has switched by hand. */
   manual: boolean;
   available: boolean;
+  /** The mode waiting in the Cued column, when it differs from what is on air. */
+  cued?: LayerMode;
 }
 
 export interface LogEntry {
@@ -258,6 +260,8 @@ export interface Snapshot {
   };
   layers: LayerRow[];
   autopilot: AutopilotView;
+  /** Graphics waiting in the Cued column, and the sample room the Cued monitor shows. */
+  cue: { mode: boolean; pending: string[]; room: string | null };
   esportra: EsportraView;
   mode: PcMode;
   join: JoinView;
@@ -316,11 +320,12 @@ export interface AirApi {
   autopilotResume(): Promise<Snapshot>;
   segmentUpdate(id: string, edit: SegmentEdit): Promise<Snapshot>;
   segmentMove(id: string, direction: -1 | 1): Promise<Snapshot>;
-  obsStudioMode(on: boolean): Promise<Snapshot>;
-  obsPreview(scene: string): Promise<Snapshot>;
-  obsTake(): Promise<Snapshot>;
-  obsCut(): Promise<Snapshot>;
-  obsStinger(): Promise<Snapshot>;
+  /** Changes go to the Cued column (true) or straight on air (false). */
+  cueMode(on: boolean): Promise<Snapshot>;
+  cueTake(how: 'take' | 'cut' | 'stinger'): Promise<Snapshot>;
+  cueClear(): Promise<Snapshot>;
+  autopilotPreset(preset: 'standard' | 'minimal' | 'manual'): Promise<Snapshot>;
+  /** F3: saves OBS's replay buffer (no scene switching). */
   replay(): Promise<Snapshot>;
   useSlotSource(slot: SlotId, source: string): Promise<Snapshot>;
   createQuickMatch(input: QuickMatchInput): Promise<Snapshot>;

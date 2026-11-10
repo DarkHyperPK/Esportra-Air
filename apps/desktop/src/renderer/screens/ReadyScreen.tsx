@@ -5,7 +5,7 @@ import { LineupEditor, TalentFields, TeamFields, imageUrl, type Lineups } from '
 import { NewMatchWizard } from '../components/NewMatch.tsx';
 import { air } from '../bridge.ts';
 import { Box, Cap } from '../components/ui.tsx';
-import { NextFive } from '../components/Autopilot.tsx';
+import { AutopilotRules, NextFive } from '../components/Autopilot.tsx';
 import type { PageProps } from '../App.tsx';
 
 const when = (iso: string | null) => {
@@ -54,7 +54,7 @@ function EsportraMatches({ s, run, openSignIn }: Pick<PageProps, 's' | 'run' | '
   );
 }
 
-type Tab = 'ready' | 'teams' | 'talent';
+type Tab = 'ready' | 'teams' | 'talent' | 'autopilot';
 
 function MatchHero({ s }: { s: Snapshot }) {
   const m = s.match!;
@@ -178,11 +178,12 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, s
           <>
             <MatchHero s={s} />
             <div className="tabs" role="tablist" aria-label="Match">
-              {([['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and event']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+              {([['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and event'], ['autopilot', 'Autopilot']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
               <button role="tab" aria-selected={false} onClick={() => go('setup')}>Graphics</button>
             </div>
             {tab === 'teams' && <TeamsTab key={s.match.id} s={s} run={run} />}
             {tab === 'talent' && <TalentTab key={s.match.id} s={s} run={run} />}
+            {tab === 'autopilot' && <AutopilotRules s={s} run={run} />}
             {tab === 'ready' && (
               <>
                 <div className="row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
@@ -202,7 +203,7 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, s
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                   <button className="btn primary big" disabled={!!s.autopilotBlock} onClick={() => void run(() => air.autopilotStart()).then((ok) => ok && start())}>Start autopilot</button>
                   <button className="btn big" onClick={() => void run(() => air.autopilotStop()).then(start)}>Run manually</button>
-                  <span className="muted" style={{ fontSize: 12.5, maxWidth: 420 }}>{s.autopilotBlock ?? 'Autopilot takes scenes for you after a hold window you can stop with H. Off unless you start it.'}</span>
+                  <span className="muted" style={{ fontSize: 12.5, maxWidth: 420 }}>{s.autopilotBlock ?? 'Autopilot puts full-screen graphics up for you after a hold window you can stop with H. Off unless you start it.'}</span>
                 </div>
               </>
             )}

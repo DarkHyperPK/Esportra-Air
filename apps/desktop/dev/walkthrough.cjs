@@ -24,7 +24,11 @@ function makePng(hex) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const launched = await chromium.launch();
+  // Agent/weapon art loads from media.valorant-api.com. Sandboxes without internet refuse it, and the
+  // HUD retries failed art on every redraw, so the walkthrough runs as an offline venue: art is aborted.
+  const offline = async (p) => { await p.route(/media\.valorant-api\.com/, (r) => r.abort('internetdisconnected')); return p; };
+  const browser = { newPage: async (o) => offline(await launched.newPage(o)), close: () => launched.close() };
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -101,8 +105,6 @@ function makePng(hex) {
   await page.getByLabel('Password').fill('secret');
   await btn('Connect', { exact: true });
   await page.getByText('Connected', { exact: true }).first().waitFor();
-  await page.getByRole('switch', { name: 'Studio Mode' }).click();
-  await page.getByText('On · takes go through Preview').waitFor();
   await shot('settings');
   await rail('Scenes');
   await btn('Add for me');
@@ -135,33 +137,34 @@ function makePng(hex) {
   await page.getByText(/ready/).first().waitFor();
   await shot('readiness');
 
-  // Console
+  // Live, graphics only: changes are cued (Cued monitor), Space takes them, F7 takes behind the stinger.
   await btn('Run manually');
-  // Switching: Preview a scene, Take it; then Cut to another
-  await page.getByRole('button', { name: /^Gameplay/ }).click();
-  await page.getByRole('button', { name: 'Take', exact: true }).click();
-  await page.getByText(/OBS scene · Gameplay on air/).waitFor();
-  await page.waitForTimeout(700);
-  await page.getByRole('button', { name: /^Holding/ }).click();
-  await page.getByRole('button', { name: 'Stinger', exact: true }).click();
-  await page.getByText(/OBS scene · Holding on air/).waitFor();
-  await page.waitForTimeout(700);
-  await page.getByRole('button', { name: /^Gameplay/ }).click();
+  await page.getByText(/Nothing cued/).waitFor();
   await page.getByText('Waiting for game data').or(page.getByText(/R\d+/)).first().waitFor();
   await page.waitForTimeout(9000);
-  await page.keyboard.press('F5');
+  await page.keyboard.press('F5');          // caster lower third -> cued
+  await page.locator('.cue-chip', { hasText: 'Caster lower third' }).waitFor();
+  await page.keyboard.press('2');           // player cards: on -> cued off
+  await page.getByRole('button', { name: /^Player cards: on, cued off/ }).waitFor();
+  await page.keyboard.press('q');           // economy board -> cued
+  await page.getByRole('button', { name: /^Economy board: auto, cued/ }).waitFor();
+  await page.waitForTimeout(2500);
+  await page.evaluate(() => document.querySelectorAll('*').forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }));
+  await shot('console-cued');
+  await page.keyboard.press(' ');           // Take
+  await page.getByText(/Nothing cued/).waitFor();
   await page.getByText('On screen · press again to hide').waitFor();
-  await page.keyboard.press('F1');
-  await page.keyboard.press('2');           // player cards -> off
-  await page.getByRole('button', { name: /^Player cards: off/ }).waitFor();
-  await page.keyboard.press('2');
-  await page.keyboard.press('q');           // economy -> manual
-  await page.getByRole('button', { name: /Economy.*set by hand/ }).first().waitFor();
+  await page.getByRole('button', { name: /^Economy board: \w+, set by hand/ }).first().waitFor();
+  await page.keyboard.press('2');           // player cards back on, cued
   await page.keyboard.press('F4');
   await page.getByLabel(/Short on-screen update/).fill('Map 2 starts in two minutes');
   await page.getByRole('button', { name: 'Show toast' }).click();
-  await page.keyboard.press('F7');
+  await page.locator('.cue-chip', { hasText: 'Toast' }).waitFor();
+  await page.keyboard.press('F7');          // stinger take: the wipe plays, the cue lands behind it
+  await page.getByText(/Nothing cued/).waitFor();
+  await page.keyboard.press('F1');          // pauses go straight on air
   await page.waitForTimeout(1500);
+  await page.evaluate(() => document.querySelectorAll('*').forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }));
   await shot('console');
   const ingame = obsPages.find(([o]) => o.screenId === 'in-game')[1];
   await ingame.screenshot({ path: path.join(OUT, `${String(++n).padStart(2, '0')}-obs-in-game-output.png`) });
@@ -179,17 +182,15 @@ function makePng(hex) {
   const code = (await (await fetch('http://127.0.0.1:5320/call/snapshot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '[]' })).json()).match.code;
   const post = (body) => fetch(`http://127.0.0.1:5399/api/${code}/ingest/valorant`, { method: 'POST', headers: { 'X-Esportra-Key': 'dev-host-key-0123456789abcdef', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await btn('Start autopilot');
-  await page.getByText('Starting soon').first().waitFor();
+  await page.locator('.next-card').getByText('Match intro', { exact: true }).waitFor();
   await shot('autopilot-armed');
-  await page.keyboard.press(' ');
-  await page.getByText(/^Now$/).waitFor();
-  await page.waitForFunction(() => /Starting soon/.test(document.querySelector('[aria-label="Autopilot"]')?.textContent ?? '') && /Match intro/.test(document.querySelector('.next-card')?.textContent ?? ''));
-  await page.keyboard.press(' ');
-  await page.waitForFunction(() => /Map 1 live/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await page.keyboard.press(' ');           // Space takes the waiting step: the intro goes up full screen
+  await page.waitForFunction(() => /Map 1 · back to the game/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await page.waitForTimeout(2500);
+  await shot('autopilot-intro-on-air');
   await post([{ feature: 'match_info', key: 'round_phase', data: 'shopping' }]);
   await post([{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
   await page.getByText('Taking when the ring ends').waitFor();
-  await page.waitForTimeout(1500);
   await shot('autopilot-hold-window');
   await page.keyboard.press('h');
   await page.getByText(/Held by operator/).first().waitFor();
@@ -200,13 +201,24 @@ function makePng(hex) {
   await btn('Resume autopilot');
   await page.getByText(/Technical pause\./).waitFor({ state: 'detached' });
   await btn('Take now');
-  await page.getByText(/OBS scene · Gameplay on air/).waitFor();
-  await shot('autopilot-on-air');
-  await rail('Scenes');
-  await page.getByText('Segment → Scene').scrollIntoViewIfNeeded();
-  await shot('segments');
+  await page.waitForFunction(() => /Map 1 · halftime/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await page.waitForTimeout(1500);
+  await shot('autopilot-back-to-game');
+  // Matches › Autopilot: how it works, presets, every step as a sentence (locked while running).
+  await rail('Matches');
+  await page.getByRole('tab', { name: 'Autopilot' }).click();
+  await page.getByText('A hold window counts down').waitFor();
+  await shot('autopilot-rules-running');
   await rail('Live');
-  await btn('Run manually');
+  await page.getByLabel('Autopilot').getByRole('button', { name: 'Run manually' }).click();
+  await rail('Matches');
+  await page.getByRole('tab', { name: 'Autopilot' }).click();
+  await page.getByRole('radio', { name: /Results only/ }).click();
+  await page.getByRole('radio', { name: /Results only/, checked: true }).waitFor();
+  await shot('autopilot-presets');
+  await page.getByRole('radio', { name: /Standard show/ }).click();
+  await page.getByRole('radio', { name: /Standard show/, checked: true }).waitFor();
+  await page.getByRole('tab', { name: 'Readiness' }).click();
 
   // Player cameras (S5): make links, copy one, 10-up; the overlay pages show the streams and report connection.
   await rail('Live');

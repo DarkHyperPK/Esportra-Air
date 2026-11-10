@@ -28,3 +28,22 @@ export function Preview({ src, label, backdrop = true }: { src: string; label: s
     </div>
   );
 }
+
+/** Several overlay pages stacked over one picture: how the graphics look together on air. */
+export function Composite({ srcs, label, image }: { srcs: string[]; label: string; image?: string | null }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.3);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setScale((e?.contentRect.width ?? 576) / 1920));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={box} className={`pv ${image ? '' : 'pv-bg'}`} aria-label={label} role="img">
+      {image && <img src={image} alt="" className="pv-frame" />}
+      {srcs.map((src) => <iframe key={src} title={label} src={src} tabIndex={-1} style={{ transform: `scale(${scale})` }} />)}
+    </div>
+  );
+}

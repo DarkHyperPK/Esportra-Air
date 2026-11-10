@@ -1,22 +1,21 @@
-// Autopilot for the selected match: the runner, its rundown (saved edits per match) and the bridge to
-// OBS. The producer starts it explicitly each time the app runs; it is never restored after a restart.
+// Autopilot for the selected match: the runner, its rundown (preset and saved edits per match) and the
+// bridge to Esportra graphics. It never switches OBS scenes. The producer starts it explicitly each
+// time the app runs; it is never restored after a restart.
 
 import type { Match, Screen } from '../../shared/api.ts';
-import { sourceName } from '../../shared/scenes.ts';
-import type { AutopilotPause, AutopilotView, Segment, SegmentEdit } from '../../shared/autopilot.ts';
-import type { ObsLink, TransitionChoice } from '../obs.ts';
+import type { AutopilotPause, AutopilotView, Preset, Segment, SegmentEdit } from '../../shared/autopilot.ts';
 import type { Store } from '../store.ts';
-import { buildRundown, emptyEdits, validateEdit, type RundownEdits } from './rundown.ts';
+import { buildRundown, emptyEdits, validateEdit, validPreset, type RundownEdits } from './rundown.ts';
 import { realClock, ShowRunner, type Clock, type GameEvent, type RunnerLog, type TakeOutcome } from './show-runner.ts';
 
 export interface AutopilotDeps {
   store: Store;
-  obs: ObsLink;
   match(): Match | null;
   screens(): Screen[];
-  stinger(): string | null;
-  /** Shows a full-screen graphic in the full-screen host. */
-  showGraphic(screenId: string): Promise<void>;
+  /** Shows a full-screen graphic (null: back to the game), optionally behind the HUD stinger. */
+  showGraphic(screenId: string | null, transition: Segment['transition']): Promise<void>;
+  /** Which full-screen graphic is showing now, so a timed step only clears its own graphic. */
+  showing(): string | null;
   /** Adds a line to the event log. */
   log(text: string): void;
   changed(): void;
@@ -31,7 +30,7 @@ const describe = (entry: RunnerLog): string | null => {
     case 'skipped': return `Skipped · ${name}`;
     case 'taken': return `Taken (${entry.actor === 'automation' ? 'automatic' : 'operator'}) · ${name}`;
     case 'on_air': return `On air · ${name}`;
-    case 'paused': return `Autopilot paused · ${entry.message === 'tech' ? 'technical pause' : entry.message === 'timeout' ? 'timeout' : 'OBS disconnected'}`;
+    case 'paused': return `Autopilot paused · ${entry.message === 'tech' ? 'technical pause' : 'timeout'}`;
     case 'resumed': return 'Autopilot resumed';
     case 'error': return entry.message ?? null;
   }
@@ -61,7 +60,7 @@ export class Autopilot {
   loadForMatch() {
     const match = this.deps.match();
     this.loadedFor = match?.id ?? null;
-    this.runner.load(match ? buildRundown(match.bestOf, this.edits(match)) : []);
+    this.runner.load(match ? buildRundown(match.bestOf, this.edits(match)) : [], match ? this.edits(match).preset ?? 'standard' : 'standard');
   }
 
   /** Reloads only when the selected match changed (called on every room read). */
@@ -75,11 +74,20 @@ export class Autopilot {
 
   /** Why Start autopilot cannot be pressed yet. Run manually always works. */
   block(): string | null {
-    const { obs } = this.deps;
-    if (!this.deps.match()) return 'Choose a match first.';
-    if (obs.status.state !== 'connected') return 'Connect OBS first.';
-    if (!obs.status.scenes.includes('Esportra · Gameplay')) return 'Add the Esportra scenes to OBS first.';
-    return null;
+    return this.deps.match() ? null : 'Choose a match first.';
+  }
+
+  /** Switches the match to a preset. Saved edits are kept; only steps not yet started change. */
+  setPreset(input: Preset) {
+    const match = this.deps.match();
+    if (!match) throw new Error('Choose a match first.');
+    const preset = validPreset(input);
+    if (this.runner.view().enabled) throw new Error('Run manually first, then change the preset.');
+    const saved = this.edits(match);
+    saved.preset = preset;
+    saved.edits = {};
+    this.deps.store.save();
+    this.loadForMatch();
   }
 
   start() {
@@ -157,44 +165,36 @@ export class Autopilot {
     }
   }
 
-  onObs() {
-    const { obs } = this.deps;
-    if (obs.status.state === 'connected') {
-      this.runner.resume('obs');
-      this.runner.onProgram(obs.status.programScene);
-    } else if (obs.status.state === 'disconnected' || obs.status.state === 'error') {
-      this.runner.pause('obs');
-    }
-  }
-
   stopAll() {
     this.runner.stopAll();
   }
 
-  // ── OBS ──
+  // ── graphics ──
 
-  private choice(pick: Segment['transition']): TransitionChoice | null {
-    const { obs } = this.deps;
-    if (pick === 'cut') return obs.cutChoice();
-    if (pick === 'stinger') return obs.stingerChoice(this.deps.stinger());
-    return null;
-  }
+  private clearTimer: ReturnType<typeof setTimeout> | null = null;
 
   private async takeSegment(segment: Segment, stillAllowed: () => boolean): Promise<TakeOutcome> {
-    const { obs } = this.deps;
-    if (obs.status.state !== 'connected') return { ok: false, error: 'OBS is not connected.' };
-    if (!obs.status.scenes.includes(segment.scene)) return { ok: false, error: `The scene “${segment.scene}” is not in OBS.` };
+    if (segment.show) {
+      const screen = this.deps.screens().find((s) => s.id === segment.show);
+      if (!screen?.enabled) return { ok: false, error: `The ${segment.show.replace(/-/g, ' ')} graphic is switched off for this production.` };
+    }
+    if (!stillAllowed()) return { ok: false, error: 'Take cancelled because production changed.' };
     try {
-      if (segment.graphic) {
-        const screen = this.deps.screens().find((s) => s.id === segment.graphic);
-        if (!screen?.enabled) return { ok: false, error: `The ${segment.graphic.replace(/-/g, ' ')} graphic is switched off in Setup.` };
-        await this.deps.showGraphic(screen.id);
-      }
-      if (obs.status.programScene === segment.scene) return { ok: true, alreadyOnAir: true };
-      if (!stillAllowed()) return { ok: false, error: 'Take cancelled because production changed.' };
-      return await obs.take(this.choice(segment.transition), { scene: segment.scene, stillAllowed });
+      await this.deps.showGraphic(segment.show, segment.transition);
     } catch (error) {
       return { ok: false, error: (error as Error).message };
     }
+    if (this.clearTimer) clearTimeout(this.clearTimer);
+    this.clearTimer = null;
+    // "For N s": back to the game afterwards, unless something else has been put up meanwhile.
+    if (segment.show && segment.forSeconds > 0) {
+      const shown = segment.show;
+      this.clearTimer = setTimeout(() => {
+        this.clearTimer = null;
+        if (this.deps.showing() === shown) void this.deps.showGraphic(null, 'cut').catch(() => {});
+      }, segment.forSeconds * 1000);
+      this.clearTimer.unref?.();
+    }
+    return { ok: true };
   }
 }

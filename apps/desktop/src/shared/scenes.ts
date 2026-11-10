@@ -45,5 +45,4 @@ export const SCENES: Record<SceneKey, SceneDef> = {
   },
 };
 
-export const REPLAY_CLIP = `${PREFIX}Replay clip`;
 export const sourceName = (title: string) => `${PREFIX}${title}`;

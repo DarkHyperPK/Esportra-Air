@@ -1,5 +1,6 @@
 // Autopilot: a rundown of segments that arm on game events, count down in a visible hold window and
-// take an OBS scene — unless the producer holds, skips or takes first. Ported from the legacy
+// put an Esportra graphic on air — unless the producer holds, skips or takes first. It never switches
+// OBS scenes. Ported from the legacy
 // src/show-runner.js with an injected clock so every timing rule is tested without waiting.
 //
 // Segment lifecycle: queued → armed → holding → taking → on_air → done.
@@ -12,7 +13,7 @@
 //   - Manual segments arm and show in Next but never take themselves.
 
 import { EventEmitter } from 'node:events';
-import type { AutopilotPause, AutopilotView, Segment, SegmentEdit } from '../../shared/autopilot.ts';
+import type { AutopilotPause, AutopilotView, Preset, Segment, SegmentEdit } from '../../shared/autopilot.ts';
 
 export interface Clock {
   now(): number;
@@ -33,12 +34,10 @@ export const realClock: Clock = {
 export interface TakeOutcome {
   ok: boolean;
   error?: string;
-  /** The scene was already on air, so no transition happens and no tally will follow. */
-  alreadyOnAir?: boolean;
 }
 
 export interface RunnerPorts {
-  /** Puts the segment on air. `stillAllowed` is checked last, right before OBS is told to transition. */
+  /** Puts the segment on air. `stillAllowed` is checked last, right before the graphic changes. */
   take(segment: Segment, stillAllowed: () => boolean): Promise<TakeOutcome>;
 }
 
@@ -56,7 +55,6 @@ export interface RunnerLog {
   message?: string;
 }
 
-const CONFIRM_MS = 3000;
 const DUPLICATE_WINDOW = 50;
 
 type Active = Segment['state'];
@@ -65,6 +63,7 @@ export class ShowRunner extends EventEmitter {
   private readonly clock: Clock;
   private readonly ports: RunnerPorts;
   private segments: Segment[] = [];
+  private preset: Preset = 'standard';
   private enabled = false;
   private paused: AutopilotPause = null;
   /** Maps already finished according to the score (Fix data › Series), a floor for the map counter. */
@@ -73,7 +72,6 @@ export class ShowRunner extends EventEmitter {
   private holdTotalMs: number | null = null;
   private holdTimer: unknown = null;
   private delayTimer: unknown = null;
-  private confirmTimer: unknown = null;
   private commandIds: string[] = [];
   /** Bumped by every pause, skip, hold and stop: a take in flight checks it before it fires. */
   private epoch = 0;
@@ -87,7 +85,8 @@ export class ShowRunner extends EventEmitter {
   // ── rundown ──
 
   /** Replaces the rundown. Only allowed while nothing is armed, held, taking or on air. */
-  load(segments: Segment[]) {
+  load(segments: Segment[], preset: Preset = 'standard') {
+    this.preset = preset;
     this.cancelTimers();
     this.segments = segments.map((s) => ({ ...s, state: 'queued', heldBy: null }));
     this.enabled = false;
@@ -170,8 +169,6 @@ export class ShowRunner extends EventEmitter {
   pause(reason: Exclude<AutopilotPause, null>) {
     if (!this.enabled) return;
     if (this.paused === reason) return;
-    // OBS dropping is the most serious reason; a later operator pause must not hide it.
-    if (this.paused === 'obs' && reason !== 'obs') return;
     this.paused = reason;
     this.freeze();
     this.log({ kind: 'paused', segment: this.active(), message: reason });
@@ -198,12 +195,6 @@ export class ShowRunner extends EventEmitter {
     if (seg.mapNumber != null && seg.mapNumber !== this.currentMap()) return;
     if (!triggerMatches(seg.trigger, event)) return;
     this.openHold(seg);
-  }
-
-  /** OBS reports which scene is on air; confirms a take in flight, or finishes what was on air. */
-  onProgram(scene: string | null) {
-    const taking = this.segments.find((s) => s.state === 'taking');
-    if (taking && scene === taking.scene) this.confirm(taking);
   }
 
   // ── operator controls ──
@@ -270,20 +261,11 @@ export class ShowRunner extends EventEmitter {
       this.revert(seg, { state: 'holding', heldBy: 'operator' });
       this.log({ kind: 'error', segment: seg, message: outcome.error });
       this.change();
-      return { ok: false, error: outcome.error ?? 'OBS did not take the scene.' };
+      return { ok: false, error: outcome.error ?? 'The graphic could not be shown.' };
     }
     this.log({ kind: 'taken', segment: seg, actor });
-    if (outcome.alreadyOnAir) {
-      this.confirm(seg);
-      return { ok: true };
-    }
-    this.clock.clearTimeout(this.confirmTimer);
-    this.confirmTimer = this.clock.setTimeout(() => {
-      if (seg.state !== 'taking') return;
-      seg.state = 'armed';
-      this.log({ kind: 'error', segment: seg, message: 'OBS did not confirm the take. Check Program before retrying.' });
-      this.change();
-    }, CONFIRM_MS);
+    // Graphics change the moment the engine applies them: no tally to wait for.
+    this.confirm(seg);
     return { ok: true };
   }
 
@@ -300,6 +282,7 @@ export class ShowRunner extends EventEmitter {
       next: next ? { ...next } : null,
       holdEndsAt: this.holdEndsAt,
       holdTotalMs: this.holdTotalMs,
+      preset: this.preset,
       map: this.currentMap(),
       comingUp: this.segments.slice(after + 1).filter((s) => s.state === 'queued').slice(0, 3).map((s) => ({ ...s })),
       segments: this.segments.map((s) => ({ ...s })),
@@ -392,8 +375,6 @@ export class ShowRunner extends EventEmitter {
   }
 
   private confirm(seg: Segment) {
-    this.clock.clearTimeout(this.confirmTimer);
-    this.confirmTimer = null;
     for (const previous of this.segments) if (previous !== seg && previous.state === 'on_air') previous.state = 'done';
     seg.state = 'on_air';
     this.log({ kind: 'on_air', segment: seg });
@@ -416,8 +397,6 @@ export class ShowRunner extends EventEmitter {
   private cancelTimers() {
     this.clearHoldTimer();
     this.clearDelayTimer();
-    this.clock.clearTimeout(this.confirmTimer);
-    this.confirmTimer = null;
   }
 
   private change() {
@@ -431,7 +410,9 @@ export class ShowRunner extends EventEmitter {
 
 export function triggerMatches(trigger: Segment['trigger'], event: GameEvent): boolean {
   switch (trigger) {
+    case 'match_start': return event.type === 'match.start';
     case 'round_live': return event.type === 'round.phase' && event.phase === 'live';
+    case 'halftime': return event.type === 'round.won' && Number(event.round) === 12;
     case 'round_end': return event.type === 'round.won';
     case 'spike_planted': return event.type === 'spike.planted';
     case 'spike_defused': return event.type === 'spike.defused';

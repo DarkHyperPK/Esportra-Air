@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LayerRow, Snapshot } from '../../shared/api.ts';
 import { hotkeyLabel, hotkeyMatches, nextMode } from '../../shared/layers.ts';
-import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
-import { Monitor, sceneLabel, useMonitor } from '../components/Monitor.tsx';
+import { sceneLabel, useMonitor } from '../components/Monitor.tsx';
+import { Composite } from '../components/Preview.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
 import { AutopilotCard } from '../components/Autopilot.tsx';
 import { CamerasPanel } from '../components/Cameras.tsx';
@@ -43,9 +43,12 @@ function LayerList({ rows, fire }: { rows: LayerRow[]; fire: (row: LayerRow) => 
   return (
     <>
       {rows.map((row) => (
-        <button key={row.id} className={`layer ${row.mode === 'off' ? 'off' : ''}`} disabled={!row.available} onClick={() => fire(row)} aria-label={`${row.label}: ${row.mode}${row.manual ? ', set by hand' : ''}`} aria-keyshortcuts={row.hotkey}>
+        <button key={row.id} className={`layer ${row.mode === 'off' && !row.cued ? 'off' : ''} ${row.cued ? 'cued' : ''}`} disabled={!row.available} onClick={() => fire(row)} aria-label={`${row.label}: ${row.mode}${row.cued ? `, cued ${row.cued}` : ''}${row.manual ? ', set by hand' : ''}`} aria-keyshortcuts={row.hotkey}>
           <span>{row.label}{row.manual && <small>Manual</small>}</span>
-          <span className={`chip-mode ${row.mode}`}>{row.mode.toUpperCase()}</span>
+          <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+            {row.cued && <><span className={`chip-mode ${row.mode} was`}>{row.mode.toUpperCase()}</span><span className="muted" aria-hidden="true">→</span></>}
+            <span className={`chip-mode ${row.cued ?? row.mode} ${row.cued ? 'next' : ''}`}>{(row.cued ?? row.mode).toUpperCase()}</span>
+          </span>
           <span className="hotkey">{hotkeyLabel(row.hotkey)}</span>
         </button>
       ))}
@@ -90,29 +93,50 @@ function PollForm({ run, close, active }: Pick<PageProps, 'run'> & { close: () =
   );
 }
 
+/** Esportra graphics as they look together: the in-game HUD and the full-screen host, over the OBS program picture. */
+function GraphicMonitor({ s, room, kind, image, empty }: { s: Snapshot; room: string; kind: 'cued' | 'onair'; image: string | null; empty?: string }) {
+  const url = (overlay: string) => `http://127.0.0.1:${s.engine.port}/overlays/${overlay}.html?${new URLSearchParams({ match: room, screen: '1' })}`;
+  const onAir = kind === 'onair';
+  return (
+    <figure className={`gmon ${kind}`} aria-label={onAir ? 'On air graphics' : 'Cued graphics'}>
+      <div style={{ position: 'relative' }}>
+        <Composite srcs={[url('ingame'), url('fullscreen')]} label={onAir ? 'Graphics on air' : 'Graphics after the next take'} image={image} />
+        <span className="tag"><Tally kind={onAir ? 'onair' : 'pvw'}>{onAir ? 'On air' : 'Cued'}</Tally></span>
+        {empty && <div className="empty-cue">{empty}</div>}
+      </div>
+      <figcaption className="mono muted">
+        <span>{onAir ? 'What viewers see now' : 'After the next take'}</span>
+        <span>{image ? `Over OBS · ${sceneLabel(s.obs.programScene)}` : 'Over a sample backdrop'}</span>
+      </figcaption>
+    </figure>
+  );
+}
+
 export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   const ref = useRef(s);
   ref.current = s;
   const [form, setForm] = useState<'toast' | 'poll' | null>(null);
   const frame = useMonitor(s.obs.state === 'connected');
   const now = useNow(!!s.readout);
-  const hasStinger = s.obs.transitions.some((t) => t.kind === 'stinger');
-  const hasCut = s.obs.transitions.some((t) => t.kind === 'cut');
-  const canTake = s.obs.state === 'connected' && s.obs.studioMode && !s.obs.transitionActive && !!s.obs.previewScene;
+  const cued = s.cue.pending.length > 0;
   const casters = (s.match?.casters ?? []).filter((c) => c.name);
 
   const triggers = (snap: Snapshot): Trigger[] => [
     { key: 'F1', label: 'Tech pause', detail: snap.triggers.pause === 'technical' ? 'On screen · press again to resume' : 'Pause panel with a running clock', state: snap.triggers.pause === 'technical' ? 'warn' : 'idle', built: true, fire: () => void run(() => air.pause(snap.triggers.pause === 'technical' ? null : 'technical')) },
     { key: 'F2', label: 'Timeout', detail: snap.triggers.pause === 'timeout' ? 'On screen · press again to end' : 'Team timeout panel', state: snap.triggers.pause === 'timeout' ? 'warn' : 'idle', built: true, fire: () => void run(() => air.pause(snap.triggers.pause === 'timeout' ? null : 'timeout')) },
-    { key: 'F3', label: 'Replay', detail: snap.obs.replay.busy ? 'Saving or playing…' : snap.obs.replay.bufferActive === false ? 'Replay buffer is off in OBS' : snap.obs.replay.bufferActive === null ? 'Set up the replay buffer in OBS' : 'Last clip, through the stinger', state: snap.obs.replay.busy ? 'warn' : 'idle', built: snap.obs.state === 'connected', fire: () => void run(() => air.replay()) },
+    { key: 'F3', label: 'Replay', detail: snap.obs.replay.bufferActive === false ? 'Replay buffer is off in OBS' : snap.obs.replay.bufferActive === null ? 'Set up the replay buffer in OBS' : 'Save the last moments in OBS', state: 'idle', built: snap.obs.state === 'connected', fire: () => void run(() => air.replay()) },
     { key: 'F4', label: 'Toast', detail: 'Short on-screen update', state: form === 'toast' ? 'warn' : 'idle', built: true, fire: () => setForm(form === 'toast' ? null : 'toast') },
     { key: 'F5', label: 'Caster lower third', detail: casters.length ? (snap.triggers.strap ? 'On screen · press again to hide' : casters.map((c) => c.name).join(' & ')) : 'Add casters first', state: snap.triggers.strap ? 'live' : 'idle', built: true, fire: () => (casters.length ? void run(() => air.casterStrap(!snap.triggers.strap)) : openCasters()) },
     { key: 'F6', label: 'Poll', detail: snap.triggers.poll ? 'On screen' : 'Two options with a split', state: snap.triggers.poll ? 'live' : form === 'poll' ? 'warn' : 'idle', built: true, fire: () => setForm(form === 'poll' ? null : 'poll') },
-    { key: 'F7', label: 'Stinger', detail: 'Graphic wipe over the HUD', state: 'idle', built: true, fire: () => void run(() => air.stingerPlay()) },
+    { key: 'F7', label: 'Stinger', detail: snap.cue.pending.length ? 'Take the cue behind the HUD wipe' : 'Graphic wipe over the HUD', state: snap.cue.pending.length ? 'warn' : 'idle', built: true, fire: () => void run(() => (snap.cue.pending.length ? air.cueTake('stinger') : air.stingerPlay())) },
     { key: 'F8', label: 'Sponsor read', detail: (snap.match?.sponsors ?? []).length ? (snap.triggers.sponsor ? `${snap.triggers.sponsor} on screen` : `Next: ${nextSponsor(snap)}`) : 'Add sponsors in Setup', state: snap.triggers.sponsor ? 'live' : 'idle', built: (snap.match?.sponsors ?? []).length > 0, fire: () => void run(() => air.sponsorRead(snap.triggers.sponsor ? null : nextSponsor(snap))) },
   ];
 
-  const cycle = (row: LayerRow) => void run(() => air.setLayer(row.id, row.id.startsWith('fs:') ? (row.mode === 'on' ? 'off' : 'on') : nextMode(row.id, row.mode)));
+  // Steps on from the cued mode, so pressing a key twice while cueing moves two steps.
+  const cycle = (row: LayerRow) => {
+    const from = row.cued ?? row.mode;
+    void run(() => air.setLayer(row.id, row.id.startsWith('fs:') ? (from === 'on' ? 'off' : 'on') : nextMode(row.id, from)));
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -126,13 +150,13 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
         return openFix();
       }
       if (e.ctrlKey) return;
-      // Space takes, unless a focused button would also handle it. With autopilot on and a segment
-      // waiting, it takes that segment now; otherwise it takes whatever is in Preview.
+      // Space takes, unless a focused button would also handle it. With autopilot on and a step
+      // waiting, it takes that step now; otherwise it puts the cued graphics on air.
       if (e.key === ' ' && el?.tagName !== 'BUTTON') {
         e.preventDefault();
         const ap = snap.autopilot;
         if (ap.enabled && ap.next && ap.next.state !== 'taking') void run(() => air.autopilotTake());
-        else if (snap.obs.state === 'connected' && snap.obs.studioMode && snap.obs.previewScene) void run(() => air.obsTake());
+        else if (snap.cue.pending.length) void run(() => air.cueTake('take'));
         return;
       }
       // H holds and S skips the next autopilot segment (plain keys; the Agent select and Series layers use Shift).
@@ -174,43 +198,45 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
       <div className="stack">
         {!s.match && <div className="notice">No match selected. <button className="btn fix" onClick={() => go('ready')}>Choose a match</button></div>}
 
-        <section aria-label="Monitors">
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 128px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
-            <Monitor kind="pvw" scene={s.obs.previewScene} image={frame?.pvw ?? null} note={noObs ? 'OBS not connected' : !s.obs.studioMode ? 'Studio Mode is off' : 'No picture'} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 30 }}>
-              <button className="btn take big" disabled={!canTake} onClick={() => void run(() => air.obsTake())} aria-keyshortcuts="Space">Take</button>
-              <span className="mono muted" style={{ fontSize: 10, textAlign: 'center', letterSpacing: '0.12em' }}>SPACE</span>
-              <button className="btn" disabled={!canTake || !hasCut} onClick={() => void run(() => air.obsCut())}>Cut</button>
-              <button className="btn" disabled={!canTake || !hasStinger} title={hasStinger ? undefined : 'Add a Stinger transition in OBS'} onClick={() => void run(() => air.obsStinger())}>Stinger</button>
+        <section aria-label="Monitors" className="stack" style={{ gap: 12 }}>
+          {s.match && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 128px minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+              <GraphicMonitor s={s} kind="cued" room={s.cue.mode && s.cue.room ? s.cue.room : s.match.code} image={frame?.pgm ?? null} empty={!s.cue.mode ? 'Cueing is off · changes go straight on air' : cued ? undefined : 'Nothing cued · pick a layer, graphic or trigger'} />
+              <div className="take-col">
+                <button className="btn take big" disabled={!cued} onClick={() => void run(() => air.cueTake('take'))} aria-keyshortcuts="Space">Take</button>
+                <span className="mono muted" style={{ fontSize: 10, textAlign: 'center', letterSpacing: '0.12em' }}>SPACE</span>
+                <button className="btn" disabled={!cued} onClick={() => void run(() => air.cueTake('cut'))}>Cut</button>
+                <button className="btn" disabled={!cued} title="The HUD stinger wipes, the cued graphics land behind it" onClick={() => void run(() => air.cueTake('stinger'))} aria-keyshortcuts="F7">Stinger</button>
+              </div>
+              <GraphicMonitor s={s} kind="onair" room={s.match.code} image={frame?.pgm ?? null} />
             </div>
-            <Monitor kind="pgm" scene={s.obs.programScene} image={frame?.pgm ?? null} note={noObs ? 'OBS not connected' : 'No picture'} />
-          </div>
-
-          {noObs ? (
-            <div className="notice" style={{ marginTop: 12 }}>OBS is not connected. <button className="btn fix" onClick={() => go('scenes')}>Connect OBS</button></div>
-          ) : !s.obs.studioMode ? (
-            <div className="notice" style={{ marginTop: 12 }}>Turn on Studio Mode so takes go through Preview. <button className="btn fix" onClick={() => void run(() => air.obsStudioMode(true))}>Turn on Studio Mode</button></div>
-          ) : !s.obs.installed ? (
-            <div className="notice" style={{ marginTop: 12 }}>The Esportra scenes are not in OBS yet. <button className="btn fix" onClick={() => void run(() => air.installGraphics())}>Add for me</button></div>
-          ) : (
-            <div className="panel" style={{ marginTop: 12 }}>
-              <div className="head"><Cap>Next take loads in Preview · click a scene</Cap><span className="muted mono" style={{ fontSize: 10.5 }}>OBS scene · {sceneLabel(s.obs.programScene)} on air</span></div>
-              <div className="body-pad" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {SCENE_KEYS.map((key) => {
-                  const name = SCENES[key].name;
-                  const isPgm = s.obs.programScene === name;
-                  const isPvw = s.obs.previewScene === name;
-                  return (
-                    <button key={key} className="btn" aria-pressed={isPvw} onClick={() => void run(() => air.obsPreview(name))} style={isPvw ? { borderColor: 'var(--amber)', color: 'var(--amber)' } : isPgm ? { borderColor: 'var(--rose)' } : undefined}>
-                      {SCENES[key].label}
-                      {isPgm && <Tally kind="onair" />}
-                      {isPvw && !isPgm && <Tally kind="pvw" />}
-                    </button>
-                  );
-                })}
+          )}
+          {s.match && (
+            <div className="panel">
+              <div className="head">
+                <Cap>{s.cue.mode ? `Cued · ${s.cue.pending.length || 'nothing'}` : 'Straight to air'}</Cap>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                  <span className="muted">Cue changes before they go on air</span>
+                  <button type="button" className="switch" role="switch" aria-checked={s.cue.mode} aria-label="Cue changes before they go on air" onClick={() => void run(() => air.cueMode(!s.cue.mode))} />
+                </label>
+              </div>
+              <div className="body-pad cue-list" aria-live="polite">
+                {s.cue.mode ? (
+                  cued ? (
+                    <>
+                      {s.cue.pending.map((label, i) => <span key={`${label}-${i}`} className="cue-chip">{label}</span>)}
+                      <button className="btn quiet small" style={{ marginLeft: 'auto' }} onClick={() => void run(() => air.cueClear())}>Clear cue</button>
+                    </>
+                  ) : <span className="muted" style={{ fontSize: 12.5 }}>Layers, full-screen graphics, lower thirds, toasts and polls wait here until you take them. Autopilot and pauses go straight on air.</span>
+                ) : <span className="muted" style={{ fontSize: 12.5 }}>Every change goes on air the moment you make it.</span>}
               </div>
             </div>
           )}
+          {noObs ? (
+            <p className="muted" style={{ fontSize: 12.5 }}>OBS is not connected, so the monitors show a sample backdrop instead of your program picture. Air never switches OBS scenes. <button className="btn quiet small" onClick={() => go('settings')}>Connect OBS</button></p>
+          ) : !s.obs.installed ? (
+            <div className="notice">The Esportra scenes are not in OBS yet. <button className="btn fix" onClick={() => void run(() => air.installGraphics())}>Add for me</button></div>
+          ) : null}
         </section>
 
         <section className="panel" aria-label="Graphic layers and triggers">
@@ -291,7 +317,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
         <section className="panel">
           <div className="head"><Cap>Event log</Cap></div>
           <div className="body-pad log" aria-live="polite">
-            {s.log.length === 0 ? <span className="muted">Nothing yet. Kills, plants, takes and triggers appear here.</span> : s.log.slice(0, 30).map((e, i) => (
+            {s.log.length === 0 ? <span className="muted">Nothing yet. Kills, plants, cues, takes and triggers appear here.</span> : s.log.slice(0, 30).map((e, i) => (
               <div key={`${e.t}-${i}`}><time>{new Date(e.t).toLocaleTimeString('en-GB')}</time><span>{e.text}</span></div>
             ))}
           </div>
