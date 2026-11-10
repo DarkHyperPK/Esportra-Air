@@ -92,6 +92,15 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await page.keyboard.press('F5');
   await page.getByText('On screen · press again to hide').waitFor();
   await page.keyboard.press('F1');
+  await page.keyboard.press('2');           // player cards -> off
+  await page.getByRole('button', { name: /^Player cards: off/ }).waitFor();
+  await page.keyboard.press('2');
+  await page.keyboard.press('q');           // economy -> manual
+  await page.getByRole('button', { name: /Economy.*set by hand/ }).first().waitFor();
+  await page.keyboard.press('F4');
+  await page.getByLabel(/Short on-screen update/).fill('Map 2 starts in two minutes');
+  await page.getByRole('button', { name: 'Show toast' }).click();
+  await page.keyboard.press('F7');
   await page.waitForTimeout(1500);
   await shot('console');
   const ingame = obsPages.find(([o]) => o.screenId === 'in-game')[1];

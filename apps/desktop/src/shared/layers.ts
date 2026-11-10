@@ -1,0 +1,55 @@
+// The console's graphic layers (PRD picture 8): In-game 1–8, Between rounds Q–I, Full screen A–J.
+// Engine layers map to the HUD's show flags; full-screen rows pick which graphic the Fullscreen
+// OBS scene shows.
+
+export type LayerGroup = 'ingame' | 'between' | 'fullscreen';
+export type LayerMode = 'on' | 'off' | 'auto';
+
+export interface LayerDef {
+  /** Engine layer key, or `fs:<screen id>` for a full-screen graphic. */
+  id: string;
+  label: string;
+  group: LayerGroup;
+  hotkey: string;
+}
+
+export const LAYER_DEFS: LayerDef[] = [
+  { id: 'scorebug', label: 'Scorebug', group: 'ingame', hotkey: '1' },
+  { id: 'players', label: 'Player cards', group: 'ingame', hotkey: '2' },
+  { id: 'killfeed', label: 'Killfeed', group: 'ingame', hotkey: '3' },
+  { id: 'observed', label: 'Observed player', group: 'ingame', hotkey: '4' },
+  { id: 'minimap', label: 'Minimap frame', group: 'ingame', hotkey: '5' },
+  { id: 'winProb', label: 'Win probability', group: 'ingame', hotkey: '6' },
+  { id: 'spikeTimer', label: 'Spike timer', group: 'ingame', hotkey: '7' },
+  { id: 'sponsor', label: 'Sponsor bug', group: 'ingame', hotkey: '8' },
+  { id: 'economy', label: 'Economy board', group: 'between', hotkey: 'Q' },
+  { id: 'roundRecap', label: 'Round recap', group: 'between', hotkey: 'W' },
+  { id: 'scoreboard', label: 'Scoreboard', group: 'between', hotkey: 'E' },
+  { id: 'duel', label: 'Duel', group: 'between', hotkey: 'R' },
+  { id: 'teamCompare', label: 'Team compare', group: 'between', hotkey: 'T' },
+  { id: 'lowerThird', label: 'Lower third', group: 'between', hotkey: 'Y' },
+  { id: 'ticker', label: 'Ticker', group: 'between', hotkey: 'U' },
+  { id: 'poll', label: 'Poll', group: 'between', hotkey: 'I' },
+  { id: 'fs:map-result', label: 'Map result', group: 'fullscreen', hotkey: 'A' },
+  { id: 'fs:series', label: 'Series', group: 'fullscreen', hotkey: 'S' },
+  { id: 'fs:halftime', label: 'Halftime', group: 'fullscreen', hotkey: 'D' },
+  { id: 'fs:player-profile', label: 'Player profile', group: 'fullscreen', hotkey: 'F' },
+  { id: 'fs:standings', label: 'Standings', group: 'fullscreen', hotkey: 'G' },
+  { id: 'fs:agent-select', label: 'Agent select', group: 'fullscreen', hotkey: 'H' },
+  { id: 'fs:champion', label: 'Champion', group: 'fullscreen', hotkey: 'J' },
+];
+
+/** Layers where Auto means something (rules or the HUD decide until the producer overrides). */
+export const AUTO_LAYERS = new Set(['spikeTimer', 'sponsor', 'economy', 'roundRecap', 'lowerThird']);
+
+/** Setup's "In-game HUD" switches that are console layers; the rest stay plain HUD flags. */
+export const SETUP_LAYER_KEYS = ['scorebug', 'players', 'killfeed', 'observed', 'minimap', 'winProb', 'spikeTimer', 'sponsor', 'ticker'] as const;
+
+/** The mode a layer starts in when Setup has it switched on. */
+export const defaultMode = (id: string): LayerMode => (AUTO_LAYERS.has(id) ? 'auto' : 'on');
+
+/** Next mode when the producer clicks a row: Auto → On → Off → Auto, or On ↔ Off. */
+export function nextMode(id: string, current: LayerMode): LayerMode {
+  if (AUTO_LAYERS.has(id)) return current === 'auto' ? 'on' : current === 'on' ? 'off' : 'auto';
+  return current === 'on' ? 'off' : 'on';
+}

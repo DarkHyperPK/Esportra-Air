@@ -60,6 +60,11 @@ export class EngineClient {
     return this.request<T>('PATCH', path, body);
   }
 
+  /** Read-only WebSocket URL: receives a room's events without being counted as an on-air viewer. */
+  observeUrl(matchCode: string) {
+    return `${this.base.replace(/^http/, 'ws')}/ws?match=${encodeURIComponent(matchCode)}&role=observe`;
+  }
+
   /** WebSocket URL for ingesting game data into a match room. */
   ingestUrl(matchCode: string) {
     return `${this.base.replace(/^http/, 'ws')}/ws?match=${encodeURIComponent(matchCode)}&role=ingest&key=${encodeURIComponent(this.key)}`;

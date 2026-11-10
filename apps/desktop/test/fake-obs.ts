@@ -62,7 +62,7 @@ export class FakeObs extends EventEmitter implements ObsSocket {
       case 'SetInputSettings': Object.assign(this.inputs.get(data.inputName)!.settings, data.inputSettings); return {};
       case 'GetSceneItemList': {
         if (!this.scenes.has(data.sceneName)) throw new Error('No scene');
-        return { sceneItems: this.scenes.get(data.sceneName) };
+        return { sceneItems: this.scenes.get(data.sceneName)!.map((i) => ({ ...i, sceneItemEnabled: i.enabled !== false })) };
       }
       case 'CreateSceneItem': {
         const sceneItemId = this.nextId++;

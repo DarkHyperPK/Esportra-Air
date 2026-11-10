@@ -32,6 +32,8 @@ export interface ObsStatus {
   replayBufferActive: boolean | null;
   /** First source in each watched slot scene (null while empty). */
   slots: Record<string, string | null>;
+  /** The graphic currently visible in the Fullscreen scene, if any. */
+  fullscreenSource: string | null;
 }
 
 export interface TransitionChoice {
@@ -60,7 +62,7 @@ export function validateTransition(input: TransitionChoice | null | undefined): 
 
 const initial = (): ObsStatus => ({
   state: 'disconnected', error: null, version: null, collection: null, studioMode: false, programScene: null, previewScene: null,
-  scenes: [], videoInputs: [], transitions: [], currentTransition: null, transitionActive: false, replayBufferActive: null, slots: {},
+  scenes: [], videoInputs: [], transitions: [], currentTransition: null, transitionActive: false, replayBufferActive: null, slots: {}, fullscreenSource: null,
 });
 
 export class ObsLink extends EventEmitter {
@@ -69,6 +71,7 @@ export class ObsLink extends EventEmitter {
   private readonly create: () => ObsSocket;
   private args: { host: string; port: number; password: string } | null = null;
   private watched: string[] = [];
+  private fullscreenScene: string | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
@@ -95,6 +98,11 @@ export class ObsLink extends EventEmitter {
   /** Slot scenes whose contents Air watches (to turn "Add your source" into the real name). */
   watchSlots(sceneNames: string[]) {
     this.watched = sceneNames;
+  }
+
+  /** The exclusive Fullscreen scene whose visible graphic Air reports and changes. */
+  watchFullscreen(sceneName: string) {
+    this.fullscreenScene = sceneName;
   }
 
   async connect(host: string, port: number, password: string) {
@@ -192,6 +200,11 @@ export class ObsLink extends EventEmitter {
       const studioMode = !!studio?.studioModeEnabled;
       const preview = studioMode ? await call('GetCurrentPreviewScene') : null;
       const slots = await readSlots(socket, this.watched);
+      let fullscreenSource: string | null = null;
+      if (this.fullscreenScene && (scenes?.scenes ?? []).some((x: { sceneName: string }) => x.sceneName === this.fullscreenScene)) {
+        const items = await socket.call('GetSceneItemList', { sceneName: this.fullscreenScene }).catch(() => null);
+        fullscreenSource = (items?.sceneItems ?? []).find((i: { sceneItemEnabled?: boolean; sourceName: string }) => i.sceneItemEnabled && i.sourceName.startsWith('Esportra · '))?.sourceName ?? null;
+      }
       this.update({
         programScene: scenes?.currentProgramSceneName ?? this.status.programScene,
         previewScene: studioMode ? preview?.currentPreviewSceneName ?? null : null,
@@ -206,6 +219,7 @@ export class ObsLink extends EventEmitter {
         // OBS answers 604 when its replay buffer is not configured; that reads as unavailable.
         replayBufferActive: replay ? !!replay.outputActive : null,
         slots,
+        fullscreenSource,
       });
     } catch {
       // A failed read keeps the last known status; ConnectionClosed reports real loss.
@@ -238,6 +252,19 @@ export class ObsLink extends EventEmitter {
     if (!this.status.videoInputs.includes(source)) throw new Error(`“${source}” is not an available video source in OBS.`);
     if (!this.status.scenes.includes(slotScene)) throw new Error('Add the Esportra scenes to OBS first.');
     await this.socket.call('CreateSceneItem', { sceneName: slotScene, sourceName: source, sceneItemEnabled: true });
+    await this.refresh();
+  }
+
+  /** Shows one graphic in the Fullscreen scene and hides the others (null hides all). Only Air's own items change. */
+  async showFullscreen(sourceName: string | null) {
+    const socket = this.socket;
+    const scene = this.fullscreenScene;
+    if (!socket || !scene) throw new Error('Connect to OBS first.');
+    if (!this.status.scenes.includes(scene)) throw new Error('Add the Esportra scenes to OBS first.');
+    const { sceneItems = [] } = await socket.call('GetSceneItemList', { sceneName: scene });
+    const ours = (sceneItems as Array<{ sourceName: string; sceneItemId: number }>).filter((i) => i.sourceName.startsWith('Esportra · '));
+    if (sourceName && !ours.some((i) => i.sourceName === sourceName)) throw new Error('That graphic is not in the Fullscreen scene. Rebuild the scenes.');
+    for (const item of ours) await socket.call('SetSceneItemEnabled', { sceneName: scene, sceneItemId: item.sceneItemId, sceneItemEnabled: item.sourceName === sourceName });
     await this.refresh();
   }
 

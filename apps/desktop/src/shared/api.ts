@@ -1,3 +1,4 @@
+import type { LayerGroup, LayerMode } from './layers.ts';
 import type { SceneKey, SlotId } from './scenes.ts';
 
 // The contract between the main process and the interface. The renderer only ever sees these
@@ -71,7 +72,38 @@ export interface RoundReadout {
   score: [number | null, number | null];
   playersFound: [number, number];
   sides: [string | null, string | null];
+  alive: [number, number];
+  bank: [number, number];
+  /** When the current phase's countdown ends (ms since epoch), or null. */
+  clockEndsAt: number | null;
+  spikePlanted: boolean;
+  /** The player the observer camera is on. */
+  observed: { team: number; player: number; name: string } | null;
   roster: Array<Array<{ name: string; inGameName: string }>>;
+}
+
+export interface LayerRow {
+  id: string;
+  label: string;
+  group: LayerGroup;
+  hotkey: string;
+  mode: LayerMode;
+  /** Auto means something for this layer. */
+  auto: boolean;
+  /** An Auto layer the producer has switched by hand. */
+  manual: boolean;
+  available: boolean;
+}
+
+export interface LogEntry {
+  t: number;
+  text: string;
+}
+
+export interface PollInput {
+  question: string;
+  options: [string, string];
+  firstPercent: number;
 }
 
 export interface SlotStatus {
@@ -143,7 +175,18 @@ export interface Snapshot {
   };
   outputs: OutputHealth[];
   testRound: { running: boolean; startedAt: number | null; durationMs: number };
-  triggers: { pause: 'technical' | 'timeout' | null; strap: boolean; sponsor: string | null };
+  /** What is on screen right now, read from the engine so external controllers show up too. */
+  triggers: {
+    pause: 'technical' | 'timeout' | null;
+    strap: boolean;
+    sponsor: string | null;
+    /** A lower third showing one person (a caster) by name. */
+    person: string | null;
+    player: boolean;
+    poll: boolean;
+  };
+  layers: LayerRow[];
+  log: LogEntry[];
   checks: CheckItem[];
 }
 
@@ -168,6 +211,11 @@ export interface AirApi {
   onMonitor(listener: (frame: MonitorFrame) => void): () => void;
   /** Starts or stops the PVW/PGM screenshot loop (only while the Console is on screen). */
   monitor(on: boolean): Promise<void>;
+  setLayer(id: string, mode: LayerMode): Promise<Snapshot>;
+  toast(text: string): Promise<Snapshot>;
+  poll(input: PollInput | null): Promise<Snapshot>;
+  stingerPlay(): Promise<Snapshot>;
+  lowerThird(input: { kind: 'caster' } | { kind: 'person'; name: string; role: string } | { kind: 'player' } | null): Promise<Snapshot>;
   obsStudioMode(on: boolean): Promise<Snapshot>;
   obsPreview(scene: string): Promise<Snapshot>;
   obsTake(): Promise<Snapshot>;

@@ -189,7 +189,7 @@ pub async fn handle(State(app): State<AppState>, req: Request) -> Response {
         Some("api") => api(engine, &parts.method, &segments, &q, &parts.headers, body).await,
         Some("control") => control(&app, &parts.method, &segments, &q, &parts.headers, body).await,
         Some("health") => {
-            let rooms: Vec<Value> = engine.rooms().iter().map(|r| json!({ "match": r.code, "v": r.lock().v, "clients": r.tx.receiver_count() })).collect();
+            let rooms: Vec<Value> = engine.rooms().iter().map(|r| json!({ "match": r.code, "v": r.lock().v, "clients": r.viewers.load(std::sync::atomic::Ordering::Relaxed) })).collect();
             send(
                 StatusCode::OK,
                 json!({ "ok": true, "engine": "air-engine", "version": env!("CARGO_PKG_VERSION"), "rooms": rooms }),
@@ -682,7 +682,7 @@ fn control_status(engine: &Engine) -> Value {
         .map(|room| {
             let inner = room.lock();
             let room_status = json!({
-                "match": room.code, "v": inner.v, "clients": room.tx.receiver_count(),
+                "match": room.code, "v": inner.v, "clients": room.viewers.load(std::sync::atomic::Ordering::Relaxed),
                 "lastGepAt": inner.last_gep_at, "lastFeedAt": inner.last_feed_at,
                 "feedAgeMs": inner.last_feed_at.map(|at| (now - at).max(0.0)),
                 "feedPaused": inner.state.get("airDiagnostics").and_then(|d| d.get("feedPaused")).cloned().unwrap_or(json!(false)),

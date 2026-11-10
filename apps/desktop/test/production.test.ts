@@ -126,13 +126,75 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await production.sponsorRead('Acme');
     state = (await engine.client.get<any>(`/api/${match.code}`)).state;
     assert.equal(state.lowerThird.title, 'Acme');
-    assert.equal(production.triggers.strap, false, 'one lower third at a time');
+    assert.equal(production.snapshot().triggers.strap, false, 'one lower third at a time');
+    assert.equal(production.snapshot().triggers.sponsor, 'Acme', 'on-screen state is read back from the engine');
     await production.pause('technical');
     state = (await engine.client.get<any>(`/api/${match.code}`)).state;
     assert.equal(state.airPause.kind, 'technical');
     await production.pause(null);
     state = (await engine.client.get<any>(`/api/${match.code}`)).state;
     assert.equal(state.airPause, undefined);
+    await production.lowerThird({ kind: 'person', name: 'Caster One', role: 'Caster · play-by-play' });
+    assert.equal(production.snapshot().triggers.person, 'Caster One');
+    await assert.rejects(production.lowerThird({ kind: 'player' }), /No player is being observed/);
+    await production.lowerThird(null);
+    assert.equal(production.snapshot().triggers.person, null);
+
+    // Toast and poll go through the engine's validation.
+    await assert.rejects(production.toast('<script>'), /plain text/);
+    await production.toast('Map 2 starts soon');
+    assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.toast.text, 'Map 2 starts soon');
+    await assert.rejects(production.poll({ question: 'Q', options: ['Same', 'same'], firstPercent: 50 }), /must differ/);
+    await production.poll({ question: 'Who wins?', options: ['Alpha', 'Bravo'], firstPercent: 55 });
+    assert.equal(production.snapshot().triggers.poll, true);
+    await production.poll(null);
+    assert.equal(production.snapshot().triggers.poll, false);
+    await production.stingerPlay();
+
+    // Layers: Setup's switches set the start, then the console owns them.
+    let rows = production.snapshot().layers;
+    const row = (id: string) => production.snapshot().layers.find((x) => x.id === id)!;
+    assert.deepEqual(['scorebug', 'economy', 'scoreboard', 'spikeTimer'].map((id) => row(id).mode), ['on', 'auto', 'off', 'auto']);
+    assert.equal(rows.filter((x) => x.group === 'ingame').length, 8);
+    assert.equal(rows.filter((x) => x.group === 'between').length, 8);
+    assert.equal(rows.filter((x) => x.group === 'fullscreen').length, 7);
+    await production.setLayer('economy', 'off');
+    assert.equal(row('economy').manual, true);
+    assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.show.economy, false);
+    await production.setLayer('economy', 'auto');
+    assert.equal(row('economy').manual, false);
+    await assert.rejects(production.setLayer('scorebug', 'auto'), /no automatic mode/);
+    await production.setLayer('scoreboard', 'on');
+    assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.show.scoreboard, true);
+    await production.updateSetup({ hud: { ...production.setup.hud, ticker: false } });
+    assert.equal(row('ticker').mode, 'off', 'turning a layer off in Setup reaches the engine');
+
+    // Full-screen rows pick the graphic in the Fullscreen scene, and line the scene up in Preview.
+    assert.equal(row('fs:map-result').available, true);
+    await production.setLayer('fs:map-result', 'on');
+    assert.equal(row('fs:map-result').mode, 'on');
+    assert.equal(row('fs:series').mode, 'off');
+    assert.equal(production.snapshot().obs.previewScene, 'Esportra · Fullscreen');
+    await production.setLayer('fs:series', 'on');
+    assert.equal(row('fs:map-result').mode, 'off', 'one at a time');
+    assert.equal(row('fs:series').mode, 'on');
+    await production.setLayer('fs:series', 'off');
+    assert.equal(row('fs:series').mode, 'off');
+
+    // The event log follows the room and records what Air did.
+    const players = Array.from({ length: 10 }, (_, i) => ({ feature: 'match_info', key: `scoreboard_${i}`, data: JSON.stringify({ player_id: `p${i}`, name: `P${i} #T`, character: 'Clay', team: i < 5 ? 0 : 1, alive: true, money: 3900, weapon: 'TX_Hud_Rifles_Volcano', shield: 2 }) }));
+    await engine.client.post(`/api/${match.code}/ingest/valorant`, players);
+    await engine.client.post(`/api/${match.code}/ingest/valorant`, [{ events: [{ name: 'kill_feed', data: JSON.stringify({ attacker: 'P0 #T', victim: 'P5 #T', weapon: 'TX_Hud_Rifles_Volcano', headshot: true }) }] }]);
+    await new Promise((r) => setTimeout(r, 400));
+    const log = production.snapshot().log.map((x) => x.text);
+    assert.ok(log.some((t) => /^Kill · P0 ▸ P5 · Vandal · HS$/.test(t)), log.join(' | '));
+    assert.ok(log.some((t) => t.startsWith('Take · Holding')) || log.some((t) => t.startsWith('Cut · ') || t.startsWith('Stinger · ')), 'takes are logged');
+    const status = await engine.client.get<any>('/control/status');
+    assert.ok(status.rooms.find((x: any) => x.match === match.code).clients <= 2, 'the log connection is not an on-air viewer');
+    const readout = production.snapshot().readout!;
+    assert.deepEqual(readout.alive, [5, 4]);
+    assert.deepEqual(readout.bank, [19500, 19500], 'bank counts every player, alive or not');
+
     await production.correct({ field: 'scores', value: [5, 3], reason: 'Missed round' });
     state = (await engine.client.get<any>(`/api/${match.code}`)).state;
     assert.equal(state.teams[0].score, 5);

@@ -4,7 +4,7 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type MonitorFrame, type SceneStatus, type QuickMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
+import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type LayerRow, type MonitorFrame, type PollInput, type SceneStatus, type QuickMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
 import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from './gep.ts';
@@ -13,6 +13,8 @@ import type { ObsLink } from './obs.ts';
 import { Replay } from './replay.ts';
 import type { BuildScene } from './scene-build.ts';
 import { SCENE_KEYS, SCENES, sourceName, type SlotId } from '../shared/scenes.ts';
+import { AUTO_LAYERS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
+import { EventLog } from './event-log.ts';
 import type { Store } from './store.ts';
 
 export interface ProductionDeps {
@@ -62,8 +64,7 @@ export class Production extends EventEmitter {
   private readonly deps: ProductionDeps;
   private room: any = null;
   private roomV = -1;
-  private pauseId: string | null = null;
-  triggers: Snapshot['triggers'] = { pause: null, strap: false, sponsor: null };
+  readonly log: EventLog;
   readonly replay: Replay;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
   private monitorBusy = false;
@@ -77,8 +78,10 @@ export class Production extends EventEmitter {
     // A restarted engine has the saved state; re-send outputs and context so nothing drifts.
     deps.engine.on('restarted', () => void this.syncEngine().catch(() => {}));
     deps.obs.on('change', changed);
+    deps.obs.watchFullscreen(SCENES.fullscreen.name);
+    this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed });
     deps.obs.watchSlots(SCENE_KEYS.flatMap((key) => SCENES[key].slots.map((slot) => slot.scene)));
-    this.replay = new Replay(deps.obs, { canReturn: () => !this.triggers.pause, stinger: () => this.setup.obs.stinger });
+    this.replay = new Replay(deps.obs, { canReturn: () => !this.room?.airPause, stinger: () => this.setup.obs.stinger });
     this.replay.on('error-message', (message: string) => this.emit('notice', message));
     deps.capture.on('change', changed);
   }
@@ -105,7 +108,10 @@ export class Production extends EventEmitter {
     const outputs = setup.screens.filter((s) => s.enabled).map((s) => ({ id: s.outputId, overlay: s.overlay, matchCode: match?.code ?? 'MAIN' }));
     await this.client.put('/control/outputs', { outputs });
     this.deps.ingest.target(match ? this.client.ingestUrl(match.code) : null);
-    if (!match) return;
+    if (!match) {
+      this.log.target(null);
+      return;
+    }
     const code = encodeURIComponent(match.code);
     await this.client.post(`/api/${code}/config`, {
       airContext: { showId: setup.id, matchId: match.id, source: match.kind },
@@ -116,9 +122,35 @@ export class Production extends EventEmitter {
       layout: { bannerTheme: setup.package, minimap: setup.minimap },
       show: { eventBug: setup.hud.eventBug !== false },
     });
-    await this.client.patch(`/api/${code}`, { show: setup.hud });
+    const managed = new Set<string>(SETUP_LAYER_KEYS);
+    const plain = Object.fromEntries(Object.entries(setup.hud).filter(([k]) => !managed.has(k)));
+    if (Object.keys(plain).length) await this.client.patch(`/api/${code}`, { show: plain });
+    // Setup decides where each layer starts; after that the console owns them for the match.
+    await this.act('layers.init', { modes: this.initialModes() }, false);
+    this.log.target(this.client.observeUrl(match.code));
     this.roomV = -1;
     await this.readRoom();
+  }
+
+  /** Every console layer's starting mode: Setup's choice, else the layer's default. */
+  private initialModes(): Record<string, LayerMode> {
+    const hud = this.setup.hud;
+    const modes: Record<string, LayerMode> = {};
+    for (const def of LAYER_DEFS.filter((d) => !d.id.startsWith('fs:'))) {
+      const fromSetup = (SETUP_LAYER_KEYS as readonly string[]).includes(def.id);
+      modes[def.id] = fromSetup ? (hud[def.id] === false ? 'off' : defaultMode(def.id)) : AUTO_LAYERS.has(def.id) ? 'auto' : 'off';
+    }
+    return modes;
+  }
+
+  /** Runs a named engine action for the selected match. */
+  private async act(name: string, args: Record<string, unknown>, refresh = true) {
+    const match = this.requireMatch();
+    await this.client.post('/control/action', { match: match.code, name, args });
+    if (refresh) {
+      this.roomV = -1;
+      await this.readRoom();
+    }
   }
 
   private async readRoom() {
@@ -155,7 +187,6 @@ export class Production extends EventEmitter {
     const data = this.deps.store.data;
     data.matches = [match, ...data.matches].slice(0, 50);
     data.selectedMatchId = id;
-    this.resetTriggers();
     this.save();
     await this.syncEngine();
   }
@@ -163,7 +194,6 @@ export class Production extends EventEmitter {
   async selectMatch(id: string) {
     if (!this.deps.store.data.matches.some((m) => m.id === id)) throw new Error('That match is no longer available.');
     this.deps.store.data.selectedMatchId = id;
-    this.resetTriggers();
     this.save();
     await this.syncEngine();
   }
@@ -200,8 +230,14 @@ export class Production extends EventEmitter {
       setup.sponsors = patch.sponsors.map((s, i) => text(s, 40, `Sponsor ${i + 1}`));
     }
     if (patch.screens !== undefined) setup.screens = this.validScreens(patch.screens);
+    const toggled: string[] = [];
     if (patch.hud !== undefined) {
-      for (const [k, v] of Object.entries(patch.hud)) if (k in setup.hud && typeof v === 'boolean') setup.hud[k] = v;
+      for (const [k, v] of Object.entries(patch.hud)) {
+        if (k in setup.hud && typeof v === 'boolean') {
+          if (setup.hud[k] !== v && (SETUP_LAYER_KEYS as readonly string[]).includes(k)) toggled.push(k);
+          setup.hud[k] = v;
+        }
+      }
     }
     if (patch.minimap !== undefined) {
       const { x, y, size } = patch.minimap;
@@ -215,6 +251,7 @@ export class Production extends EventEmitter {
     }
     this.save();
     await this.syncEngine();
+    if (this.match) for (const k of toggled) await this.act('layer.set', { layer: k, mode: setup.hud[k] ? defaultMode(k) : 'off' });
   }
 
   private validScreens(screens: Setup['screens']) {
@@ -282,13 +319,17 @@ export class Production extends EventEmitter {
 
   private async takeWith(choice: ReturnType<ObsLink['cutChoice']>, missing: string) {
     if (!choice) throw new Error(missing);
+    const scene = this.deps.obs.status.previewScene;
     const result = await this.deps.obs.take(choice);
     if (!result.ok) throw new Error(result.error);
+    this.log.add(`${choice.mode === 'cut' ? 'Cut' : 'Stinger'} · ${scene?.replace('Esportra · ', '') ?? 'scene'}`);
   }
 
   async take() {
+    const scene = this.deps.obs.status.previewScene;
     const result = await this.deps.obs.take();
     if (!result.ok) throw new Error(result.error);
+    this.log.add(`Take · ${scene?.replace('Esportra · ', '') ?? 'scene'}`);
   }
 
   cut() {
@@ -302,6 +343,7 @@ export class Production extends EventEmitter {
   async playReplay() {
     const result = await this.replay.play();
     if (!result.ok) throw new Error(result.error);
+    this.log.add('Replay played');
   }
 
   /** Starts or stops the PVW / PGM screenshot loop (the Console asks for it while it is on screen). */
@@ -356,42 +398,89 @@ export class Production extends EventEmitter {
     await this.readRoom();
   }
 
-  private resetTriggers() {
-    this.triggers = { pause: null, strap: false, sponsor: null };
-    this.pauseId = null;
-  }
-
   async pause(kind: 'technical' | 'timeout' | null) {
     const match = this.requireMatch();
     const path = `/api/${encodeURIComponent(match.code)}/pause-panel`;
-    if (this.pauseId) await this.client.post(path, { action: 'clear', id: this.pauseId });
-    this.pauseId = null;
-    this.triggers.pause = null;
+    const current = this.room?.airPause?.id;
+    if (current) await this.client.post(path, { action: 'clear', id: current });
     if (kind) {
       const id = randomUUID();
       await this.client.post(path, { action: 'show', panel: { kind, id, startedAt: Date.now(), scope: { showId: this.setup.id, matchId: match.id } } });
-      this.pauseId = id;
-      this.triggers.pause = kind;
+      this.log.add(kind === 'technical' ? 'Tech pause on' : 'Timeout on');
+    } else if (current) {
+      this.log.add('Pause cleared');
     }
-    this.emit('change');
+    this.roomV = -1;
+    await this.readRoom();
   }
 
   async casterStrap(on: boolean) {
     const match = this.requireMatch();
-    if (on && !match.casters.some((c) => c.name)) throw new Error('Add the casters’ names on the Match step first.');
-    await this.client.patch(`/api/${encodeURIComponent(match.code)}`, { lowerThird: { kind: 'caster', team: 0 }, show: { lowerThird: on } });
-    this.triggers.strap = on;
-    if (on) this.triggers.sponsor = null;
-    this.emit('change');
+    if (on && !match.casters.some((c) => c.name)) throw new Error('Add the casters’ names first.');
+    await this.act(on ? 'lowerthird.caster' : 'lowerthird.hide', {});
+    this.log.add(on ? 'Caster lower third on' : 'Lower third off');
   }
 
   async sponsorRead(sponsor: string | null) {
-    const match = this.requireMatch();
     if (sponsor !== null && !this.setup.sponsors.includes(sponsor)) throw new Error('Add this sponsor in Setup › Brand first.');
-    const lowerThird = sponsor ? { kind: 'sponsor', title: sponsor, sub: 'Presented by', team: -1 } : {};
-    await this.client.patch(`/api/${encodeURIComponent(match.code)}`, { ...(sponsor ? { lowerThird } : {}), show: { lowerThird: !!sponsor } });
-    this.triggers.sponsor = sponsor;
-    if (sponsor) this.triggers.strap = false;
+    await this.act(sponsor ? 'lowerthird.generic' : 'lowerthird.hide', sponsor ? { title: sponsor, sub: 'Presented by', team: -1 } : {});
+    this.log.add(sponsor ? `Sponsor read · ${sponsor}` : 'Lower third off');
+  }
+
+  async lowerThird(input: { kind: 'caster' } | { kind: 'person'; name: string; role: string } | { kind: 'player' } | null) {
+    if (input === null) return this.act('lowerthird.hide', {}).then(() => this.log.add('Lower third off'));
+    if (input.kind === 'caster') return this.casterStrap(true);
+    if (input.kind === 'person') {
+      await this.act('lowerthird.generic', { title: input.name, sub: input.role, team: -1 });
+      return this.log.add(`Lower third · ${input.name}`);
+    }
+    const observed = this.observedPlayer();
+    if (!observed) throw new Error('No player is being observed yet. Spotlight needs the game’s roster.');
+    await this.act('lowerthird.player', { team: observed.team, player: observed.player });
+    this.log.add(`Spotlight · ${observed.name}`);
+  }
+
+  async toast(text: string) {
+    await this.act('toast.show', { text });
+    this.log.add(`Toast · ${text}`);
+  }
+
+  async poll(input: PollInput | null) {
+    if (input === null) {
+      await this.act('poll.hide', {});
+      return this.log.add('Poll hidden');
+    }
+    await this.act('poll.show', { question: input.question, options: input.options, firstPercent: input.firstPercent });
+    this.log.add(`Poll · ${input.question}`);
+  }
+
+  async stingerPlay() {
+    await this.act('stinger.play', {});
+    this.log.add('Stinger (graphic) played');
+  }
+
+  /** Sets a console layer. Full-screen rows choose which graphic the Fullscreen scene shows. */
+  async setLayer(id: string, mode: LayerMode) {
+    if (id.startsWith('fs:')) return this.fullscreen(id.slice(3), mode === 'on');
+    await this.act('layer.set', { layer: id, mode });
+    const label = LAYER_DEFS.find((d) => d.id === id)?.label ?? id;
+    this.log.add(`${label} · ${mode}`);
+  }
+
+  private async fullscreen(screenId: string, on: boolean) {
+    const screen = this.setup.screens.find((x) => x.id === screenId && x.scene === 'fullscreen');
+    if (!screen) throw new Error('Unknown full-screen graphic.');
+    if (on && screenId === 'player-profile') {
+      const observed = this.observedPlayer();
+      if (!observed) throw new Error('No player is being observed yet. The player profile needs the game’s roster.');
+      await this.act('spotlight.set', { team: observed.team, player: observed.player });
+    }
+    await this.deps.obs.showFullscreen(on ? sourceName(screen.title) : null);
+    // Studio Mode: line it up in Preview so Take puts it on air.
+    if (on && this.deps.obs.status.studioMode && this.deps.obs.status.scenes.includes(SCENES.fullscreen.name)) {
+      await this.deps.obs.setPreview(SCENES.fullscreen.name);
+    }
+    this.log.add(on ? `Full screen · ${screen.title} ready in Preview` : 'Full screen hidden');
     this.emit('change');
   }
 
@@ -409,6 +498,45 @@ export class Production extends EventEmitter {
 
   // ── snapshot ──
 
+  /** The observed player, only once the game has reported that slot's name. */
+  private observedPlayer(): { team: number; player: number; name: string } | null {
+    const o = this.room?.observed;
+    const name = Array.isArray(o) ? this.room?.players?.[o[0]]?.[o[1]]?.name : null;
+    return Array.isArray(o) && name ? { team: o[0], player: o[1], name } : null;
+  }
+
+  /** What is on screen right now, read from the engine so external controllers show up too. */
+  private liveTriggers(): Snapshot['triggers'] {
+    const room = this.room;
+    const layers = room?.airLayers ?? {};
+    const lt = room?.lowerThird ?? {};
+    const lowerOn = layers.lowerThird === 'on';
+    const sponsor = lowerOn && lt.kind === 'generic' && lt.sub === 'Presented by' ? String(lt.title) : null;
+    return {
+      pause: room?.airPause?.kind ?? null,
+      strap: lowerOn && lt.kind === 'caster',
+      sponsor,
+      person: lowerOn && lt.kind === 'generic' && !sponsor ? String(lt.title) : null,
+      player: lowerOn && lt.kind === 'player',
+      poll: layers.poll === 'on',
+    };
+  }
+
+  private layerRows(): LayerRow[] {
+    const { obs } = this.deps;
+    const layers = this.room?.airLayers ?? {};
+    return LAYER_DEFS.map((def) => {
+      if (def.id.startsWith('fs:')) {
+        const screen = this.setup.screens.find((x) => x.id === def.id.slice(3));
+        const on = !!screen && obs.status.fullscreenSource === sourceName(screen.title);
+        return { ...def, mode: on ? 'on' : 'off', auto: false, manual: false, available: !!screen?.enabled && obs.connected && obs.status.scenes.includes(SCENES.fullscreen.name) } as LayerRow;
+      }
+      const auto = AUTO_LAYERS.has(def.id);
+      const mode: LayerMode = layers[def.id] ?? (auto ? 'auto' : 'off');
+      return { ...def, mode, auto, manual: auto && mode !== 'auto', available: !!this.match };
+    });
+  }
+
   snapshot(): Snapshot {
     const { engine, obs, capture, version } = this.deps;
     const status: EngineStatus | null = engine.status;
@@ -424,6 +552,11 @@ export class Production extends EventEmitter {
           score: [room.teams?.[0]?.score ?? null, room.teams?.[1]?.score ?? null] as [number | null, number | null],
           playersFound: [named(0), named(1)] as [number, number],
           sides: [room.teams?.[0]?.side ?? null, room.teams?.[1]?.side ?? null] as [string | null, string | null],
+          alive: [0, 1].map((t) => (room.players?.[t] ?? []).filter((p: { alive?: boolean }) => p?.alive).length) as [number, number],
+          bank: [0, 1].map((t) => (room.players?.[t] ?? []).reduce((sum: number, p: { credits?: number }) => sum + (Number(p?.credits) || 0), 0)) as [number, number],
+          clockEndsAt: Number(room.round?.endsAt) > 0 ? Number(room.round.endsAt) : null,
+          spikePlanted: room.round?.phase === 'planted',
+          observed: this.observedPlayer(),
           roster: [0, 1].map((t) => (room.players?.[t] ?? []).map((p: { name?: string; inGameName?: string }) => ({ name: p?.name ?? '', inGameName: p?.inGameName ?? '' }))),
         }
       : null;
@@ -459,7 +592,9 @@ export class Production extends EventEmitter {
       },
       outputs,
       testRound: { running: roomStatus?.testRound.running ?? false, startedAt: roomStatus?.testRound.startedAt ?? null, durationMs: roomStatus?.testRound.durationMs ?? 0 },
-      triggers: { ...this.triggers },
+      triggers: this.liveTriggers(),
+      layers: this.layerRows(),
+      log: this.log.list(),
       checks: [],
     };
     snapshot.checks = checks(snapshot);

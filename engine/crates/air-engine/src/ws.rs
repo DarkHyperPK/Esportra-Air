@@ -43,6 +43,28 @@ pub async fn upgrade(
         .on_upgrade(move |socket| client(app.engine.clone(), socket, q))
 }
 
+/// Counts a client as a viewer of its room until dropped. Observers are not viewers.
+struct ViewerGuard(Option<Arc<Room>>);
+
+impl ViewerGuard {
+    fn new(room: &Arc<Room>, counted: bool) -> Self {
+        if counted {
+            room.viewers.fetch_add(1, Ordering::Relaxed);
+            Self(Some(room.clone()))
+        } else {
+            Self(None)
+        }
+    }
+}
+
+impl Drop for ViewerGuard {
+    fn drop(&mut self) {
+        if let Some(room) = &self.0 {
+            room.viewers.fetch_sub(1, Ordering::Relaxed);
+        }
+    }
+}
+
 struct Subscription {
     room: Arc<Room>,
     rx: tokio::sync::broadcast::Receiver<Arc<str>>,
@@ -95,11 +117,13 @@ async fn client(engine: Arc<Engine>, mut socket: WebSocket, q: Vec<(String, Stri
             .insert(id, (output.clone(), None));
     }
     let (mut sub, snapshot) = join(engine.room(code.as_deref()));
+    let counted = role != "observe";
+    let mut _guard = ViewerGuard::new(&sub.room, counted);
     let mut outputs = engine.outputs_changed.subscribe();
     let mut ping = tokio::time::interval(PING_EVERY);
     ping.tick().await;
     let mut ok = socket.send(Message::Text(snapshot.into())).await.is_ok();
-    if ok && role != "overlay" && !writer {
+    if ok && role != "overlay" && role != "observe" && !writer {
         let message = json!({ "type": "error", "message": "Read-only: this server needs ?key= for control and ingest clients." });
         ok = socket
             .send(Message::Text(message.to_string().into()))
@@ -138,6 +162,7 @@ async fn client(engine: Arc<Engine>, mut socket: WebSocket, q: Vec<(String, Stri
                 if !Arc::ptr_eq(&engine.room(Some(&next.match_code)), &sub.room) {
                     let (next_sub, snapshot) = join(engine.room(Some(&next.match_code)));
                     sub = next_sub;
+                    _guard = ViewerGuard::new(&sub.room, counted);
                     if let Some(entry) = engine.frames.lock().unwrap_or_else(|p| p.into_inner()).get_mut(&id) {
                         entry.1 = None;
                     }

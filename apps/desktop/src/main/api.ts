@@ -28,6 +28,11 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
       break;
     }
     case 'disconnectObs': await ctx.obs.disconnect(); break;
+    case 'setLayer': await p.setLayer(String(a[0]), a[1]); break;
+    case 'toast': await p.toast(String(a[0])); break;
+    case 'poll': await p.poll(a[0] ?? null); break;
+    case 'stingerPlay': await p.stingerPlay(); break;
+    case 'lowerThird': await p.lowerThird(a[0] ?? null); break;
     case 'obsStudioMode': await p.studioMode(a[0] === true); break;
     case 'obsPreview': await p.preview(String(a[0])); break;
     case 'obsTake': await p.take(); break;

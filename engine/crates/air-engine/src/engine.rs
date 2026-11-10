@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -80,6 +80,8 @@ pub struct Room {
     /// True while a test round plays: nothing is logged or persisted.
     testing: AtomicBool,
     test_generation: AtomicU64,
+    /// Overlay clients on air. Read-only observers (Air's own event log) are not counted.
+    pub viewers: AtomicUsize,
     file: PathBuf,
     fixes_file: PathBuf,
     log: PathBuf,
@@ -711,6 +713,7 @@ impl Engine {
             }),
             testing: AtomicBool::new(false),
             test_generation: AtomicU64::new(0),
+            viewers: AtomicUsize::new(0),
             log: self.data.join(format!("{code}.ndjson")),
             file,
             fixes_file,

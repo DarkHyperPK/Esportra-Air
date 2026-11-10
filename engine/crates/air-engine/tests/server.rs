@@ -956,3 +956,56 @@ async fn a_new_match_returns_manual_overrides_to_auto() {
         "manual-only layers are not auto layers"
     );
 }
+
+#[tokio::test]
+async fn observers_receive_events_but_are_not_counted_as_viewers() {
+    let r = engine(temp_dir()).await;
+    let mut viewer = ws(&r, "match=OB").await;
+    next_json(&mut viewer).await;
+    let mut observer = ws(&r, "match=OB&role=observe").await;
+    next_json(&mut observer).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let rooms = request(&r, "GET", "/control/status", None, true)
+        .await
+        .json()["rooms"]
+        .clone();
+    let room = rooms
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["match"] == json!("OB"))
+        .unwrap()
+        .clone();
+    assert_eq!(room["clients"], json!(1), "only the overlay counts");
+    action(&r, "OB", "toast.show", json!({ "text": "hello" })).await;
+    request(
+        &r,
+        "POST",
+        "/api/OB/event",
+        Some(&json!({ "type": "ping" })),
+        true,
+    )
+    .await;
+    let mut got_event = false;
+    for _ in 0..4 {
+        if next_json(&mut observer).await["type"] == json!("event") {
+            got_event = true;
+            break;
+        }
+    }
+    assert!(got_event, "the observer sees events");
+    drop(viewer);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let rooms = request(&r, "GET", "/control/status", None, true)
+        .await
+        .json()["rooms"]
+        .clone();
+    let room = rooms
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["match"] == json!("OB"))
+        .unwrap()
+        .clone();
+    assert_eq!(room["clients"], json!(0));
+}
