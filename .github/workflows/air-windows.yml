@@ -1,0 +1,55 @@
+# Builds and tests Esportra Air on Windows and uploads the installer for hands-on checks.
+name: Air (Windows)
+
+on:
+  push:
+    paths:
+      - engine/**
+      - apps/desktop/**
+      - esportra-valorant-hud/**
+      - .github/workflows/air-windows.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - name: Engine tests
+        working-directory: engine
+        run: cargo test --workspace
+
+      - name: Engine release build
+        working-directory: engine
+        run: cargo build --release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Desktop tests
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Package installer
+        working-directory: apps/desktop
+        run: npm run dist:win
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esportra-air-windows
+          path: |
+            apps/desktop/release/*.exe
+            engine/target/release/air-engine.exe
+          if-no-files-found: error

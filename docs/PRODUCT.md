@@ -57,7 +57,7 @@ Studios with their own in-house graphics teams are out of scope.
 - **3 Live:** health tiles, a compact match readout, and the four manual actions. "Next match" returns to Match with setup intact.
 - **Status strip:** every indicator opens its problem and fix.
 
-Clickable prototype: https://claude.ai/artifact/1VrfQuDRMRyi9ajSSkosiC (private until shared).
+Clickable prototype: https://claude.ai/artifact/1VrfQuDRMRyi9ajSSkosiC (private until shared). The built app replaces the prototype's placeholder “packages” with the HUD's four real banner themes, and its Layout tab edits screen order, names and placement plus the minimap frame (overlay elements themselves have fixed positions today).
 
 ## Architecture
 
@@ -88,4 +88,20 @@ Outside the build: Overwolf app approval (developer account exists, app not yet 
 
 ## Current code
 
-Until Stage 4 the legacy app in `src/` and the HUD in `esportra-valorant-hud/` remain as they are. The legacy renderer does not build at commit `49a0f7d`, because `src/renderer/App.jsx` imports three components that commit deleted (`BroadcastConsole`, `ProductionReadiness`, `ProducerScreen`). The new app is built alongside it rather than repaired.
+| Part | Where | Status |
+|---|---|---|
+| Graphics engine (Rust) | `engine/` | Stage 1 built. Golden parity with the JS parser on three recorded fixtures; 14 overlays render pixel-identical to the JS server; test round; feed-paused tag; control API. |
+| Desktop app (ow-electron, React + TypeScript) | `apps/desktop/` | Stage 1 built on quick matches: Match → Check → Live, production setup, OBS install/status, GEP capture with consent, triggers, engine supervision and re-attach. Walkthrough passes in Chromium against the real engine with a simulated game and in-memory OBS. |
+| HUD overlays | `esportra-valorant-hud/` | Unchanged. |
+| Legacy app | `src/`, `tests/` | Untouched until Stage 4. Its renderer does not build at `49a0f7d` (three deleted components are still imported). |
+| Windows build | `.github/workflows/air-windows.yml` | Tests, engine build and installer packaging on a Windows runner. Not yet run. |
+
+### Stage 1 exit check (needs a Windows PC with Overwolf, Valorant and OBS)
+
+1. Install from the workflow's `esportra-air-windows` artifact and open Air.
+2. Create a quick match. Setup › OBS: connect, choose the game capture as gameplay source, Install graphics in OBS.
+3. Open each Air scene in OBS once; Check should show every check except Esportra as ready apart from the game feed.
+4. Start game capture, accept the notice, join a Valorant custom game as observer. The in-game scene should show live data.
+5. Close Air while OBS shows the in-game scene and choose “Keep graphics on air”: the HUD must keep updating. Reopen Air: the status note should read “reconnected”.
+
+Known limits to verify there: whether GEP can be enabled when Valorant was already running before consent; ow-electron packaging and Overwolf terms for the whole app; real OBS behaviour.

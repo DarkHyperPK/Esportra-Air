@@ -26,7 +26,16 @@ Esportra-Air/
 └── tools/                       ← legacy smoke/verification scripts
 ```
 
-Planned (Stage 1): `apps/desktop/` (ow-electron shell, React + TypeScript renderer) and `engine/` (Rust workspace: `air-engine`, `air-state`, `air-valorant`).
+New app (built alongside the legacy one):
+
+```
+engine/                 Rust workspace: air-state (JSON semantics, merge/diff), air-valorant (parser),
+                        air-engine (server binary); fixtures/ golden data recorded from the JS pipeline
+apps/desktop/           ow-electron app: src/main (engine supervisor, GEP, OBS, production model),
+                        src/renderer (React interface), dev/ (dev host + walkthrough), test/
+```
+
+Commands: `cd engine && cargo test --workspace && cargo build --release`; `cd apps/desktop && npm test && npm run typecheck && npm run build`. Re-record fixtures after changing the JS parser: `node engine/fixtures/record.cjs`. Overlay parity: `node engine/tools/overlay-parity.cjs`. Full journey: `node apps/desktop/dev/host.ts` then `node apps/desktop/dev/walkthrough.cjs <dir>`.
 
 ## Running the current HUD
 
@@ -55,6 +64,8 @@ Overlays: `http://localhost:5300/overlays/<name>.html?match=CODE`. WebSocket `ws
 | `observing` | Custom games only |
 | Overwolf | Developer account exists; app not yet approved. GEP in production depends on approval |
 | Legacy renderer | Does not build at `49a0f7d` (imports three deleted components); not being repaired |
+| Output aliases | `hud.js` only recognises UUID aliases (`/o/<uuid>`); Air's screens carry a UUID `outputId` |
+| `adapters/test-valorant.js` | Already failing before this work: it expects player-PC data from non-UUID ids, which `player-coverage.js` rejects |
 
 ## Locked decisions
 
