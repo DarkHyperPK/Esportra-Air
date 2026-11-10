@@ -8,7 +8,6 @@ import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type La
 import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from './gep.ts';
-import type { IngestClient } from './ingest.ts';
 import type { ObsLink } from './obs.ts';
 import { Replay } from './replay.ts';
 import type { BuildScene } from './scene-build.ts';
@@ -18,6 +17,10 @@ import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
 import type { EsportraAccount } from './esportra.ts';
+import { JoinHost, LinkClient } from './join.ts';
+import { IngestClient } from './ingest.ts';
+import type { Secrets } from './secrets.ts';
+import type { PcMode, PcRole } from '../shared/join.ts';
 import { signedOut } from '../shared/esportra.ts';
 import { randomBytes } from 'node:crypto';
 import type { CamsView } from '../shared/api.ts';
@@ -28,7 +31,13 @@ export interface ProductionDeps {
   store: Store;
   engine: Pick<EngineSupervisor, 'state' | 'error' | 'reattached' | 'status' | 'port' | 'on'> & { client: EngineClient };
   obs: ObsLink;
-  capture: { state: GepBridge['state']; reason: string | null; start(): void; stop(): void; on(event: 'change', listener: () => void): unknown };
+  capture: { state: GepBridge['state']; reason: string | null; start(): void; stop(): void; on(event: 'change', listener: () => void): unknown; role?: PcRole; setRole?(role: PcRole): void };
+  /** Encrypted small secrets (the join code). Without it they last only for this run. */
+  secrets?: Pick<Secrets, 'get' | 'set'>;
+  /** Sends this PC's game data to a producer's Air, when this PC only captures. */
+  linkIngest?: IngestClient;
+  /** Overrides for tests. */
+  lanAddresses?: () => string[];
   ingest: Pick<IngestClient, 'target'>;
   /** What the capture delivers; the app records every game message here. */
   stats?: CaptureStats;
@@ -79,6 +88,8 @@ export class Production extends EventEmitter {
   readonly replay: Replay;
   readonly autopilot: Autopilot;
   readonly stats: CaptureStats;
+  readonly joinHost: JoinHost;
+  readonly link: LinkClient;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
   private monitorBusy = false;
 
@@ -86,6 +97,13 @@ export class Production extends EventEmitter {
     super();
     this.deps = deps;
     this.stats = deps.stats ?? new CaptureStats();
+    const memory = new Map<string, string>();
+    const secrets = deps.secrets ?? { get: (k: string) => memory.get(k) ?? null, set: (k: string, v: string | null) => void (v === null ? memory.delete(k) : memory.set(k, v)) };
+    this.joinHost = new JoinHost({ store: deps.store, secrets, client: () => deps.engine.client, matchCode: () => this.match?.code ?? null, changed: () => this.emit('change'), addresses: deps.lanAddresses });
+    this.link = new LinkClient({
+      store: deps.store, secrets, ingest: deps.linkIngest ?? new IngestClient(), changed: () => this.emit('change'),
+      capture: { get role() { return deps.capture.role ?? 'observer'; }, setRole: (r) => deps.capture.setRole?.(r), get state() { return deps.capture.state; } },
+    });
     const changed = () => this.emit('change');
     deps.engine.on('change', changed);
     deps.engine.on('status', () => void this.readRoom());
@@ -150,6 +168,7 @@ export class Production extends EventEmitter {
     // Setup decides where each layer starts; after that the console owns them for the match.
     await this.act('layers.init', { modes: this.initialModes() }, false);
     await this.pushCams();
+    await this.joinHost.sync();
     this.log.target(this.client.observeUrl(match.code));
     this.roomV = -1;
     await this.readRoom();
@@ -440,6 +459,46 @@ export class Production extends EventEmitter {
     }
     this.roomV = -1;
     await this.readRoom();
+  }
+
+  // ── observer and player PCs ──
+
+  get mode(): PcMode {
+    return this.deps.store.data.mode ?? 'production';
+  }
+
+  async setMode(mode: PcMode) {
+    if (mode !== 'production' && mode !== 'capture') throw new Error('Choose Production or Capture-only.');
+    if (mode === this.mode) return;
+    if (this.deps.capture.state === 'live' || this.deps.capture.state === 'waiting') throw new Error('Stop game capture before changing what this PC does.');
+    this.deps.store.data.mode = mode;
+    if (mode === 'capture') {
+      this.link.resume();
+    } else {
+      this.link.disconnect();
+    }
+    this.save();
+  }
+
+  joinSet(enabled: boolean) {
+    return this.joinHost.set(enabled === true);
+  }
+
+  joinRotate() {
+    return this.joinHost.rotate();
+  }
+
+  async linkConnect(input: { address: string; code: string; role: PcRole }) {
+    if (this.mode !== 'capture') throw new Error('Switch this PC to Capture-only first.');
+    await this.link.connect(input ?? ({} as never));
+  }
+
+  linkDisconnect() {
+    this.link.disconnect();
+  }
+
+  linkRetry() {
+    this.link.retry();
   }
 
   // ── Esportra ──
@@ -785,6 +844,9 @@ export class Production extends EventEmitter {
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),
       esportra: this.deps.esportra?.view() ?? signedOut(),
+      mode: this.mode,
+      join: this.joinHost.view(),
+      link: this.link.view(),
       autopilotBlock: this.autopilot.block(),
       log: this.log.list(),
       checks: [],

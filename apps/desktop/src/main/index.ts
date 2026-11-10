@@ -43,9 +43,11 @@ async function main() {
   const store = new Store(join(app.getPath('userData'), 'air.json'));
   const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, env: engineEnv(), ...realProcess });
   const ingest = new IngestClient();
+  // A capture-only PC sends its game data to a producer's Air instead of to its own engine.
+  const linkIngest = new IngestClient();
   const stats = new CaptureStats();
   const packages = ((app as unknown as { overwolf?: { packages?: OverwolfPackages } }).overwolf?.packages) ?? null;
-  const capture = new GepBridge({ packages, send: (m) => { stats.record(m); ingest.send(m); }, log: (m) => console.warn('[gep]', m) });
+  const capture = new GepBridge({ packages, send: (m) => { stats.record(m); (store.data.mode === 'capture' ? linkIngest : ingest).send(m); }, log: (m) => console.warn('[gep]', m) });
   const obs = new ObsLink(() => new OBSWebSocket() as unknown as ObsSocket);
   // This PC's identity with Esportra is created once and kept.
   if (!store.data.deviceId) {
@@ -57,8 +59,9 @@ async function main() {
     store, secrets, deviceId: store.data.deviceId, deviceName: hostname().slice(0, 80) || 'Air PC',
     changed: () => production.emit('change'),
   });
-  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, version: app.getVersion() });
+  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, version: app.getVersion() });
   void esportra.start();
+  if (store.data.mode === 'capture') production.link.resume();
   const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text) };
 
   ipcMain.handle(CHANNELS.call, async (event, method: ApiMethod, args: unknown[]) => {
@@ -118,6 +121,8 @@ async function main() {
       }
       capture.stop();
       ingest.close();
+      linkIngest.close();
+      production.joinHost.stop();
       await obs.disconnect();
       await engine.stop(shutdown);
       app.exit(0);

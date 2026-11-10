@@ -585,6 +585,17 @@ async fn control(
     }
     match (method.as_str(), segments.get(1).copied()) {
         ("GET", Some("status")) => send(StatusCode::OK, control_status(engine)),
+        ("GET", Some("join")) => send(StatusCode::OK, engine.join.status()),
+        ("PUT", Some("join")) => {
+            let input = match json_body(body).await {
+                Ok(v) => v,
+                Err(res) => return res,
+            };
+            match crate::join::configure(&app.engine, &input).await {
+                Ok(status) => send(StatusCode::OK, status),
+                Err(e) => error(StatusCode::BAD_REQUEST, &e),
+            }
+        }
         ("PUT", Some("outputs")) => {
             let input = match json_body(body).await {
                 Ok(v) => v,

@@ -23,6 +23,12 @@ export interface Saved {
   esportra?: SavedEsportra;
   /** This PC's id with Esportra (stable across sign-ins). */
   deviceId?: string;
+  /** What this PC does: run the show, or only capture the game and send it to a producer's Air. */
+  mode?: 'production' | 'capture';
+  /** Producer side: allow other PCs on the network to join. The code itself is kept encrypted. */
+  join?: { enabled: boolean; port: number };
+  /** Capture-only side: the producer's address and this PC's role. The code is kept encrypted. */
+  link?: { address: string; role: 'observer' | 'player' };
   /** Player camera links (VDO.Ninja ids) per player slot, and how the cameras are laid out. */
   cams?: { layout: 'ingame' | 'grid5' | 'grid10'; delayMs: number; ids: Array<Array<string | null>> };
 }

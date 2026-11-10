@@ -55,6 +55,13 @@ export interface IngestSocket {
   on(event: 'open' | 'close' | 'error', listener: (...args: unknown[]) => void): unknown;
 }
 
+const REFUSALS: Record<string, string> = {
+  '401': 'That join code was not accepted.',
+  '403': 'Joining is switched off on the producer’s Air.',
+  '429': 'Too many wrong codes. Wait a minute and try again.',
+  '503': 'The producer’s Air has too many PCs joined already.',
+};
+
 export class IngestClient {
   private socket: IngestSocket | null = null;
   private url: string | null = null;
@@ -62,6 +69,17 @@ export class IngestClient {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private readonly connectImpl: (url: string) => IngestSocket;
   sent = 0;
+  /** Connection state, for a link to another PC: a refusal (wrong code, joining off) stops the retries. */
+  state: 'idle' | 'connecting' | 'connected' | 'rejected' | 'error' = 'idle';
+  lastError: string | null = null;
+  onChange: (() => void) | null = null;
+
+  private setState(state: IngestClient['state'], error: string | null = null) {
+    if (this.state === state && this.lastError === error) return;
+    this.state = state;
+    this.lastError = error;
+    this.onChange?.();
+  }
 
   constructor(options: { connect?: (url: string) => IngestSocket; now?: () => number } = {}) {
     this.connectImpl = options.connect ?? ((url) => new WebSocket(url) as unknown as IngestSocket);
@@ -74,7 +92,16 @@ export class IngestClient {
     if (this.url !== null) this.queue.drain();
     this.url = url;
     this.disconnect();
+    this.setState(url ? 'connecting' : 'idle');
     if (url) this.connect();
+  }
+
+  /** Tries again after a refusal (the producer may have fixed the code or switched joining on). */
+  reconnect() {
+    if (!this.url) return;
+    this.disconnect();
+    this.setState('connecting');
+    this.connect();
   }
 
   private connect() {
@@ -82,16 +109,21 @@ export class IngestClient {
     const socket = this.connectImpl(this.url);
     this.socket = socket;
     socket.on('open', () => {
+      this.setState('connected');
       for (const { message, ageMs } of this.queue.drain()) this.write(message, ageMs, true);
     });
     socket.on('close', () => {
       if (this.socket !== socket) return;
       this.socket = null;
+      if (this.state === 'rejected') return;
+      this.setState('connecting', this.lastError);
       this.retry = setTimeout(() => this.connect(), 1500);
       this.retry.unref?.();
     });
-    socket.on('error', () => {
-      // 'close' follows and schedules the retry.
+    socket.on('error', (error) => {
+      // 'close' follows and schedules the retry, unless the other side refused us outright.
+      const status = /Unexpected server response: (\d+)/.exec(String((error as Error)?.message ?? ''))?.[1];
+      if (status) this.setState(status === '503' ? 'error' : 'rejected', REFUSALS[status] ?? 'The producer’s Air refused this PC.');
     });
   }
 

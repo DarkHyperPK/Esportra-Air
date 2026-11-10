@@ -1083,3 +1083,111 @@ async fn player_cameras_are_validated_and_report_connection() {
     let room = status["rooms"].as_array().unwrap().iter().find(|x| x["match"] == "CM").unwrap();
     assert_eq!(room["cams"][0][0], json!(false), "a closed page no longer reports connected cameras");
 }
+
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
+async fn join_get(port: u16, path: &str) -> u16 {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    stream
+        .write_all(format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes())
+        .await
+        .unwrap();
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.unwrap();
+    String::from_utf8_lossy(&raw).split(' ').nth(1).unwrap().parse().unwrap()
+}
+
+async fn join_ws(port: u16, query: &str) -> Result<Ws, u16> {
+    match tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}/join?{query}")).await {
+        Ok((socket, _)) => Ok(socket),
+        Err(tokio_tungstenite::tungstenite::Error::Http(res)) => Err(res.status().as_u16()),
+        Err(e) => panic!("{e}"),
+    }
+}
+
+fn data(message: Value) -> Message {
+    Message::Text(json!({ "type": "valorant", "message": message, "bufferedAgeMs": 0 }).to_string().into())
+}
+
+async fn join_status(r: &Running) -> Value {
+    request(r, "GET", "/control/join", None, true).await.json()
+}
+
+#[tokio::test]
+async fn joined_pcs_need_the_code_and_can_only_add_game_data() {
+    let r = engine(temp_dir()).await;
+    let port = free_port();
+    // Off by default: nothing listens.
+    assert!(TcpStream::connect(("127.0.0.1", port)).await.is_err());
+    assert_eq!(request(&r, "PUT", "/control/join", Some(&json!({ "enabled": true, "code": "bad" })), true).await.status, 400);
+    assert_eq!(request(&r, "PUT", "/control/join", Some(&json!({ "enabled": true, "code": "K7M4QX" })), false).await.status, 401, "the control API still needs the key");
+    let on = request(&r, "PUT", "/control/join", Some(&json!({ "enabled": true, "code": "K7M4QX", "match": "JM", "host": "127.0.0.1", "port": port })), true).await;
+    assert_eq!(on.status, 200, "{}", on.body);
+    assert_eq!(on.json()["port"], json!(port));
+
+    // The right code gets in; wrong ones are refused, and five wrong ones lock the address out.
+    assert_eq!(join_get(port, "/join/hello?code=K7M4QX").await, 200);
+    assert_eq!(join_get(port, "/state").await, 404, "only the join routes exist");
+    assert_eq!(join_ws(port, "code=WRONG1").await.err(), Some(401));
+    for _ in 0..2 {
+        assert_eq!(join_get(port, "/join/hello?code=NOPE22").await, 401);
+    }
+    assert_eq!(join_ws(port, "").await.err(), Some(401));
+    assert_eq!(join_get(port, "/join/hello?code=K7M4QX").await, 200, "a right code before the limit clears the count");
+    for _ in 0..5 {
+        join_get(port, "/join/hello?code=NOPE22").await;
+    }
+    assert_eq!(join_get(port, "/join/hello?code=K7M4QX").await, 429, "locked out even with the right code");
+}
+
+#[tokio::test]
+async fn joined_observers_feed_the_current_match_and_players_only_their_own_data() {
+    let r = engine(temp_dir()).await;
+    let port = free_port();
+    let on = |m: &str| json!({ "enabled": true, "code": "K7M4QX", "match": m, "host": "127.0.0.1", "port": port });
+    request(&r, "PUT", "/control/join", Some(&on("JA")), true).await;
+    let mut observer = join_ws(port, "code=K7M4QX&role=observer&name=Observer%20PC").await.unwrap();
+    assert_eq!(next_json(&mut observer).await["type"], json!("hello"));
+    observer.send(data(scoreboard(0))).await.unwrap();
+    // A message that is not game data, and one with a bad age, change nothing.
+    observer.send(Message::Text(json!({ "type": "patch", "patch": { "toast": { "text": "hacked" } } }).to_string().into())).await.unwrap();
+    observer.send(Message::Text(json!({ "type": "valorant", "message": scoreboard(1), "bufferedAgeMs": 999999 }).to_string().into())).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let state = show(&r, "JA").await;
+    assert_eq!(state["players"][0][0]["name"], json!("P0"));
+    assert_ne!(state["toast"]["text"], json!("hacked"));
+    assert_eq!(state["players"][0][1]["name"], json!(""), "the too-old message was dropped");
+    let status = join_status(&r).await;
+    let peer = &status["peers"][0];
+    assert_eq!((peer["role"].clone(), peer["name"].clone(), peer["messages"].clone()), (json!("observer"), json!("Observer PC"), json!(1)));
+
+    // The producer changes match: the same connection now feeds the new room.
+    request(&r, "PUT", "/control/join", Some(&on("JB")), true).await;
+    observer.send(data(scoreboard(2))).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(show(&r, "JB").await["players"][0][0]["name"], json!("P2"), "the first player seen in the new room takes its first slot");
+    assert_eq!(show(&r, "JA").await["players"][0][2]["name"], json!(""));
+
+    // A player PC cannot send observer data: only messages tagged with its own player id count.
+    let mut player = join_ws(port, "code=K7M4QX&role=player&name=Player").await.unwrap();
+    next_json(&mut player).await;
+    player.send(data(scoreboard(3))).await.unwrap();
+    player.send(data(json!({ "feature": "me", "key": "health", "data": "80", "playerId": "11111111-2222-3333-4444-555555555555" }))).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(show(&r, "JB").await["players"][0][1]["name"], json!(""), "an untagged scoreboard from a player PC is ignored");
+    let status = join_status(&r).await;
+    let counts: Vec<(String, u64)> = status["peers"].as_array().unwrap().iter().map(|p| (p["role"].as_str().unwrap().to_string(), p["messages"].as_u64().unwrap())).collect();
+    assert!(counts.contains(&("player".into(), 1)), "{counts:?}");
+
+    // A new code drops everyone; switching off closes the port.
+    request(&r, "PUT", "/control/join", Some(&json!({ "enabled": true, "code": "NEWCODE2", "match": "JB", "host": "127.0.0.1", "port": port })), true).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(join_status(&r).await["peers"].as_array().unwrap().len(), 0);
+    assert_eq!(join_ws(port, "code=K7M4QX").await.err(), Some(401), "the old code no longer works");
+    request(&r, "PUT", "/control/join", Some(&json!({ "enabled": false })), true).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(TcpStream::connect(("127.0.0.1", port)).await.is_err());
+    assert_eq!(join_status(&r).await["enabled"], json!(false));
+}

@@ -153,6 +153,7 @@ export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'c
 
 import type { AutopilotView, SegmentEdit } from './autopilot.ts';
 import type { EsportraView } from './esportra.ts';
+import type { JoinView, LinkView, PcMode, PcRole } from './join.ts';
 
 export interface FeatureStat {
   id: string;
@@ -234,6 +235,9 @@ export interface Snapshot {
   layers: LayerRow[];
   autopilot: AutopilotView;
   esportra: EsportraView;
+  mode: PcMode;
+  join: JoinView;
+  link: LinkView;
   /** Why Start autopilot is not available yet (Run manually always is). */
   autopilotBlock: string | null;
   log: LogEntry[];
@@ -291,6 +295,12 @@ export interface AirApi {
   startCapture(input: { consent: true }): Promise<Snapshot>;
   stopCapture(): Promise<Snapshot>;
   testRound(action: 'start' | 'stop' | 'seek', options?: { speed?: number; from?: number }): Promise<Snapshot>;
+  setMode(mode: PcMode): Promise<Snapshot>;
+  joinSet(enabled: boolean): Promise<Snapshot>;
+  joinRotate(): Promise<Snapshot>;
+  linkConnect(input: { address: string; code: string; role: PcRole }): Promise<Snapshot>;
+  linkDisconnect(): Promise<Snapshot>;
+  linkRetry(): Promise<Snapshot>;
   esportraSignIn(email: string, password: string): Promise<Snapshot>;
   esportraSignOut(): Promise<Snapshot>;
   esportraRefresh(): Promise<Snapshot>;

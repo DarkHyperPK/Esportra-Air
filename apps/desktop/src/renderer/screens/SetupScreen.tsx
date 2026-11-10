@@ -1,3 +1,4 @@
+import { PcModeCard } from '../components/Join.tsx';
 import { useEffect, useState } from 'react';
 import { BANNER_THEMES, type Screen, type Setup } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
@@ -5,7 +6,7 @@ import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { Cap } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
 
-export type SetupTab = 'graphics' | 'brand' | 'layout';
+export type SetupTab = 'graphics' | 'brand' | 'layout' | 'pc';
 
 const THEME_NOTES: Record<(typeof BANNER_THEMES)[number], string> = {
   broadcast: 'Full-width round banners. The default.',
@@ -134,7 +135,7 @@ function Layout({ s, run }: Pick<PageProps, 's' | 'run'>) {
 }
 
 export function SetupScreen({ s, run, tab, setTab }: PageProps & { tab: SetupTab; setTab: (t: SetupTab) => void }) {
-  const tabs: Array<[SetupTab, string]> = [['graphics', 'Graphics'], ['brand', 'Brand'], ['layout', 'Layout']];
+  const tabs: Array<[SetupTab, string]> = [['graphics', 'Graphics'], ['brand', 'Brand'], ['layout', 'Layout'], ['pc', 'This PC']];
   return (
     <>
       <div style={{ marginBottom: 14 }}><Cap>Production setup · done once, used for every match</Cap><h1 className="title-lg" style={{ marginTop: 8 }}>{s.setup.name}</h1></div>
@@ -144,6 +145,7 @@ export function SetupScreen({ s, run, tab, setTab }: PageProps & { tab: SetupTab
       {tab === 'graphics' && <Graphics s={s} run={run} />}
       {tab === 'brand' && <Brand s={s} run={run} />}
       {tab === 'layout' && <Layout s={s} run={run} />}
+      {tab === 'pc' && <PcModeCard s={s} run={run} />}
     </>
   );
 }

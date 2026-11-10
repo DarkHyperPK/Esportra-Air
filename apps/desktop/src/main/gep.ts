@@ -87,7 +87,7 @@ export class GepBridge extends EventEmitter {
   private tracking: number | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private polling = false;
-  private readonly source: PlayerSource;
+  private source: PlayerSource;
   private readonly options: GepBridgeOptions;
 
   constructor(options: GepBridgeOptions) {
@@ -109,6 +109,17 @@ export class GepBridge extends EventEmitter {
     options.packages.on('failed-to-initialize', (_e: unknown, name: string) => {
       if (name === 'gep') this.set('unavailable', 'Overwolf game events could not start. Check that Overwolf is allowed in your firewall, then restart Air.');
     });
+  }
+
+  /** A capture-only PC is either an observer or a player PC. Changing it needs capture stopped. */
+  setRole(role: 'observer' | 'player') {
+    if (this.consented) throw new Error('Stop capture before changing this PC’s role.');
+    this.options.role = role;
+    this.source = new PlayerSource(role, '');
+  }
+
+  get role() {
+    return this.options.role ?? 'observer';
   }
 
   private set(state: CaptureState, reason: string | null = null) {

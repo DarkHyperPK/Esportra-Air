@@ -354,3 +354,5 @@ button, input, select { border-radius: var(--r-md); }
 .log { font-family: var(--font); font-size: 12.5px; }
 .log time { font-family: var(--mono); font-size: 11px; }
 .hotkey { min-width: 20px; width: auto; padding-left: 6px; padding-right: 6px; }
+.joincode { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); background: #0e0e11; }
+.joincode strong { font-family: var(--mono); font-size: 22px; letter-spacing: 0.1em; flex: 1; white-space: nowrap; }

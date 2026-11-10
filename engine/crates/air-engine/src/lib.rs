@@ -5,6 +5,7 @@
 //! It speaks the same HTTP/WebSocket protocol as `esportra-valorant-hud/server/server.js`, so the
 //! existing overlays run unchanged.
 
+pub mod join;
 pub mod actions;
 pub mod engine;
 pub mod features;

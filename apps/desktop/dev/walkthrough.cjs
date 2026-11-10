@@ -216,6 +216,33 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await page.getByRole('button', { name: /Paper Rex/ }).and(page.locator('[aria-pressed=true]')).first().waitFor();
   await page.getByText(/signed in as|Signed in as/i).first().waitFor();
   await shot('readiness-esportra');
+
+  // Observer and player PCs (Stage 3): allow joining, then act as the capture-only PC against ourselves.
+  await rail('Capture');
+  await page.getByRole('switch', { name: 'Allow other PCs to join' }).click();
+  await page.locator('.joincode strong').waitFor();
+  const joinCode = (await page.locator('.joincode strong').innerText()).replace('-', '');
+  if (!/^[A-Z2-9]{6}$/.test(joinCode)) throw new Error('unexpected join code ' + joinCode);
+  await page.getByText('Joined PCs · 0').scrollIntoViewIfNeeded();
+  await shot('join-panel');
+  await rail('Setup');
+  await page.getByRole('tab', { name: 'This PC' }).click();
+  await page.getByRole('button', { name: 'Capture-only' }).click();
+  await page.getByText('Observer PC').first().waitFor();
+  await page.getByLabel('Producer’s address').fill('127.0.0.1:5301');
+  await page.getByLabel('Join code').fill('WRONG2');
+  await btn('Connect', { exact: true });
+  await page.getByText(/join code was not accepted/).waitFor();
+  await page.getByLabel('Join code').fill(joinCode.toLowerCase());
+  await btn('Connect', { exact: true });
+  await page.locator('.tally', { hasText: 'Connected' }).waitFor();
+  await shot('capture-only');
+  await btn('Disconnect');
+  await btn('Switch this PC back to Production');
+  await page.getByRole('tab', { name: 'This PC' }).waitFor();
+  await rail('Capture');
+  await page.getByRole('switch', { name: 'Allow other PCs to join' }).click();
+  await page.getByText('Joined PCs').waitFor({ state: 'detached' });
   await page.locator('.chipbar').getByRole('button', { name: /OBS/ }).click();
   await page.getByRole('dialog').waitFor();
   await shot('status-drawer');

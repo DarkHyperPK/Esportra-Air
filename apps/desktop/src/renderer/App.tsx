@@ -11,6 +11,7 @@ import { ReadyScreen } from './screens/ReadyScreen.tsx';
 import { ScenesScreen } from './screens/ScenesScreen.tsx';
 import { SetupScreen, type SetupTab } from './screens/SetupScreen.tsx';
 import { SyncScreen } from './screens/SyncScreen.tsx';
+import { CaptureOnlyScreen } from './components/Join.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
@@ -61,6 +62,17 @@ export function App() {
   }, []);
 
   if (!s) return <div className="win"><div className="page"><p className="muted">Starting Esportra Air…</p></div></div>;
+
+  if (s.mode === 'capture') {
+    return (
+      <div className="win">
+        <TitleBar s={s} />
+        <div className="body"><div className="main"><main className="page"><CaptureOnlyScreen s={s} run={run} askCapture={() => setConsent(true)} /></main></div></div>
+        {consent && <ConsentDialog close={() => setConsent(false)} accept={async () => { setConsent(false); await run(() => air.startCapture({ consent: true })); }} />}
+        {error && <div className="alert" role="alert"><span>{error}</span><button className="btn quiet small" onClick={() => setError(null)}>Dismiss</button></div>}
+      </div>
+    );
+  }
 
   const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true), openSignIn: () => setSignIn(true) };
   const railPage: Page = page === 'ready' ? 'console' : page;

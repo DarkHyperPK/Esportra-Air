@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FeatureStat, Snapshot } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
+import { JoinPanel } from '../components/Join.tsx';
 import type { PageProps } from '../App.tsx';
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
@@ -121,10 +122,7 @@ export function CaptureScreen({ s, run, askCapture }: PageProps) {
             ) : <p className="muted" style={{ fontSize: 12.5 }}>Choose a match to see its state.</p>}
           </div>
         </section>
-        <section className="panel">
-          <div className="head"><Cap>Player PCs</Cap><Tally kind="off">Later</Tally></div>
-          <div className="body-pad"><p className="muted" style={{ fontSize: 12.5 }}>Per-player health and abilities only come from capture on each player’s own PC. That arrives with the join code and remote step; until then the HUD shows what the observer’s game reports.</p></div>
-        </section>
+        <JoinPanel s={s} run={run} />
         <section className="panel">
           <div className="head"><Cap>If the data stops</Cap></div>
           <div className="body-pad"><p className="muted" style={{ fontSize: 12.5 }}>After 10 s of silence the feed counts as paused: graphics hold their last values and the Console says so. Nothing is invented. Use Fix data (Ctrl+D) for a wrong score or name, and the pause panel (F1) when play stops.</p></div>

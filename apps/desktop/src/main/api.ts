@@ -56,6 +56,12 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
       break;
     case 'stopCapture': p.stopCapture(); break;
     case 'testRound': await p.testRound(a[0] === 'stop' ? 'stop' : a[0] === 'seek' ? 'seek' : 'start', a[1] ?? {}); break;
+    case 'setMode': await p.setMode(a[0]); break;
+    case 'joinSet': await p.joinSet(a[0] === true); break;
+    case 'joinRotate': await p.joinRotate(); break;
+    case 'linkConnect': await p.linkConnect(a[0] ?? {}); break;
+    case 'linkDisconnect': p.linkDisconnect(); break;
+    case 'linkRetry': p.linkRetry(); break;
     case 'esportraSignIn': await p.esportraSignIn(String(a[0] ?? ''), String(a[1] ?? '')); break;
     case 'esportraSignOut': await p.esportraSignOut(); break;
     case 'esportraRefresh': await p.esportraRefresh(); break;

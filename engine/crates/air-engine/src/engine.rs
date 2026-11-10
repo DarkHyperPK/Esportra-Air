@@ -663,6 +663,8 @@ pub struct Engine {
     pub frames: Mutex<HashMap<u64, (String, Option<f64>)>>,
     /// Camera connection reports from overlay pages, per client: (room, {(team, slot): (connected, at)}).
     pub cam_reports: Mutex<HashMap<u64, CamReports>>,
+    /// Observer and player PCs joined over the network (off until the producer allows it).
+    pub join: crate::join::Join,
     pub started_at: f64,
     pub feed_stale_ms: f64,
 }
@@ -686,6 +688,7 @@ impl Engine {
             outputs_changed: watch::channel(0).0,
             frames: Mutex::new(HashMap::new()),
             cam_reports: Mutex::new(HashMap::new()),
+            join: Default::default(),
             started_at: now_ms(),
             feed_stale_ms: FEED_STALE_MS,
         })
