@@ -175,9 +175,9 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
     if (cams.flat().filter(Boolean).length !== 1) throw new Error(`${name}: one camera should report connected, got ${JSON.stringify(cams)}`);
     if (name === 'cam-grid') { await overlay.locator('.camwall-title').waitFor({ state: 'visible' }); await overlay.waitForTimeout(1500); }
     if (name === 'cam-grid') await overlay.screenshot({ path: path.join(OUT, `${String(++n).padStart(2, '0')}-cam-wall-output.png`) });
+    if (name === 'cam-grid') await page.getByLabel('Player cameras').locator('.cdot.connected').first().waitFor();
     await overlay.close();
   }
-  await page.getByLabel('Player cameras').locator('.cdot.connected').first().waitFor();
   await page.getByLabel('Player cameras').getByRole('button', { name: 'In-game cams' }).click();
 
   await rail('Capture');

@@ -62,4 +62,4 @@ export function hotkeyMatches(hotkey: string, event: { key: string; shiftKey: bo
 }
 
 /** The label on a hotkey badge. */
-export const hotkeyLabel = (hotkey: string) => (hotkey.startsWith('Shift+') ? `⇧${hotkey.slice(6)}` : hotkey);
+export const hotkeyLabel = (hotkey: string) => (hotkey.startsWith('Shift+') ? `Sh+${hotkey.slice(6)}` : hotkey);

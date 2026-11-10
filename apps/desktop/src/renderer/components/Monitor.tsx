@@ -25,7 +25,7 @@ export function Monitor({ kind, scene, image, note }: { kind: 'pvw' | 'pgm'; sce
   const onAir = kind === 'pgm';
   return (
     <figure style={{ margin: 0, minWidth: 0 }} aria-label={onAir ? 'Program monitor' : 'Preview monitor'}>
-      <div style={{ position: 'relative', aspectRatio: '16 / 9', background: '#050507', border: `2px solid ${onAir ? 'var(--rose)' : 'var(--amber)'}`, overflow: 'hidden' }}>
+      <div style={{ position: 'relative', aspectRatio: '16 / 9', background: '#050507', border: `2px solid ${onAir ? 'var(--rose)' : 'var(--amber)'}`, borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
         {image ? <img src={image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', textAlign: 'center', padding: 12 }}>{note ?? 'No picture'}</div>
         )}
