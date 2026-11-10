@@ -175,9 +175,10 @@ export interface CheckItem {
   action?: { id: ActionId; label: string };
 }
 
-export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in';
+export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in' | 'download-art';
 
 import type { AutopilotView, SegmentEdit } from './autopilot.ts';
+import type { RehearsalOptions, RehearsalView } from './rehearsal.ts';
 import type { EsportraView } from './esportra.ts';
 import type { JoinView, LinkView, PcMode, PcRole } from './join.ts';
 
@@ -270,8 +271,10 @@ export interface Snapshot {
   autopilotBlock: string | null;
   log: LogEntry[];
   checks: CheckItem[];
-  /** Whether agent, weapon and map art can be loaded (media.valorant-api.com). */
-  art: 'checking' | 'ok' | 'offline';
+  /** Agent, weapon and map pictures on this PC (downloaded once from media.valorant-api.com). */
+  art: { total: number; have: number; downloading: boolean; lastError: string | null };
+  /** The private rehearsal of the selected match (never on air). */
+  rehearsal: RehearsalView;
 }
 
 export interface NewMatchInput {
@@ -335,6 +338,13 @@ export interface AirApi {
   librarySeed(): Promise<Snapshot>;
   /** Plays the sample round in the library room so the previews move. */
   libraryPlay(on: boolean): Promise<Snapshot>;
+  /** Downloads any agent, weapon and map pictures not yet on this PC. */
+  artDownload(): Promise<Snapshot>;
+  /** Plays the match privately inside Air, with autopilot firing. Nothing reaches OBS. */
+  rehearsalStart(options: Partial<RehearsalOptions>): Promise<Snapshot>;
+  rehearsalStop(): Promise<Snapshot>;
+  /** Takes the step the rehearsal's autopilot is waiting on. */
+  rehearsalTake(): Promise<Snapshot>;
   createMatch(input: NewMatchInput): Promise<Snapshot>;
   /** Stores an image (data URL) and resolves to its URL on the engine. */
   uploadImage(dataUrl: string): Promise<string>;

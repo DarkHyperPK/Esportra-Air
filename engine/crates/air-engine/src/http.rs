@@ -196,8 +196,65 @@ pub async fn handle(State(app): State<AppState>, req: Request) -> Response {
             )
         }
         Some("air-assets") => asset(engine, &parts.method, &segments).await,
+        Some("art") => art(engine, &parts.method, &segments).await,
         Some("o") => output_page(engine, &segments).await,
         _ => static_file(engine, &path).await,
+    }
+}
+
+/// Where the catalogue's agent, weapon and map pictures come from. Air downloads them once into
+/// `<data>/art/`; the engine serves them from there and points the catalogue at `/art/`.
+pub const ART_ORIGIN: &str = "https://media.valorant-api.com/";
+
+/// `art/<kind>/<uuid>/<name>.png` or `art/agents/<uuid>/abilities/<slot>/<name>.png`, the only
+/// shapes a downloaded picture may have.
+pub fn art_path(segments: &[&str]) -> Option<PathBuf> {
+    let (kind, id, slot, file) = match segments {
+        [_, kind, id, file] => (*kind, *id, None, *file),
+        [_, "agents", id, "abilities", slot, file] => ("agents", *id, Some(*slot), *file),
+        _ => return None,
+    };
+    let name = file.strip_suffix(".png")?;
+    let slot_ok = slot.is_none_or(|s| {
+        !s.is_empty() && s.len() <= 16 && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    });
+    let ok = slot_ok
+        && ["agents", "weapons", "maps", "gear"].contains(&kind)
+        && id.len() == 36
+        && uuid::Uuid::parse_str(id).is_ok()
+        && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+        && !name.is_empty()
+        && name.len() <= 32
+        && name.bytes().all(|b| b.is_ascii_lowercase());
+    ok.then(|| {
+        let base = PathBuf::from(kind).join(id.to_ascii_lowercase());
+        match slot {
+            Some(s) => base.join("abilities").join(s).join(file),
+            None => base.join(file),
+        }
+    })
+}
+
+async fn art(engine: &Engine, method: &Method, segments: &[&str]) -> Response {
+    let Some(rel) = art_path(segments).filter(|_| method == Method::GET) else {
+        return status(StatusCode::NOT_FOUND);
+    };
+    match tokio::fs::read(engine.data.join("art").join(rel)).await {
+        Ok(bytes) => {
+            let mut res = Body::from(bytes).into_response();
+            let h = res.headers_mut();
+            h.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+            h.insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("private, max-age=86400"),
+            );
+            h.insert(
+                "x-content-type-options",
+                HeaderValue::from_static("nosniff"),
+            );
+            res
+        }
+        Err(_) => status(StatusCode::NOT_FOUND),
     }
 }
 
@@ -277,7 +334,13 @@ async fn static_file(engine: &Engine, path: &str) -> Response {
         return status(StatusCode::FORBIDDEN);
     };
     match tokio::fs::read(&file).await {
-        Ok(bytes) => {
+        Ok(mut bytes) => {
+            // The catalogue names remote art; overlays load the copies on this PC instead.
+            if file.ends_with(std::path::Path::new("core").join("catalog.js")) {
+                bytes = String::from_utf8_lossy(&bytes)
+                    .replace(ART_ORIGIN, "/art/")
+                    .into_bytes();
+            }
             let mut res = Body::from(bytes).into_response();
             let h = res.headers_mut();
             h.insert(
@@ -739,6 +802,32 @@ fn control_status(engine: &Engine) -> Value {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn art_paths_are_only_catalogue_pictures() {
+        let id = "41fb69c1-4189-7b37-f117-bcaf1e96f1bf";
+        assert_eq!(
+            art_path(&["art", "agents", id, "displayicon.png"]),
+            Some(PathBuf::from("agents").join(id).join("displayicon.png"))
+        );
+        assert_eq!(
+            art_path(&["art", "agents", id, "abilities", "ultimate", "displayicon.png"]),
+            Some(PathBuf::from("agents").join(id).join("abilities").join("ultimate").join("displayicon.png"))
+        );
+        for bad in [
+            vec!["art", "agents", id, "../x.png"],
+            vec!["art", "secrets", id, "displayicon.png"],
+            vec!["art", "agents", "not-a-uuid", "displayicon.png"],
+            vec!["art", "agents", id, "displayicon.svg"],
+            vec!["art", "agents", id, "Display.png"],
+            vec!["art", "agents", id],
+            vec!["art", "agents", id, "a", "b.png"],
+            vec!["art", "maps", id, "abilities", "ultimate", "displayicon.png"],
+            vec!["art", "agents", id, "abilities", "..", "displayicon.png"],
+        ] {
+            assert_eq!(art_path(&bad), None, "{bad:?}");
+        }
+    }
 
     #[test]
     fn static_paths_stay_inside_the_root() {

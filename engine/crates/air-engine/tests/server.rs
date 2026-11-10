@@ -1204,3 +1204,86 @@ async fn the_fullscreen_host_shows_one_named_graphic() {
     assert_eq!(page.status, 200);
     assert!(page.body.contains("data-modules=\"fullscreen\""));
 }
+
+#[tokio::test]
+async fn art_on_this_pc_is_served_and_the_catalogue_points_at_it() {
+    let data = temp_dir();
+    let id = "41fb69c1-4189-7b37-f117-bcaf1e96f1bf";
+    let dir = data.join("art").join("agents").join(id);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("displayicon.png"), b"\x89PNG\r\n\x1a\nfake").unwrap();
+    let r = engine(data).await;
+    let hit = request(
+        &r,
+        "GET",
+        &format!("/art/agents/{id}/displayicon.png"),
+        None,
+        false,
+    )
+    .await;
+    assert_eq!(hit.status, 200);
+    assert!(hit
+        .headers
+        .to_ascii_lowercase()
+        .contains("content-type: image/png"));
+    assert_eq!(
+        request(
+            &r,
+            "GET",
+            &format!("/art/agents/{id}/fullportrait.png"),
+            None,
+            false
+        )
+        .await
+        .status,
+        404,
+        "not downloaded yet"
+    );
+    assert_eq!(
+        request(
+            &r,
+            "GET",
+            &format!("/art/agents/{id}/..%2F..%2Fx.png"),
+            None,
+            false
+        )
+        .await
+        .status,
+        404
+    );
+    assert_eq!(
+        request(&r, "GET", "/art/secrets/x/y.png", None, false)
+            .await
+            .status,
+        404
+    );
+    let catalogue = request(&r, "GET", "/core/catalog.js", None, false).await;
+    assert_eq!(catalogue.status, 200);
+    assert!(
+        !catalogue.body.contains("media.valorant-api.com"),
+        "remote art is rewritten"
+    );
+    assert!(catalogue
+        .body
+        .contains(&format!("/art/agents/{id}/displayicon.png")));
+}
+
+#[tokio::test]
+async fn sample_rooms_change_graphics_during_a_test_round_and_keep_them_after() {
+    let r = engine(temp_dir()).await;
+    // A match room's test round hands back exactly what was on air: graphics wait.
+    let body = json!({ "match": "LIVE", "action": "start", "speed": 1.0 });
+    assert_eq!(request(&r, "POST", "/control/test-round", Some(&body), true).await.status, 200);
+    let refused = action(&r, "LIVE", "fullscreen.show", json!({ "screen": "halftime" })).await;
+    assert_eq!(refused.status, 400, "{}", refused.body);
+    // A sample room (rehearsal) may change them, and the change survives the round's end.
+    let room = "__ESA_SIM_REH_T1";
+    let body = json!({ "match": room, "action": "start", "speed": 1.0 });
+    assert_eq!(request(&r, "POST", "/control/test-round", Some(&body), true).await.status, 200);
+    let ok = action(&r, room, "fullscreen.show", json!({ "screen": "halftime" })).await;
+    assert_eq!(ok.status, 200, "{}", ok.body);
+    assert_eq!(show(&r, room).await["airFullscreen"], "halftime");
+    let stop = request(&r, "POST", "/control/test-round", Some(&json!({ "match": room, "action": "stop" })), true).await;
+    assert_eq!(stop.status, 200);
+    assert_eq!(show(&r, room).await["airFullscreen"], "halftime");
+}

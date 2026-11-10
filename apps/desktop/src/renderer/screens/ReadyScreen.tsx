@@ -6,6 +6,7 @@ import { NewMatchWizard } from '../components/NewMatch.tsx';
 import { air } from '../bridge.ts';
 import { Box, Cap } from '../components/ui.tsx';
 import { AutopilotRules, NextFive } from '../components/Autopilot.tsx';
+import { RehearsePanel } from '../components/Rehearse.tsx';
 import type { PageProps } from '../App.tsx';
 
 const when = (iso: string | null) => {
@@ -54,7 +55,7 @@ function EsportraMatches({ s, run, openSignIn }: Pick<PageProps, 's' | 'run' | '
   );
 }
 
-type Tab = 'ready' | 'teams' | 'talent' | 'autopilot';
+type Tab = 'ready' | 'teams' | 'talent' | 'autopilot' | 'rehearse';
 
 function MatchHero({ s }: { s: Snapshot }) {
   const m = s.match!;
@@ -147,6 +148,7 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, s
   const all = ready === counted.length;
   const act = (id: ActionId) => {
     if (id === 'start-capture') return askCapture();
+    if (id === 'download-art') return void run(() => air.artDownload());
     if (id === 'connect-obs') return go('settings');
     if (id === 'choose-match') return setWizard(true);
     if (id === 'add-casters') return s.match ? setTab('talent') : openCasters();
@@ -178,12 +180,13 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, s
           <>
             <MatchHero s={s} />
             <div className="tabs" role="tablist" aria-label="Match">
-              {([['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and event'], ['autopilot', 'Autopilot']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+              {([['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and event'], ['autopilot', 'Autopilot'], ['rehearse', 'Rehearse']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
               <button role="tab" aria-selected={false} onClick={() => go('setup')}>Graphics</button>
             </div>
             {tab === 'teams' && <TeamsTab key={s.match.id} s={s} run={run} />}
             {tab === 'talent' && <TalentTab key={s.match.id} s={s} run={run} />}
-            {tab === 'autopilot' && <AutopilotRules s={s} run={run} />}
+            {tab === 'autopilot' && <AutopilotRules s={s} run={run} rehearse={() => setTab('rehearse')} />}
+            {tab === 'rehearse' && <RehearsePanel s={s} run={run} />}
             {tab === 'ready' && (
               <>
                 <div className="row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>

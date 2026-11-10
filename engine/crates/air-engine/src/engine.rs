@@ -376,11 +376,18 @@ impl Room {
         change: impl FnOnce(&mut Value) -> Result<(), String>,
     ) -> Result<u64, String> {
         let mut inner = self.lock();
-        if inner.test.is_some() {
+        // A match room's test round must hand back exactly what was on air. A sample room (library,
+        // cue, rehearsal) may change graphics during it; the change also lands in the state the
+        // test round returns to.
+        if inner.test.is_some() && !self.ephemeral {
             return Err("Stop the test round before changing graphics.".into());
         }
         let mut next = inner.state.clone();
         change(&mut next)?;
+        let patch = diff(&inner.state, &next);
+        if let (Some(test), Some(patch)) = (inner.test.as_mut(), patch) {
+            test.backup_state = merge(test.backup_state.clone(), &patch);
+        }
         Ok(self.apply(&mut inner, next, source).unwrap_or(inner.v))
     }
 

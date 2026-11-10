@@ -18,7 +18,9 @@ import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
 import { GAMES } from '../shared/games.ts';
 import { LIBRARY_ROOM } from '../shared/library.ts';
-import { ArtCheck } from './art-check.ts';
+import { join } from 'node:path';
+import { ArtCache, type ArtStatus } from './art-cache.ts';
+import { Rehearsal } from './rehearsal.ts';
 import type { EsportraAccount } from './esportra.ts';
 import { JoinHost } from './join.ts';
 import type { IngestClient } from '../../../../packages/capture/src/ingest.ts';
@@ -34,7 +36,7 @@ import type { Store } from './store.ts';
 
 export interface ProductionDeps {
   store: Store;
-  engine: Pick<EngineSupervisor, 'state' | 'error' | 'reattached' | 'status' | 'port' | 'on'> & { client: EngineClient };
+  engine: Pick<EngineSupervisor, 'state' | 'error' | 'reattached' | 'status' | 'port' | 'on' | 'dataDir' | 'hudRoot'> & { client: EngineClient };
   obs: ObsLink;
   capture: { state: GepBridge['state']; reason: string | null; start(): void; stop(): void; on(event: 'change', listener: () => void): unknown; role?: PcRole; setRole?(role: PcRole): void };
   /** Encrypted small secrets (the join code). Without it they last only for this run. */
@@ -46,6 +48,8 @@ export interface ProductionDeps {
   /** Overrides for tests. */
   lanAddresses?: () => string[];
   artFetch?: typeof fetch;
+  /** Where agent and map pictures are downloaded from (tests use a stand-in). */
+  artOrigin?: string;
   ingest: Pick<IngestClient, 'target'>;
   /** What the capture delivers; the app records every game message here. */
   stats?: CaptureStats;
@@ -141,7 +145,8 @@ export class Production extends EventEmitter {
   readonly log: EventLog;
   readonly autopilot: Autopilot;
   readonly stats: CaptureStats;
-  readonly art: ArtCheck;
+  readonly art: ArtCache;
+  readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
@@ -151,7 +156,12 @@ export class Production extends EventEmitter {
     super();
     this.deps = deps;
     this.stats = deps.stats ?? new CaptureStats();
-    this.art = new ArtCheck({ fetch: deps.artFetch, changed: () => this.emit('change') });
+    this.art = new ArtCache({ catalogue: join(deps.engine.hudRoot, 'core', 'catalog.js'), dir: join(deps.engine.dataDir, 'art'), fetch: deps.artFetch, ...(deps.artOrigin ? { origin: deps.artOrigin } : {}) });
+    this.art.on('change', () => this.emit('change'));
+    this.rehearsal = new Rehearsal({
+      client: () => deps.engine.client, store: deps.store, match: () => this.match, screens: () => this.setup.screens,
+      seed: (room) => this.seedSample(room, { banner: false, firstMap: true }), feedLive: () => deps.capture.state === 'live', changed: () => this.emit('change'),
+    });
     const memory = new Map<string, string>();
     const secrets = deps.secrets ?? { get: (k: string) => memory.get(k) ?? null, set: (k: string, v: string | null) => void (v === null ? memory.delete(k) : memory.set(k, v)) };
     this.joinHost = new JoinHost({ store: deps.store, secrets, client: () => deps.engine.client, matchCode: () => this.match?.code ?? null, changed: () => this.emit('change'), addresses: deps.lanAddresses });
@@ -333,7 +343,12 @@ export class Production extends EventEmitter {
    * event, every graphic switched on, and a banner on screen so banner styles can be compared.
    */
   async librarySeed() {
-    const room = `/api/${LIBRARY_ROOM}`;
+    await this.seedSample(LIBRARY_ROOM, { banner: true });
+  }
+
+  /** The sample match in an ephemeral room, dressed as the selected match. */
+  private async seedSample(code: string, options: { banner: boolean; firstMap?: boolean }) {
+    const room = `/api/${code}`;
     await this.client.put(`${room}?preset=default`, {});
     const { state } = await this.client.get<{ state: any }>(room);
     const m = this.match;
@@ -348,7 +363,15 @@ export class Production extends EventEmitter {
       if (m.sponsors.length) state.sponsors = m.sponsors;
     }
     state.layout = { ...(state.layout ?? {}), bannerTheme: m?.theme ?? this.setup.package };
-    state.banner = { type: 'ace', team: 0, player: 0, text: '', method: '', ts: Date.now(), hold: 3_600_000 };
+    // A rehearsal is map 1 of this match's own best-of, with nothing played yet.
+    if (options.firstMap && m) {
+      const pool = ['LOTUS', 'HAVEN', 'SUNSET', 'ASCENT', 'BIND'];
+      state.event = { ...state.event, bestOf: m.bestOf };
+      state.map = { ...state.map, name: pool[0], number: 1 };
+      state.teams = state.teams.map((t: any) => ({ ...t, series: 0, score: 0 }));
+      state.series = pool.slice(0, m.bestOf).map((map, k) => ({ map, pick: k === m.bestOf - 1 ? -1 : k % 2, score: [0, 0], winner: null }));
+    }
+    if (options.banner) state.banner = { type: 'ace', team: 0, player: 0, text: '', method: '', ts: Date.now(), hold: 3_600_000 };
     state.show = { ...state.show, killfeed: false, observed: false, minimap: false };
     state.airFullscreen = null;
     await this.client.put(room, state);
@@ -373,6 +396,7 @@ export class Production extends EventEmitter {
 
   async selectMatch(id: string) {
     if (!this.deps.store.data.matches.some((m) => m.id === id)) throw new Error('That match is no longer available.');
+    if (this.deps.store.data.selectedMatchId !== id) this.rehearsal.stop();
     this.deps.store.data.selectedMatchId = id;
     this.save();
     await this.syncEngine();
@@ -1089,7 +1113,8 @@ export class Production extends EventEmitter {
       autopilotBlock: this.autopilot.block(),
       log: this.log.list(),
       checks: [],
-      art: this.art.state,
+      art: this.art.status,
+      rehearsal: this.rehearsal.view(),
     };
     snapshot.checks = checks(snapshot);
     return snapshot;
@@ -1097,6 +1122,15 @@ export class Production extends EventEmitter {
 }
 
 /** The readiness checklist (PRD picture 7). Warns, never blocks; every problem names its one fix. */
+/** Readiness: are the agent, weapon and map pictures on this PC? */
+function artCheck(a: ArtStatus): CheckItem {
+  const title = 'Agent and map art';
+  if (!a.total) return { id: 'art', title, detail: 'Looking for the agent and map pictures on this PC…', health: 'off' };
+  if (a.have >= a.total) return { id: 'art', title, detail: `All ${a.total} agent, weapon and map pictures are on this PC. Graphics show them without internet.`, health: 'ok' };
+  if (a.downloading) return { id: 'art', title, detail: `Downloading pictures to this PC: ${a.have} of ${a.total}…`, health: 'off' };
+  return { id: 'art', title, detail: `${a.total - a.have} of ${a.total} pictures are not on this PC yet, and media.valorant-api.com could not be reached. Graphics run without them; Air tries again every minute.`, health: 'warn', action: { id: 'download-art', label: 'Download now' } };
+}
+
 export function checks(s: Snapshot): CheckItem[] {
   const out: CheckItem[] = [];
   const e = s.esportra;
@@ -1152,11 +1186,7 @@ export function checks(s: Snapshot): CheckItem[] {
       : { id: 'talent', title: 'Talent', detail: 'No casters added. The caster lower third needs their names.', health: s.match ? 'warn' : 'off', ...(s.match ? { action: { id: 'add-casters' as const, label: 'Add casters' } } : {}) },
   );
   out.push(
-    s.art === 'ok'
-      ? { id: 'art', title: 'Agent and map art', detail: 'Agent, weapon and map pictures load from media.valorant-api.com.', health: 'ok' }
-      : s.art === 'checking'
-        ? { id: 'art', title: 'Agent and map art', detail: 'Checking that agent and map pictures can load…', health: 'off' }
-        : { id: 'art', title: 'Agent and map art', detail: 'This PC cannot reach media.valorant-api.com. Graphics still run, but without agent, weapon and map pictures. Check the internet connection or firewall.', health: 'warn' },
+    artCheck(s.art),
   );
   return out;
 }

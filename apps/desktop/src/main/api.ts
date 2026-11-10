@@ -20,6 +20,10 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'selectMatch': await p.selectMatch(String(a[0])); break;
     case 'librarySeed': await p.librarySeed(); break;
     case 'libraryPlay': await p.libraryPlay(a[0] === true); break;
+    case 'artDownload': await p.art.download(); break;
+    case 'rehearsalStart': await p.rehearsal.start(a[0] && typeof a[0] === 'object' ? a[0] : {}); break;
+    case 'rehearsalStop': p.rehearsal.stop(); break;
+    case 'rehearsalTake': await p.rehearsal.take(); break;
     case 'createMatch': await p.createMatch(a[0]); break;
     case 'uploadImage': return p.uploadImage(String(a[0]));
     case 'updateMatch': await p.updateMatch(String(a[0]), a[1] ?? {}); break;

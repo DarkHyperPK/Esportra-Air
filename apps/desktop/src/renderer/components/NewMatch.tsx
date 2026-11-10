@@ -1,4 +1,4 @@
-// New match wizard: the prerequisites of a show, in order. Graphics and rehearsal follow in later steps.
+// New match wizard: the prerequisites of a show, in order, ending with a private rehearsal.
 import { useEffect, useState } from 'react';
 import type { BannerTheme, Caster, Snapshot, Team } from '../../shared/api.ts';
 import { BannerStyles } from '../screens/LibraryScreen.tsx';
@@ -6,8 +6,10 @@ import { GAMES, type GameId } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { GamePicker, LineupEditor, TalentFields, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
+import { RehearsePanel } from './Rehearse.tsx';
 
-const STEPS = ['Game', 'Teams', 'Players', 'Talent and event', 'Graphics'] as const;
+const STEPS = ['Game', 'Teams', 'Players', 'Talent and event', 'Graphics', 'Rehearse'] as const;
+const REHEARSE = 5;
 
 export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close: () => void }) {
   const last = s.matches[0];
@@ -24,6 +26,8 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
   const [sponsors, setSponsors] = useState<string[]>(last?.sponsors ?? []);
   const [theme, setTheme] = useState<BannerTheme>(last?.theme ?? 'broadcast');
   const [busy, setBusy] = useState(false);
+  // Once created, the match is edited on its own page; the wizard only rehearses it.
+  const [created, setCreated] = useState(false);
   useEffect(() => { if (step === 4) void air.librarySeed().catch(() => {}); }, [step]);
 
   const teamsOk = teams.every((t) => t.name.trim()) && teams[0].name.trim().toLowerCase() !== teams[1].name.trim().toLowerCase();
@@ -33,7 +37,14 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
     const players = lineups.map((team) => team.filter((p) => p.name.trim())) as Lineups;
     const ok = await run(() => air.createMatch({ game, bestOf, teams, players, casters: casters.filter((c) => c.name.trim()), event, sponsors, theme }));
     setBusy(false);
-    if (ok) close();
+    if (ok) {
+      setCreated(true);
+      setStep(REHEARSE);
+    }
+  };
+  const done = () => {
+    if (s.rehearsal.running) void air.rehearsalStop().catch(() => {});
+    close();
   };
 
   return (
@@ -42,9 +53,9 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
         <header className="wizard-head">
           <div><span className="cap">New match</span><h2 className="title-md" style={{ marginTop: 4 }}>{STEPS[step]}</h2></div>
           <ol className="stepper">
-            {STEPS.map((label, i) => <li key={label} className={i === step ? 'now' : i < step ? 'done' : ''}><button type="button" disabled={i > step} onClick={() => setStep(i)}><span>{i + 1}</span>{label}</button></li>)}
+            {STEPS.map((label, i) => <li key={label} className={i === step ? 'now' : i < step ? 'done' : ''}><button type="button" disabled={i > step || (created && i < REHEARSE)} onClick={() => setStep(i)}><span>{i + 1}</span>{label}</button></li>)}
           </ol>
-          <button className="btn quiet small" onClick={close} aria-label="Close">Esc · Close</button>
+          <button className="btn quiet small" onClick={done} aria-label="Close">Esc · Close</button>
         </header>
         <div className="wizard-body">
           {step === 0 && (
@@ -83,6 +94,12 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
               <p className="muted" style={{ fontSize: 12.5 }}>Previews use sample data until the match exists.</p>
             </div>
           )}
+          {step === REHEARSE && (
+            <div className="stack" style={{ gap: 14 }}>
+              <p className="lead">Watch {s.match?.title ?? 'the match'} run through your graphics: your teams, players and photos on sample game data, with autopilot firing as it would on the night.</p>
+              <RehearsePanel s={s} run={run} compact />
+            </div>
+          )}
           {step === 3 && (
             <div className="stack" style={{ gap: 14 }}>
               <p className="lead">Casters for the lower thirds, and the event shown on the event bug. {last ? 'Event and sponsors start from your last match.' : ''}</p>
@@ -91,11 +108,13 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
           )}
         </div>
         <footer className="wizard-foot">
-          <button className="btn quiet" disabled={step === 0} onClick={() => setStep(step - 1)}>Back</button>
+          <button className="btn quiet" disabled={step === 0 || created} onClick={() => setStep(step - 1)}>Back</button>
           <span className="muted" style={{ fontSize: 12.5 }}>Step {step + 1} of {STEPS.length}</span>
-          {step < STEPS.length - 1
-            ? <button className="btn primary" disabled={!canNext} onClick={() => setStep(step + 1)}>Continue</button>
-            : <button className="btn primary" disabled={busy || !teamsOk} onClick={() => void finish()}>{busy ? 'Creating…' : 'Create match'}</button>}
+          {step === REHEARSE
+            ? <button className="btn primary" onClick={done}>Finish · Readiness</button>
+            : step === REHEARSE - 1
+              ? <button className="btn primary" disabled={busy || !teamsOk} onClick={() => void finish()}>{busy ? 'Creating…' : 'Create match and rehearse'}</button>
+              : <button className="btn primary" disabled={!canNext} onClick={() => setStep(step + 1)}>Continue</button>}
         </footer>
       </div>
     </div>

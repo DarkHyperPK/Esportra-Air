@@ -40,10 +40,12 @@ export class Autopilot {
   readonly runner: ShowRunner;
   private readonly deps: AutopilotDeps;
   private loadedFor: string | null = null;
+  private readonly clock: Clock;
 
   constructor(deps: AutopilotDeps) {
     this.deps = deps;
-    this.runner = new ShowRunner({ take: (segment, stillAllowed) => this.takeSegment(segment, stillAllowed) }, deps.clock ?? realClock);
+    this.clock = deps.clock ?? realClock;
+    this.runner = new ShowRunner({ take: (segment, stillAllowed) => this.takeSegment(segment, stillAllowed) }, this.clock);
     this.runner.on('change', () => deps.changed());
     this.runner.on('log', (entry: RunnerLog) => {
       const line = describe(entry);
@@ -167,11 +169,13 @@ export class Autopilot {
 
   stopAll() {
     this.runner.stopAll();
+    this.clock.clearTimeout(this.clearTimer);
+    this.clearTimer = null;
   }
 
   // ── graphics ──
 
-  private clearTimer: ReturnType<typeof setTimeout> | null = null;
+  private clearTimer: unknown = null;
 
   private async takeSegment(segment: Segment, stillAllowed: () => boolean): Promise<TakeOutcome> {
     if (segment.show) {
@@ -184,16 +188,15 @@ export class Autopilot {
     } catch (error) {
       return { ok: false, error: (error as Error).message };
     }
-    if (this.clearTimer) clearTimeout(this.clearTimer);
+    this.clock.clearTimeout(this.clearTimer);
     this.clearTimer = null;
     // "For N s": back to the game afterwards, unless something else has been put up meanwhile.
     if (segment.show && segment.forSeconds > 0) {
       const shown = segment.show;
-      this.clearTimer = setTimeout(() => {
+      this.clearTimer = this.clock.setTimeout(() => {
         this.clearTimer = null;
         if (this.deps.showing() === shown) void this.deps.showGraphic(null, 'cut').catch(() => {});
       }, segment.forSeconds * 1000);
-      this.clearTimer.unref?.();
     }
     return { ok: true };
   }

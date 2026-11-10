@@ -100,7 +100,12 @@
   const fmt = HUD.fmt = sec => { sec = Math.max(0, Math.ceil(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
   const fmtHundredths = sec => { const value = Math.max(0, Math.ceil(Math.round(sec * 1000) / 10)); return `${String(Math.floor(value / 100)).padStart(2, '0')}:${String(value % 100).padStart(2, '0')}`; };
   const money = n => Number(n || 0).toLocaleString('en-US');
-  const setImg = (im, url) => { if (!url) { im.style.visibility = 'hidden'; return; } im.style.visibility = ''; if (im.dataset.u !== url) { im.dataset.u = url; im.src = url; } };
+  // A picture that failed to load is not asked for again for a minute, so a missing file is not
+  // requested on every redraw (Air serves agent and map art from this PC at /art/).
+  const failedArt = new Map();
+  document.addEventListener('error', e => { const t = e.target; if (t && t.tagName === 'IMG' && t.src) failedArt.set(t.src, Date.now()); }, true);
+  const artFailed = url => { const at = failedArt.get(new URL(url, location.href).href); return at !== undefined && Date.now() - at < 60000; };
+  const setImg = (im, url) => { if (!url || artFailed(url)) { im.style.visibility = 'hidden'; return; } im.style.visibility = ''; if (im.dataset.u !== url) { im.dataset.u = url; im.src = url; } };
   // A player photo from the producer's lineup (served by Air's engine). Only its own asset paths are trusted.
   const photoOk = v => typeof v === 'string' && /^\/air-assets\/[0-9a-f-]{36}$/i.test(v);
   const txt = (e, v) => { v = String(v); if (e.textContent !== v) e.textContent = v; };
@@ -614,11 +619,14 @@
     return { update(s) { if (same(this, s)) return;
       const Mm = mapA(s.map.name); if (Mm) setImg(bgm, Mm.splash);
       const [a, b] = s.teams.map(t => t.score), w = a === b ? 1 : a > b ? 0 : 1, T = s.teams[w];
-      const all = s.players.flatMap((ps, i) => ps.map(p => ({ ...p, t: i }))).sort((x, y) => y.acs - x.acs); const mvp = all[0], A = agent(mvp.agent);
+      // GEP gives no ACS, ADR or headshot %: rank by kills then, and show a dash instead of a number.
+      const flat = s.players.flatMap((ps, i) => ps.map(p => ({ ...p, t: i }))), hasAcs = flat.some(p => Number(p.acs) > 0);
+      const stat = (v, suffix = '') => (Number(v) > 0 ? `${v}${suffix}` : '—');
+      const all = flat.sort((x, y) => +(hasAcs ? y.acs : y.k) - +(hasAcs ? x.acs : x.k)); const mvp = all[0], A = agent(mvp.agent);
       box.innerHTML = `<div class="sc" style="--c:${T.color}"><div class="w mono">MAP ${s.map.number}   /   ${s.map.name}</div><div class="big disp hl">${Math.max(a, b)}<span>–</span>${Math.min(a, b)}</div><div class="tn">${T.name} WIN</div></div>` +
         `<div class="mvp" style="--c:${s.teams[mvp.t].color}">${A ? `<img src="${A.full}">` : ''}<div class="k mono">MATCH MVP</div><div class="n disp hl">${mvp.name}</div><div class="a mono">${s.teams[mvp.t].tag}   /   ${A ? A.name : ''}</div>` +
-        `<div class="sts"><div>${mvp.acs}<small>ACS</small></div><div>${mvp.k}/${mvp.d}/${mvp.a}<small>K / D / A</small></div><div>${mvp.adr}<small>ADR</small></div><div>${mvp.hs}%<small>HEADSHOT</small></div></div></div>` +
-        `<div class="tp"><div class="h mono">TOP PERFORMERS</div>` + all.slice(1, 5).map(p => { const Ap = agent(p.agent); return `<div class="r" style="--c:${s.teams[p.t].color}">${Ap ? `<img src="${Ap.icon}">` : ''}<div class="n">${p.name}</div><div class="v mono">${s.teams[p.t].tag}   /   ${p.acs} ACS   /   ${p.k}–${p.d}–${p.a}</div></div>`; }).join('') + '</div>';
+        `<div class="sts"><div>${stat(mvp.acs)}<small>ACS</small></div><div>${mvp.k}/${mvp.d}/${mvp.a}<small>K / D / A</small></div><div>${stat(mvp.adr)}<small>ADR</small></div><div>${stat(mvp.hs, '%')}<small>HEADSHOT</small></div></div></div>` +
+        `<div class="tp"><div class="h mono">TOP PERFORMERS</div>` + all.slice(1, 5).map(p => { const Ap = agent(p.agent); return `<div class="r" style="--c:${s.teams[p.t].color}">${Ap ? `<img src="${Ap.icon}">` : ''}<div class="n">${p.name}</div><div class="v mono">${s.teams[p.t].tag}   /   ${hasAcs ? `${stat(p.acs)} ACS   /   ` : ''}${p.k}–${p.d}–${p.a}</div></div>`; }).join('') + '</div>';
     } };
   };
 

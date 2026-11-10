@@ -54,7 +54,7 @@ Overlays: `http://localhost:5300/overlays/<name>.html?match=CODE`. WebSocket `ws
 
 - **One shared state object per match room.** Clients receive `snapshot`, then RFC 7386 merge `patch` messages with an incrementing `v`; a gap triggers `resync`. Overlays acknowledge with `rendered`.
 - **Overlays are plain HTML/JS/CSS**, no build step. `update(state)` redraws, `tick(state)` runs 10×/s, animations fire on state deltas.
-- **Art assets** (agents, weapons, maps) load from `media.valorant-api.com` at runtime.
+- **Art assets** (agents, abilities, weapons, maps) are downloaded once from `media.valorant-api.com` into `<engine data>/art/` by Air (`apps/desktop/src/main/art-cache.ts`) and served by the engine at `/art/`; the engine rewrites `core/catalog.js` to point there. Only pictures are fetched.
 - **Game capture starts only after explicit user consent.** Never auto-start it.
 - **Local mode never sends game data off the local network.** Remote mode is opt-in with its own consent.
 
@@ -68,6 +68,7 @@ Overlays: `http://localhost:5300/overlays/<name>.html?match=CODE`. WebSocket `ws
 | Overwolf | Developer account exists; app not yet approved. GEP in production depends on approval |
 | Legacy app | Removed in Stage 4 (the old Electron app in `src/`, its tests, the capture child and root build files). Recoverable from git history before commit "Stage 4" |
 | Output aliases | `hud.js` only recognises UUID aliases (`/o/<uuid>`); Air's screens carry a UUID `outputId` |
+| Rehearsal | Private inside Air (`__ESA_SIM_REH_<code>`, never an OBS output). Sample rooms (`__ESA_SIM_*`) may change graphics during a test round; match rooms may not |
 | `adapters/test-valorant.js` | Already failing before this work: it expects player-PC data from non-UUID ids, which `player-coverage.js` rejects |
 
 ## Locked decisions

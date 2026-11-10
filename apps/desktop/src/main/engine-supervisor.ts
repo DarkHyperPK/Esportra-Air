@@ -60,6 +60,14 @@ export class EngineSupervisor extends EventEmitter {
     return this.options.port;
   }
 
+  get dataDir() {
+    return this.options.dataDir;
+  }
+
+  get hudRoot() {
+    return this.options.hudRoot;
+  }
+
   private setState(state: EngineState, error: string | null = null) {
     this.state = state;
     this.error = error;

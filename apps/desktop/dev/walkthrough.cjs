@@ -24,16 +24,21 @@ function makePng(hex) {
 }
 
 (async () => {
+  const errors = [];
   const launched = await chromium.launch();
   // Agent/weapon art loads from media.valorant-api.com. Sandboxes without internet refuse it, and the
   // HUD retries failed art on every redraw, so the walkthrough runs as an offline venue: art is aborted.
-  const offline = async (p) => { await p.route(/media\.valorant-api\.com/, (r) => r.abort('internetdisconnected')); return p; };
+  // Art not yet on this PC answers 404 at /art/ (the offline venue); any other 404 is a problem.
+  const offline = async (p) => {
+    await p.route(/media\.valorant-api\.com/, (r) => r.abort('internetdisconnected'));
+    p.on('response', (res) => res.status() === 404 && !new URL(res.url()).pathname.startsWith('/art/') && errors.push(`404 ${res.url()}`));
+    return p;
+  };
   const browser = { newPage: async (o) => offline(await launched.newPage(o)), close: () => launched.close() };
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
-  const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   // Agent/weapon art loads from media.valorant-api.com; sandboxes without internet cannot fetch it.
-  page.on('console', (m) => m.type() === 'error' && !/ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|status of 400/.test(m.text()) && errors.push(m.text()));
+  page.on('console', (m) => m.type() === 'error' && !/ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|status of 400|status of 404/.test(m.text()) && errors.push(m.text()));
   let n = 0;
   const shot = async (name) => { await page.waitForTimeout(450); await page.screenshot({ path: path.join(OUT, `${String(++n).padStart(2, '0')}-${name}.png`) }); };
   const rail = (name) => page.locator('nav.rail').getByRole('button', { name }).click();
@@ -78,13 +83,31 @@ function makePng(hex) {
   await wizard.getByRole('radio', { name: /Impact/ }).click();
   await page.waitForTimeout(2500);
   await shot('wizard-graphics');
-  await wizard.getByRole('button', { name: 'Create match' }).click();
+  await wizard.getByRole('button', { name: 'Create match and rehearse' }).click();
+  // Step 6: the match rehearses privately at 4x, autopilot firing (intro, back to the game, halftime, result).
+  await wizard.getByRole('button', { name: 'Play rehearsal' }).waitFor();
+  await shot('wizard-rehearse-ready');
+  await wizard.getByRole('group', { name: 'Rehearsal speed' }).getByRole('button', { name: '4×' }).click();
+  await wizard.getByRole('button', { name: 'Play rehearsal' }).click();
+  await wizard.getByText('→ Map 1 · halftime').waitFor({ timeout: 90_000 });
+  await page.waitForTimeout(1200);
+  await shot('wizard-rehearse-halftime');
+  await wizard.getByText('→ Map 1 · result').waitFor({ timeout: 90_000 });
+  await page.waitForTimeout(1500);
+  await shot('wizard-rehearse-map-result');
+  await wizard.getByRole('button', { name: 'Finish · Readiness' }).click();
   await wizard.waitFor({ state: 'detached' });
   await page.getByText('2 casters ready').waitFor();
   await shot('readiness-first-run');
   await page.getByRole('tab', { name: 'Teams and players' }).click();
   await shot('match-teams');
+  await page.getByRole('tab', { name: 'Rehearse' }).click();
+  await page.getByRole('region', { name: 'Rehearse' }).waitFor();
+  await page.waitForTimeout(1500);
+  await shot('match-rehearse');
   await page.getByRole('tab', { name: 'Readiness' }).click();
+  // Art: this sandbox cannot reach media.valorant-api.com, so Readiness offers to download again.
+  await page.getByText(/pictures are not on this PC yet/).waitFor({ timeout: 30_000 });
 
   // HUD library: live previews with this match's teams.
   await rail('Library');

@@ -148,7 +148,7 @@ function sentence(seg: Segment) {
 }
 
 /** The match's autopilot: presets, how it works, and every step as an editable sentence. */
-export function AutopilotRules({ s, run }: { s: Snapshot; run: Run }) {
+export function AutopilotRules({ s, run, rehearse }: { s: Snapshot; run: Run; rehearse?: () => void }) {
   const a = s.autopilot;
   const locked = a.enabled;
   const edit = (seg: Segment, patch: Parameters<typeof air.segmentUpdate>[1]) => void run(() => air.segmentUpdate(seg.id, patch));
@@ -161,6 +161,7 @@ export function AutopilotRules({ s, run }: { s: Snapshot; run: Run }) {
           <div><span className="ap-num amber">2</span><b>A hold window counts down</b><span className="muted">An amber ring shows how long until it happens. <span className="kbd">H</span> holds it, <span className="kbd">S</span> skips it, <span className="kbd">Space</span> takes it now.</span></div>
           <div><span className="ap-num rose">3</span><b>The graphic goes on air</b><span className="muted">Over the game, through Air’s own outputs. OBS scenes are never switched.</span></div>
         </div>
+        {rehearse && <div><button className="btn" onClick={rehearse}>Try it in Rehearse</button> <span className="muted" style={{ fontSize: 12.5 }}>Watch these steps fire on a private run of this match.</span></div>}
         <p className="muted" style={{ fontSize: 12.5 }}>Economy in the buy phase, the round recap, the spike timer and kill callouts are separate: they are Auto layers on Live and work whether autopilot is on or not.</p>
       </section>
 

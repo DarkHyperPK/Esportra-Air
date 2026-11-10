@@ -517,3 +517,113 @@ test('the New match wizard: teams with logos, lineups with Riot IDs and photos r
     await engine.stop(true);
   }
 });
+
+test('agent and map art is downloaded to this PC and served by the engine; Readiness follows it', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('art')]);
+  let up = false;
+  const host = (await import('node:http')).createServer((_req, res) => (up ? res.writeHead(200, { 'content-type': 'image/png' }).end(PNG) : res.writeHead(503).end()));
+  await new Promise<void>((r) => host.listen(0, '127.0.0.1', r));
+  const dir = mkdtempSync(join(tmpdir(), 'air-art-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'art-test-key-0123456789abcdef', env: engineEnv(), ...realProcess });
+  await engine.start();
+  const obs = new ObsLink(() => new FakeObs(), { backoffMs: [50] });
+  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs, capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test', artOrigin: `http://127.0.0.1:${(host.address() as { port: number }).port}/` });
+  const row = () => production.snapshot().checks.find((c) => c.id === 'art')!;
+  try {
+    await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
+    await production.art.download();
+    assert.equal(row().health, 'warn', 'offline: graphics run without the pictures');
+    assert.equal(row().action?.id, 'download-art');
+    up = true;
+    await production.art.download();
+    const { total, have } = production.snapshot().art;
+    assert.ok(total > 200 && have === total, `${have} of ${total}: ${production.snapshot().art.lastError}`);
+    assert.equal(row().health, 'ok');
+    assert.match(row().detail, /on this PC/);
+    const catalogue = await (await fetch(`http://127.0.0.1:${port}/core/catalog.js`)).text();
+    const path = /"\/art\/(agents\/[0-9a-f-]{36}\/displayicon\.png)"/.exec(catalogue)![1]!;
+    const picture = await fetch(`http://127.0.0.1:${port}/art/${path}`);
+    assert.equal(picture.status, 200);
+    assert.deepEqual(Buffer.from(await picture.arrayBuffer()), PNG, 'the engine serves the copy on this PC');
+  } finally {
+    production.art.stop();
+    production.log.stop();
+    host.close();
+    await engine.stop(true);
+  }
+});
+
+test('rehearsal plays the match privately with its own players, and autopilot fires through the show', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-rehearse-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'rehearse-test-key-0123456789', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const capture = new FakeCapture();
+  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture, ingest: { target: () => {} }, version: 'test' });
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const view = () => production.snapshot().rehearsal;
+  const wait = async (check: () => boolean, label: string, ms = 60_000) => {
+    const end = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > end) assert.fail(`timed out: ${label} · ${view().log.map((l) => l.text).join(' | ')}`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
+  try {
+    await assert.rejects(production.rehearsal.start(), /Choose a match/);
+    const photo = await production.uploadImage(PNG);
+    await production.createMatch({
+      game: 'valorant', bestOf: 1,
+      teams: [{ name: 'Night Owls', tag: 'NOW', color: '#22d3ee', logo: '' }, { name: 'Crimson Five', tag: 'CF', color: '#f43f5e', logo: '' }] as never,
+      players: [[{ name: 'Juno Park', realName: '', gameId: 'Juno#EU1', photo }], [{ name: 'Kai Ito', realName: '', gameId: 'Kai#JP1', photo: '' }]] as never,
+      casters: [], event: { name: 'Community Cup', stage: '' }, sponsors: [],
+    });
+    const code = production.match!.code;
+    const live = async () => (await engine.client.get<any>(`/api/${code}`)).state;
+    const before = await live();
+    await production.rehearsal.start({ speed: 4, autopilot: true, handsFree: true });
+    const room = view().room!;
+    assert.equal(room, `__ESA_SIM_REH_${code}`);
+    const rehearsal = async () => (await engine.client.get<any>(`/api/${room}`)).state;
+
+    // Hands-free: the intro is taken by itself, then rounds go live and autopilot goes back to the game.
+    await wait(() => view().autopilot?.segments.find((s) => s.id === 'intro')?.state !== 'queued' && view().autopilot?.now?.id === 'intro', 'intro taken hands-free');
+    await wait(() => view().beat >= 1, 'rounds begin');
+    await wait(() => ['map1-live', 'map1-half', 'map1-result'].includes(view().autopilot?.now?.id ?? ''), 'back to the game when a round goes live');
+    // The sample game's players carry the match's own names and photo.
+    const state = await rehearsal();
+    assert.equal(state.teams[0].name, 'NIGHT OWLS');
+    assert.equal(state.players[0][0].name, 'Juno Park');
+    assert.equal(state.players[0][0].photo, photo);
+    assert.equal(state.players[1][0].name, 'Kai Ito');
+
+    await wait(() => view().autopilot?.now?.id === 'map1-half', 'halftime at round 12');
+    assert.equal((await rehearsal()).airFullscreen, 'halftime');
+    await wait(() => view().autopilot?.now?.id === 'map1-result', 'map result at map end', 90_000);
+    assert.equal((await rehearsal()).airFullscreen, 'map-result');
+    await wait(() => !view().running, 'rehearsal finishes', 60_000);
+    assert.ok(view().log.some((l) => l.text === 'Rehearsal finished'));
+    assert.equal(view().autopilot?.now?.id, 'champion', 'hands-free takes the winner too');
+
+    // Nothing reached the match: no full-screen graphic, no autopilot, same score.
+    const after = await live();
+    assert.equal(after.airFullscreen ?? null, before.airFullscreen ?? null);
+    assert.deepEqual(after.teams.map((t: any) => t.score), before.teams.map((t: any) => t.score));
+    assert.equal(production.snapshot().autopilot.enabled, false);
+    assert.ok(!(await engine.client.get<any>('/control/status')).rooms.some((r: any) => r.match === room && r.testRound?.running));
+
+    // Stop clears everything; starting is refused while real game data flows.
+    await production.rehearsal.start({ speed: 4 });
+    production.rehearsal.stop();
+    assert.equal(view().running, false);
+    capture.state = 'live';
+    await assert.rejects(production.rehearsal.start(), /Game data is live/);
+  } finally {
+    production.rehearsal.stop();
+    production.log.stop();
+    await engine.stop(true);
+  }
+});
