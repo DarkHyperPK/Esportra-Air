@@ -52,7 +52,8 @@ async function main() {
   });
 
   window = new BrowserWindow({
-    width: 1440, height: 900, minWidth: 1100, minHeight: 720, backgroundColor: '#141416', title: 'Esportra Air', show: false,
+    width: 1440, height: 900, minWidth: 1100, minHeight: 720, backgroundColor: "#09090b", title: 'Esportra Air', show: false,
+    titleBarStyle: 'hidden', titleBarOverlay: { color: '#09090b', symbolColor: '#8b8b95', height: 34 },
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   window.once('ready-to-show', () => window?.show());

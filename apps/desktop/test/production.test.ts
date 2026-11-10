@@ -73,17 +73,17 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
 
     // Check guides: connect OBS, then install, then loading.
     let checks = production.snapshot().checks;
-    assert.equal(checks.find((c) => c.id === 'installed')!.action!.id, 'open-setup-obs');
+    assert.equal(checks.find((c) => c.id === 'obs')!.action!.id, 'connect-obs');
     await obs.connect('127.0.0.1', 4455, 'secret');
     await production.updateSetup({ obs: { host: '127.0.0.1', port: 4455, gameplaySource: 'Game Capture' } });
     checks = production.snapshot().checks;
-    assert.equal(checks.find((c) => c.id === 'installed')!.action!.id, 'install-graphics');
+    assert.equal(checks.find((c) => c.id === 'scenes')!.action!.id, 'install-graphics');
     await production.installGraphics();
     const snap = production.snapshot();
     assert.equal(snap.obs.installed, true);
     assert.ok(obsServer.scenes.has('Air · In-game'));
     assert.equal(obsServer.inputs.get('Air · In-game · Graphics')!.settings.url, `http://127.0.0.1:${port}/o/${ingameOutput}`);
-    assert.equal(snap.checks.find((c) => c.id === 'installed')!.health, 'ok');
+    assert.equal(snap.checks.find((c) => c.id === 'scenes')!.health, 'ok');
     assert.equal(snap.checks.find((c) => c.id === 'feed')!.action!.id, 'start-capture');
     production.startCapture();
     assert.equal(production.snapshot().feed.state, 'waiting');

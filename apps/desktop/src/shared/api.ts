@@ -1,7 +1,7 @@
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
-export type Stage = 'match' | 'check' | 'live' | 'setup';
+export type Page = 'ready' | 'console' | 'scenes' | 'capture' | 'outputs' | 'data' | 'sync' | 'setup';
 export type Health = 'ok' | 'warn' | 'off' | 'bad';
 
 export interface Team {
@@ -66,25 +66,29 @@ export interface RoundReadout {
   phase: string | null;
   score: [number | null, number | null];
   playersFound: [number, number];
+  sides: [string | null, string | null];
+  roster: Array<Array<{ name: string; inGameName: string }>>;
 }
 
 export interface OutputHealth {
   screenId: string;
   title: string;
+  /** Overlay page this output serves (used to preview it by match code). */
+  overlay: string;
   url: string;
   connections: number;
   lastFrameAt: number | null;
 }
 
 export interface CheckItem {
-  id: 'lineups' | 'installed' | 'rendering' | 'feed' | 'esportra';
+  id: 'esportra' | 'match' | 'feed' | 'obs' | 'scenes' | 'sources' | 'talent' | 'internet';
   title: string;
   detail: string;
   health: Health;
   action?: { id: ActionId; label: string };
 }
 
-export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'open-setup-obs';
+export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources';
 
 export interface Snapshot {
   version: string;
@@ -121,6 +125,8 @@ export interface CorrectionInput {
   reason: string;
 }
 
+export type CorrectionCall = CorrectionInput | { clear: true } | { undo: true };
+
 /** Exposed to the renderer as `window.air`. Every call resolves to the latest snapshot or throws a plain message. */
 export interface AirApi {
   snapshot(): Promise<Snapshot>;
@@ -138,7 +144,7 @@ export interface AirApi {
   pause(kind: 'technical' | 'timeout' | null): Promise<Snapshot>;
   casterStrap(on: boolean): Promise<Snapshot>;
   sponsorRead(sponsor: string | null): Promise<Snapshot>;
-  correct(input: CorrectionInput | { clear: true }): Promise<Snapshot>;
+  correct(input: CorrectionCall): Promise<Snapshot>;
   copy(text: string): Promise<void>;
 }
 

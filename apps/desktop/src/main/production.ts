@@ -4,7 +4,7 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { BANNER_THEMES, type CheckItem, type CorrectionInput, type Match, type QuickMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
+import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type QuickMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
 import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from './gep.ts';
@@ -318,9 +318,11 @@ export class Production extends EventEmitter {
     this.emit('change');
   }
 
-  async correct(input: CorrectionInput | { clear: true }) {
+  async correct(input: CorrectionCall) {
     const match = this.requireMatch();
-    const body = 'clear' in input
+    const body = 'undo' in input
+      ? { action: 'undo' }
+      : 'clear' in input
       ? { action: 'clear' }
       : { action: 'set', field: input.field, value: input.value, until: input.field === 'scores' ? 'next_round' : 'cleared', reason: text(input.reason, 200, 'Reason') };
     await this.client.post(`/api/${encodeURIComponent(match.code)}/display-fixes`, body);
@@ -344,12 +346,14 @@ export class Production extends EventEmitter {
           phase: room.round?.phase ?? null,
           score: [room.teams?.[0]?.score ?? null, room.teams?.[1]?.score ?? null] as [number | null, number | null],
           playersFound: [named(0), named(1)] as [number, number],
+          sides: [room.teams?.[0]?.side ?? null, room.teams?.[1]?.side ?? null] as [string | null, string | null],
+          roster: [0, 1].map((t) => (room.players?.[t] ?? []).map((p: { name?: string; inGameName?: string }) => ({ name: p?.name ?? '', inGameName: p?.inGameName ?? '' }))),
         }
       : null;
     const enabled = this.setup.screens.filter((s) => s.enabled);
     const outputs = enabled.map((s) => {
       const o = status?.outputs.find((x) => x.id === s.outputId);
-      return { screenId: s.id, title: s.title, url: `http://127.0.0.1:${engine.port}/o/${s.outputId}`, connections: o?.connections ?? 0, lastFrameAt: o?.lastFrameAt ?? null };
+      return { screenId: s.id, title: s.title, overlay: s.overlay, url: `http://127.0.0.1:${engine.port}/o/${s.outputId}`, connections: o?.connections ?? 0, lastFrameAt: o?.lastFrameAt ?? null };
     });
     const missingScenes = enabled.map((s) => sceneName(s.title)).filter((n) => !obs.status.scenes.includes(n));
     const installed = obs.status.state === 'connected' && missingScenes.length === 0;
@@ -373,40 +377,52 @@ export class Production extends EventEmitter {
   }
 }
 
-/** The Check list. Warns, never blocks; each problem names its fix. */
+/** The readiness checklist (PRD picture 7). Warns, never blocks; every problem names its one fix. */
 export function checks(s: Snapshot): CheckItem[] {
   const out: CheckItem[] = [];
+  out.push({ id: 'esportra', title: 'Esportra', detail: 'Not signed in. Quick matches work without an account.', health: 'off' });
+  out.push(
+    s.match
+      ? { id: 'match', title: 'Show and match', detail: `${s.setup.name} · ${s.match.title} · Bo${s.match.bestOf}`, health: 'ok' }
+      : { id: 'match', title: 'Show and match', detail: 'No match selected yet.', health: 'warn', action: { id: 'choose-match', label: 'Create a match' } },
+  );
   const found = s.readout ? s.readout.playersFound[0] + s.readout.playersFound[1] : 0;
   out.push(
-    found >= 10
-      ? { id: 'lineups', title: 'Players found in the game', detail: 'All 10 players are on the HUD.', health: 'ok' }
-      : { id: 'lineups', title: 'Players', detail: found ? `${found} of 10 players found so far.` : 'Player names come from the game once it starts.', health: 'off' },
+    s.feed.state === 'live'
+      ? { id: 'feed', title: 'Game data', detail: `Valorant is feeding GEP${found ? ` · ${found} of 10 players found` : ''}.`, health: 'ok' }
+      : s.feed.state === 'waiting'
+        ? { id: 'feed', title: 'Game data', detail: s.feed.reason ?? 'Waiting for Valorant.', health: 'warn' }
+        : s.feed.state === 'unavailable'
+          ? { id: 'feed', title: 'Game data', detail: s.feed.reason ?? 'Game capture is unavailable on this PC.', health: 'bad' }
+          : { id: 'feed', title: 'Game data', detail: 'Game capture is off on this PC. Nothing is read until you start it.', health: 'off', action: { id: 'start-capture', label: 'Start capture' } },
   );
-  if (s.obs.state !== 'connected') {
-    out.push({ id: 'installed', title: 'Graphics in OBS', detail: s.obs.error ?? 'OBS is not connected.', health: 'warn', action: { id: 'open-setup-obs', label: 'Connect OBS' } });
-  } else if (!s.obs.installed) {
-    out.push({ id: 'installed', title: 'Graphics in OBS', detail: `Not in OBS yet: ${s.obs.missingScenes.join(', ')}.`, health: 'warn', action: { id: 'install-graphics', label: 'Install graphics in OBS' } });
-  } else {
-    out.push({ id: 'installed', title: 'Graphics in OBS', detail: `${s.outputs.length} Air scenes are in your OBS scene collection.`, health: 'ok' });
-  }
+  out.push(
+    s.obs.state === 'connected'
+      ? { id: 'obs', title: 'OBS', detail: `OBS ${s.obs.version ?? ''} on this PC · obs-websocket connected`, health: 'ok' }
+      : { id: 'obs', title: 'OBS', detail: s.obs.error ?? 'OBS is not connected.', health: 'warn', action: { id: 'connect-obs', label: 'Connect OBS' } },
+  );
+  out.push(
+    s.obs.installed
+      ? { id: 'scenes', title: 'Scenes', detail: `${s.outputs.length} Esportra scenes are in your OBS collection.`, health: 'ok' }
+      : s.obs.state === 'connected'
+        ? { id: 'scenes', title: 'Scenes', detail: `Not in OBS yet: ${s.obs.missingScenes.join(', ')}.`, health: 'warn', action: { id: 'install-graphics', label: 'Add for me' } }
+        : { id: 'scenes', title: 'Scenes', detail: 'Shown once OBS is connected.', health: 'off' },
+  );
+  const loading = s.outputs.filter((o) => o.connections > 0).length;
   const idle = s.outputs.filter((o) => o.connections === 0);
   out.push(
     s.obs.installed && idle.length === 0
-      ? { id: 'rendering', title: 'Graphics loading', detail: 'Every Air source is connected to the graphics engine.', health: 'ok' }
+      ? { id: 'sources', title: 'Browser sources', detail: `${loading} of ${s.outputs.length} connected.`, health: 'ok' }
       : s.obs.installed
-        ? { id: 'rendering', title: 'Graphics loading', detail: `Not loading yet: ${idle.map((o) => o.title).join(', ')}. OBS loads a browser source when its scene is opened once.`, health: 'warn' }
-        : { id: 'rendering', title: 'Graphics loading', detail: 'Shown once graphics are in OBS.', health: 'off' },
+        ? { id: 'sources', title: 'Browser sources', detail: `${loading} of ${s.outputs.length} connected · not loading: ${idle.map((o) => o.title).join(', ')}. OBS loads a source when its scene is opened once.`, health: 'warn' }
+        : { id: 'sources', title: 'Browser sources', detail: 'Shown once scenes are in OBS.', health: 'off' },
   );
-  const feed = s.feed;
+  const casters = s.match?.casters.filter((c) => c.name).length ?? 0;
   out.push(
-    feed.state === 'live'
-      ? { id: 'feed', title: 'Game feed', detail: 'Live data is arriving from Valorant.', health: 'ok' }
-      : feed.state === 'waiting'
-        ? { id: 'feed', title: 'Game feed', detail: feed.reason ?? 'Waiting for Valorant.', health: 'warn' }
-        : feed.state === 'unavailable'
-          ? { id: 'feed', title: 'Game feed', detail: feed.reason ?? 'Game capture is unavailable on this PC.', health: 'bad' }
-          : { id: 'feed', title: 'Game feed', detail: 'Game capture is off on this PC.', health: 'off', action: { id: 'start-capture', label: 'Start game capture' } },
+    casters
+      ? { id: 'talent', title: 'Talent', detail: `${casters} caster${casters > 1 ? 's' : ''} ready for the lower third.`, health: 'ok' }
+      : { id: 'talent', title: 'Talent', detail: 'No casters added. The caster lower third needs their names.', health: s.match ? 'warn' : 'off', ...(s.match ? { action: { id: 'add-casters' as const, label: 'Add casters' } } : {}) },
   );
-  out.push({ id: 'esportra', title: 'Esportra', detail: 'Not signed in. Quick matches work without an Esportra account.', health: 'off' });
+  out.push({ id: 'internet', title: 'Internet', detail: 'Graphics run on this PC and keep running offline. Agent and weapon art loads from the internet.', health: 'off' });
   return out;
 }
