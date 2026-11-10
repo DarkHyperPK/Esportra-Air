@@ -185,7 +185,15 @@ function recordEdgeCases() {
   writeFixture('edge-cases', initial, steps);
 }
 
+// The engine embeds the HUD's default states; they are JavaScript files, so export them as JSON.
+function exportDefaults() {
+  const file = path.resolve(__dirname, '../crates/air-engine/defaults.json');
+  fs.writeFileSync(file, JSON.stringify({ default: DEFAULT, clean: CLEAN }, null, 1) + '\n');
+  console.log('defaults: crates/air-engine/defaults.json');
+}
+
 (async () => {
+  exportDefaults();
   recordAdapterShapes();
   recordEdgeCases();
   await recordSimulator();
