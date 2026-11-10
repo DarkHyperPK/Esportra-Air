@@ -626,6 +626,18 @@ async fn control(
                 ),
             }
         }
+        ("POST", Some("action")) => {
+            let input = match json_body(body).await {
+                Ok(v) => v,
+                Err(res) => return res,
+            };
+            let room = engine.room(input.get("match").and_then(Value::as_str));
+            let name = input.get("name").and_then(Value::as_str).unwrap_or("");
+            match crate::actions::run(&room, name, input.get("args").unwrap_or(&Value::Null)) {
+                Ok(v) => send(StatusCode::OK, json!({ "v": v })),
+                Err(message) => error(StatusCode::BAD_REQUEST, &message),
+            }
+        }
         ("POST", Some("test-round")) => {
             let input = match json_body(body).await {
                 Ok(v) => v,

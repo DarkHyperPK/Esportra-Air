@@ -5,10 +5,12 @@
 //! It speaks the same HTTP/WebSocket protocol as `esportra-valorant-hud/server/server.js`, so the
 //! existing overlays run unchanged.
 
+pub mod actions;
 pub mod engine;
 pub mod features;
 pub mod fixes;
 pub mod http;
+pub mod layers;
 pub mod ws;
 
 use std::net::SocketAddr;

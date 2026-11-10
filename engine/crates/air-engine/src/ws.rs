@@ -164,7 +164,7 @@ async fn finish(engine: &Engine, id: u64, then: impl std::future::Future<Output 
 /// One client message. Returns a direct reply (only `resync` has one).
 fn handle(
     engine: &Engine,
-    room: &Room,
+    room: &Arc<Room>,
     id: u64,
     role: &str,
     writer: bool,

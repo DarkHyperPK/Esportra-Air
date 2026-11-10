@@ -17,6 +17,7 @@ use tokio::sync::{broadcast, watch};
 
 use crate::features::reported_features;
 use crate::fixes::{DisplayFixes, FixError, FixStore};
+use crate::layers;
 
 /// A live round with no game data for this long shows "feed paused" on the HUD.
 pub const FEED_STALE_MS: f64 = 10_000.0;
@@ -94,6 +95,10 @@ pub struct RoomInner {
     pub last_feed_at: Option<f64>,
     dirty: bool,
     test: Option<TestRun>,
+    /// Kills per (round, killer), for the multi-kill callout.
+    multikills: HashMap<String, u32>,
+    /// Bumped whenever an automatic lower third is shown, so only the latest timer clears it.
+    auto_generation: u64,
 }
 
 /// A test round in progress: the real state and fixes it replaced, and its own parser.
@@ -242,7 +247,8 @@ impl Room {
 
     /// Replaces the state, broadcasting only what viewers will see change. Returns the new version,
     /// or `None` when nothing changed.
-    pub fn apply(&self, inner: &mut RoomInner, next: Value, source: &str) -> Option<u64> {
+    pub fn apply(&self, inner: &mut RoomInner, mut next: Value, source: &str) -> Option<u64> {
+        layers::sync(&inner.state, &mut next);
         let before = inner.fixes.view(&inner.state);
         let patch = diff(&inner.state, &next);
         let capture = if source == "valorant-gep" {
@@ -295,7 +301,7 @@ impl Room {
     }
 
     /// Raw GEP messages captured `age_ms` ago → state, events and feed freshness.
-    pub fn ingest(&self, messages: &[Value], age_ms: f64) -> (u64, usize) {
+    pub fn ingest(self: &Arc<Self>, messages: &[Value], age_ms: f64) -> (u64, usize) {
         // Real game data always wins over a test round.
         self.stop_test(None);
         let capture_at = now_ms() - age_ms;
@@ -319,14 +325,53 @@ impl Room {
         if reported.iter().any(|f| *f != "playerCapture") || !events.is_empty() {
             inner.last_feed_at = Some(inner.last_feed_at.unwrap_or(0.0).max(capture_at));
         }
+        let call_out = apply_rules(&mut inner, &mut state, &events);
         let v = self
             .apply(&mut inner, state, "valorant-gep")
             .unwrap_or(inner.v);
         drop(inner);
+        if call_out {
+            self.schedule_auto_lower_clear(MULTI_KILL_MS);
+        }
         for e in &events {
             self.event(e, "valorant-gep");
         }
         (v, events.len())
+    }
+
+    /// Applies `change` to a copy of the state and broadcasts the result. The one place actions
+    /// (layers, toast, poll, lower thirds…) change state, so every controller behaves the same.
+    pub fn mutate(
+        &self,
+        source: &str,
+        change: impl FnOnce(&mut Value) -> Result<(), String>,
+    ) -> Result<u64, String> {
+        let mut inner = self.lock();
+        if inner.test.is_some() {
+            return Err("Stop the test round before changing graphics.".into());
+        }
+        let mut next = inner.state.clone();
+        change(&mut next)?;
+        Ok(self.apply(&mut inner, next, source).unwrap_or(inner.v))
+    }
+
+    fn schedule_auto_lower_clear(self: &Arc<Self>, ms: u64) {
+        let generation = {
+            let mut inner = self.lock();
+            inner.auto_generation += 1;
+            inner.auto_generation
+        };
+        let room = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+            let mut inner = room.lock();
+            if inner.auto_generation != generation {
+                return;
+            }
+            let mut next = inner.state.clone();
+            next["airAuto"] = json!({ "lowerThird": false });
+            room.apply(&mut inner, next, "air:rules");
+        });
     }
 
     /// Applies, clears or undoes an on-air correction and broadcasts the visible change.
@@ -510,6 +555,65 @@ impl Room {
     }
 }
 
+/// How long a multi-kill callout stays up.
+const MULTI_KILL_MS: u64 = 5000;
+
+/// Rules that run on game events (PRD §9 / E3.4). Most automatic graphics are derived by the HUD
+/// from the round phase (economy at buy, recap at round end, spike timer on plant); what needs the
+/// engine is: a new match returns manual overrides to Auto, buy phase clears an automatic lower
+/// third, and a 3K or 4K shows a callout (not over an ace banner). Returns true when a callout was
+/// shown and needs its timer.
+fn apply_rules(inner: &mut RoomInner, state: &mut Value, events: &[Value]) -> bool {
+    let mut callout = false;
+    for event in events {
+        match event.get("type").and_then(Value::as_str) {
+            Some("match.start") => {
+                layers::clear_overrides(state);
+                inner.multikills.clear();
+            }
+            Some("round.phase") if event.get("phase").and_then(Value::as_str) == Some("buy") => {
+                inner.multikills.clear();
+                state["airAuto"] = json!({ "lowerThird": false });
+            }
+            Some("kill") => {
+                let Some(killer) = event
+                    .get("killer")
+                    .and_then(Value::as_array)
+                    .filter(|k| k.len() == 2)
+                else {
+                    continue;
+                };
+                let round = state
+                    .get("round")
+                    .and_then(|r| r.get("number"))
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                let key = format!("{round}:{}:{}", killer[0], killer[1]);
+                let count = inner.multikills.entry(key).or_insert(0);
+                *count += 1;
+                let count = *count;
+                let banner = state
+                    .get("banner")
+                    .and_then(|b| b.get("type"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let auto = state
+                    .get("airLayers")
+                    .and_then(|l| l.get("lowerThird"))
+                    .and_then(Value::as_str)
+                    == Some("auto");
+                if (3..=4).contains(&count) && !matches!(banner, "ace" | "teamace") && auto {
+                    state["lowerThird"] = json!({ "kind": "generic", "title": format!("{count} KILLS"), "sub": "", "team": killer[0], "player": killer[1] });
+                    state["airAuto"] = json!({ "lowerThird": true });
+                    callout = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    callout
+}
+
 fn write_atomic(path: &Path, data: &Value) -> std::io::Result<()> {
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, serde_json::to_vec(data)?)?;
@@ -602,6 +706,8 @@ impl Engine {
                 last_feed_at: None,
                 dirty: false,
                 test: None,
+                multikills: HashMap::new(),
+                auto_generation: 0,
             }),
             testing: AtomicBool::new(false),
             test_generation: AtomicU64::new(0),
@@ -614,6 +720,11 @@ impl Engine {
             inner
                 .fixes
                 .sync(&state, Some(now_ms()), room.store().as_ref());
+            let mut state = state;
+            if !state.get("airLayers").is_some_and(Value::is_object) {
+                state["airLayers"] = Value::Object(layers::defaults());
+            }
+            layers::sync(&Value::Null, &mut state);
             inner.state = state;
         }
         rooms.insert(code, room.clone());

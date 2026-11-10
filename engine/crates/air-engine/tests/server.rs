@@ -579,3 +579,380 @@ async fn test_round_plays_sample_data_and_restores_the_match() {
     );
     assert_eq!(state["teams"][0]["name"], json!("Alpha"));
 }
+
+async fn action(r: &Running, matchc: &str, name: &str, args: Value) -> Reply {
+    request(
+        r,
+        "POST",
+        "/control/action",
+        Some(&json!({ "match": matchc, "name": name, "args": args })),
+        true,
+    )
+    .await
+}
+
+async fn show(r: &Running, matchc: &str) -> Value {
+    request(r, "GET", &format!("/api/{matchc}"), None, false)
+        .await
+        .json()["state"]
+        .clone()
+}
+
+#[tokio::test]
+async fn layers_follow_their_modes_and_overrides_win() {
+    let r = engine(temp_dir()).await;
+    let s = show(&r, "LY").await;
+    assert_eq!(s["show"]["scorebug"], json!(true));
+    assert_eq!(s["show"]["scoreboard"], json!(false));
+    assert_eq!(s["show"]["economy"], json!("auto"));
+    assert_eq!(s["airLayers"]["economy"], json!("auto"));
+
+    assert_eq!(
+        action(
+            &r,
+            "LY",
+            "layer.set",
+            json!({ "layer": "scoreboard", "mode": "on" })
+        )
+        .await
+        .status,
+        200
+    );
+    assert_eq!(show(&r, "LY").await["show"]["scoreboard"], json!(true));
+    // A manual choice on an automatic layer holds until it is set back to Auto.
+    action(
+        &r,
+        "LY",
+        "layer.set",
+        json!({ "layer": "economy", "mode": "off" }),
+    )
+    .await;
+    assert_eq!(show(&r, "LY").await["show"]["economy"], json!(false));
+    action(
+        &r,
+        "LY",
+        "layer.set",
+        json!({ "layer": "economy", "mode": "auto" }),
+    )
+    .await;
+    assert_eq!(show(&r, "LY").await["show"]["economy"], json!("auto"));
+
+    assert_eq!(
+        action(
+            &r,
+            "LY",
+            "layer.set",
+            json!({ "layer": "scorebug", "mode": "auto" })
+        )
+        .await
+        .status,
+        400,
+        "no automatic mode there"
+    );
+    assert_eq!(
+        action(
+            &r,
+            "LY",
+            "layer.set",
+            json!({ "layer": "bogus", "mode": "on" })
+        )
+        .await
+        .status,
+        400
+    );
+    assert_eq!(action(&r, "LY", "nonsense", json!({})).await.status, 400);
+    let unauthorised = request(
+        &r,
+        "POST",
+        "/control/action",
+        Some(&json!({ "match": "LY", "name": "layer.set", "args": {} })),
+        false,
+    )
+    .await;
+    assert_eq!(unauthorised.status, 401);
+
+    // An older control panel writing a show flag is kept as a manual choice, not reverted.
+    request(
+        &r,
+        "PATCH",
+        "/api/LY",
+        Some(&json!({ "show": { "duel": true } })),
+        true,
+    )
+    .await;
+    let s = show(&r, "LY").await;
+    assert_eq!(s["show"]["duel"], json!(true));
+    assert_eq!(s["airLayers"]["duel"], json!("on"));
+
+    // Modes are saved with the match.
+}
+
+#[tokio::test]
+async fn layer_modes_survive_a_restart_and_init_applies_once() {
+    let data = temp_dir();
+    let first = engine(data.clone()).await;
+    action(
+        &first,
+        "KEEP",
+        "layers.init",
+        json!({ "modes": { "minimap": "on", "ticker": "off" } }),
+    )
+    .await;
+    action(
+        &first,
+        "KEEP",
+        "layers.init",
+        json!({ "modes": { "minimap": "off" } }),
+    )
+    .await;
+    assert_eq!(
+        show(&first, "KEEP").await["airLayers"]["minimap"],
+        json!("on"),
+        "init does not reset a running show"
+    );
+    action(
+        &first,
+        "KEEP",
+        "layer.set",
+        json!({ "layer": "poll", "mode": "on" }),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    request(&first, "POST", "/control/shutdown", None, true).await;
+    first.task.await.unwrap();
+    let second = engine(data).await;
+    let s = show(&second, "KEEP").await;
+    assert_eq!(s["airLayers"]["poll"], json!("on"));
+    assert_eq!(s["airLayers"]["ticker"], json!("off"));
+    assert_eq!(s["show"]["minimap"], json!(true));
+}
+
+#[tokio::test]
+async fn actions_validate_and_change_the_graphics() {
+    let r = engine(temp_dir()).await;
+    let mut overlay = ws(&r, "match=AC").await;
+    next_json(&mut overlay).await;
+
+    assert_eq!(
+        action(&r, "AC", "toast.show", json!({ "text": "<b>hi</b>" }))
+            .await
+            .status,
+        400
+    );
+    assert_eq!(
+        action(
+            &r,
+            "AC",
+            "toast.show",
+            json!({ "text": "Map 2 starts soon" })
+        )
+        .await
+        .status,
+        200
+    );
+    assert_eq!(
+        show(&r, "AC").await["toast"]["text"],
+        json!("Map 2 starts soon")
+    );
+
+    let poll =
+        json!({ "question": "Who wins?", "options": ["Alpha", "Bravo"], "firstPercent": 60 });
+    assert_eq!(action(&r, "AC", "poll.show", poll).await.status, 200);
+    let s = show(&r, "AC").await;
+    assert_eq!(s["poll"]["options"][1]["pct"], json!(40));
+    assert_eq!(s["show"]["poll"], json!(true));
+    assert_eq!(
+        action(
+            &r,
+            "AC",
+            "poll.show",
+            json!({ "question": "Q", "options": ["Same", "same"], "firstPercent": 50 })
+        )
+        .await
+        .status,
+        400
+    );
+    assert_eq!(
+        action(
+            &r,
+            "AC",
+            "poll.show",
+            json!({ "question": "Q", "options": ["A", "B"], "firstPercent": 101 })
+        )
+        .await
+        .status,
+        400
+    );
+    action(&r, "AC", "poll.hide", json!({})).await;
+    assert_eq!(show(&r, "AC").await["show"]["poll"], json!(false));
+
+    action(
+        &r,
+        "AC",
+        "lowerthird.generic",
+        json!({ "title": "Sara Malik", "sub": "Caster · play-by-play" }),
+    )
+    .await;
+    let s = show(&r, "AC").await;
+    assert_eq!(s["lowerThird"]["title"], json!("Sara Malik"));
+    assert_eq!(s["show"]["lowerThird"], json!(true));
+    action(&r, "AC", "lowerthird.hide", json!({})).await;
+    let s = show(&r, "AC").await;
+    assert_eq!(s["show"]["lowerThird"], json!(false));
+    assert_eq!(s["airLayers"]["lowerThird"], json!("auto"));
+    assert_eq!(
+        action(
+            &r,
+            "AC",
+            "lowerthird.player",
+            json!({ "team": 0, "player": 7 })
+        )
+        .await
+        .status,
+        400
+    );
+    assert_eq!(
+        action(
+            &r,
+            "AC",
+            "lowerthird.player",
+            json!({ "team": 1, "player": 2 })
+        )
+        .await
+        .status,
+        200
+    );
+    assert_eq!(show(&r, "AC").await["lowerThird"]["kind"], json!("player"));
+    assert_eq!(
+        action(&r, "AC", "spotlight.set", json!({ "team": 1, "player": 2 }))
+            .await
+            .status,
+        200
+    );
+    assert_eq!(show(&r, "AC").await["spotlight"]["player"], json!(2));
+    action(&r, "AC", "stinger.play", json!({})).await;
+    assert!(show(&r, "AC").await["stinger"].as_f64().unwrap() > 1.0e12);
+
+    // Every change reached the overlay as an ordinary patch.
+    let mut patches = 0;
+    while let Ok(Some(Ok(Message::Text(text)))) =
+        tokio::time::timeout(Duration::from_millis(300), overlay.next()).await
+    {
+        if serde_json::from_str::<Value>(&text).unwrap()["type"] == json!("patch") {
+            patches += 1;
+        }
+    }
+    assert!(patches >= 8, "{patches} patches");
+}
+
+fn scoreboard(i: usize) -> Value {
+    json!({ "feature": "match_info", "key": format!("scoreboard_{i}"), "data": json!({
+        "player_id": format!("pid-{i}"), "name": format!("P{i} #T"), "character": "Clay", "team": if i < 5 { 0 } else { 1 },
+        "alive": true, "ult_points": 1, "ult_max": 7, "kills": 0, "deaths": 0, "assists": 0, "money": 3900, "weapon": "TX_Hud_Rifles_Volcano", "shield": 2,
+    }).to_string() })
+}
+
+fn kill(attacker: usize, victim: usize) -> Value {
+    json!({ "events": [{ "name": "kill_feed", "data": json!({ "attacker": format!("P{attacker} #T"), "victim": format!("P{victim} #T"), "weapon": "TX_Hud_Rifles_Volcano", "headshot": false }).to_string() }] })
+}
+
+#[tokio::test]
+async fn a_triple_kill_shows_a_callout_that_clears_itself() {
+    let r = engine(temp_dir()).await;
+    let roster: Vec<Value> = (0..10).map(scoreboard).collect();
+    request(
+        &r,
+        "POST",
+        "/api/MK/ingest/valorant",
+        Some(&Value::Array(roster)),
+        true,
+    )
+    .await;
+    request(
+        &r,
+        "POST",
+        "/api/MK/ingest/valorant",
+        Some(&json!([kill(0, 5), kill(0, 6)])),
+        true,
+    )
+    .await;
+    assert_eq!(
+        show(&r, "MK").await["show"]["lowerThird"],
+        json!(false),
+        "two kills is not a callout"
+    );
+    request(
+        &r,
+        "POST",
+        "/api/MK/ingest/valorant",
+        Some(&json!([kill(0, 7)])),
+        true,
+    )
+    .await;
+    let s = show(&r, "MK").await;
+    assert_eq!(s["lowerThird"]["title"], json!("3 KILLS"));
+    assert_eq!(s["show"]["lowerThird"], json!(true));
+    assert_eq!(
+        s["airLayers"]["lowerThird"],
+        json!("auto"),
+        "a rule, not a manual choice"
+    );
+    tokio::time::sleep(Duration::from_millis(5600)).await;
+    assert_eq!(
+        show(&r, "MK").await["show"]["lowerThird"],
+        json!(false),
+        "clears after five seconds"
+    );
+
+    // With the layer switched Off the producer wins: no callout.
+    action(
+        &r,
+        "MK",
+        "layer.set",
+        json!({ "layer": "lowerThird", "mode": "off" }),
+    )
+    .await;
+    request(
+        &r,
+        "POST",
+        "/api/MK/ingest/valorant",
+        Some(&json!([kill(1, 5), kill(1, 6), kill(1, 7)])),
+        true,
+    )
+    .await;
+    assert_eq!(show(&r, "MK").await["show"]["lowerThird"], json!(false));
+}
+
+#[tokio::test]
+async fn a_new_match_returns_manual_overrides_to_auto() {
+    let r = engine(temp_dir()).await;
+    action(
+        &r,
+        "NM",
+        "layer.set",
+        json!({ "layer": "economy", "mode": "off" }),
+    )
+    .await;
+    action(
+        &r,
+        "NM",
+        "layer.set",
+        json!({ "layer": "poll", "mode": "on" }),
+    )
+    .await;
+    request(
+        &r,
+        "POST",
+        "/api/NM/ingest/valorant",
+        Some(&json!([{ "events": [{ "name": "match_start", "data": "" }] }])),
+        true,
+    )
+    .await;
+    let s = show(&r, "NM").await;
+    assert_eq!(s["airLayers"]["economy"], json!("auto"));
+    assert_eq!(
+        s["airLayers"]["poll"],
+        json!("on"),
+        "manual-only layers are not auto layers"
+    );
+}
