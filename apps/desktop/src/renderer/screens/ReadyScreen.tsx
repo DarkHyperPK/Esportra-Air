@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ActionId } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
 import { Box, Cap } from '../components/ui.tsx';
+import { NextFive } from '../components/Autopilot.tsx';
 import type { PageProps } from '../App.tsx';
 
 export function QuickMatchForm({ run, onDone }: Pick<PageProps, 'run'> & { onDone?: () => void }) {
@@ -99,10 +100,12 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, start }: Page
           ))}
         </section>
 
+        <NextFive s={s} />
+
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn big" disabled title="Autopilot arrives with the rundown">Start autopilot</button>
-          <button className="btn primary big" onClick={start}>Run manually</button>
-          <span className="muted" style={{ fontSize: 12.5 }}>Autopilot arrives with the rundown. Until then every graphic and trigger is yours.</span>
+          <button className="btn primary big" disabled={!!s.autopilotBlock} onClick={() => void run(() => air.autopilotStart()).then((ok) => ok && start())}>Start autopilot</button>
+          <button className="btn big" onClick={() => void run(() => air.autopilotStop()).then(start)}>Run manually</button>
+          <span className="muted" style={{ fontSize: 12.5, maxWidth: 420 }}>{s.autopilotBlock ?? 'Autopilot takes scenes for you after a hold window you can stop with H. Off unless you start it.'}</span>
         </div>
       </div>
     </div>

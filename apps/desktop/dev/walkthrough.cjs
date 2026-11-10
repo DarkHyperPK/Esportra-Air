@@ -114,6 +114,40 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await btn('Apply · on air now');
   await page.getByRole('dialog', { name: 'Fix data' }).waitFor({ state: 'detached' });
 
+  // Autopilot (S4): start, take two manual segments, let a round going live open a hold window, hold it, take now.
+  await rail('Console');
+  const code = (await (await fetch('http://127.0.0.1:5320/call/snapshot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '[]' })).json()).match.code;
+  const post = (body) => fetch(`http://127.0.0.1:5399/api/${code}/ingest/valorant`, { method: 'POST', headers: { 'X-Esportra-Key': 'dev-host-key-0123456789abcdef', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await btn('Start autopilot');
+  await page.getByText('Starting soon').first().waitFor();
+  await shot('autopilot-armed');
+  await page.keyboard.press(' ');
+  await page.getByText(/^Now$/).waitFor();
+  await page.waitForFunction(() => /Starting soon/.test(document.querySelector('[aria-label="Autopilot"]')?.textContent ?? '') && /Match intro/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => /Map 1 live/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await post([{ feature: 'match_info', key: 'round_phase', data: 'shopping' }]);
+  await post([{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
+  await page.getByText('Taking when the ring ends').waitFor();
+  await page.waitForTimeout(1500);
+  await shot('autopilot-hold-window');
+  await page.keyboard.press('h');
+  await page.getByText(/Held by operator/).first().waitFor();
+  await shot('autopilot-held');
+  await page.keyboard.press('F1');
+  await page.getByText(/Technical pause\./).waitFor();
+  await shot('autopilot-paused');
+  await btn('Resume autopilot');
+  await page.getByText(/Technical pause\./).waitFor({ state: 'detached' });
+  await btn('Take now');
+  await page.getByText(/OBS scene · Gameplay on air/).waitFor();
+  await shot('autopilot-on-air');
+  await rail('Scenes');
+  await page.getByText('Segment → Scene').scrollIntoViewIfNeeded();
+  await shot('segments');
+  await rail('Console');
+  await btn('Run manually');
+
   await rail('Capture');
   await shot('capture');
   await rail('Sync');

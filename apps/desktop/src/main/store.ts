@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { Match, Screen, Setup } from '../shared/api.ts';
 import { emptyOwned, type Owned } from './scene-build.ts';
 import type { SceneKey } from '../shared/scenes.ts';
+import type { RundownEdits } from './autopilot/rundown.ts';
 
 export interface Saved {
   version: 1;
@@ -15,6 +16,8 @@ export interface Saved {
   selectedMatchId: string | null;
   owned: Owned;
   enginePort: number;
+  /** The producer's rundown edits, per match. Whether autopilot is on is never saved. */
+  rundown?: Record<string, RundownEdits>;
 }
 
 const full = { x: 0, y: 0, width: 1920, height: 1080 };

@@ -38,10 +38,12 @@ export class EventLog {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private readonly nameOf: NameOf;
   private readonly onChange: () => void;
+  private readonly onEvent: (event: Record<string, unknown>) => void;
   private readonly now: () => number;
 
-  constructor(options: { nameOf: NameOf; onChange: () => void; now?: () => number }) {
+  constructor(options: { nameOf: NameOf; onChange: () => void; onEvent?: (event: Record<string, unknown>) => void; now?: () => number }) {
     this.nameOf = options.nameOf;
+    this.onEvent = options.onEvent ?? (() => {});
     this.onChange = options.onChange;
     this.now = options.now ?? Date.now;
   }
@@ -85,6 +87,7 @@ export class EventLog {
         return;
       }
       if (message.type !== 'event' || !message.event) return;
+      this.onEvent(message.event);
       // Only events worth logging; names are resolved when the log is read, after the roster has arrived.
       if (describe(message.event, () => '') !== null) this.push({ t: this.now(), event: message.event });
     });

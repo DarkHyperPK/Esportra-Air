@@ -244,3 +244,26 @@ h1, h2, h3, p { margin: 0; }
 .log div:first-child { color: var(--text); animation: enter var(--enter); }
 .log time { color: var(--text-3); }
 .inline-form { padding: 14px 16px; border-top: 1px solid var(--hair); display: grid; gap: 12px; }
+
+/* ── autopilot (picture 8 card, picture 7 timeline) ── */
+.panel.autopilot.paused { border-color: rgba(251, 191, 36, 0.6); }
+.paused-tile { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid rgba(251, 191, 36, 0.6); background: var(--amber-soft); color: var(--amber); font-size: 12.5px; }
+.next-card { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; align-items: center; padding: 12px; border: 1px solid var(--hair-strong); background: var(--stage); }
+.ring circle:last-of-type { transition: stroke-dashoffset 120ms linear, stroke 200ms linear; }
+.ring.held circle:last-of-type { stroke-dasharray: 6 4; }
+.triple { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px; }
+.triple .btn { padding: 0 8px; }
+.btn .kbd { border-color: currentColor; background: transparent; color: inherit; opacity: 0.75; }
+.coming { list-style: none; padding: 0; margin: 6px 0 0; display: grid; }
+.coming li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--hair); font-size: 12.5px; }
+.coming.wide { margin: 8px 0 0; padding: 0 16px 12px; }
+.coming.wide li { display: grid; grid-template-columns: 1.2fr 1.4fr 1.4fr; align-items: center; }
+@media (prefers-reduced-motion: reduce) { .ring circle:last-of-type { transition: none; } }
+.seg-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.seg-table th { text-align: left; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); padding: 6px 8px; font-weight: 500; }
+.seg-table td { padding: 6px 8px; border-top: 1px solid var(--hair); vertical-align: middle; }
+.seg-table select.cell, .seg-table input.cell { height: 28px; }
+.seg-table tr.live td { background: var(--rose-soft); }
+.seg-table tr.next td { background: var(--amber-soft); }
+.seg-table select.cell { min-width: 112px; }
+.seg-table td:first-child { min-width: 130px; }

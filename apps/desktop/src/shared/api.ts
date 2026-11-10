@@ -149,6 +149,8 @@ export interface CheckItem {
 
 export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources';
 
+import type { AutopilotView, SegmentEdit } from './autopilot.ts';
+
 export interface Snapshot {
   version: string;
   engine: { state: 'starting' | 'running' | 'restarting' | 'failed'; port: number | null; reattached: boolean; error: string | null };
@@ -171,6 +173,8 @@ export interface Snapshot {
     installed: boolean;
     missingScenes: string[];
     scenes: SceneStatus[];
+    /** Every scene in the OBS collection, for mapping segments to scenes. */
+    sceneNames: string[];
     videoInputs: string[];
   };
   outputs: OutputHealth[];
@@ -186,6 +190,9 @@ export interface Snapshot {
     poll: boolean;
   };
   layers: LayerRow[];
+  autopilot: AutopilotView;
+  /** Why Start autopilot is not available yet (Run manually always is). */
+  autopilotBlock: string | null;
   log: LogEntry[];
   checks: CheckItem[];
 }
@@ -216,6 +223,14 @@ export interface AirApi {
   poll(input: PollInput | null): Promise<Snapshot>;
   stingerPlay(): Promise<Snapshot>;
   lowerThird(input: { kind: 'caster' } | { kind: 'person'; name: string; role: string } | { kind: 'player' } | null): Promise<Snapshot>;
+  autopilotStart(): Promise<Snapshot>;
+  autopilotStop(): Promise<Snapshot>;
+  autopilotHold(): Promise<Snapshot>;
+  autopilotSkip(): Promise<Snapshot>;
+  autopilotTake(): Promise<Snapshot>;
+  autopilotResume(): Promise<Snapshot>;
+  segmentUpdate(id: string, edit: SegmentEdit): Promise<Snapshot>;
+  segmentMove(id: string, direction: -1 | 1): Promise<Snapshot>;
   obsStudioMode(on: boolean): Promise<Snapshot>;
   obsPreview(scene: string): Promise<Snapshot>;
   obsTake(): Promise<Snapshot>;

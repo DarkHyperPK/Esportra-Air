@@ -31,11 +31,11 @@ export const LAYER_DEFS: LayerDef[] = [
   { id: 'ticker', label: 'Ticker', group: 'between', hotkey: 'U' },
   { id: 'poll', label: 'Poll', group: 'between', hotkey: 'I' },
   { id: 'fs:map-result', label: 'Map result', group: 'fullscreen', hotkey: 'A' },
-  { id: 'fs:series', label: 'Series', group: 'fullscreen', hotkey: 'S' },
+  { id: 'fs:series', label: 'Series', group: 'fullscreen', hotkey: 'Shift+S' },
   { id: 'fs:halftime', label: 'Halftime', group: 'fullscreen', hotkey: 'D' },
   { id: 'fs:player-profile', label: 'Player profile', group: 'fullscreen', hotkey: 'F' },
   { id: 'fs:standings', label: 'Standings', group: 'fullscreen', hotkey: 'G' },
-  { id: 'fs:agent-select', label: 'Agent select', group: 'fullscreen', hotkey: 'H' },
+  { id: 'fs:agent-select', label: 'Agent select', group: 'fullscreen', hotkey: 'Shift+H' },
   { id: 'fs:champion', label: 'Champion', group: 'fullscreen', hotkey: 'J' },
 ];
 
@@ -53,3 +53,12 @@ export function nextMode(id: string, current: LayerMode): LayerMode {
   if (AUTO_LAYERS.has(id)) return current === 'auto' ? 'on' : current === 'on' ? 'off' : 'auto';
   return current === 'on' ? 'off' : 'on';
 }
+
+/** Whether a key press is this layer hotkey. Plain letters never match a Shift+ hotkey (H and S belong to autopilot). */
+export function hotkeyMatches(hotkey: string, event: { key: string; shiftKey: boolean }): boolean {
+  if (hotkey.startsWith('Shift+')) return event.shiftKey && event.key.toUpperCase() === hotkey.slice(6);
+  return !event.shiftKey && event.key.toLowerCase() === hotkey.toLowerCase();
+}
+
+/** The label on a hotkey badge. */
+export const hotkeyLabel = (hotkey: string) => (hotkey.startsWith('Shift+') ? `⇧${hotkey.slice(6)}` : hotkey);

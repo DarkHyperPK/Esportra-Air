@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { CHANNELS, type AirApi, type ApiMethod, type MonitorFrame, type Snapshot } from '../shared/api.ts';
 
 const METHODS: ApiMethod[] = [
-  'snapshot', 'monitor', 'setLayer', 'toast', 'poll', 'stingerPlay', 'lowerThird', 'obsStudioMode', 'obsPreview', 'obsTake', 'obsCut', 'obsStinger', 'replay', 'useSlotSource', 'createQuickMatch', 'selectMatch', 'updateMatch', 'updateSetup', 'connectObs', 'disconnectObs', 'installGraphics',
+  'snapshot', 'monitor', 'setLayer', 'toast', 'poll', 'stingerPlay', 'lowerThird', 'autopilotStart', 'autopilotStop', 'autopilotHold', 'autopilotSkip', 'autopilotTake', 'autopilotResume', 'segmentUpdate', 'segmentMove', 'obsStudioMode', 'obsPreview', 'obsTake', 'obsCut', 'obsStinger', 'replay', 'useSlotSource', 'createQuickMatch', 'selectMatch', 'updateMatch', 'updateSetup', 'connectObs', 'disconnectObs', 'installGraphics',
   'startCapture', 'stopCapture', 'testRound', 'pause', 'casterStrap', 'sponsorRead', 'correct', 'copy',
 ];
 

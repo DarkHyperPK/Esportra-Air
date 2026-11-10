@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LayerRow, Snapshot } from '../../shared/api.ts';
-import { nextMode } from '../../shared/layers.ts';
+import { hotkeyLabel, hotkeyMatches, nextMode } from '../../shared/layers.ts';
 import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
 import { Monitor, sceneLabel, useMonitor } from '../components/Monitor.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
+import { AutopilotCard } from '../components/Autopilot.tsx';
 import type { PageProps } from '../App.tsx';
 
 function nextSponsor(s: Snapshot) {
@@ -44,7 +45,7 @@ function LayerList({ rows, fire }: { rows: LayerRow[]; fire: (row: LayerRow) => 
         <button key={row.id} className={`layer ${row.mode === 'off' ? 'off' : ''}`} disabled={!row.available} onClick={() => fire(row)} aria-label={`${row.label}: ${row.mode}${row.manual ? ', set by hand' : ''}`} aria-keyshortcuts={row.hotkey}>
           <span>{row.label}{row.manual && <small>Manual</small>}</span>
           <span className={`chip-mode ${row.mode}`}>{row.mode.toUpperCase()}</span>
-          <span className="hotkey">{row.hotkey}</span>
+          <span className="hotkey">{hotkeyLabel(row.hotkey)}</span>
         </button>
       ))}
     </>
@@ -124,10 +125,19 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
         return openFix();
       }
       if (e.ctrlKey) return;
-      // Space takes, unless a focused button would also handle it.
+      // Space takes, unless a focused button would also handle it. With autopilot on and a segment
+      // waiting, it takes that segment now; otherwise it takes whatever is in Preview.
       if (e.key === ' ' && el?.tagName !== 'BUTTON') {
         e.preventDefault();
-        if (snap.obs.state === 'connected' && snap.obs.studioMode && snap.obs.previewScene) void run(() => air.obsTake());
+        const ap = snap.autopilot;
+        if (ap.enabled && ap.next && ap.next.state !== 'taking') void run(() => air.autopilotTake());
+        else if (snap.obs.state === 'connected' && snap.obs.studioMode && snap.obs.previewScene) void run(() => air.obsTake());
+        return;
+      }
+      // H holds and S skips the next autopilot segment (plain keys; the Agent select and Series layers use Shift).
+      if (!e.shiftKey && snap.autopilot.enabled && snap.autopilot.next && (e.key === 'h' || e.key === 'H' || e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        void run(() => (e.key.toLowerCase() === 'h' ? air.autopilotHold() : air.autopilotSkip()));
         return;
       }
       if (/^F[1-8]$/.test(e.key)) {
@@ -140,7 +150,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
         return;
       }
       // Layer hotkeys: 1–8, Q–I, A–J.
-      const row = snap.layers.find((l) => l.hotkey.toLowerCase() === e.key.toLowerCase());
+      const row = snap.layers.find((l) => hotkeyMatches(l.hotkey, e));
       if (row?.available) {
         e.preventDefault();
         cycle(row);
@@ -246,10 +256,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
       </div>
 
       <aside className="stack">
-        <section className="panel">
-          <div className="head"><Cap>Autopilot</Cap><Tally kind="off">Off</Tally></div>
-          <div className="body-pad"><p className="muted" style={{ fontSize: 12.5 }}>Autopilot arrives with the rundown. Until then you take scenes yourself.</p></div>
-        </section>
+        <AutopilotCard s={s} run={run} />
         <section className="panel">
           <div className="head"><Cap>Show</Cap></div>
           <div className="body-pad stack" style={{ gap: 10 }}>

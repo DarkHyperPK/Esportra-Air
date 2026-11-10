@@ -15,6 +15,8 @@ import type { BuildScene } from './scene-build.ts';
 import { SCENE_KEYS, SCENES, sourceName, type SlotId } from '../shared/scenes.ts';
 import { AUTO_LAYERS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
+import { Autopilot } from './autopilot/autopilot.ts';
+import type { SegmentEdit } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 
 export interface ProductionDeps {
@@ -66,6 +68,7 @@ export class Production extends EventEmitter {
   private roomV = -1;
   readonly log: EventLog;
   readonly replay: Replay;
+  readonly autopilot: Autopilot;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
   private monitorBusy = false;
 
@@ -78,8 +81,13 @@ export class Production extends EventEmitter {
     // A restarted engine has the saved state; re-send outputs and context so nothing drifts.
     deps.engine.on('restarted', () => void this.syncEngine().catch(() => {}));
     deps.obs.on('change', changed);
+    deps.obs.on('change', () => this.autopilot.onObs());
     deps.obs.watchFullscreen(SCENES.fullscreen.name);
-    this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed });
+    this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => this.autopilot.onGameEvent(event) });
+    this.autopilot = new Autopilot({
+      store: deps.store, obs: deps.obs, match: () => this.match, screens: () => this.setup.screens, stinger: () => this.setup.obs.stinger,
+      log: (line) => this.log.add(line), changed,
+    });
     deps.obs.watchSlots(SCENE_KEYS.flatMap((key) => SCENES[key].slots.map((slot) => slot.scene)));
     this.replay = new Replay(deps.obs, { canReturn: () => !this.room?.airPause, stinger: () => this.setup.obs.stinger });
     this.replay.on('error-message', (message: string) => this.emit('notice', message));
@@ -165,6 +173,7 @@ export class Production extends EventEmitter {
       const data = await this.client.get<{ v: number; state: any }>(`/api/${encodeURIComponent(match.code)}`);
       this.room = data.state;
       this.roomV = data.v;
+      this.autopilot.onRoom(this.room);
     } catch {
       // Engine unavailable; the supervisor reports it.
     }
@@ -414,6 +423,35 @@ export class Production extends EventEmitter {
     await this.readRoom();
   }
 
+  // ── autopilot ──
+
+  autopilotStart() {
+    this.autopilot.start();
+  }
+  autopilotStop() {
+    this.autopilot.stop();
+  }
+  autopilotHold() {
+    this.autopilot.hold();
+  }
+  autopilotSkip() {
+    this.autopilot.skip();
+  }
+  autopilotTake() {
+    return this.autopilot.take();
+  }
+  /** Resuming also takes the pause panel off air, or the pause would simply come back. */
+  async autopilotResume() {
+    if (this.room?.airPause) await this.pause(null);
+    this.autopilot.resume();
+  }
+  segmentUpdate(id: string, edit: SegmentEdit) {
+    this.autopilot.edit(id, edit);
+  }
+  segmentMove(id: string, direction: number) {
+    this.autopilot.move(id, direction < 0 ? -1 : 1);
+  }
+
   async casterStrap(on: boolean) {
     const match = this.requireMatch();
     if (on && !match.casters.some((c) => c.name)) throw new Error('Add the casters’ names first.');
@@ -588,12 +626,14 @@ export class Production extends EventEmitter {
         studioMode: obs.status.studioMode, programScene: obs.status.programScene, previewScene: obs.status.previewScene,
         transitions: obs.status.transitions.map((t) => ({ name: t.name, kind: t.kind })), transitionActive: obs.status.transitionActive,
         replay: { bufferActive: obs.status.replayBufferActive, busy: this.replay.busy },
-        installed, missingScenes, scenes: sceneStatus, videoInputs: obs.status.videoInputs,
+        installed, missingScenes, scenes: sceneStatus, sceneNames: obs.status.scenes, videoInputs: obs.status.videoInputs,
       },
       outputs,
       testRound: { running: roomStatus?.testRound.running ?? false, startedAt: roomStatus?.testRound.startedAt ?? null, durationMs: roomStatus?.testRound.durationMs ?? 0 },
       triggers: this.liveTriggers(),
       layers: this.layerRows(),
+      autopilot: this.autopilot.view(),
+      autopilotBlock: this.autopilot.block(),
       log: this.log.list(),
       checks: [],
     };

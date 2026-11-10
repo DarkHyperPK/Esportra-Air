@@ -1,8 +1,80 @@
 import { useState } from 'react';
 import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
+import { TRIGGERS, TRIGGER_LABEL, type Segment } from '../../shared/autopilot.ts';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
+
+function SegmentTable({ s, run }: Pick<PageProps, 's' | 'run'>) {
+  const a = s.autopilot;
+  const names = s.obs.sceneNames.length ? s.obs.sceneNames : [];
+  const graphics = s.setup.screens.filter((x) => x.scene === 'fullscreen' && x.enabled);
+  if (!s.match) return <div className="notice" style={{ margin: 16 }}>Choose a match to see its rundown.</div>;
+  const edit = (seg: Segment, patch: Parameters<typeof air.segmentUpdate>[1]) => void run(() => air.segmentUpdate(seg.id, patch));
+  return (
+    <div style={{ borderTop: '1px solid var(--hair)', marginTop: 16 }}>
+      <div className="head" style={{ padding: '14px 16px 6px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div><Cap>Segment → Scene</Cap><p className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>The rundown for {s.match.title}. Autopilot walks it top to bottom; Manual segments wait for Take.</p></div>
+        {a.enabled ? <Tally kind="ok">Autopilot on</Tally> : <Tally kind="off">Autopilot off</Tally>}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="seg-table">
+          <thead><tr><th>Segment</th><th>Trigger</th><th>OBS scene</th><th>Transition</th><th>Hold</th><th>Mode</th><th aria-label="Order" /></tr></thead>
+          <tbody>
+            {a.segments.map((seg, i) => {
+              const locked = seg.state !== 'queued';
+              const rowClass = seg.state === 'on_air' ? 'live' : seg.state === 'armed' || seg.state === 'holding' || seg.state === 'taking' ? 'next' : '';
+              const label = (name: string) => name.replace(/^Esportra · /, '');
+              return (
+                <tr key={seg.id} className={rowClass} style={seg.state === 'done' ? { opacity: 0.5 } : undefined}>
+                  <td><b>{seg.name}</b>{seg.mapNumber ? <span className="muted"> · map {seg.mapNumber}</span> : null}{seg.state !== 'queued' && <div className="mono muted" style={{ fontSize: 10, letterSpacing: '0.1em' }}>{seg.state.replace('_', ' ').toUpperCase()}</div>}</td>
+                  <td>
+                    <select className="cell" aria-label={`Trigger for ${seg.name}`} disabled={locked} value={seg.trigger} onChange={(e) => edit(seg, { trigger: e.target.value as Segment['trigger'], ...(e.target.value === 'manual' ? { mode: 'manual' as const } : {}) })}>
+                      {TRIGGERS.map((t) => <option key={t} value={t}>{TRIGGER_LABEL[t]}</option>)}
+                    </select>
+                    {seg.trigger === 'delay' && <input className="cell" style={{ marginTop: 4 }} type="number" min={1} max={600} aria-label="Delay seconds" disabled={locked} defaultValue={seg.delaySeconds} onBlur={(e) => Number(e.target.value) !== seg.delaySeconds && edit(seg, { delaySeconds: Number(e.target.value) })} />}
+                  </td>
+                  <td>
+                    <select className="cell" aria-label={`Scene for ${seg.name}`} disabled={locked || !names.length} value={seg.scene} onChange={(e) => edit(seg, { scene: e.target.value })}>
+                      {!names.includes(seg.scene) && <option value={seg.scene}>{label(seg.scene)} (not in OBS)</option>}
+                      {names.map((n) => <option key={n} value={n}>{label(n)}</option>)}
+                    </select>
+                    {seg.scene === 'Esportra · Fullscreen' && (
+                      <select className="cell" style={{ marginTop: 4 }} aria-label={`Graphic for ${seg.name}`} disabled={locked} value={seg.graphic ?? ''} onChange={(e) => edit(seg, { graphic: e.target.value || null })}>
+                        <option value="">Graphic: leave as is</option>
+                        {graphics.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+                      </select>
+                    )}
+                  </td>
+                  <td>
+                    <select className="cell" aria-label={`Transition for ${seg.name}`} disabled={locked} value={seg.transition} onChange={(e) => edit(seg, { transition: e.target.value as Segment['transition'] })}>
+                      <option value="default">OBS default</option><option value="cut">Cut</option><option value="stinger">Stinger</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select className="cell" aria-label={`Hold for ${seg.name}`} disabled={locked} value={seg.holdMode === 'manual' ? 'manual' : String(seg.holdSeconds)} onChange={(e) => edit(seg, e.target.value === 'manual' ? { holdMode: 'manual' } : { holdMode: 'window', holdSeconds: Number(e.target.value) })}>
+                      <option value="manual">Manual</option>
+                      {[...new Set([1, 3, 5, 10, 15, 30, seg.holdSeconds])].filter((n) => n > 0).sort((x, y) => x - y).map((n) => <option key={n} value={n}>{n} s</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <button className="switch" role="switch" aria-checked={seg.mode === 'automatic'} aria-label={`${seg.name} takes itself`} disabled={locked || seg.trigger === 'manual'} title={seg.trigger === 'manual' ? 'Choose a trigger to make this automatic' : seg.mode === 'automatic' ? 'Automatic' : 'Manual'} onClick={() => edit(seg, { mode: seg.mode === 'automatic' ? 'manual' : 'automatic' })} />
+                    <div className="mono muted" style={{ fontSize: 9.5, marginTop: 3 }}>{seg.mode === 'automatic' ? 'AUTO' : 'MANUAL'}</div>
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="btn quiet small" disabled={locked || i === 0} aria-label={`Move ${seg.name} up`} onClick={() => void run(() => air.segmentMove(seg.id, -1))}>↑</button>
+                    <button className="btn quiet small" disabled={locked || i === a.segments.length - 1} aria-label={`Move ${seg.name} down`} onClick={() => void run(() => air.segmentMove(seg.id, 1))}>↓</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted" style={{ fontSize: 12, padding: '8px 16px 14px' }}>A segment that has started is locked; changes apply to the segments still to come.</p>
+    </div>
+  );
+}
 
 export function ScenesScreen({ s, run }: PageProps) {
   const [host, setHost] = useState(s.setup.obs.host);
@@ -95,6 +167,7 @@ export function ScenesScreen({ s, run }: PageProps) {
           })}
         </div>
         {connected && open > 0 && s.obs.installed && <div className="notice" style={{ margin: 16 }}>{open} slot{open > 1 ? 's' : ''} need your sources: add them in OBS inside the Esportra slot scenes. Air detects them.</div>}
+        <SegmentTable s={s} run={run} />
       </section>
 
       <div className="stack">

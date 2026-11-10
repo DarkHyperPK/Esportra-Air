@@ -214,3 +214,110 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await engine.stop(true);
   }
 });
+
+test('autopilot walks the rundown through the real engine and a fake OBS, with hold, skip and safety pauses', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-auto-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'autopilot-test-key-0123456789', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const obsServer = new FakeObs();
+  const obs = new ObsLink(() => obsServer, { backoffMs: [50] });
+  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs, capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  const wait = async (check: () => boolean, label: string, ms = 4000) => {
+    const end = Date.now() + ms;
+    while (!check()) {
+      if (Date.now() > end) assert.fail(`timed out: ${label}`);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  };
+  const view = () => production.snapshot().autopilot;
+  try {
+    await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
+    const code = production.match!.code;
+    assert.equal(view().enabled, false, 'off by default');
+    assert.equal(production.snapshot().autopilotBlock, 'Connect OBS first.');
+    assert.throws(() => production.autopilotStart(), /Connect OBS/);
+    await obs.connect('127.0.0.1', 4455, 'secret');
+    assert.match(production.snapshot().autopilotBlock!, /Esportra scenes|Studio Mode/);
+    await production.installGraphics();
+    assert.match(production.snapshot().autopilotBlock!, /Studio Mode/);
+    await production.studioMode(true);
+    assert.equal(production.snapshot().autopilotBlock, null);
+    assert.deepEqual(view().segments.map((x) => x.id), ['starting-soon', 'intro', 'map1-live', 'map1-result', 'series', 'casters', 'ending']);
+
+    // Off means off: a round going live takes nothing.
+    await engine.client.post(`/api/${code}/ingest/valorant`, [{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(obsServer.program, 'Scene');
+
+    production.autopilotStart();
+    assert.equal(view().next!.id, 'starting-soon');
+    await production.autopilotTake();
+    await wait(() => view().now?.id === 'starting-soon', 'Holding on air');
+    assert.equal(obsServer.program, 'Esportra · Holding');
+    await production.autopilotTake();
+    await wait(() => view().now?.id === 'intro', 'intro on air');
+    assert.equal(obsServer.program, 'Esportra · Fullscreen');
+    assert.equal(production.snapshot().obs.scenes.length, 5);
+    assert.equal(view().next!.id, 'map1-live');
+
+    // The round going live opens a hold window the producer stops with Hold.
+    await engine.client.post(`/api/${code}/ingest/valorant`, [{ feature: 'match_info', key: 'round_phase', data: 'shopping' }]);
+    await engine.client.post(`/api/${code}/ingest/valorant`, [{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
+    await wait(() => view().next?.state === 'holding', 'hold window opens');
+    assert.ok(view().holdEndsAt! > Date.now() && view().holdTotalMs === 5000);
+    production.autopilotHold();
+    assert.equal(view().next!.heldBy, 'operator');
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal(obsServer.program, 'Esportra · Fullscreen', 'held: nothing taken');
+
+    // A technical pause blocks Take; resuming clears the panel too.
+    await production.pause('technical');
+    await wait(() => view().paused === 'tech', 'pause reaches autopilot');
+    await assert.rejects(production.autopilotTake(), /Technical pause/);
+    await production.autopilotResume();
+    assert.equal(view().paused, null);
+    assert.equal((await engine.client.get<any>(`/api/${code}`)).state.airPause, undefined);
+
+    await production.autopilotTake();
+    await wait(() => view().now?.id === 'map1-live', 'gameplay on air');
+    assert.equal(obsServer.program, 'Esportra · Gameplay');
+
+    // OBS dropping pauses autopilot; reconnecting resumes it. Nothing is queued meanwhile.
+    obsServer.drop();
+    await wait(() => view().paused === 'obs', 'paused when OBS drops');
+    await wait(() => view().paused === null, 'resumed when OBS returns');
+
+    // The map ending arms its result; skip moves to the series, and the log tells the story.
+    await engine.client.post(`/api/${code}/ingest/valorant`, [{ events: [{ name: 'match_end', data: '' }] }]);
+    await wait(() => view().next?.id === 'map1-result' && view().next?.state === 'holding', 'result hold opens');
+    production.autopilotSkip();
+    assert.equal(view().next!.id, 'series');
+    assert.equal(view().next!.state, 'armed', 'manual segments arm but never take themselves');
+    const log = production.snapshot().log.map((x) => x.text);
+    for (const line of ['Autopilot started', 'Held by operator · Map 1 live', 'Skipped · Map 1 result']) assert.ok(log.includes(line), `${line} in ${log.join(' | ')}`);
+    assert.ok(log.some((l) => l.startsWith('Autopilot paused')), 'pause logged');
+
+    // Run manually clears everything; autopilot is never on after a restart.
+    production.autopilotStop();
+    assert.equal(view().enabled, false);
+    assert.equal(view().next, null);
+    production.autopilot.loadForMatch();
+    assert.equal(view().enabled, false);
+
+    // Edits are saved for the match and rebuild with it.
+    production.segmentUpdate('map1-live', { holdSeconds: 8, transition: 'cut' });
+    production.segmentMove('intro', 1);
+    production.autopilot.loadForMatch();
+    const live = view().segments.find((x) => x.id === 'map1-live')!;
+    assert.deepEqual([live.holdSeconds, live.transition], [8, 'cut']);
+    assert.equal(view().segments[2]!.id, 'intro');
+    assert.throws(() => production.segmentUpdate('map1-live', { holdSeconds: 500 }), /valid/);
+  } finally {
+    production.autopilot.stopAll();
+    production.log.stop();
+    await obs.disconnect();
+    await engine.stop(true);
+  }
+});
