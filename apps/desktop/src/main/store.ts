@@ -8,6 +8,7 @@ import type { Match, Screen, Setup } from '../shared/api.ts';
 import { emptyOwned, type Owned } from './scene-build.ts';
 import type { SceneKey } from '../shared/scenes.ts';
 import type { RundownEdits } from './autopilot/rundown.ts';
+import type { SavedEsportra } from './esportra.ts';
 
 export interface Saved {
   version: 1;
@@ -18,6 +19,10 @@ export interface Saved {
   enginePort: number;
   /** The producer's rundown edits, per match. Whether autopilot is on is never saved. */
   rundown?: Record<string, RundownEdits>;
+  /** The signed-in Esportra account (tokens are kept separately, encrypted). */
+  esportra?: SavedEsportra;
+  /** This PC's id with Esportra (stable across sign-ins). */
+  deviceId?: string;
   /** Player camera links (VDO.Ninja ids) per player slot, and how the cameras are laid out. */
   cams?: { layout: 'ingame' | 'grid5' | 'grid10'; delayMs: number; ids: Array<Array<string | null>> };
 }

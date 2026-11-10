@@ -12,6 +12,9 @@ import { dispatch } from '../src/main/api.ts';
 import { EngineSupervisor } from '../src/main/engine-supervisor.ts';
 import { IngestClient } from '../src/main/ingest.ts';
 import { CaptureStats } from '../src/main/capture-stats.ts';
+import { EsportraAccount } from '../src/main/esportra.ts';
+import { FakeEsportra } from './fake-esportra.ts';
+import { randomUUID } from 'node:crypto';
 import { ObsLink } from '../src/main/obs.ts';
 import { engineEnv, realProcess } from '../src/main/process.ts';
 import { Production } from '../src/main/production.ts';
@@ -67,8 +70,13 @@ const ingest = new IngestClient();
 const stats = new CaptureStats();
 const capture = new SimulatedCapture(ingest, stats);
 const store = new Store(join(dir, 'air.json'));
-const production = new Production({ store, engine, obs, capture, ingest, stats, version: 'dev' });
 const secrets = new Secrets(join(dir, 'secrets.json'), { isEncryptionAvailable: () => false, encryptString: () => Buffer.alloc(0), decryptString: () => '' });
+// A stand-in Esportra backend so sign-in and the match list can be tried without the network.
+const backend = await new FakeEsportra().start();
+console.log(JSON.stringify({ esportra: backend.url, email: backend.email, password: backend.password }));
+store.data.deviceId ??= randomUUID();
+const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets, deviceId: store.data.deviceId, deviceName: 'DEV-PC', changed: () => production.emit('change') });
+const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, version: 'dev' });
 let clipboard = '';
 const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; } };
 await production.syncEngine();
@@ -116,6 +124,6 @@ createServer(async (req, res) => {
   res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' }).end(readFileSync(file));
 }).listen(PORT, '127.0.0.1', () => console.log(JSON.stringify({ ready: true, url: `http://127.0.0.1:${PORT}/?host=http://127.0.0.1:${PORT}`, enginePort: ENGINE_PORT })));
 
-const stop = async () => { capture.stop(); ingest.close(); await engine.stop(true); process.exit(0); };
+const stop = async () => { await backend.stop(); capture.stop(); ingest.close(); await engine.stop(true); process.exit(0); };
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);

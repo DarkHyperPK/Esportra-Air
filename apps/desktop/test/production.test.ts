@@ -354,3 +354,70 @@ test('autopilot walks the rundown through the real engine and a fake OBS, with h
     await engine.stop(true);
   }
 });
+
+test('an Esportra match becomes the match on this PC, with its tournament, teams and lineups', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const { FakeEsportra } = await import('../dev/fake-esportra.ts');
+  const { EsportraAccount } = await import('../src/main/esportra.ts');
+  const { randomUUID } = await import('node:crypto');
+  const backend = await new FakeEsportra().start();
+  const dir = mkdtempSync(join(tmpdir(), 'air-prod-esp-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'esportra-test-key-0123456789', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const store = new Store(join(dir, 'air.json'));
+  const values = new Map<string, string>();
+  const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets: { get: (k) => values.get(k) ?? null, set: (k, v) => void (v === null ? values.delete(k) : values.set(k, v)) }, deviceId: randomUUID(), deviceName: 'TEST-PC' });
+  const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, esportra, version: 'test' });
+  try {
+    const row = () => production.snapshot().checks.find((c) => c.id === 'esportra')!;
+    assert.equal(row().action!.id, 'sign-in');
+    await assert.rejects(production.useEsportraMatch(backend.matches[0]!.id), /no longer in your Esportra schedule/);
+    await assert.rejects(production.esportraSignIn(backend.email, 'nope'), /Check your email/);
+    await production.esportraSignIn(backend.email, backend.password);
+    assert.equal(row().health, 'ok');
+    assert.match(row().detail, /producer@example.com · 2 matches/);
+
+    const wanted = backend.matches[0]!;
+    await production.useEsportraMatch(wanted.id);
+    const match = production.match!;
+    assert.equal(match.kind, 'esportra');
+    assert.match(match.code, /^E[0-9A-F]{7}$/);
+    assert.deepEqual(match.teams.map((t) => [t.name, t.tag]), [['Paper Rex', 'PRX'], ['Fnatic', 'FNC']]);
+    assert.equal(match.teams[0]!.logo, 'https://example.com/a.png');
+    assert.equal(match.bestOf, 3);
+    assert.equal(match.source!.lineups![0]!.length, 5);
+    const room = (await engine.client.get<any>(`/api/${match.code}`)).state;
+    assert.equal(room.event.name, 'Community Cup', 'the tournament name is the event name on air');
+    assert.equal(room.teams[1].name, 'Fnatic');
+    assert.equal(room.airContext.source, 'esportra');
+
+    // Choosing it again updates the same match instead of adding a second one, and keeps the casters.
+    await production.updateMatch(match.id, { casters: [{ name: 'Caster One', handle: '' }] });
+    wanted.teamB = 'Fnatic Esports';
+    await production.esportraRefresh();
+    await production.useEsportraMatch(wanted.id);
+    assert.equal(store.data.matches.filter((m) => m.source?.matchId === wanted.id).length, 1);
+    assert.equal(production.match!.teams[1].name, 'Fnatic Esports');
+    assert.equal(production.match!.casters[0]!.name, 'Caster One');
+
+    // A game Air cannot produce, and a refused account, both say why.
+    backend.matches.push({ ...wanted, id: randomUUID(), game: 'cs2' });
+    await production.esportraRefresh();
+    await assert.rejects(production.useEsportraMatch(backend.matches.at(-1)!.id), /only produces Valorant/);
+    backend.allowed = false;
+    await production.esportraRefresh().catch(() => {});
+    assert.equal(row().health, 'warn');
+    await assert.rejects(production.useEsportraMatch(backend.matches[1]!.id), /no active Air access|Esportra/);
+    // Quick matches never need the account.
+    await production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 1 });
+    assert.equal(production.match!.kind, 'quick');
+    await production.esportraSignOut();
+    assert.equal(row().action!.id, 'sign-in');
+  } finally {
+    production.autopilot.stopAll();
+    production.log.stop();
+    await engine.stop(true);
+    await backend.stop();
+  }
+});

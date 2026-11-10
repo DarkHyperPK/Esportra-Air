@@ -1,6 +1,7 @@
 // Esportra Air main process (ow-electron). Kept thin: the graphics engine is a separate process.
 import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
 import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import OBSWebSocket from 'obs-websocket-js';
@@ -15,6 +16,7 @@ import { engineEnv, realProcess } from './process.ts';
 import { Production } from './production.ts';
 import { Secrets } from './secrets.ts';
 import { Store } from './store.ts';
+import { EsportraAccount } from './esportra.ts';
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -45,7 +47,18 @@ async function main() {
   const packages = ((app as unknown as { overwolf?: { packages?: OverwolfPackages } }).overwolf?.packages) ?? null;
   const capture = new GepBridge({ packages, send: (m) => { stats.record(m); ingest.send(m); }, log: (m) => console.warn('[gep]', m) });
   const obs = new ObsLink(() => new OBSWebSocket() as unknown as ObsSocket);
-  const production = new Production({ store, engine, obs, capture, ingest, stats, version: app.getVersion() });
+  // This PC's identity with Esportra is created once and kept.
+  if (!store.data.deviceId) {
+    store.data.deviceId = randomUUID();
+    store.save();
+  }
+  const esportra = new EsportraAccount({
+    apiBase: process.env.ESPORTRA_API_URL || 'https://api-staging.esportra.com',
+    store, secrets, deviceId: store.data.deviceId, deviceName: hostname().slice(0, 80) || 'Air PC',
+    changed: () => production.emit('change'),
+  });
+  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, version: app.getVersion() });
+  void esportra.start();
   const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text) };
 
   ipcMain.handle(CHANNELS.call, async (event, method: ApiMethod, args: unknown[]) => {

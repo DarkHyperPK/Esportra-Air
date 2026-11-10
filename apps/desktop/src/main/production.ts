@@ -17,6 +17,8 @@ import { AUTO_LAYERS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode 
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
+import type { EsportraAccount } from './esportra.ts';
+import { signedOut } from '../shared/esportra.ts';
 import { randomBytes } from 'node:crypto';
 import type { CamsView } from '../shared/api.ts';
 import type { SegmentEdit } from '../shared/autopilot.ts';
@@ -30,6 +32,8 @@ export interface ProductionDeps {
   ingest: Pick<IngestClient, 'target'>;
   /** What the capture delivers; the app records every game message here. */
   stats?: CaptureStats;
+  /** The producer's Esportra account; absent in tests that do not need it. */
+  esportra?: EsportraAccount;
   version: string;
   now?: () => number;
 }
@@ -134,7 +138,7 @@ export class Production extends EventEmitter {
     await this.client.post(`/api/${code}/config`, {
       airContext: { showId: setup.id, matchId: match.id, source: match.kind },
       teams: match.teams,
-      event: { name: setup.brand.eventName || setup.name, stage: setup.brand.stage, bestOf: match.bestOf },
+      event: { name: match.source?.tournament || setup.brand.eventName || setup.name, stage: setup.brand.stage, bestOf: match.bestOf },
       casters: match.casters.length ? match.casters : [{ name: '', handle: '' }, { name: '', handle: '' }],
       sponsors: setup.sponsors,
       layout: { bannerTheme: setup.package, minimap: setup.minimap },
@@ -438,6 +442,66 @@ export class Production extends EventEmitter {
     await this.readRoom();
   }
 
+  // ── Esportra ──
+
+  private get esportra() {
+    const account = this.deps.esportra;
+    if (!account) throw new Error('Esportra sign-in is not available in this build.');
+    return account;
+  }
+
+  async esportraSignIn(email: string, password: string) {
+    await this.esportra.login(email, password);
+    this.log.add('Signed in to Esportra');
+  }
+
+  async esportraSignOut() {
+    this.esportra.logout();
+    this.log.add('Signed out of Esportra');
+  }
+
+  async esportraRefresh() {
+    await this.esportra.checkAccess().catch(() => {});
+    await this.esportra.refreshMatches();
+  }
+
+  /** Makes an Esportra match the match on this PC: teams, tags, logos, best-of and tournament name. */
+  async useEsportraMatch(matchId: string) {
+    const account = this.esportra;
+    const found = account.view().matches.find((m) => m.id === matchId);
+    if (!found) throw new Error('That match is no longer in your Esportra schedule. Refresh the list.');
+    if (!found.supported) throw new Error('Air only produces Valorant matches for now.');
+    if (account.view().state === 'denied') throw new Error(account.view().warning ?? 'Esportra has not confirmed Air access for this PC.');
+    let lineups: [string[], string[]] | null = null;
+    try {
+      const roster = await account.roster(matchId);
+      lineups = [roster.team1.players.map((p) => p.displayName), roster.team2.players.map((p) => p.displayName)];
+    } catch {
+      // The lineup is a convenience; the match works without it.
+    }
+    const data = this.deps.store.data;
+    const code = `E${matchId.replace(/-/g, '').slice(0, 7).toUpperCase()}`;
+    const teams = [
+      { name: found.teamA, tag: found.tagA || tagFor(found.teamA), color: COLORS[0]!, logo: found.logoA ?? '' },
+      { name: found.teamB, tag: found.tagB || tagFor(found.teamB), color: COLORS[1]!, logo: found.logoB ?? '' },
+    ] as [Team, Team];
+    const source = { matchId, tournamentId: found.tournamentId, tournament: found.tournament, scheduledAt: found.scheduledAt, lineups };
+    const existing = data.matches.find((m) => m.source?.matchId === matchId);
+    if (existing) {
+      // The tournament may have changed names, logos or best-of; the producer's casters are kept.
+      Object.assign(existing, { title: `${found.teamA} vs ${found.teamB}`, teams, bestOf: found.bestOf as 1 | 3 | 5, source });
+      data.selectedMatchId = existing.id;
+    } else {
+      const id = randomUUID();
+      const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, casters: [], createdAt: (this.deps.now ?? Date.now)(), source };
+      data.matches = [match, ...data.matches].slice(0, 50);
+      data.selectedMatchId = id;
+    }
+    this.save();
+    await this.syncEngine();
+    this.log.add(`Match from Esportra · ${found.teamA} vs ${found.teamB}`);
+  }
+
   // ── player cameras ──
 
   private get cams() {
@@ -720,6 +784,7 @@ export class Production extends EventEmitter {
       triggers: this.liveTriggers(),
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),
+      esportra: this.deps.esportra?.view() ?? signedOut(),
       autopilotBlock: this.autopilot.block(),
       log: this.log.list(),
       checks: [],
@@ -732,7 +797,16 @@ export class Production extends EventEmitter {
 /** The readiness checklist (PRD picture 7). Warns, never blocks; every problem names its one fix. */
 export function checks(s: Snapshot): CheckItem[] {
   const out: CheckItem[] = [];
-  out.push({ id: 'esportra', title: 'Esportra', detail: 'Not signed in. Quick matches work without an account.', health: 'off' });
+  const e = s.esportra;
+  out.push(
+    e.state === 'signed-out'
+      ? { id: 'esportra', title: 'Esportra', detail: e.error ?? 'Not signed in. Quick matches work without an account.', health: 'off', action: { id: 'sign-in', label: 'Sign in' } }
+      : e.state === 'online'
+        ? { id: 'esportra', title: 'Esportra', detail: `Signed in as ${e.email} · ${e.matches.length} match${e.matches.length === 1 ? '' : 'es'} on your schedule${e.warning ? ` · ${e.warning}` : ''}`, health: e.warning ? 'warn' : 'ok' }
+        : e.state === 'offline'
+          ? { id: 'esportra', title: 'Esportra', detail: e.warning ?? 'Working offline.', health: 'warn' }
+          : { id: 'esportra', title: 'Esportra', detail: e.warning ?? 'No Air access.', health: 'warn', action: { id: 'sign-in', label: 'Sign in again' } },
+  );
   out.push(
     s.match
       ? { id: 'match', title: 'Show and match', detail: `${s.setup.name} · ${s.match.title} · Bo${s.match.bestOf}`, health: 'ok' }

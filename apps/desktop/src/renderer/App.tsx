@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Page, Snapshot } from '../shared/api.ts';
 import { air } from './bridge.ts';
 import { ChipBar, Rail, TitleBar } from './components/Chrome.tsx';
-import { CastersDrawer, ConsentDialog, Drawer, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
+import { CastersDrawer, ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
 import { FixData } from './components/FixData.tsx';
 import { CaptureScreen } from './screens/CaptureScreen.tsx';
 import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
@@ -21,6 +21,7 @@ export interface PageProps {
   askCapture: () => void;
   openFix: () => void;
   openCasters: () => void;
+  openSignIn: () => void;
 }
 
 export function App() {
@@ -32,6 +33,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusId | null>(null);
   const [consent, setConsent] = useState(false);
+  const [signIn, setSignIn] = useState(false);
   const [fix, setFix] = useState(false);
   const [casters, setCasters] = useState(false);
 
@@ -60,7 +62,7 @@ export function App() {
 
   if (!s) return <div className="win"><div className="page"><p className="muted">Starting Esportra Air…</p></div></div>;
 
-  const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true) };
+  const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true), openSignIn: () => setSignIn(true) };
   const railPage: Page = page === 'ready' ? 'console' : page;
 
   return (
@@ -81,13 +83,14 @@ export function App() {
             {page === 'scenes' && <ScenesScreen {...props} />}
             {page === 'capture' && <CaptureScreen {...props} />}
             {page === 'outputs' && <OutputsScreen {...props} />}
-            {page === 'sync' && <SyncScreen />}
+            {page === 'sync' && <SyncScreen {...props} />}
             {page === 'setup' && <SetupScreen {...props} tab={tab} setTab={setTab} />}
           </main>
         </div>
       </div>
 
-      {status && <StatusDrawer id={status} s={s} close={() => setStatus(null)} go={go} run={run} askCapture={() => setConsent(true)} />}
+      {status && <StatusDrawer id={status} s={s} close={() => setStatus(null)} go={go} run={run} askCapture={() => setConsent(true)} openSignIn={() => setSignIn(true)} />}
+      {signIn && <SignInDialog s={s} run={run} close={() => setSignIn(false)} />}
       {fix && <Drawer title="Fix data" close={() => setFix(false)} wide><FixData s={s} run={run} close={() => setFix(false)} /></Drawer>}
       {casters && <CastersDrawer s={s} run={run} close={() => setCasters(false)} />}
       {consent && <ConsentDialog close={() => setConsent(false)} accept={async () => { setConsent(false); await run(() => air.startCapture({ consent: true })); }} />}

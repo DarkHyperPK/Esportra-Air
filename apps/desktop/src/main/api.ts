@@ -56,6 +56,10 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
       break;
     case 'stopCapture': p.stopCapture(); break;
     case 'testRound': await p.testRound(a[0] === 'stop' ? 'stop' : a[0] === 'seek' ? 'seek' : 'start', a[1] ?? {}); break;
+    case 'esportraSignIn': await p.esportraSignIn(String(a[0] ?? ''), String(a[1] ?? '')); break;
+    case 'esportraSignOut': await p.esportraSignOut(); break;
+    case 'esportraRefresh': await p.esportraRefresh(); break;
+    case 'useEsportraMatch': await p.useEsportraMatch(String(a[0])); break;
     case 'camsSet': await p.camsSet(a[0] ?? {}); break;
     case 'camCreate': await p.camCreate(Number(a[0]), Number(a[1])); break;
     case 'camRemove': await p.camRemove(Number(a[0]), Number(a[1])); break;

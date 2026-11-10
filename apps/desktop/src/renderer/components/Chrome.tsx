@@ -59,7 +59,7 @@ export function ChipBar({ s, open }: { s: Snapshot; open: (id: 'feed' | 'obs' | 
     <div className="chipbar">
       <button className="chip" onClick={() => open('feed')}><span className={`dot ${gepDot}`} /><span className="k">GEP</span><span className="v">{gep}</span></button>
       <button className="chip" onClick={() => open('obs')}><span className={`dot ${obsDot}`} /><span className="k">OBS</span><span className="v">{s.obs.state === 'connected' ? `v${s.obs.version ?? ''}` : 'Not connected'}</span></button>
-      <button className="chip" onClick={() => open('esportra')}><span className="dot off" /><span className="k">Cloud</span><span className="v">Not signed in</span></button>
+      <button className="chip" onClick={() => open('esportra')}><span className={`dot ${s.esportra.state === 'online' ? 'ok' : s.esportra.state === 'signed-out' ? 'off' : 'warn'}`} /><span className="k">Esportra</span><span className="v">{s.esportra.state === 'signed-out' ? 'Not signed in' : s.esportra.state === 'online' ? 'Signed in' : s.esportra.state === 'offline' ? 'Offline' : 'No access'}</span></button>
       <button className="chip" onClick={() => open('graphics')}><span className={`dot ${s.engine.state === 'running' ? 'ok' : 'bad'}`} /><span className="k">Engine</span><span className="v">127.0.0.1:{s.engine.port ?? '—'}</span></button>
       <span className="clock" aria-label="Local time">{now.toLocaleTimeString('en-GB')} {zone()}</span>
     </div>

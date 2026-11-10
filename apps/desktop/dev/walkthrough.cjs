@@ -16,7 +16,7 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   // Agent/weapon art loads from media.valorant-api.com; sandboxes without internet cannot fetch it.
-  page.on('console', (m) => m.type() === 'error' && !/ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED/.test(m.text()) && errors.push(m.text()));
+  page.on('console', (m) => m.type() === 'error' && !/ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|status of 400/.test(m.text()) && errors.push(m.text()));
   let n = 0;
   const shot = async (name) => { await page.waitForTimeout(450); await page.screenshot({ path: path.join(OUT, `${String(++n).padStart(2, '0')}-${name}.png`) }); };
   const rail = (name) => page.locator('nav.rail').getByRole('button', { name }).click();
@@ -192,6 +192,30 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await shot('setup');
   await page.getByRole('tab', { name: 'Layout' }).click();
   await shot('setup-layout');
+
+  // Esportra (Stage 2): sign in against the stand-in backend, pick a scheduled match.
+  await rail('Sync');
+  await page.getByText('Not signed in').first().waitFor();
+  await shot('sync-signed-out');
+  await btn('Sign in');
+  await page.getByRole('dialog', { name: 'Sign in to Esportra' }).waitFor();
+  await page.getByLabel('Email').fill('producer@example.com');
+  await page.getByLabel('Password').fill('wrong password');
+  await page.getByRole('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByText(/Check your email and password/).waitFor();
+  await page.getByLabel('Password').fill('correct horse battery');
+  await shot('sign-in');
+  await page.getByRole('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
+  await page.getByText('Your scheduled matches').waitFor();
+  await page.getByText('Community Cup').first().waitFor();
+  await shot('sync-signed-in');
+  await rail('Console');
+  await page.getByRole('button', { name: /Readiness/ }).first().click();
+  await page.getByRole('group', { name: 'Esportra matches' }).getByRole('button', { name: /Paper Rex/ }).click();
+  await page.getByRole('button', { name: /Paper Rex/ }).and(page.locator('[aria-pressed=true]')).first().waitFor();
+  await page.getByText(/signed in as|Signed in as/i).first().waitFor();
+  await shot('readiness-esportra');
   await page.locator('.chipbar').getByRole('button', { name: /OBS/ }).click();
   await page.getByRole('dialog').waitFor();
   await shot('status-drawer');

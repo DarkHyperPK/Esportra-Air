@@ -54,15 +54,17 @@ export function ConsentDialog({ close, accept }: { close: () => void; accept: ()
 const EXPLAIN: Record<StatusId, (s: Snapshot) => string> = {
   feed: (s) => s.feed.state === 'live' ? `Live data is arriving from Valorant${s.feed.ageMs !== null ? ` (last update ${(s.feed.ageMs / 1000).toFixed(1)} s ago)` : ''}. If it stops during a round, the HUD shows “Feed paused” and keeps the last data.` : s.feed.state === 'waiting' ? `${s.feed.reason ?? 'Waiting for Valorant.'} Open Valorant on this PC and join the custom game as an observer.` : s.feed.state === 'unavailable' ? s.feed.reason ?? 'Game capture is not available on this PC.' : 'Game capture is off. Nothing is read from the game until you start it.',
   obs: (s) => s.obs.state === 'connected' ? `Connected to OBS ${s.obs.version ?? ''}. Air reads which scene is on air.` : s.obs.error ?? 'Connect to OBS WebSocket (OBS › Tools › WebSocket Server Settings).',
-  esportra: () => 'Not signed in. Quick matches work without an account. Signing in to use your Esportra tournaments comes next.',
+  esportra: (s) => s.esportra.state === 'signed-out' ? 'Not signed in. Quick matches work without an account. Sign in to pick your scheduled Esportra tournament matches; Air then loads the teams, logos and best-of for you.' : `${s.esportra.email} on ${s.esportra.host}. ${s.esportra.state === 'online' ? 'Access confirmed.' : ''} ${s.esportra.warning ?? ''}`.trim(),
   graphics: (s) => s.engine.state !== 'running' ? s.engine.error ?? 'The graphics engine is not running.' : 'Air’s graphics engine serves every output. It runs separately from this window, so graphics stay on air if Air closes or restarts.',
 };
 const TITLE: Record<StatusId, string> = { feed: 'Game data', obs: 'OBS', esportra: 'Esportra', graphics: 'Graphics engine' };
 
-export function StatusDrawer({ id, s, close, go, run, askCapture }: { id: StatusId; s: Snapshot; close: () => void; go: (p: Page) => void; run: Run; askCapture: () => void }) {
+export function StatusDrawer({ id, s, close, go, run, askCapture, openSignIn }: { id: StatusId; s: Snapshot; close: () => void; go: (p: Page) => void; run: Run; askCapture: () => void; openSignIn: () => void }) {
   let fix: { label: string; act: () => void } | null = null;
   if (id === 'feed' && s.feed.state === 'off') fix = { label: 'Start capture', act: () => { close(); askCapture(); } };
   if (id === 'feed' && (s.feed.state === 'waiting' || s.feed.state === 'live')) fix = { label: 'Stop capture', act: () => void run(() => air.stopCapture()).then(close) };
+  if (id === 'esportra' && s.esportra.state === 'signed-out') fix = { label: 'Sign in', act: () => { close(); openSignIn(); } };
+  if (id === 'esportra' && s.esportra.state !== 'signed-out') fix = { label: 'Open Sync', act: () => { close(); go('sync'); } };
   if (id === 'obs' && s.obs.state !== 'connected') fix = { label: 'Open OBS setup', act: () => { close(); go('scenes'); } };
   return (
     <Drawer title={TITLE[id]} close={close}>
@@ -93,5 +95,37 @@ export function CastersDrawer({ s, run, close }: { s: Snapshot; run: Run; close:
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" className="btn quiet" onClick={close}>Cancel</button><button type="submit" className="btn primary">Save casters</button></div>
       </form>
     </Drawer>
+  );
+}
+
+export function SignInDialog({ s, run, close }: { s: Snapshot; run: Run; close: () => void }) {
+  const [email, setEmail] = useState(s.esportra.email ?? '');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ref = useEscape(close);
+  return (
+    <div className="scrim center" onClick={(e) => e.target === e.currentTarget && close()}>
+      <form
+        className="dialog" role="dialog" aria-modal="true" aria-label="Sign in to Esportra" ref={ref as never}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          const ok = await run(() => air.esportraSignIn(email, password));
+          setBusy(false);
+          setPassword('');
+          if (ok) close();
+        }}
+      >
+        <Cap>Esportra account</Cap>
+        <h2 className="title-md">Sign in to Esportra</h2>
+        <p className="muted" style={{ fontSize: 13 }}>Use your Esportra email and password. Air registers this PC, then lists your scheduled matches. Your password is sent to {s.esportra.host || 'Esportra'} only and is never saved; Air keeps an encrypted sign-in token on this PC.</p>
+        <label className="field"><span>Email</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required maxLength={254} /></label>
+        <label className="field"><span>Password</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required maxLength={4096} /></label>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn quiet" onClick={close}>Cancel</button>
+          <button type="submit" className="btn primary" disabled={busy || !email || !password}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        </div>
+      </form>
+    </div>
   );
 }

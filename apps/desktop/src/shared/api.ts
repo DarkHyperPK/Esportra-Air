@@ -29,6 +29,8 @@ export interface Match {
   teams: [Team, Team];
   casters: Caster[];
   createdAt: number;
+  /** Set for matches taken from an Esportra tournament. */
+  source?: { matchId: string; tournamentId: string; tournament: string; scheduledAt: string | null; lineups: [string[], string[]] | null };
 }
 
 export interface Screen {
@@ -147,9 +149,10 @@ export interface CheckItem {
   action?: { id: ActionId; label: string };
 }
 
-export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources';
+export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in';
 
 import type { AutopilotView, SegmentEdit } from './autopilot.ts';
+import type { EsportraView } from './esportra.ts';
 
 export interface FeatureStat {
   id: string;
@@ -230,6 +233,7 @@ export interface Snapshot {
   };
   layers: LayerRow[];
   autopilot: AutopilotView;
+  esportra: EsportraView;
   /** Why Start autopilot is not available yet (Run manually always is). */
   autopilotBlock: string | null;
   log: LogEntry[];
@@ -287,6 +291,10 @@ export interface AirApi {
   startCapture(input: { consent: true }): Promise<Snapshot>;
   stopCapture(): Promise<Snapshot>;
   testRound(action: 'start' | 'stop' | 'seek', options?: { speed?: number; from?: number }): Promise<Snapshot>;
+  esportraSignIn(email: string, password: string): Promise<Snapshot>;
+  esportraSignOut(): Promise<Snapshot>;
+  esportraRefresh(): Promise<Snapshot>;
+  useEsportraMatch(matchId: string): Promise<Snapshot>;
   camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }): Promise<Snapshot>;
   camCreate(team: number, slot: number): Promise<Snapshot>;
   camRemove(team: number, slot: number): Promise<Snapshot>;

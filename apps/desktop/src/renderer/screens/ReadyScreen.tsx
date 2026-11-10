@@ -30,7 +30,53 @@ export function QuickMatchForm({ run, onDone }: Pick<PageProps, 'run'> & { onDon
   );
 }
 
-export function ReadyScreen({ s, run, go, askCapture, openCasters, start }: PageProps & { start: () => void }) {
+const when = (iso: string | null) => {
+  if (!iso) return 'Time not set';
+  const d = new Date(iso);
+  const day = d.toDateString() === new Date().toDateString() ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return `${day} · ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+/** The producer's scheduled Esportra matches, chosen with one click. */
+function EsportraMatches({ s, run, openSignIn }: Pick<PageProps, 's' | 'run' | 'openSignIn'>) {
+  const e = s.esportra;
+  if (e.state === 'signed-out') {
+    return (
+      <section className="stack" style={{ gap: 8 }}>
+        <Cap>Esportra tournaments</Cap>
+        <button className="btn" onClick={openSignIn}>Sign in to Esportra</button>
+        <p className="muted" style={{ fontSize: 12.5 }}>Your scheduled matches load with their teams, logos and best-of.</p>
+      </section>
+    );
+  }
+  const list = e.matches.filter((m) => m.status !== 'completed' && m.status !== 'cancelled').slice(0, 8);
+  return (
+    <section className="stack" style={{ gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Cap>Esportra tournaments</Cap>
+        <button className="btn quiet small" onClick={() => void run(() => air.esportraRefresh())}>Refresh</button>
+      </div>
+      {list.length === 0 ? <p className="muted" style={{ fontSize: 12.5 }}>No scheduled matches right now{e.state === 'online' ? '' : ' (the list below is the last one saved)'}.</p> : (
+        <div className="picker" role="group" aria-label="Esportra matches">
+          {list.map((m) => {
+            const active = s.match?.source?.matchId === m.id;
+            return (
+              <button key={m.id} aria-pressed={active} disabled={!m.supported || e.state === 'denied'} onClick={() => void run(() => air.useEsportraMatch(m.id))} title={m.supported ? undefined : 'Air only produces Valorant matches for now'}>
+                <span className="vs" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                  <span>{m.teamA} <span className="muted">vs</span> {m.teamB}</span>
+                  <span className="muted" style={{ fontSize: 11.5 }}>{m.tournament} · {when(m.scheduledAt)}</span>
+                </span>
+                <span className="muted mono" style={{ fontSize: 11 }}>Bo{m.bestOf}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, start }: PageProps & { start: () => void }) {
   const [creating, setCreating] = useState(!s.match && s.matches.length === 0);
   const informational = (id: string, health: string) => (id === 'esportra' || id === 'internet') && health === 'off';
   const counted = s.checks.filter((c) => !informational(c.id, c.health));
@@ -42,6 +88,7 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, start }: Page
     if (id === 'choose-match') return setCreating(true);
     if (id === 'add-casters') return openCasters();
     if (id === 'open-sources') return go('outputs');
+    if (id === 'sign-in') return openSignIn();
     if (id === 'install-graphics') void run(() => air.installGraphics());
   };
   return (
@@ -59,6 +106,8 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, start }: Page
             <span>{s.setup.name}</span><span className="muted">Setup ›</span>
           </button>
         </section>
+
+        <EsportraMatches s={s} run={run} openSignIn={openSignIn} />
 
         <section className="stack" style={{ gap: 8 }}>
           <Cap>Match on this PC</Cap>
