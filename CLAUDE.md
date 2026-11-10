@@ -4,105 +4,67 @@
 
 Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.
 
-## What This Project Is
+## Read first
 
-Esportra-Air is Esportra's broadcast production system for Valorant tournaments. The current checkout has three parts:
+`docs/PRODUCT.md` is the agreed product direction (10 November 2026): purpose, decisions, experience, architecture and build stages. Follow it. If a request conflicts with it, raise the conflict instead of quietly drifting back to the retired direction.
 
-1. **HUD** (`esportra-valorant-hud/`) — 46 web overlays, a Node.js server, a Valorant GEP adapter and an operator control panel. Plain HTML/JS/CSS; no HUD build step. Production readiness requires current environment evidence.
-2. **Desktop runtime** (`src/`) — standard Electron + React, currently JavaScript/JSX. Includes node pairing/keychain, BroadcastHub, local OBS, rundown/rules, durable queue, Fix Data and a separate ow-electron capture child/LAN relay. Run `npm run build:renderer` and `npm test` for local verification. Web operations live in the main Esportra frontend.
-3. **UI reference** — `index.html` and its linked `screens/` images remain the original product brief. The only active implemented reference is `design/implemented/`: actual current component captures across A–Z workflows. Read `docs/coverage/INDEX-COVERAGE.md` before claiming original PRD completion: 53 requirements: the initial audit was 2 implemented, 38 partial and 13 missing. The local production follow-up closes five partial scopes, bringing that checkpoint to 7 implemented, 33 partial and 13 missing. Reinspection of existing player-PC GEP hooks corrects E1.6 from missing to partial: the subsequent continuation audit is 23 functionally implemented, 18 partial and 12 missing; live acceptance remains separate. Three older UI variants and duplicate ZIPs were retired into `docs/archive/retired-uiux-2026-10-14.zip` after every archived file was hash-verified. Historical packs must not direct current UI implementation.
+Esportra Air connects Esportra tournament data and live game data to broadcast graphics. It is **not** a switcher: it never composites, encodes, streams, records or switches scenes. It installs its own scenes/sources in OBS and reads on-air status only.
 
-**Source freshness (13 October 2026):** older build-scope tables below describe the original plan, not the current implementation. Check current modules and shared Obsidian handoffs before treating a feature as absent or accepted. Local tests do not certify OBS/GEP/live backend operation, CEO acceptance or deployment. The focused reliability audit and remaining gaps are recorded in `docs/audits/2026-10-13-core-reliability.md`.
-
-## Read All Memory First
-
-Before doing any work on this project, read every file in `.claude/memory/`:
-
-| File | Contents |
-|---|---|
-| `.claude/memory/architecture.md` | Core architecture, data flow, WebSocket protocol, HTTP API, tech stack, design tokens |
-| `.claude/memory/inventory.md` | Complete file inventory — all 45 overlays, server, adapter, control panel, design spec |
-| `.claude/memory/gaps-and-fixes.md` | Known HUD gaps, Spectra reference solutions (spike $300 inference, timer drift), unresolved items |
-| `.claude/memory/design-spec.md` | Product vision not yet coded, feature build order, prerequisites |
-
-## Project Layout
+## Repository today
 
 ```
 Esportra-Air/
-├── CLAUDE.md                        ← you are here
-├── .gitignore
-├── index.html                       ← standalone design-pack PRD viewer
-├── screens/                         ← 19 annotated mockup PNGs
-├── esportra-valorant-hud/           ← the working HUD system
-│   ├── control.html                 ← operator control panel
-│   ├── package.json                 ← only dep: ws v8.18
-│   ├── server/server.js             ← HTTP + WebSocket server (117 lines)
-│   ├── core/                        ← hud.js, hud.css, state.default.js, catalog.js, fonts, brand
-│   ├── overlays/                    ← 45 HTML overlay files
-│   ├── adapters/valorant-gep.js     ← Valorant GEP event adapter
-│   ├── tools/simulate-valorant.js   ← round simulator
-│   ├── capture/overwolf-valorant/   ← Overwolf capture stub
-│   ├── stingers/                    ← .webm (OBS) + .mov (vMix)
-│   └── previews/                    ← 52 JPEG overlay previews
-└── Reference data/                  ← Spectra reference (gitignored)
-    ├── Spectra-Server-main/
-    ├── Spectra-Client-main/
-    └── Spectra-Frontend-main/
+├── docs/PRODUCT.md              ← agreed direction and stages
+├── esportra-valorant-hud/       ← HUD: overlays, core, server, Valorant GEP adapter (kept)
+│   ├── overlays/                ← 46 HTML overlays (must keep working unchanged)
+│   ├── core/                    ← hud.js client, state defaults, catalog, brand, assets
+│   ├── server/server.js         ← current HUD server (protocol the Rust engine must keep)
+│   ├── adapters/valorant-gep.js ← GEP → state parser (pure; parity reference for Rust)
+│   └── capture/overwolf-valorant/ ← legacy ow-electron capture child (retired in Stage 4)
+├── src/                         ← legacy Electron + React app (retired in Stage 4)
+├── tests/                       ← legacy Node tests (`npm test`)
+└── tools/                       ← legacy smoke/verification scripts
 ```
 
-## Running the HUD
+Planned (Stage 1): `apps/desktop/` (ow-electron shell, React + TypeScript renderer) and `engine/` (Rust workspace: `air-engine`, `air-state`, `air-valorant`).
+
+## Running the current HUD
 
 ```bash
 cd esportra-valorant-hud
-npm install          # installs ws
+npm install
 node server/server.js
-# Open control.html at http://localhost:5300/control.html?match=CODE
-# Add overlays in OBS as browser sources: http://localhost:5300/overlays/scorebug.html?match=CODE
 ```
 
-Optional auth: set `ESPORTRA_KEY` env var. Roles: `overlay` (read-only), `control`/`ingest`/`player` (write).
+Overlays: `http://localhost:5300/overlays/<name>.html?match=CODE`. WebSocket `ws://host:5300/ws?match=CODE&role=overlay|control|ingest&key=…`. Writes require the key passed at startup.
 
-## Key Conventions
+## Key conventions
 
-- **One shared state object** — everything reads from and writes to the same JSON state. Never bypass this.
-- **No build step** — plain HTML/JS/CSS. Edit and refresh.
-- **State transitions drive animations** — `update(state)` redraws, `tick(state)` runs 10×/sec. Animations fire on delta, not replay.
-- **Match rooms** identified by `?match=CODE` query param — one room per match.
-- **Art assets are runtime CDN** — agent/weapon/map images from `media.valorant-api.com`. Requires internet.
+- **One shared state object per match room.** Clients receive `snapshot`, then RFC 7386 merge `patch` messages with an incrementing `v`; a gap triggers `resync`. Overlays acknowledge with `rendered`.
+- **Overlays are plain HTML/JS/CSS**, no build step. `update(state)` redraws, `tick(state)` runs 10×/s, animations fire on state deltas.
+- **Art assets** (agents, weapons, maps) load from `media.valorant-api.com` at runtime.
+- **Game capture starts only after explicit user consent.** Never auto-start it.
+- **Local mode never sends game data off the local network.** Remote mode is opt-in with its own consent.
 
-## Known Gaps (read gaps-and-fixes.md for full detail)
+## Known facts
 
-| Gap | Status |
+| Topic | Status |
 |---|---|
-| Spike planted event unreliable | Fix known ($300 money delta) — not yet applied to adapter |
-| Round timer drift | Decision pending — depends on whether numeric timer shown |
-| Per-player live HP | Architecture limitation — accepted |
-| Capture agent is a stub | Blocked on Overwolf developer account |
+| Spike planted | Inferred from the +300 credit change in `valorant-gep.js` (applied), plus `planted_location` at round end |
+| Per-player health/abilities | Only from player-PC capture (GEP `me` is local-player only) |
+| `observing` | Custom games only |
+| Overwolf | Developer account exists; app not yet approved. GEP in production depends on approval |
+| Legacy renderer | Does not build at `49a0f7d` (imports three deleted components); not being repaired |
 
-## Locked Decisions (read decisions.md for full detail)
+## Locked decisions
 
-| Decision | Answer |
-|---|---|
-| Web app lives where? | Inside the main Esportra platform — new routes in the frontend |
-| Broadcast software | OBS WebSocket first (v5 protocol). vMix deferred. |
-| Autopilot | v2. V1 = manual OBS scene switching only. |
-| V1 topology | Two apps: ow-electron (observer) + Electron+React (broadcaster). HUD server = local (LAN) OR cloud (Esportra-hosted). Both modes supported. |
-| Auxiliary mode | From v1 — same ow-electron binary, observer + auxiliary modes |
-| Desktop app framework | Electron + React + TypeScript |
+See the decision table in `docs/PRODUCT.md`. In short: one ow-electron app plus a separate Rust graphics engine; Valorant only behind a game-module seam; Esportra tournaments plus quick match; no Air pages on the Esportra website; local and remote transport; stage rail Match → Check → Live.
 
-## V1 Build Scope
+## Verification
 
-| What | Status |
-|---|---|
-| Spike detection fix ($300 inference in valorant-gep.js) | To build |
-| HUD server — local mode + cloud deployment (both) | To build |
-| ow-electron capture app — observer + auxiliary modes | To build (stub exists) |
-| Electron + React desktop app (broadcaster) — connects to HUD server (local or cloud) + OBS WebSocket | To build |
-| Web dashboard — show setup + live monitor (inside Esportra platform) | To build |
-| Autopilot rules engine | V2 |
-| Cloud HUD server | V2 |
-| Phone remote | V2 |
+- Legacy: `npm test` and `npm run build:renderer` (the latter currently fails, see above).
+- Local tests do not certify OBS, GEP, live game or deployment behaviour. Say which checks ran and which need the user's Windows machine.
 
-## Reference Material
+## Reference material
 
-`Reference data/` (gitignored) contains the Spectra broadcast system (Node.js + Angular + Overwolf). It was used to derive the spike detection solution and understand timer drift. Do not modify it.
+`Reference data/` (gitignored) contains the Spectra broadcast system. Do not modify it.
