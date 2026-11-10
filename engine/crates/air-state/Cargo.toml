@@ -1,0 +1,10 @@
+[package]
+name = "air-state"
+description = "Match state as JSON with JavaScript-compatible semantics, RFC 7386 merge patch and diff"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
