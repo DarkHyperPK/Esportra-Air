@@ -8,8 +8,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { EngineSupervisor } from '../src/main/engine-supervisor.ts';
 import { realProcess, engineEnv } from '../src/main/process.ts';
-import { IngestClient } from '../src/main/ingest.ts';
-import { LinkClient, parseAddress, lanAddresses, newCode } from '../src/main/join.ts';
+import { LinkClient } from '../../../packages/capture/src/link.ts';
+import { parseAddress } from '../../../packages/capture/src/protocol.ts';
+import { wsIngest } from '../src/main/ws-ingest.ts';
+import { lanAddresses, newCode } from '../src/main/join.ts';
 import { ObsLink } from '../src/main/obs.ts';
 import { Production } from '../src/main/production.ts';
 import { Store } from '../src/main/store.ts';
@@ -64,8 +66,8 @@ test('a capture-only PC joins with the code and its game data reaches the produc
   const otherStore = new Store(join(dir, 'other.json'));
   const otherSecrets = new Map<string, string>();
   const otherCapture = new FakeCapture();
-  const otherIngest = new IngestClient();
-  const link = new LinkClient({ store: otherStore, secrets: { get: (k) => otherSecrets.get(k) ?? null, set: (k, v) => void (v === null ? otherSecrets.delete(k) : otherSecrets.set(k, v)) }, ingest: otherIngest, capture: otherCapture, changed: () => {}, name: 'OBSERVER-PC' });
+  const otherIngest = wsIngest();
+  const link = new LinkClient({ settings: { read: () => otherStore.data.link ?? null, write: (v) => { if (v) otherStore.data.link = v; else delete otherStore.data.link; } }, name: () => 'OBSERVER-PC', secrets: { get: (k) => otherSecrets.get(k) ?? null, set: (k, v) => void (v === null ? otherSecrets.delete(k) : otherSecrets.set(k, v)) }, ingest: otherIngest, capture: otherCapture, changed: () => {} });
   const room = async (code: string) => (await engine.client.get<any>(`/api/${code}`)).state;
   try {
     await production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 1 });
@@ -126,7 +128,7 @@ test('a capture-only PC joins with the code and its game data reaches the produc
 test('a PC can be a player PC, and its role cannot change while capturing', async () => {
   const store = new Store(join(mkdtempSync(join(tmpdir(), 'air-role-')), 'a.json'));
   const capture = new FakeCapture();
-  const link = new LinkClient({ store, secrets: { get: () => null, set: () => {} }, ingest: new IngestClient(), capture, changed: () => {}, fetch: (async () => new Response('{"ok":true}', { status: 200 })) as typeof fetch });
+  const link = new LinkClient({ settings: { read: () => store.data.link ?? null, write: (v) => { if (v) store.data.link = v; else delete store.data.link; } }, name: () => 'PC', secrets: { get: () => null, set: () => {} }, ingest: wsIngest(), capture, changed: () => {}, fetch: (async () => new Response('{"ok":true}', { status: 200 })) as typeof fetch });
   capture.start();
   await assert.rejects(link.connect({ address: '10.0.0.5', code: 'ABC234', role: 'player' }), /Stop capture/);
   capture.stop();

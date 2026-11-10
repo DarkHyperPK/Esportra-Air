@@ -22,7 +22,9 @@ Esportra-Air/
 │   ├── adapters/valorant-gep.js ← GEP → state parser (pure; parity reference for Rust)
 │   └── adapters/test-valorant.js ← already failing (see Known facts)
 ├── engine/                      ← Rust graphics engine
-├── apps/desktop/                ← the app
+├── apps/desktop/                ← Esportra Air (production app)
+├── apps/player/                 ← Esportra Player (capture app for player and observer PCs)
+├── packages/capture/            ← shared: GEP bridge, ingest client, join protocol, secrets
 ├── screens/, index.html         ← PRD pictures and the PRD
 └── tools/                       ← PRD/UI reference scripts
 ```
@@ -36,7 +38,7 @@ apps/desktop/           ow-electron app: src/main (engine supervisor, GEP, OBS, 
                         src/renderer (React interface), dev/ (dev host + walkthrough), test/
 ```
 
-Commands: `cd engine && cargo test --workspace && cargo build --release`; `cd apps/desktop && npm test && npm run typecheck && npm run build`. Re-record fixtures after changing the JS parser: `node engine/fixtures/record.cjs`. Overlay parity: `node engine/tools/overlay-parity.cjs`. Full journey: `node apps/desktop/dev/host.ts` then `node apps/desktop/dev/walkthrough.cjs <dir>`.
+Commands: `cd apps/player && npm test && npm run typecheck && npm run build` (Player app); `cd engine && cargo test --workspace && cargo build --release`; `cd apps/desktop && npm test && npm run typecheck && npm run build`. Re-record fixtures after changing the JS parser: `node engine/fixtures/record.cjs`. Overlay parity: `node engine/tools/overlay-parity.cjs`. Full journey: `node apps/desktop/dev/host.ts` then `node apps/desktop/dev/walkthrough.cjs <dir>`.
 
 ## Running the current HUD
 

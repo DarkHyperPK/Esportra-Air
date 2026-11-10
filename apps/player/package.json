@@ -1,0 +1,48 @@
+{
+  "name": "esportra-player",
+  "productName": "Esportra Player",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Esportra Player: reads your Valorant game and sends it to the production PC",
+  "author": "Esportra",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "overwolf": {
+    "packages": ["gep"]
+  },
+  "scripts": {
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "node build.mjs",
+    "build:renderer": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "start": "npm run build && ow-electron . --owepm-package-channel=gep:prod",
+    "dist:win": "npm run build && ow-electron-builder --win --x64"
+  },
+  "dependencies": {
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "@overwolf/ow-electron": "42.11.4",
+    "@overwolf/ow-electron-builder": "26.18.0",
+    "@types/node": "22.15.30",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@types/ws": "8.18.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "esbuild": "0.25.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "5.8.3",
+    "vite": "6.0.7"
+  },
+  "build": {
+    "appId": "gg.esportra.player",
+    "productName": "Esportra Player",
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "package.json"],
+    "extraResources": [{ "from": "../../assets/esportra-icon.png", "to": "icon.png" }],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "../../assets/icon.ico" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "shortcutName": "Esportra Player", "deleteAppDataOnUninstall": false }
+  }
+}

@@ -3,8 +3,6 @@
 // their age, so the engine applies them at their real capture time. Ported from
 // capture/overwolf-valorant/capture-queue.js.
 
-import WebSocket from 'ws';
-
 interface Queued {
   message: unknown;
   bytes: number;
@@ -81,8 +79,9 @@ export class IngestClient {
     this.onChange?.();
   }
 
-  constructor(options: { connect?: (url: string) => IngestSocket; now?: () => number } = {}) {
-    this.connectImpl = options.connect ?? ((url) => new WebSocket(url) as unknown as IngestSocket);
+  /** `connect` opens a WebSocket (the apps pass `ws`); the package itself has no dependencies. */
+  constructor(options: { connect: (url: string) => IngestSocket; now?: () => number }) {
+    this.connectImpl = options.connect;
     this.queue = new CaptureQueue(options.now);
   }
 

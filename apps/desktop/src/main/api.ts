@@ -2,7 +2,7 @@
 import type { ApiMethod, Snapshot } from '../shared/api.ts';
 import type { Production } from './production.ts';
 import type { ObsLink } from './obs.ts';
-import type { Secrets } from './secrets.ts';
+import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 
 export interface ApiContext {
   production: Production;

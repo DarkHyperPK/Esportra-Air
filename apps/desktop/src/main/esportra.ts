@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import type { EsportraAccountInfo, EsportraMatch, EsportraState, EsportraView } from '../shared/esportra.ts';
 import { signedOut } from '../shared/esportra.ts';
 import { leaseExpiry, verifyLease, type Lease } from './esportra-lease.ts';
-import type { Secrets } from './secrets.ts';
+import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 import type { Store } from './store.ts';
 
 export interface SavedEsportra {

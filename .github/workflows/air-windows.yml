@@ -6,6 +6,8 @@ on:
     paths:
       - engine/**
       - apps/desktop/**
+      - apps/player/**
+      - packages/**
       - esportra-valorant-hud/**
       - .github/workflows/air-windows.yml
   workflow_dispatch:
@@ -46,10 +48,22 @@ jobs:
         working-directory: apps/desktop
         run: npm run dist:win
 
+      - name: Player tests
+        working-directory: apps/player
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Package Player installer
+        working-directory: apps/player
+        run: npm run dist:win
+
       - uses: actions/upload-artifact@v4
         with:
           name: esportra-air-windows
           path: |
             apps/desktop/release/*.exe
+            apps/player/release/*.exe
             engine/target/release/air-engine.exe
           if-no-files-found: error

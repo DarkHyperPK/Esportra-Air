@@ -8,13 +8,13 @@ import OBSWebSocket from 'obs-websocket-js';
 import { CHANNELS, type ApiMethod } from '../shared/api.ts';
 import { dispatch } from './api.ts';
 import { EngineSupervisor } from './engine-supervisor.ts';
-import { GepBridge, type OverwolfPackages } from './gep.ts';
-import { IngestClient } from './ingest.ts';
+import { GepBridge, type OverwolfPackages } from '../../../../packages/capture/src/gep.ts';
+import { wsIngest } from './ws-ingest.ts';
 import { CaptureStats } from './capture-stats.ts';
 import { ObsLink, type ObsSocket } from './obs.ts';
 import { engineEnv, realProcess } from './process.ts';
 import { Production } from './production.ts';
-import { Secrets } from './secrets.ts';
+import { Secrets } from '../../../../packages/capture/src/secrets.ts';
 import { Store } from './store.ts';
 import { EsportraAccount } from './esportra.ts';
 
@@ -42,9 +42,9 @@ async function main() {
   }
   const store = new Store(join(app.getPath('userData'), 'air.json'));
   const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, env: engineEnv(), ...realProcess });
-  const ingest = new IngestClient();
+  const ingest = wsIngest();
   // A capture-only PC sends its game data to a producer's Air instead of to its own engine.
-  const linkIngest = new IngestClient();
+  const linkIngest = wsIngest();
   const stats = new CaptureStats();
   const packages = ((app as unknown as { overwolf?: { packages?: OverwolfPackages } }).overwolf?.packages) ?? null;
   const capture = new GepBridge({ packages, send: (m) => { stats.record(m); (store.data.mode === 'capture' ? linkIngest : ingest).send(m); }, log: (m) => console.warn('[gep]', m) });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { CaptureQueue, IngestClient, type IngestSocket } from '../src/main/ingest.ts';
+import { CaptureQueue, IngestClient, type IngestSocket } from '../../../packages/capture/src/ingest.ts';
 
 class FakeSocket extends EventEmitter implements IngestSocket {
   readyState = 0;

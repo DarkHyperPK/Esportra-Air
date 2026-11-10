@@ -4,10 +4,11 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
 import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type LayerRow, type MonitorFrame, type PollInput, type SceneStatus, type QuickMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
 import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
-import type { GepBridge } from './gep.ts';
+import type { GepBridge } from '../../../../packages/capture/src/gep.ts';
 import type { ObsLink } from './obs.ts';
 import { Replay } from './replay.ts';
 import type { BuildScene } from './scene-build.ts';
@@ -17,9 +18,11 @@ import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
 import type { EsportraAccount } from './esportra.ts';
-import { JoinHost, LinkClient } from './join.ts';
-import { IngestClient } from './ingest.ts';
-import type { Secrets } from './secrets.ts';
+import { JoinHost } from './join.ts';
+import type { IngestClient } from '../../../../packages/capture/src/ingest.ts';
+import { LinkClient } from '../../../../packages/capture/src/link.ts';
+import { wsIngest } from './ws-ingest.ts';
+import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 import type { PcMode, PcRole } from '../shared/join.ts';
 import { signedOut } from '../shared/esportra.ts';
 import { randomBytes } from 'node:crypto';
@@ -101,7 +104,8 @@ export class Production extends EventEmitter {
     const secrets = deps.secrets ?? { get: (k: string) => memory.get(k) ?? null, set: (k: string, v: string | null) => void (v === null ? memory.delete(k) : memory.set(k, v)) };
     this.joinHost = new JoinHost({ store: deps.store, secrets, client: () => deps.engine.client, matchCode: () => this.match?.code ?? null, changed: () => this.emit('change'), addresses: deps.lanAddresses });
     this.link = new LinkClient({
-      store: deps.store, secrets, ingest: deps.linkIngest ?? new IngestClient(), changed: () => this.emit('change'),
+      settings: { read: () => deps.store.data.link ?? null, write: (v) => { if (v) deps.store.data.link = v; else delete deps.store.data.link; deps.store.save(); } },
+      secrets, ingest: deps.linkIngest ?? wsIngest(), name: () => hostname(), changed: () => this.emit('change'),
       capture: { get role() { return deps.capture.role ?? 'observer'; }, setRole: (r) => deps.capture.setRole?.(r), get state() { return deps.capture.state; } },
     });
     const changed = () => this.emit('change');

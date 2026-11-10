@@ -1,6 +1,10 @@
 // Observer and player PCs on the same network (Stage 3, local mode).
 
-export type PcRole = 'observer' | 'player';
+import type { PcRole } from '../../../../packages/capture/src/protocol.ts';
+export type { PcRole };
+export { CODE_ALPHABET, formatCode, parseCode } from '../../../../packages/capture/src/protocol.ts';
+export type { LinkView } from '../../../../packages/capture/src/link.ts';
+export { emptyLink } from '../../../../packages/capture/src/link.ts';
 
 export interface JoinedPc {
   id: number;
@@ -24,22 +28,6 @@ export interface JoinView {
   error: string | null;
 }
 
-/** The capture-only side: this PC sends its game data to a producer's Air. */
-export interface LinkView {
-  state: 'off' | 'connecting' | 'connected' | 'rejected' | 'error';
-  address: string;
-  role: PcRole;
-  sent: number;
-  queued: number;
-  error: string | null;
-}
-
 export type PcMode = 'production' | 'capture';
 
 export const emptyJoin = (): JoinView => ({ enabled: false, code: null, port: 5301, addresses: [], peers: [], error: null });
-export const emptyLink = (): LinkView => ({ state: 'off', address: '', role: 'observer', sent: 0, queued: 0, error: null });
-
-/** Letters and digits without the look-alikes (0 O 1 I L), so a code can be read aloud. */
-export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-export const formatCode = (code: string) => `${code.slice(0, 3)}-${code.slice(3)}`;
-export const parseCode = (input: string) => input.toUpperCase().replace(/[^A-Z0-9]/g, '');

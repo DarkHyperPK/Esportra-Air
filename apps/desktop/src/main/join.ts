@@ -5,14 +5,12 @@
 // and nothing here talks to the internet.
 
 import { randomInt } from 'node:crypto';
-import { hostname, networkInterfaces } from 'node:os';
-import { CODE_ALPHABET, emptyJoin, emptyLink, parseCode, type JoinView, type LinkView, type PcRole } from '../shared/join.ts';
+import { networkInterfaces } from 'node:os';
+import { CODE_ALPHABET, DEFAULT_JOIN_PORT, type PcRole } from '../../../../packages/capture/src/protocol.ts';
+import { emptyJoin, type JoinView } from '../shared/join.ts';
 import type { EngineClient } from './engine-client.ts';
-import type { IngestClient } from './ingest.ts';
-import type { Secrets } from './secrets.ts';
+import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 import type { Store } from './store.ts';
-
-export const DEFAULT_JOIN_PORT = 5301;
 
 export const newCode = () => Array.from({ length: 6 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
 
@@ -135,95 +133,5 @@ export class JoinHost {
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-  }
-}
-
-export interface LinkDeps {
-  store: Store;
-  secrets: Pick<Secrets, 'get' | 'set'>;
-  ingest: IngestClient;
-  capture: { role: PcRole; setRole(role: PcRole): void; state: string };
-  changed: () => void;
-  fetch?: typeof fetch;
-  name?: string;
-}
-
-/** `192.168.1.40`, `192.168.1.40:5301` or `studio-pc.local:5301` → host and port. */
-export function parseAddress(input: string): { host: string; port: number } {
-  const m = /^\s*([A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)(?::(\d{1,5}))?\s*$/.exec(String(input));
-  const port = m?.[3] ? Number(m[3]) : DEFAULT_JOIN_PORT;
-  if (!m || port < 1024 || port > 65535) throw new Error('Enter the producer’s address as 192.168.1.40 or 192.168.1.40:5301.');
-  return { host: m[1]!, port };
-}
-
-export class LinkClient {
-  private readonly d: LinkDeps;
-
-  constructor(deps: LinkDeps) {
-    this.d = deps;
-    deps.ingest.onChange = () => deps.changed();
-  }
-
-  private get saved() {
-    return this.d.store.data.link ?? null;
-  }
-
-  view(): LinkView {
-    const saved = this.saved;
-    if (!saved) return emptyLink();
-    const { state, lastError } = this.d.ingest;
-    return { state: state === 'idle' ? 'off' : state, address: saved.address, role: this.d.capture.role, sent: this.d.ingest.sent, queued: this.d.ingest.queued, error: lastError };
-  }
-
-  private url(host: string, port: number, code: string, role: PcRole) {
-    const name = encodeURIComponent((this.d.name ?? hostname()).slice(0, 40));
-    return `ws://${host}:${port}/join?code=${encodeURIComponent(code)}&role=${role}&name=${name}`;
-  }
-
-  /** Checks the code with the producer's Air, then starts sending this PC's game data there. */
-  async connect(input: { address: string; code: string; role: PcRole }) {
-    const { host, port } = parseAddress(input.address);
-    const code = parseCode(input.code);
-    if (code.length < 6) throw new Error('Enter the join code shown on the producer’s Air.');
-    if (input.role !== 'observer' && input.role !== 'player') throw new Error('Choose Observer or Player.');
-    const doFetch = this.d.fetch ?? fetch;
-    let response: Response;
-    try {
-      response = await doFetch(`http://${host}:${port}/join/hello?code=${encodeURIComponent(code)}`, { signal: AbortSignal.timeout(4000) });
-    } catch {
-      throw new Error('Could not reach the producer’s Air at that address. Check the address, that both PCs are on the same network, and that “Allow other PCs to join” is on.');
-    }
-    if (response.status === 401) throw new Error('That join code was not accepted.');
-    if (response.status === 403) throw new Error('Joining is switched off on the producer’s Air.');
-    if (response.status === 429) throw new Error('Too many wrong codes. Wait a minute and try again.');
-    if (!response.ok) throw new Error('The producer’s Air did not accept this PC.');
-    if (this.d.capture.role !== input.role) this.d.capture.setRole(input.role);
-    this.d.store.data.link = { address: `${host}:${port}`, role: input.role };
-    this.d.secrets.set('linkCode', code);
-    this.d.store.save();
-    this.d.ingest.target(this.url(host, port, code, input.role));
-    this.d.changed();
-  }
-
-  /** Reconnects a saved link at startup, without asking again. */
-  resume() {
-    const saved = this.saved;
-    const code = this.d.secrets.get('linkCode');
-    if (!saved || !code) return;
-    const { host, port } = parseAddress(saved.address);
-    if (this.d.capture.role !== saved.role && this.d.capture.state === 'off') this.d.capture.setRole(saved.role);
-    this.d.ingest.target(this.url(host, port, code, saved.role));
-  }
-
-  retry() {
-    this.d.ingest.reconnect();
-  }
-
-  disconnect() {
-    this.d.ingest.target(null);
-    delete this.d.store.data.link;
-    this.d.secrets.set('linkCode', null);
-    this.d.store.save();
-    this.d.changed();
   }
 }
