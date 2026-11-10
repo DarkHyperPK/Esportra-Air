@@ -71,7 +71,7 @@ pub const LAYERS: [LayerDef; 16] = [
     },
     LayerDef {
         key: "winProb",
-        default: Mode::On,
+        default: Mode::Off,
         auto: false,
     },
     LayerDef {

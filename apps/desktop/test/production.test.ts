@@ -239,17 +239,23 @@ test('autopilot walks the rundown through the real engine and a fake OBS, with h
     assert.equal(production.snapshot().autopilotBlock, 'Connect OBS first.');
     assert.throws(() => production.autopilotStart(), /Connect OBS/);
     await obs.connect('127.0.0.1', 4455, 'secret');
-    assert.match(production.snapshot().autopilotBlock!, /Esportra scenes|Studio Mode/);
+    assert.match(production.snapshot().autopilotBlock!, /Esportra scenes/);
     await production.installGraphics();
-    assert.match(production.snapshot().autopilotBlock!, /Studio Mode/);
+    assert.equal(production.snapshot().autopilotBlock, null, 'Studio Mode is not required');
+    // Without Studio Mode a take goes straight to Program.
+    production.autopilotStart();
+    await production.autopilotTake();
+    await wait(() => view().now?.id === 'starting-soon', 'direct take without Studio Mode');
+    assert.equal(obsServer.program, 'Esportra · Holding');
+    production.autopilotStop();
+    production.autopilot.loadForMatch();
     await production.studioMode(true);
-    assert.equal(production.snapshot().autopilotBlock, null);
     assert.deepEqual(view().segments.map((x) => x.id), ['starting-soon', 'intro', 'map1-live', 'map1-result', 'series', 'casters', 'ending']);
 
     // Off means off: a round going live takes nothing.
     await engine.client.post(`/api/${code}/ingest/valorant`, [{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
     await new Promise((r) => setTimeout(r, 300));
-    assert.equal(obsServer.program, 'Scene');
+    assert.equal(obsServer.program, 'Esportra · Holding');
 
     production.autopilotStart();
     assert.equal(view().next!.id, 'starting-soon');

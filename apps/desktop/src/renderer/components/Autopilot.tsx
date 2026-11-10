@@ -125,6 +125,7 @@ export function NextFive({ s }: { s: Snapshot }) {
   return (
     <section className="panel" aria-label="What autopilot does next">
       <div className="head"><Cap>What autopilot does next</Cap></div>
+      <p className="muted" style={{ fontSize: 12, padding: '6px 16px 0' }}>A starting point, not a rule. Change triggers, hold times and scenes in Scenes › Segment → Scene before you start.</p>
       <ol className="coming wide">
         {list.map((x) => <li key={x.id}><span><b>{x.name}</b></span><span className="muted">{triggerLine(x)}</span><span className="mono muted" style={{ fontSize: 11 }}>{action(x)}</span></li>)}
       </ol>

@@ -52,6 +52,8 @@ export interface AutopilotView {
   /** Absolute time the hold window ends (null while held, or when none is running). */
   holdEndsAt: number | null;
   holdTotalMs: number | null;
+  /** The map being played (1-based), worked out from the rundown and the series score. */
+  map: number;
   comingUp: Segment[];
   segments: Segment[];
 }

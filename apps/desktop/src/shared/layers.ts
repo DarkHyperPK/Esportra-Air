@@ -19,7 +19,7 @@ export const LAYER_DEFS: LayerDef[] = [
   { id: 'killfeed', label: 'Killfeed', group: 'ingame', hotkey: '3' },
   { id: 'observed', label: 'Observed player', group: 'ingame', hotkey: '4' },
   { id: 'minimap', label: 'Minimap frame', group: 'ingame', hotkey: '5' },
-  { id: 'winProb', label: 'Win probability', group: 'ingame', hotkey: '6' },
+  { id: 'winProb', label: 'Win probability (est.)', group: 'ingame', hotkey: '6' },
   { id: 'spikeTimer', label: 'Spike timer', group: 'ingame', hotkey: '7' },
   { id: 'sponsor', label: 'Sponsor bug', group: 'ingame', hotkey: '8' },
   { id: 'economy', label: 'Economy board', group: 'between', hotkey: 'Q' },

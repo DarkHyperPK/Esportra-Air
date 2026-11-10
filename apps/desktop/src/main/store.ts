@@ -48,7 +48,7 @@ export const DEFAULT_SCREENS: Screen[] = [
 /** HUD elements the producer can switch, with the HUD's own defaults (core/state.clean.js `show`). */
 export const DEFAULT_HUD: Record<string, boolean> = {
   scorebug: true, players: true, killfeed: true, observed: true, minimap: false, spikeTimer: true,
-  winProb: true, roundHistory: false, moments: true, sponsor: true, eventBug: true, ticker: true,
+  winProb: false, roundHistory: false, moments: true, sponsor: true, eventBug: true, ticker: true,
 };
 
 export function defaultSetup(): Setup {

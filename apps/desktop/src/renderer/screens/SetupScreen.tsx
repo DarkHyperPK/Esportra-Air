@@ -15,7 +15,7 @@ const THEME_NOTES: Record<(typeof BANNER_THEMES)[number], string> = {
 };
 const HUD_LABELS: Record<string, string> = {
   scorebug: 'Scorebug', players: 'Player cards', killfeed: 'Kill feed', observed: 'Observed player', minimap: 'Minimap frame',
-  spikeTimer: 'Spike timer', winProb: 'Win probability', roundHistory: 'Round history', moments: 'Highlight moments',
+  spikeTimer: 'Spike timer', winProb: 'Win probability (estimate)', roundHistory: 'Round history', moments: 'Highlight moments',
   sponsor: 'Sponsor slot', eventBug: 'Event bug', ticker: 'Ticker',
 };
 

@@ -243,18 +243,19 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
           <span className="k">Live data</span>
           {live && r ? (
             <>
-              <span>R{r.round ?? '—'} · {(r.phase ?? '—').toUpperCase()}{r.clockEndsAt && ['live', 'buy', 'planted'].includes(r.phase ?? '') ? ` ${clock(r.clockEndsAt - now)}` : ''}</span>
+              <span>R{r.round ?? '—'} · {(r.phase ?? '—').toUpperCase()}{r.clockEndsAt && ['live', 'buy', 'planted'].includes(r.phase ?? '') ? ` ~${clock(r.clockEndsAt - now)}` : ''}</span>
               <span className="sc">{r.score[0] ?? '–'} – {r.score[1] ?? '–'}</span>
               <span><span className="k">Alive</span>{r.alive[0]}v{r.alive[1]}</span>
               <span><span className="k">Bank</span>{r.bank[0].toLocaleString('en-US')} / {r.bank[1].toLocaleString('en-US')}</span>
-              {r.spikePlanted && r.clockEndsAt && <span style={{ color: 'var(--amber)' }}><span className="k">Spike</span>{clock(r.clockEndsAt - now)}</span>}
+              {r.spikePlanted && r.clockEndsAt && <span style={{ color: 'var(--amber)' }}><span className="k">Spike (inferred)</span>~{clock(r.clockEndsAt - now)}</span>}
               <span>{r.map ?? '—'}</span>
               {s.testRound.running && <Tally kind="covered">Test round</Tally>}
             </>
           ) : (
             <span className="muted">Waiting for game data</span>
           )}
-          <span style={{ marginLeft: 'auto' }}><button className="btn small" onClick={openFix}>Fix data</button></span>
+          <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }} title="The game gives no round timer or spike event. Air estimates the clock from the phase and infers the plant from a credit change.">~ estimated</span>
+          <span><button className="btn small" onClick={openFix}>Fix data</button></span>
         </div>
       </div>
 

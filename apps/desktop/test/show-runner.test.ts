@@ -41,7 +41,7 @@ function setup(options: { outcome?: () => TakeOutcome | Promise<TakeOutcome> } =
   const runner = new ShowRunner(ports, clock);
   runner.on('log', (l: RunnerLog) => logs.push(l));
   runner.load(buildRundown(3));
-  runner.setMap(1);
+  runner.setSeriesMaps(0);
   /** Takes everything before `until` by hand, confirming each on air through the tally. */
   const walkTo = async (until: string) => {
     for (;;) {
@@ -120,13 +120,30 @@ test('hold freezes the countdown until Take; skip moves on', async () => {
 test('an event for another map does not arm the segment', async () => {
   const { runner, walkTo } = setup();
   runner.start();
-  runner.setMap(2);
+  runner.setSeriesMaps(1); // the score says a map is already won, so this is map 2
   await walkTo('map1-live');
   runner.onGameEvent(live);
   assert.equal(runner.view().next!.state, 'armed');
-  runner.setMap(1);
+  runner.setSeriesMaps(0);
   runner.onGameEvent(live);
   assert.equal(runner.view().next!.state, 'holding');
+});
+
+test('the map counter advances by itself when a map result is taken or skipped', async () => {
+  const { runner, clock, walkTo } = setup();
+  runner.start();
+  assert.equal(runner.view().map, 1);
+  await walkTo('map1-live');
+  runner.onGameEvent(live);
+  await clock.advance(5100);
+  runner.onProgram('Esportra · Gameplay');
+  assert.equal(runner.view().map, 1, 'still map 1 until its result is done');
+  runner.onGameEvent({ type: 'match.end' });
+  runner.skip(); // the producer skips the result
+  assert.equal(runner.view().map, 2);
+  await walkTo('map2-live');
+  runner.onGameEvent(live);
+  assert.equal(runner.view().next!.state, 'holding', 'map 2 arms without anyone entering a score');
 });
 
 test('a pause cancels the countdown and the take is not replayed after resume', async () => {

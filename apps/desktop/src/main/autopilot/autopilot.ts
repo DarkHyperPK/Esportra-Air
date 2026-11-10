@@ -76,7 +76,6 @@ export class Autopilot {
     const { obs } = this.deps;
     if (!this.deps.match()) return 'Choose a match first.';
     if (obs.status.state !== 'connected') return 'Connect OBS first.';
-    if (!obs.status.studioMode) return 'Turn on Studio Mode so takes go through Preview.';
     if (!obs.status.scenes.includes('Esportra · Gameplay')) return 'Add the Esportra scenes to OBS first.';
     return null;
   }
@@ -144,10 +143,9 @@ export class Autopilot {
   }
 
   /** The room's state decides the map number and any pause panel (including one set by another controller). */
-  onRoom(room: { map?: { number?: number }; airPause?: { kind?: string } } | null) {
+  onRoom(room: { teams?: Array<{ series?: number }>; airPause?: { kind?: string } } | null) {
     this.ensureLoaded();
-    const number = Number(room?.map?.number);
-    this.runner.setMap(Number.isInteger(number) && number > 0 ? number : 1);
+    this.runner.setSeriesMaps((room?.teams ?? []).reduce((sum, t) => sum + (Number(t?.series) || 0), 0));
     const kind = room?.airPause?.kind;
     const wanted: AutopilotPause = kind === 'technical' ? 'tech' : kind === 'timeout' ? 'timeout' : null;
     if (wanted) this.runner.pause(wanted);
@@ -183,7 +181,6 @@ export class Autopilot {
   private async takeSegment(segment: Segment, stillAllowed: () => boolean): Promise<TakeOutcome> {
     const { obs } = this.deps;
     if (obs.status.state !== 'connected') return { ok: false, error: 'OBS is not connected.' };
-    if (!obs.status.studioMode) return { ok: false, error: 'Turn on Studio Mode so takes go through Preview.' };
     if (!obs.status.scenes.includes(segment.scene)) return { ok: false, error: `The scene “${segment.scene}” is not in OBS.` };
     try {
       if (segment.graphic) {

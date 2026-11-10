@@ -77,9 +77,9 @@ export function CaptureScreen({ s, run, askCapture }: PageProps) {
       <div className="stack">
         <div className="stats4" aria-label="Capture health">
           {stat('Source', source, s.feed.state === 'off' ? 'Capture is off' : 'Observer PC · this machine')}
-          {stat('Last data', s.testRound.running ? '—' : age(s.feed.ageMs ?? c.lastAgeMs), s.testRound.running ? 'The rehearsal does not use the capture' : s.feed.paused ? 'Feed paused: graphics hold their last values' : 'Stale after 5 s of silence')}
+          {stat('Last data', s.testRound.running ? '—' : age(s.feed.ageMs ?? c.lastAgeMs), s.testRound.running ? 'The rehearsal does not use the capture' : s.feed.paused ? 'Feed paused: graphics hold their last values' : 'Counts as quiet after 10 s')}
           {stat('Messages / s', c.messagesPerSec.toFixed(1), `${c.total.toLocaleString('en-US')} since capture started`)}
-          {stat('Gaps', String(c.gaps), 'Silences of 5 s or more')}
+          {stat('Gaps', String(c.gaps), 'Silences of 10 s or more')}
         </div>
 
         <section className="panel">
@@ -113,6 +113,8 @@ export function CaptureScreen({ s, run, askCapture }: PageProps) {
                 <dt>Score</dt><dd>{r.score[0] ?? '–'} – {r.score[1] ?? '–'}</dd>
                 <dt>Sides</dt><dd>{r.sides[0] ?? '—'} / {r.sides[1] ?? '—'}</dd>
                 <dt>Players found</dt><dd>{r.playersFound[0]} + {r.playersFound[1]} of 10</dd>
+                <dt>Round clock</dt><dd>Estimated from the phase</dd>
+                <dt>Spike</dt><dd>{r.spikePlanted ? 'Planted (inferred)' : 'Not planted'}</dd>
                 <dt>Alive</dt><dd>{r.alive[0]} v {r.alive[1]}</dd>
                 <dt>Observed</dt><dd>{r.observed?.name ?? '—'}</dd>
               </dl>
@@ -125,7 +127,7 @@ export function CaptureScreen({ s, run, askCapture }: PageProps) {
         </section>
         <section className="panel">
           <div className="head"><Cap>If the data stops</Cap></div>
-          <div className="body-pad"><p className="muted" style={{ fontSize: 12.5 }}>After 5 s of silence the feed counts as paused: graphics hold their last values and the Console says so. Nothing is invented. Use Fix data (Ctrl+D) for a wrong score or name, and the pause panel (F1) when play stops.</p></div>
+          <div className="body-pad"><p className="muted" style={{ fontSize: 12.5 }}>After 10 s of silence the feed counts as paused: graphics hold their last values and the Console says so. Nothing is invented. Use Fix data (Ctrl+D) for a wrong score or name, and the pause panel (F1) when play stops.</p></div>
         </section>
       </div>
     </div>

@@ -67,7 +67,8 @@ export class ShowRunner extends EventEmitter {
   private segments: Segment[] = [];
   private enabled = false;
   private paused: AutopilotPause = null;
-  private mapNumber: number | null = null;
+  /** Maps already finished according to the score (Fix data › Series), a floor for the map counter. */
+  private seriesMaps = 0;
   private holdEndsAt: number | null = null;
   private holdTotalMs: number | null = null;
   private holdTimer: unknown = null;
@@ -147,11 +148,21 @@ export class ShowRunner extends EventEmitter {
     this.change();
   }
 
-  /** The map the game is on, so a segment for another map does not arm. */
-  setMap(number: number | null) {
-    if (number === this.mapNumber) return;
-    this.mapNumber = number;
+  /**
+   * Maps already won in the series, from the score. GEP does not say which map of the series is being
+   * played, so the map number is the larger of this and the map results the rundown has completed.
+   */
+  setSeriesMaps(played: number) {
+    const n = Math.max(0, Math.floor(played) || 0);
+    if (n === this.seriesMaps) return;
+    this.seriesMaps = n;
     this.change();
+  }
+
+  /** The map being played (1-based): after each map result is taken or skipped, the next map starts. */
+  currentMap(): number {
+    const finished = this.segments.filter((s) => s.trigger === 'map_end' && (s.state === 'done' || s.state === 'on_air')).length;
+    return Math.max(this.seriesMaps, finished) + 1;
   }
 
   // ── pauses ──
@@ -184,7 +195,7 @@ export class ShowRunner extends EventEmitter {
     if (!this.canAutomate()) return;
     const seg = this.segments.find((s) => s.state === 'armed');
     if (!seg || seg.mode !== 'automatic' || seg.trigger === 'manual' || seg.trigger === 'delay') return;
-    if (seg.mapNumber != null && seg.mapNumber !== this.mapNumber) return;
+    if (seg.mapNumber != null && seg.mapNumber !== this.currentMap()) return;
     if (!triggerMatches(seg.trigger, event)) return;
     this.openHold(seg);
   }
@@ -289,6 +300,7 @@ export class ShowRunner extends EventEmitter {
       next: next ? { ...next } : null,
       holdEndsAt: this.holdEndsAt,
       holdTotalMs: this.holdTotalMs,
+      map: this.currentMap(),
       comingUp: this.segments.slice(after + 1).filter((s) => s.state === 'queued').slice(0, 3).map((s) => ({ ...s })),
       segments: this.segments.map((s) => ({ ...s })),
     };

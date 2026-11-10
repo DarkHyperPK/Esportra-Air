@@ -282,6 +282,11 @@ export class ObsLink extends EventEmitter {
     await socket.call('SetCurrentPreviewScene', { sceneName });
   }
 
+  private requireSocket() {
+    if (!this.socket) throw new Error('Connect to OBS first.');
+    return this.socket;
+  }
+
   private requireStudio() {
     if (!this.socket) throw new Error('Connect to OBS first.');
     if (!this.status.studioMode) throw new Error('Turn on Studio Mode so takes go through Preview.');
@@ -297,7 +302,9 @@ export class ObsLink extends EventEmitter {
     this.busy = true;
     const started = Date.now();
     try {
-      const socket = this.requireStudio();
+      // Autopilot names its scene: with Studio Mode off it goes straight to Program.
+      const direct = !!options.scene && !this.status.studioMode;
+      const socket = direct ? this.requireSocket() : this.requireStudio();
       const forced = validateTransition(choice);
       if (forced) {
         const wanted = this.status.transitions.find((t) => t.name === forced.name && t.kind === forced.mode);
@@ -306,7 +313,7 @@ export class ObsLink extends EventEmitter {
         await socket.call('SetCurrentSceneTransition', { transitionName: forced.name });
         if (forced.mode === 'fade') await socket.call('SetCurrentSceneTransitionDuration', { transitionDuration: forced.durationMs });
       }
-      if (options.scene) await socket.call('SetCurrentPreviewScene', { sceneName: options.scene });
+      if (options.scene && !direct) await socket.call('SetCurrentPreviewScene', { sceneName: options.scene });
       if (options.stillAllowed && !options.stillAllowed()) {
         await this.restoreBase();
         return { ok: false, error: 'Take cancelled because production changed.' };
@@ -315,7 +322,8 @@ export class ObsLink extends EventEmitter {
         await this.restoreBase();
         return { ok: false, error: 'Choose a scene for Preview first.' };
       }
-      await socket.call('TriggerStudioModeTransition');
+      if (direct) await socket.call('SetCurrentProgramScene', { sceneName: options.scene });
+      else await socket.call('TriggerStudioModeTransition');
       return { ok: true, latencyMs: Date.now() - started };
     } catch (error) {
       await this.restoreBase();

@@ -22,14 +22,14 @@ export const FEATURES: Def[] = [
   { id: 'match_info.map', label: 'Map', detail: 'Map name', kind: 'stream' },
   { id: 'match_info.observing', label: 'Observed player', detail: 'Who the observer camera is on', kind: 'stream' },
   { id: 'event.kill_feed', label: 'Kill feed', detail: 'Kills with weapon and headshot', kind: 'event' },
-  { id: 'event.spike', label: 'Spike', detail: 'Planted, defused, detonated', kind: 'event' },
+  { id: 'event.spike', label: 'Spike', detail: 'Defused, detonated, plant location. The plant itself is inferred from a credit change', kind: 'event' },
   { id: 'event.match', label: 'Match start and end', detail: 'Starts a fresh match, ends the map', kind: 'event' },
   { id: 'me', label: 'Local player health and abilities', detail: 'Only from a player PC; the observer’s GEP does not carry it', kind: 'stream', playerPc: true },
 ];
 
 const BUCKETS = 60;
 const FRESH_MS = 10_000;
-const GAP_MS = 5_000;
+const GAP_MS = 10_000;
 const RATE_WINDOW_MS = 5_000;
 
 /** The feature ids a raw GEP message carries. Heartbeats and unknown shapes carry none. */
