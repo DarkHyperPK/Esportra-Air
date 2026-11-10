@@ -177,6 +177,7 @@ pub struct FixAction {
     pub value: Value,
 }
 
+#[derive(Clone)]
 pub struct DisplayFixes {
     scope: Option<String>,
     entries: Map<String, Value>,

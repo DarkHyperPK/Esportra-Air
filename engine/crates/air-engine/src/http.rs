@@ -626,6 +626,24 @@ async fn control(
                 ),
             }
         }
+        ("POST", Some("test-round")) => {
+            let input = match json_body(body).await {
+                Ok(v) => v,
+                Err(res) => return res,
+            };
+            let room = engine.room(input.get("match").and_then(Value::as_str));
+            match input.get("action").and_then(Value::as_str) {
+                Some("start") => match Engine::play_test_round(room.clone()) {
+                    Ok(()) => send(StatusCode::OK, room.test_status()),
+                    Err(e) => error(StatusCode::CONFLICT, e),
+                },
+                Some("stop") => {
+                    room.stop_test(None);
+                    send(StatusCode::OK, room.test_status())
+                }
+                _ => error(StatusCode::BAD_REQUEST, "Choose start or stop."),
+            }
+        }
         ("POST", Some("shutdown")) => {
             let _ = app.shutdown.send(true);
             send(StatusCode::OK, json!({ "stopping": true }))
@@ -651,14 +669,18 @@ fn control_status(engine: &Engine) -> Value {
         .iter()
         .map(|room| {
             let inner = room.lock();
-            json!({
+            let room_status = json!({
                 "match": room.code, "v": inner.v, "clients": room.tx.receiver_count(),
                 "lastGepAt": inner.last_gep_at, "lastFeedAt": inner.last_feed_at,
                 "feedAgeMs": inner.last_feed_at.map(|at| (now - at).max(0.0)),
                 "feedPaused": inner.state.get("airDiagnostics").and_then(|d| d.get("feedPaused")).cloned().unwrap_or(json!(false)),
                 "fixes": inner.fixes.entries().keys().collect::<Vec<_>>(),
                 "storageWarning": inner.fixes.storage_warning,
-            })
+            });
+            drop(inner);
+            let mut room_status = room_status;
+            room_status["testRound"] = room.test_status();
+            room_status
         })
         .collect();
     let outputs: Vec<Value> = outputs

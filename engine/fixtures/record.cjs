@@ -59,6 +59,7 @@ async function recordSimulator() {
   });
   process.argv = argv; Date.now = realNow; global.setTimeout = realSetTimeout; console.log = realLog;
 
+  exportTestRound(calls);
   const adapter = createValorantAdapter();
   let state = clone(CLEAN);
   const initial = clone(state);
@@ -82,6 +83,27 @@ async function recordSimulator() {
     }
   });
   writeFixture('simulated-match', initial, steps);
+}
+
+// The Check screen's test round: the simulator's first three rounds, replayed by the engine at
+// real pace through the real parser. Absolute timestamps inside patches become {"$at": offset}.
+function exportTestRound(calls) {
+  const t0 = calls[0].t;
+  const end = calls.findIndex((c) => JSON.stringify(c.body).includes('"round_number":"4"'));
+  const rebase = (v) => {
+    if (typeof v === 'number' && v >= t0 - 60_000 && v <= t0 + 100_000_000) return { $at: v - t0 };
+    if (Array.isArray(v)) return v.map(rebase);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, rebase(x)]));
+    return v;
+  };
+  const steps = calls.slice(0, end > 0 ? end : calls.length).map((c) => ({
+    at: c.t - t0,
+    kind: c.path.endsWith('/ingest/valorant') ? 'ingest' : 'patch',
+    body: c.path.endsWith('/ingest/valorant') ? c.body : rebase(c.body),
+  }));
+  const file = path.resolve(__dirname, '../crates/air-engine/test-round.json');
+  fs.writeFileSync(file, JSON.stringify({ source: 'esportra-valorant-hud/tools/simulate-valorant.js --slow, rounds 1-3', steps }) + '\n');
+  console.log(`test round: ${steps.length} steps, ${(steps.at(-1).at / 1000).toFixed(0)} s`);
 }
 
 // ── Fixture 2: Overwolf message shapes from adapters/test-valorant.js ──

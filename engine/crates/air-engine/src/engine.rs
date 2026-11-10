@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use air_state::{diff, merge};
@@ -75,6 +76,9 @@ pub struct Room {
     pub ephemeral: bool,
     pub tx: broadcast::Sender<Arc<str>>,
     inner: Mutex<RoomInner>,
+    /// True while a test round plays: nothing is logged or persisted.
+    testing: AtomicBool,
+    test_generation: AtomicU64,
     file: PathBuf,
     fixes_file: PathBuf,
     log: PathBuf,
@@ -89,6 +93,83 @@ pub struct RoomInner {
     /// Last capture time of observer data (not player-PC heartbeats), for feed freshness.
     pub last_feed_at: Option<f64>,
     dirty: bool,
+    test: Option<TestRun>,
+}
+
+/// A test round in progress: the real state and fixes it replaced, and its own parser.
+struct TestRun {
+    generation: u64,
+    backup_state: Value,
+    backup_fixes: DisplayFixes,
+    adapter: ValorantAdapter,
+    started_at: f64,
+}
+
+/// One scripted step of the Check screen's test round (`test-round.json`).
+#[derive(Clone)]
+pub struct TestStep {
+    pub at: f64,
+    pub ingest: bool,
+    pub body: Value,
+}
+
+/// The embedded test round: the first three rounds of the recorded simulated match.
+pub fn test_round_script() -> &'static [TestStep] {
+    static SCRIPT: OnceLock<Vec<TestStep>> = OnceLock::new();
+    SCRIPT.get_or_init(|| {
+        let all: Value = serde_json::from_str(include_str!("../test-round.json"))
+            .expect("embedded test round is JSON");
+        all["steps"]
+            .as_array()
+            .map(|steps| {
+                steps
+                    .iter()
+                    .map(|s| TestStep {
+                        at: s["at"].as_f64().unwrap_or(0.0),
+                        ingest: s["kind"] == "ingest",
+                        body: s["body"].clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+
+/// Replaces `{"$at": offset}` placeholders with absolute times from `start`.
+fn rebase_times(v: &Value, start: f64) -> Value {
+    match v {
+        Value::Object(map) if map.len() == 1 && map.contains_key("$at") => {
+            air_state::js::num(start + map["$at"].as_f64().unwrap_or(0.0))
+        }
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, x)| (k.clone(), rebase_times(x, start)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(|x| rebase_times(x, start)).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Keeps the producer's own team identity (name, tag, colour, logo) over the script's.
+fn keep_team_identity(patch: &mut Value, current: &Value) {
+    let Some(teams) = patch.get_mut("teams").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for (i, team) in teams.iter_mut().enumerate() {
+        let Some(team) = team.as_object_mut() else {
+            continue;
+        };
+        for field in ["name", "tag", "color", "logo"] {
+            let own = current
+                .get("teams")
+                .and_then(|t| t.get(i))
+                .and_then(|t| t.get(field));
+            if own.is_some_and(|v| air_state::js::truthy(Some(v))) {
+                team.insert(field.into(), own.cloned().unwrap_or(Value::Null));
+            }
+        }
+    }
 }
 
 struct FileStore<'a>(&'a Path);
@@ -120,7 +201,7 @@ fn persistent_state(state: &Value) -> Value {
 
 impl Room {
     fn store(&self) -> Box<dyn FixStore + '_> {
-        if self.ephemeral {
+        if self.ephemeral || self.testing.load(Ordering::SeqCst) {
             Box::new(NoStore)
         } else {
             Box::new(FileStore(&self.fixes_file))
@@ -141,7 +222,7 @@ impl Room {
     }
 
     fn append_log(&self, line: Value) {
-        if self.ephemeral {
+        if self.ephemeral || self.testing.load(Ordering::SeqCst) {
             return;
         }
         let result = OpenOptions::new()
@@ -182,7 +263,7 @@ impl Room {
         );
         if let Some(patch) = patch {
             self.append_log(json!({ "t": now_ms(), "v": v, "source": source, "patch": patch }));
-            inner.dirty = true;
+            inner.dirty |= inner.test.is_none();
         }
         Some(v)
     }
@@ -215,6 +296,8 @@ impl Room {
 
     /// Raw GEP messages captured `age_ms` ago → state, events and feed freshness.
     pub fn ingest(&self, messages: &[Value], age_ms: f64) -> (u64, usize) {
+        // Real game data always wins over a test round.
+        self.stop_test(None);
         let capture_at = now_ms() - age_ms;
         let mut inner = self.lock();
         let mut state = inner.state.clone();
@@ -250,6 +333,11 @@ impl Room {
     pub fn change_fix(&self, input: &Value) -> Result<Value, FixError> {
         let mut inner = self.lock();
         let inner = &mut *inner;
+        if inner.test.is_some() {
+            return Err(FixError(
+                "Stop the test round before correcting what viewers see.".into(),
+            ));
+        }
         let before = inner.fixes.view(&inner.state);
         let id = uuid::Uuid::new_v4().to_string();
         let action =
@@ -273,6 +361,9 @@ impl Room {
             return;
         }
         let mut inner = self.lock();
+        if inner.test.is_some() {
+            return;
+        }
         let phase = inner
             .state
             .get("round")
@@ -292,6 +383,116 @@ impl Room {
                 &json!({ "airDiagnostics": { "feedPaused": stale } }),
             );
             self.apply(&mut inner, next, "air:feed");
+        }
+    }
+
+    /// Starts a test round on this match. Returns its generation, used by the player task.
+    pub fn start_test(&self) -> Result<u64, &'static str> {
+        let mut inner = self.lock();
+        if inner.test.is_some() {
+            return Err("A test round is already playing.");
+        }
+        let generation = self.test_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        inner.test = Some(TestRun {
+            generation,
+            backup_state: inner.state.clone(),
+            backup_fixes: inner.fixes.clone(),
+            adapter: ValorantAdapter::new(),
+            started_at: now_ms(),
+        });
+        self.testing.store(true, Ordering::SeqCst);
+        // The HUD shows its "REHEARSAL · SAMPLE DATA" tag for simulated context.
+        let next = merge(
+            inner.state.clone(),
+            &json!({ "airContext": { "simulation": true }, "airDiagnostics": { "feedPaused": false } }),
+        );
+        self.apply(&mut inner, next, "air:test-round");
+        Ok(generation)
+    }
+
+    /// Plays one scripted step. Returns false when this test round is no longer running.
+    pub fn test_step(&self, generation: u64, step: &TestStep) -> bool {
+        let mut inner = self.lock();
+        let inner = &mut *inner;
+        let Some(test) = inner.test.as_mut().filter(|t| t.generation == generation) else {
+            return false;
+        };
+        let now = now_ms();
+        let mut events = Vec::new();
+        let next = if step.ingest {
+            let mut state = inner.state.clone();
+            let messages = step
+                .body
+                .as_array()
+                .cloned()
+                .unwrap_or_else(|| vec![step.body.clone()]);
+            for message in &messages {
+                let mut candidate = state.clone();
+                if let Ok(out) = test.adapter.ingest(&mut candidate, message, now) {
+                    state = candidate;
+                    events.extend(out);
+                }
+            }
+            state
+        } else {
+            let mut patch = rebase_times(&step.body, test.started_at);
+            keep_team_identity(&mut patch, &test.backup_state);
+            merge(inner.state.clone(), &patch)
+        };
+        self.apply(inner, next, "air:test-round");
+        for e in &events {
+            let mut event = Map::new();
+            event.insert(
+                "id".into(),
+                json!(format!(
+                    "{}-test-{}",
+                    self.code,
+                    uuid::Uuid::new_v4().simple()
+                )),
+            );
+            event.insert("t".into(), air_state::js::num(now));
+            if let Value::Object(fields) = e {
+                event.extend(fields.clone());
+            }
+            self.publish(json!({ "type": "event", "event": Value::Object(event) }));
+        }
+        true
+    }
+
+    /// Ends a test round and restores the exact state and fixes it replaced. With a generation,
+    /// only that run is stopped (so a finished player cannot end a newer run).
+    pub fn stop_test(&self, generation: Option<u64>) -> bool {
+        let mut inner = self.lock();
+        let inner = &mut *inner;
+        if inner
+            .test
+            .as_ref()
+            .is_none_or(|t| generation.is_some_and(|g| g != t.generation))
+        {
+            return false;
+        }
+        let test = inner.test.take().expect("checked");
+        let before = inner.fixes.view(&inner.state);
+        inner.state = test.backup_state;
+        inner.fixes = test.backup_fixes;
+        self.testing.store(false, Ordering::SeqCst);
+        inner.v += 1;
+        let patch = diff(&before, &inner.fixes.view(&inner.state));
+        self.publish(
+            json!({ "type": "patch", "v": inner.v, "patch": patch.unwrap_or_else(|| json!({})) }),
+        );
+        true
+    }
+
+    /// `{ running, startedAt, durationMs }` for the control status.
+    pub fn test_status(&self) -> Value {
+        let inner = self.lock();
+        let duration = test_round_script().last().map_or(0.0, |s| s.at);
+        match &inner.test {
+            Some(t) => {
+                json!({ "running": true, "startedAt": t.started_at, "durationMs": duration })
+            }
+            None => json!({ "running": false, "durationMs": duration }),
         }
     }
 
@@ -400,7 +601,10 @@ impl Engine {
                 last_gep_at: None,
                 last_feed_at: None,
                 dirty: false,
+                test: None,
             }),
+            testing: AtomicBool::new(false),
+            test_generation: AtomicU64::new(0),
             log: self.data.join(format!("{code}.ndjson")),
             file,
             fixes_file,
@@ -440,6 +644,24 @@ impl Engine {
         *self.outputs.lock().unwrap_or_else(|p| p.into_inner()) = parsed;
         self.outputs_changed.send_modify(|n| *n += 1);
         Ok(count)
+    }
+
+    /// Plays the test round on `room` at real pace, then holds the last frame briefly and restores.
+    pub fn play_test_round(room: Arc<Room>) -> Result<(), &'static str> {
+        let generation = room.start_test()?;
+        tokio::spawn(async move {
+            let start = tokio::time::Instant::now();
+            for step in test_round_script() {
+                tokio::time::sleep_until(start + std::time::Duration::from_millis(step.at as u64))
+                    .await;
+                if !room.test_step(generation, step) {
+                    return;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            room.stop_test(Some(generation));
+        });
+        Ok(())
     }
 
     pub fn save_all(&self) {

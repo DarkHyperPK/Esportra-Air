@@ -475,3 +475,107 @@ async fn feed_paused_only_after_game_data_stops() {
     }
     assert!(resumed, "fresh game data clears the tag");
 }
+
+#[tokio::test]
+async fn test_round_plays_sample_data_and_restores_the_match() {
+    let data = temp_dir();
+    let r = engine(data.clone()).await;
+    let own = json!({ "teams": [{ "name": "Alpha", "tag": "ALP" }, { "name": "Bravo", "tag": "BRV" }], "map": { "name": "BIND" } });
+    request(&r, "PATCH", "/api/TR", Some(&own), true).await;
+    let before = request(&r, "GET", "/api/TR", None, false).await.json()["state"].clone();
+    let start = request(
+        &r,
+        "POST",
+        "/control/test-round",
+        Some(&json!({ "match": "TR", "action": "start" })),
+        true,
+    )
+    .await;
+    assert_eq!(start.status, 200, "{}", start.body);
+    assert_eq!(
+        request(
+            &r,
+            "POST",
+            "/control/test-round",
+            Some(&json!({ "match": "TR", "action": "start" })),
+            true
+        )
+        .await
+        .status,
+        409
+    );
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let playing = request(&r, "GET", "/api/TR", None, false).await.json()["state"].clone();
+    assert_eq!(
+        playing["airContext"]["simulation"],
+        json!(true),
+        "HUD shows the rehearsal tag"
+    );
+    assert_eq!(
+        playing["teams"][0]["name"],
+        json!("Alpha"),
+        "the producer's own teams are kept"
+    );
+    assert_eq!(
+        playing["players"][0][0]["name"],
+        json!("JUNO"),
+        "sample players come through the real parser"
+    );
+    let fix = json!({ "action": "set", "field": "scores", "value": [1, 1], "until": "cleared", "reason": "x" });
+    assert_eq!(
+        request(&r, "POST", "/api/TR/display-fixes", Some(&fix), true)
+            .await
+            .status,
+        400,
+        "no corrections during a test round"
+    );
+    let status = request(&r, "GET", "/control/status", None, true)
+        .await
+        .json();
+    assert_eq!(
+        status["rooms"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|room| room["match"] == json!("TR"))
+            .unwrap()["testRound"]["running"],
+        json!(true)
+    );
+
+    request(
+        &r,
+        "POST",
+        "/control/test-round",
+        Some(&json!({ "match": "TR", "action": "stop" })),
+        true,
+    )
+    .await;
+    let after = request(&r, "GET", "/api/TR", None, false).await.json()["state"].clone();
+    assert_eq!(after, before, "the match is exactly as it was");
+    let log = std::fs::read_to_string(data.join("TR.ndjson")).unwrap_or_default();
+    assert!(
+        !log.contains("air:test-round"),
+        "test rounds are not logged"
+    );
+
+    // Real game data stops a running test round and takes over.
+    request(
+        &r,
+        "POST",
+        "/control/test-round",
+        Some(&json!({ "match": "TR", "action": "start" })),
+        true,
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let real =
+        json!([{ "info": { "match_info": { "round_number": "7" } }, "feature": "match_info" }]);
+    request(&r, "POST", "/api/TR/ingest/valorant", Some(&real), true).await;
+    let state = request(&r, "GET", "/api/TR", None, false).await.json()["state"].clone();
+    assert_eq!(state["round"]["number"], json!(7));
+    assert!(
+        state["airContext"].get("simulation").is_none(),
+        "no rehearsal tag on real data"
+    );
+    assert_eq!(state["teams"][0]["name"], json!("Alpha"));
+}
