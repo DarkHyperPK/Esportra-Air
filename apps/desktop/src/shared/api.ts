@@ -5,7 +5,7 @@ import type { SceneKey, SlotId } from './scenes.ts';
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
-export type Page = 'ready' | 'console' | 'scenes' | 'capture' | 'outputs' | 'settings' | 'setup';
+export type Page = 'ready' | 'console' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings' | 'setup';
 export type Health = 'ok' | 'warn' | 'off' | 'bad';
 
 export interface Team {
@@ -48,6 +48,8 @@ export interface Match {
   /** Shown on the event bug and lower thirds. */
   event: { name: string; stage: string };
   sponsors: string[];
+  /** The banner style used by this match's graphics. */
+  theme: BannerTheme;
   /** Set for matches taken from an Esportra tournament. */
   source?: { matchId: string; tournamentId: string; tournament: string; scheduledAt: string | null; lineups: [string[], string[]] | null };
 }
@@ -61,6 +63,8 @@ export interface Screen {
   scene: SceneKey;
   /** The graphic previewed for its scene on the Outputs page. */
   primary?: boolean;
+  /** Shown inside the full-screen host page rather than as its own OBS source. */
+  hosted?: boolean;
   overlay: string;
   title: string;
   enabled: boolean;
@@ -274,6 +278,7 @@ export interface NewMatchInput {
   casters: Caster[];
   event: { name: string; stage: string };
   sponsors: string[];
+  theme?: BannerTheme;
 }
 
 export interface QuickMatchInput {
@@ -320,7 +325,11 @@ export interface AirApi {
   useSlotSource(slot: SlotId, source: string): Promise<Snapshot>;
   createQuickMatch(input: QuickMatchInput): Promise<Snapshot>;
   selectMatch(id: string): Promise<Snapshot>;
-  updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players' | 'teams' | 'bestOf'>>): Promise<Snapshot>;
+  updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players' | 'teams' | 'bestOf' | 'theme'>>): Promise<Snapshot>;
+  /** Seeds the HUD library's sample room with this match's teams (or sample teams) and the given banner style. */
+  librarySeed(): Promise<Snapshot>;
+  /** Plays the sample round in the library room so the previews move. */
+  libraryPlay(on: boolean): Promise<Snapshot>;
   createMatch(input: NewMatchInput): Promise<Snapshot>;
   /** Stores an image (data URL) and resolves to its URL on the engine. */
   uploadImage(dataUrl: string): Promise<string>;

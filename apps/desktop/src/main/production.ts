@@ -13,11 +13,12 @@ import type { ObsLink } from './obs.ts';
 import { Replay } from './replay.ts';
 import type { BuildScene } from './scene-build.ts';
 import { SCENE_KEYS, SCENES, sourceName, type SlotId } from '../shared/scenes.ts';
-import { AUTO_LAYERS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
+import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
 import { GAMES } from '../shared/games.ts';
+import { LIBRARY_ROOM } from '../shared/library.ts';
 import { ArtCheck } from './art-check.ts';
 import type { EsportraAccount } from './esportra.ts';
 import { JoinHost } from './join.ts';
@@ -160,11 +161,11 @@ export class Production extends EventEmitter {
     deps.engine.on('restarted', () => void this.syncEngine().catch(() => {}));
     deps.obs.on('change', changed);
     deps.obs.on('change', () => this.autopilot.onObs());
-    deps.obs.watchFullscreen(SCENES.fullscreen.name);
     this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => this.autopilot.onGameEvent(event) });
     this.autopilot = new Autopilot({
       store: deps.store, obs: deps.obs, match: () => this.match, screens: () => this.setup.screens, stinger: () => this.setup.obs.stinger,
       log: (line) => this.log.add(line), changed,
+      showGraphic: (id) => this.fullscreen(id, true),
     });
     deps.obs.watchSlots(SCENE_KEYS.flatMap((key) => SCENES[key].slots.map((slot) => slot.scene)));
     this.replay = new Replay(deps.obs, { canReturn: () => !this.room?.airPause, stinger: () => this.setup.obs.stinger });
@@ -194,7 +195,7 @@ export class Production extends EventEmitter {
   async syncEngine() {
     const match = this.match;
     const setup = this.setup;
-    const outputs = setup.screens.filter((s) => s.enabled).map((s) => ({ id: s.outputId, overlay: s.overlay, matchCode: match?.code ?? 'MAIN' }));
+    const outputs = setup.screens.filter((s) => s.enabled && !s.hosted).map((s) => ({ id: s.outputId, overlay: s.overlay, matchCode: match?.code ?? 'MAIN' }));
     await this.client.put('/control/outputs', { outputs });
     this.deps.ingest.target(match ? this.client.ingestUrl(match.code) : null);
     if (!match) {
@@ -208,11 +209,11 @@ export class Production extends EventEmitter {
       event: { name: match.event.name || match.source?.tournament || setup.name, stage: match.event.stage, bestOf: match.bestOf },
       casters: match.casters.length ? match.casters : [{ name: '', handle: '' }, { name: '', handle: '' }],
       sponsors: match.sponsors,
-      layout: { bannerTheme: setup.package, minimap: setup.minimap },
+      layout: { bannerTheme: match.theme ?? setup.package, minimap: setup.minimap },
       show: { eventBug: setup.hud.eventBug !== false },
     });
     const managed = new Set<string>(SETUP_LAYER_KEYS);
-    const plain = Object.fromEntries(Object.entries(setup.hud).filter(([k]) => !managed.has(k)));
+    const plain = Object.fromEntries(Object.entries(setup.hud).filter(([k]) => !managed.has(k) && !(GAME_DRAWS as readonly string[]).includes(k)));
     if (Object.keys(plain).length) await this.client.patch(`/api/${code}`, { show: plain });
     // The lineups: the engine puts display names and photos on the players the game reports.
     await this.client.patch(`/api/${code}`, { airRoster: match.players.map((team) => team.map((p) => ({ gameId: p.gameId, name: p.name, photo: p.photo }))) });
@@ -233,6 +234,7 @@ export class Production extends EventEmitter {
       const fromSetup = (SETUP_LAYER_KEYS as readonly string[]).includes(def.id);
       modes[def.id] = fromSetup ? (hud[def.id] === false ? 'off' : defaultMode(def.id)) : AUTO_LAYERS.has(def.id) ? 'auto' : 'off';
     }
+    for (const id of GAME_DRAWS) modes[id] = 'off';
     return modes;
   }
 
@@ -303,6 +305,7 @@ export class Production extends EventEmitter {
       bestOf: input.bestOf, teams, casters, createdAt: (this.deps.now ?? Date.now)(), game: game.id, players,
       event: { name: input.event?.name ? text(input.event.name, 60, 'Event name') : '', stage: input.event?.stage ? text(input.event.stage, 60, 'Stage') : '' },
       sponsors: input.sponsors.map((s, i) => text(s, 40, `Sponsor ${i + 1}`)),
+      theme: input.theme && BANNER_THEMES.includes(input.theme) ? input.theme : this.carryOver(null).theme,
     };
     const data = this.deps.store.data;
     data.matches = [match, ...data.matches].slice(0, 50);
@@ -310,6 +313,38 @@ export class Production extends EventEmitter {
     this.save();
     await this.syncEngine();
     this.log.add(`Match created · ${match.title}`);
+  }
+
+  // ── HUD library ──
+
+  /**
+   * Seeds the library's sample room: the sample match with this match's teams, logos, players and
+   * event, every graphic switched on, and a banner on screen so banner styles can be compared.
+   */
+  async librarySeed() {
+    const room = `/api/${LIBRARY_ROOM}`;
+    await this.client.put(`${room}?preset=default`, {});
+    const { state } = await this.client.get<{ state: any }>(room);
+    const m = this.match;
+    if (m) {
+      state.teams = state.teams.map((t: any, i: number) => ({ ...t, name: m.teams[i]!.name.toUpperCase(), tag: m.teams[i]!.tag, color: m.teams[i]!.color, logo: m.teams[i]!.logo }));
+      state.players = state.players.map((team: any[], t: number) => team.map((p: any, i: number) => {
+        const mine = m.players[t]?.[i];
+        return mine ? { ...p, name: mine.name.toUpperCase(), photo: mine.photo } : p;
+      }));
+      if (m.event.name) state.event = { ...state.event, name: m.event.name.toUpperCase(), stage: (m.event.stage || state.event.stage).toUpperCase() };
+      if (m.casters.length) state.casters = m.casters.map((c) => ({ name: c.name, handle: c.handle }));
+      if (m.sponsors.length) state.sponsors = m.sponsors;
+    }
+    state.layout = { ...(state.layout ?? {}), bannerTheme: m?.theme ?? this.setup.package };
+    state.banner = { type: 'ace', team: 0, player: 0, text: '', method: '', ts: Date.now(), hold: 3_600_000 };
+    state.show = { ...state.show, killfeed: false, observed: false, minimap: false };
+    state.airFullscreen = null;
+    await this.client.put(room, state);
+  }
+
+  async libraryPlay(on: boolean) {
+    await this.client.post('/control/test-round', { match: LIBRARY_ROOM, action: on ? 'start' : 'stop', speed: 2 });
   }
 
   /** Stores an image (logo or player photo) in the engine and returns its URL. JPEG and WebP are converted to PNG. */
@@ -333,13 +368,13 @@ export class Production extends EventEmitter {
   }
 
   /** A new match starts with the event and sponsors of the latest match (of the same tournament, when there is one). */
-  private carryOver(tournamentId: string | null): Pick<Match, 'event' | 'sponsors'> {
+  private carryOver(tournamentId: string | null): Pick<Match, 'event' | 'sponsors' | 'theme'> {
     const list = this.deps.store.data.matches;
     const from = (tournamentId && list.find((m) => m.source?.tournamentId === tournamentId)) || list[0];
-    return { event: { ...(from?.event ?? { name: '', stage: '' }) }, sponsors: [...(from?.sponsors ?? [])] };
+    return { event: { ...(from?.event ?? { name: '', stage: '' }) }, sponsors: [...(from?.sponsors ?? [])], theme: from?.theme ?? this.setup.package ?? 'broadcast' };
   }
 
-  async updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players' | 'teams' | 'bestOf'>>) {
+  async updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players' | 'teams' | 'bestOf' | 'theme'>>) {
     const match = this.deps.store.data.matches.find((m) => m.id === id);
     if (!match) throw new Error('That match is no longer available.');
     if (patch.title !== undefined) match.title = text(patch.title, 80, 'Match title');
@@ -358,6 +393,10 @@ export class Production extends EventEmitter {
     if (patch.teams !== undefined) {
       match.teams = validTeams(patch.teams);
       match.title = `${match.teams[0].name} vs ${match.teams[1].name}`;
+    }
+    if (patch.theme !== undefined) {
+      if (!BANNER_THEMES.includes(patch.theme)) throw new Error('Choose one of the banner styles.');
+      match.theme = patch.theme;
     }
     if (patch.bestOf !== undefined) {
       if (![1, 3, 5].includes(patch.bestOf)) throw new Error('Choose best of 1, 3 or 5.');
@@ -443,7 +482,7 @@ export class Production extends EventEmitter {
         exclusive: def.exclusive,
         slots: def.slots.map((slot) => ({ id: slot.id, sceneName: slot.scene, frame: slot.frame })),
         sources: this.setup.screens
-          .filter((x) => x.scene === key && x.enabled)
+          .filter((x) => x.scene === key && x.enabled && !x.hosted)
           .map((x) => ({ id: x.id, inputName: sourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
       };
     });
@@ -668,7 +707,7 @@ export class Production extends EventEmitter {
       const id = randomUUID();
       const players = [0, 1].map((t) => (lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];
       const carried = this.carryOver(found.tournamentId);
-      const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, casters: [], createdAt: (this.deps.now ?? Date.now)(), source, game: 'valorant', players, event: { name: found.tournament || carried.event.name, stage: carried.event.stage }, sponsors: carried.sponsors };
+      const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, casters: [], createdAt: (this.deps.now ?? Date.now)(), source, game: 'valorant', players, event: { name: found.tournament || carried.event.name, stage: carried.event.stage }, sponsors: carried.sponsors, theme: carried.theme };
       data.matches = [match, ...data.matches].slice(0, 50);
       data.selectedMatchId = id;
     }
@@ -719,7 +758,7 @@ export class Production extends EventEmitter {
     await this.pushCams();
     // A grid layout is a full-screen graphic: line it up in Preview like the other full-screen layers.
     if (patch.layout && patch.layout !== 'ingame') await this.fullscreen('cam-grid', true).catch(() => {});
-    else if (patch.layout === 'ingame' && this.deps.obs.status.fullscreenSource === sourceName(this.setup.screens.find((x) => x.id === 'cam-grid')?.title ?? '')) await this.deps.obs.showFullscreen(null).catch(() => {});
+    else if (patch.layout === 'ingame' && this.room?.airFullscreen === 'cam-grid') await this.fullscreen('cam-grid', false).catch(() => {});
   }
 
   private slot(team: number, slot: number) {
@@ -837,13 +876,9 @@ export class Production extends EventEmitter {
       this.deps.store.save();
       await this.pushCams();
     }
-    await this.deps.obs.showFullscreen(on ? sourceName(screen.title) : null);
-    // Studio Mode: line it up in Preview so Take puts it on air.
-    if (on && this.deps.obs.status.studioMode && this.deps.obs.status.scenes.includes(SCENES.fullscreen.name)) {
-      await this.deps.obs.setPreview(SCENES.fullscreen.name);
-    }
-    this.log.add(on ? `Full screen · ${screen.title} ready in Preview` : 'Full screen hidden');
-    this.emit('change');
+    // The full-screen host page shows it; OBS is not touched (decision R1).
+    await this.act('fullscreen.show', { screen: on ? screen.id : null });
+    this.log.add(on ? `Full screen · ${screen.title}` : 'Full screen hidden');
   }
 
   async correct(input: CorrectionCall) {
@@ -890,8 +925,8 @@ export class Production extends EventEmitter {
     return LAYER_DEFS.map((def) => {
       if (def.id.startsWith('fs:')) {
         const screen = this.setup.screens.find((x) => x.id === def.id.slice(3));
-        const on = !!screen && obs.status.fullscreenSource === sourceName(screen.title);
-        return { ...def, mode: on ? 'on' : 'off', auto: false, manual: false, available: !!screen?.enabled && obs.connected && obs.status.scenes.includes(SCENES.fullscreen.name) } as LayerRow;
+        const on = !!screen && this.room?.airFullscreen === screen.id;
+        return { ...def, mode: on ? 'on' : 'off', auto: false, manual: false, available: !!screen?.enabled && !!this.match } as LayerRow;
       }
       const auto = AUTO_LAYERS.has(def.id);
       const mode: LayerMode = layers[def.id] ?? (auto ? 'auto' : 'off');
@@ -922,7 +957,7 @@ export class Production extends EventEmitter {
           roster: [0, 1].map((t) => (room.players?.[t] ?? []).map((p: { name?: string; inGameName?: string }) => ({ name: p?.name ?? '', inGameName: p?.inGameName ?? '' }))),
         }
       : null;
-    const enabled = this.setup.screens.filter((s) => s.enabled);
+    const enabled = this.setup.screens.filter((s) => s.enabled && !s.hosted);
     const outputs = enabled.map((s) => {
       const o = status?.outputs.find((x) => x.id === s.outputId);
       return { screenId: s.id, title: s.title, overlay: s.overlay, url: `http://127.0.0.1:${engine.port}/o/${s.outputId}`, connections: o?.connections ?? 0, lastFrameAt: o?.lastFrameAt ?? null };

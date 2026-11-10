@@ -36,29 +36,33 @@ export interface Saved {
 const full = { x: 0, y: 0, width: 1920, height: 1080 };
 const screen = (id: string, overlay: string, title: string, scene: SceneKey, primary = false): Screen => ({ id, outputId: '', scene, primary, overlay, title, enabled: true, frame: { ...full } });
 
+/** A full-screen graphic shown by the full-screen host page. */
+const hosted = (id: string, overlay: string, title: string): Screen => ({ ...screen(id, overlay, title, 'fullscreen'), hosted: true });
+
 /** Every graphic Air puts in OBS, grouped by the scene it lives in (PRD picture 9). */
 export const DEFAULT_SCREENS: Screen[] = [
   screen('holding', 'holding', 'Holding', 'holding', true),
   screen('ticker', 'ticker', 'Ticker', 'holding'),
   screen('in-game', 'ingame', 'In-game HUD', 'gameplay', true),
   screen('stinger', 'stinger', 'Stinger (live)', 'gameplay'),
-  screen('match-intro', 'match-intro', 'Match intro', 'fullscreen', true),
-  screen('map-veto', 'map-veto', 'Map veto', 'fullscreen'),
-  screen('agent-select', 'agent-select', 'Agent select', 'fullscreen'),
-  screen('map-result', 'map-result', 'Map result', 'fullscreen'),
-  screen('series', 'series', 'Series', 'fullscreen'),
-  screen('halftime', 'halftime', 'Halftime', 'fullscreen'),
-  screen('standings', 'standings', 'Standings', 'fullscreen'),
-  screen('player-profile', 'player-profile', 'Player profile', 'fullscreen'),
-  screen('champion', 'champion', 'Champion', 'fullscreen'),
-  screen('cam-grid', 'cam-grid', 'Player cams', 'fullscreen'),
+  screen('fullscreen', 'fullscreen', 'Full screen', 'fullscreen', true),
+  hosted('match-intro', 'match-intro', 'Match intro'),
+  hosted('map-veto', 'map-veto', 'Map veto'),
+  hosted('agent-select', 'agent-select', 'Agent select'),
+  hosted('map-result', 'map-result', 'Map result'),
+  hosted('series', 'series', 'Series'),
+  hosted('halftime', 'halftime', 'Halftime'),
+  hosted('standings', 'standings', 'Standings'),
+  hosted('player-profile', 'player-profile', 'Player profile'),
+  hosted('champion', 'champion', 'Champion'),
+  hosted('cam-grid', 'cam-grid', 'Player cams'),
   screen('replay-bug', 'replay', 'Replay bug', 'replay', true),
   screen('casters', 'casters', 'Casters', 'casters', true),
 ];
 
 /** HUD elements the producer can switch, with the HUD's own defaults (core/state.clean.js `show`). */
 export const DEFAULT_HUD: Record<string, boolean> = {
-  scorebug: true, players: true, killfeed: true, observed: true, minimap: false, spikeTimer: true,
+  scorebug: true, players: true, spikeTimer: true,
   winProb: false, roundHistory: false, moments: true, sponsor: true, eventBug: true, ticker: true,
 };
 
@@ -103,14 +107,17 @@ export class Store {
     const known = new Map((setup.screens ?? []).map((x) => [x.id, x]));
     setup.screens = DEFAULT_SCREENS.map((def) => {
       const old = known.get(def.id);
-      return { ...def, outputId: /^[0-9a-f-]{36}$/i.test(old?.outputId ?? '') ? old!.outputId : randomUUID(), enabled: old?.enabled ?? def.enabled, frame: old?.frame ?? { ...def.frame }, title: old?.title ?? def.title };
+      return { ...def, hosted: def.hosted, outputId: /^[0-9a-f-]{36}$/i.test(old?.outputId ?? '') ? old!.outputId : randomUUID(), enabled: old?.enabled ?? def.enabled, frame: old?.frame ?? { ...def.frame }, title: old?.title ?? def.title };
     });
     setup.obs = { host: setup.obs?.host ?? '127.0.0.1', port: setup.obs?.port ?? 4455, stinger: setup.obs?.stinger ?? null };
     if (!this.data.owned || typeof this.data.owned !== 'object' || !('scenes' in this.data.owned)) this.data.owned = emptyOwned();
+    // Valorant draws its own killfeed, observer card and minimap; Air no longer offers them.
+    for (const k of ['killfeed', 'observed', 'minimap']) delete setup.hud[k];
     // Match v2: game, lineups, event and sponsors live on the match (they used to be production-wide).
     for (const m of this.data.matches ?? []) {
       const old = m as Partial<Match> & Match;
       old.game ??= 'valorant';
+      old.theme ??= setup.package ?? 'broadcast';
       old.event ??= { name: old.source?.tournament || setup.brand?.eventName || '', stage: setup.brand?.stage ?? '' };
       old.sponsors ??= [...(setup.sponsors ?? [])];
       old.players ??= [0, 1].map((t) => (old.source?.lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];

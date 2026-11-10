@@ -14,7 +14,7 @@ const THEME_NOTES: Record<(typeof BANNER_THEMES)[number], string> = {
   impact: 'Bold, high-contrast banners.',
 };
 const HUD_LABELS: Record<string, string> = {
-  scorebug: 'Scorebug', players: 'Player cards', killfeed: 'Kill feed', observed: 'Observed player', minimap: 'Minimap frame',
+  scorebug: 'Scorebug', players: 'Player cards',
   spikeTimer: 'Spike timer', winProb: 'Win probability (estimate)', roundHistory: 'Round history', moments: 'Highlight moments',
   sponsor: 'Sponsor slot', eventBug: 'Event bug', ticker: 'Ticker',
 };
@@ -32,14 +32,7 @@ function Graphics({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const setup = s.setup;
   const update = (patch: Partial<Setup>) => void run(() => air.updateSetup(patch));
   return (
-    <div className="grid2" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', alignItems: 'start' }}>
-      <section className="panel"><div className="head"><Cap>Banner style</Cap></div><div className="body-pad stack" style={{ gap: 8 }}>
-        {BANNER_THEMES.map((theme) => (
-          <button key={theme} className="choice" aria-pressed={setup.package === theme} onClick={() => update({ package: theme })}>
-            <b style={{ textTransform: 'capitalize' }}>{theme}</b><br /><span className="muted" style={{ fontSize: 12 }}>{THEME_NOTES[theme]}</span>
-          </button>
-        ))}
-      </div></section>
+    <div className="grid2" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignItems: 'start' }}>
       <section className="panel"><div className="head"><Cap>Graphics in OBS</Cap></div><div className="body-pad" style={{ padding: '10px 0 8px' }}>
         {SCENE_KEYS.map((key) => (
           <div key={key}>

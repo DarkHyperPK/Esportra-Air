@@ -113,9 +113,23 @@ pub fn run(room: &Arc<Room>, name: &str, args: &Value) -> Result<u64, String> {
         }
         // Player cameras: which VDO.Ninja stream sits in each of the ten player frames, and how they are laid out.
         "cams.set" => cams_set(state, args),
+        // The full-screen host page shows this graphic (null hides it).
+        "fullscreen.show" => {
+            let screen = args.get("screen").cloned().unwrap_or(Value::Null);
+            match &screen {
+                Value::Null => {}
+                Value::String(s) if FULLSCREEN.contains(&s.as_str()) => {}
+                _ => return Err("Choose one of the full-screen graphics.".into()),
+            }
+            state["airFullscreen"] = screen;
+            Ok(())
+        }
         _ => Err("Unknown action.".into()),
     })
 }
+
+/// The graphics the full-screen host page can show (`overlays/fullscreen.html`).
+const FULLSCREEN: [&str; 10] = ["match-intro", "map-veto", "agent-select", "map-result", "series", "halftime", "standings", "player-profile", "champion", "cam-grid"];
 
 fn camera_id(v: &Value) -> Result<Value, String> {
     match v {

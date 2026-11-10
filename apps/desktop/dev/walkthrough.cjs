@@ -70,6 +70,10 @@ function makePng(hex) {
   await wizard.getByLabel('Sponsor name').fill('Acme Energy');
   await wizard.getByRole('button', { name: 'Add', exact: true }).click();
   await shot('wizard-talent');
+  await wizard.getByRole('button', { name: 'Continue' }).click();
+  await wizard.getByRole('radio', { name: /Impact/ }).click();
+  await page.waitForTimeout(2500);
+  await shot('wizard-graphics');
   await wizard.getByRole('button', { name: 'Create match' }).click();
   await wizard.waitFor({ state: 'detached' });
   await page.getByText('2 casters ready').waitFor();
@@ -77,6 +81,20 @@ function makePng(hex) {
   await page.getByRole('tab', { name: 'Teams and players' }).click();
   await shot('match-teams');
   await page.getByRole('tab', { name: 'Readiness' }).click();
+
+  // HUD library: live previews with this match's teams.
+  await rail('Library');
+  await page.getByRole('heading', { name: 'Esportra Broadcast' }).waitFor();
+  await page.waitForTimeout(3000);
+  await shot('library-ingame');
+  await page.getByRole('tab', { name: /Full screen/ }).click();
+  await page.waitForTimeout(3000);
+  await shot('library-fullscreen');
+  await page.getByRole('button', { name: /Map result/ }).first().click();
+  await page.getByRole('dialog', { name: 'Map result' }).waitFor();
+  await page.waitForTimeout(2500);
+  await shot('library-detail');
+  await page.keyboard.press('Escape');
 
   // Settings: connect OBS (software settings), then Scenes: add for me, fill the game-feed slot
   await rail('Settings');

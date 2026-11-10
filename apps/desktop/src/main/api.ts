@@ -18,6 +18,8 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'snapshot': break;
     case 'createQuickMatch': await p.createQuickMatch(a[0]); break;
     case 'selectMatch': await p.selectMatch(String(a[0])); break;
+    case 'librarySeed': await p.librarySeed(); break;
+    case 'libraryPlay': await p.libraryPlay(a[0] === true); break;
     case 'createMatch': await p.createMatch(a[0]); break;
     case 'uploadImage': return p.uploadImage(String(a[0]));
     case 'updateMatch': await p.updateMatch(String(a[0]), a[1] ?? {}); break;

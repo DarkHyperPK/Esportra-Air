@@ -15,6 +15,8 @@ export interface AutopilotDeps {
   match(): Match | null;
   screens(): Screen[];
   stinger(): string | null;
+  /** Shows a full-screen graphic in the full-screen host. */
+  showGraphic(screenId: string): Promise<void>;
   /** Adds a line to the event log. */
   log(text: string): void;
   changed(): void;
@@ -186,7 +188,7 @@ export class Autopilot {
       if (segment.graphic) {
         const screen = this.deps.screens().find((s) => s.id === segment.graphic);
         if (!screen?.enabled) return { ok: false, error: `The ${segment.graphic.replace(/-/g, ' ')} graphic is switched off in Setup.` };
-        await obs.showFullscreen(sourceName(screen.title));
+        await this.deps.showGraphic(screen.id);
       }
       if (obs.status.programScene === segment.scene) return { ok: true, alreadyOnAir: true };
       if (!stillAllowed()) return { ok: false, error: 'Take cancelled because production changed.' };

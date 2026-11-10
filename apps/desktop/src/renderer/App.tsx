@@ -11,6 +11,7 @@ import { ReadyScreen } from './screens/ReadyScreen.tsx';
 import { ScenesScreen } from './screens/ScenesScreen.tsx';
 import { SetupScreen, type SetupTab } from './screens/SetupScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
+import { LibraryScreen } from './screens/LibraryScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
@@ -92,6 +93,7 @@ export function App() {
           <main className="page">
             {page === 'ready' && <ReadyScreen {...props} start={() => { setStarted(true); setPage('console'); }} />}
             {page === 'console' && <ConsoleScreen {...props} />}
+            {page === 'library' && <LibraryScreen {...props} />}
             {page === 'scenes' && <ScenesScreen {...props} />}
             {page === 'capture' && <CaptureScreen {...props} />}
             {page === 'outputs' && <OutputsScreen {...props} />}

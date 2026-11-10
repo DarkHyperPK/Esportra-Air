@@ -709,3 +709,4 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 /* Layout preview excludes unreceived series statistics. */
 .hud-without-game-data .in .ts { visibility: hidden; }
 .pp .por.photo,.cd img.photo{object-fit:cover;object-position:50% 20%}
+.sb-mid .tm.planted{font-size:0}

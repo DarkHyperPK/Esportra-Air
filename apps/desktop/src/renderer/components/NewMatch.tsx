@@ -1,12 +1,13 @@
 // New match wizard: the prerequisites of a show, in order. Graphics and rehearsal follow in later steps.
-import { useState } from 'react';
-import type { Caster, Snapshot, Team } from '../../shared/api.ts';
+import { useEffect, useState } from 'react';
+import type { BannerTheme, Caster, Snapshot, Team } from '../../shared/api.ts';
+import { BannerStyles } from '../screens/LibraryScreen.tsx';
 import { GAMES, type GameId } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { GamePicker, LineupEditor, TalentFields, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
 
-const STEPS = ['Game', 'Teams', 'Players', 'Talent and event'] as const;
+const STEPS = ['Game', 'Teams', 'Players', 'Talent and event', 'Graphics'] as const;
 
 export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close: () => void }) {
   const last = s.matches[0];
@@ -21,14 +22,16 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
   const [casters, setCasters] = useState<Caster[]>([]);
   const [event, setEvent] = useState({ name: last?.event.name ?? '', stage: last?.event.stage ?? '' });
   const [sponsors, setSponsors] = useState<string[]>(last?.sponsors ?? []);
+  const [theme, setTheme] = useState<BannerTheme>(last?.theme ?? 'broadcast');
   const [busy, setBusy] = useState(false);
+  useEffect(() => { if (step === 4) void air.librarySeed().catch(() => {}); }, [step]);
 
   const teamsOk = teams.every((t) => t.name.trim()) && teams[0].name.trim().toLowerCase() !== teams[1].name.trim().toLowerCase();
   const canNext = step === 0 ? !!GAMES.find((g) => g.id === game)?.available : step === 1 ? teamsOk : true;
   const finish = async () => {
     setBusy(true);
     const players = lineups.map((team) => team.filter((p) => p.name.trim())) as Lineups;
-    const ok = await run(() => air.createMatch({ game, bestOf, teams, players, casters: casters.filter((c) => c.name.trim()), event, sponsors }));
+    const ok = await run(() => air.createMatch({ game, bestOf, teams, players, casters: casters.filter((c) => c.name.trim()), event, sponsors, theme }));
     setBusy(false);
     if (ok) close();
   };
@@ -71,6 +74,13 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
             <div className="stack" style={{ gap: 14 }}>
               <p className="lead">Who plays. Empty rows are left out; you can finish the lineups later.</p>
               <LineupEditor s={s} teams={teams} lineups={lineups} onChange={setLineups} game={game} />
+            </div>
+          )}
+          {step === 4 && (
+            <div className="stack" style={{ gap: 14 }}>
+              <p className="lead">Pick the banner style for this match. Each preview shows the same moment; the Library shows every other graphic live.</p>
+              <BannerStyles s={s} value={theme} onPick={setTheme} />
+              <p className="muted" style={{ fontSize: 12.5 }}>Previews use sample data until the match exists.</p>
             </div>
           )}
           {step === 3 && (

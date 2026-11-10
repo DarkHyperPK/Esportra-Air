@@ -16,12 +16,9 @@ export interface LayerDef {
 export const LAYER_DEFS: LayerDef[] = [
   { id: 'scorebug', label: 'Scorebug', group: 'ingame', hotkey: '1' },
   { id: 'players', label: 'Player cards', group: 'ingame', hotkey: '2' },
-  { id: 'killfeed', label: 'Killfeed', group: 'ingame', hotkey: '3' },
-  { id: 'observed', label: 'Observed player', group: 'ingame', hotkey: '4' },
-  { id: 'minimap', label: 'Minimap frame', group: 'ingame', hotkey: '5' },
-  { id: 'winProb', label: 'Win probability (est.)', group: 'ingame', hotkey: '6' },
-  { id: 'spikeTimer', label: 'Spike timer', group: 'ingame', hotkey: '7' },
-  { id: 'sponsor', label: 'Sponsor bug', group: 'ingame', hotkey: '8' },
+  { id: 'winProb', label: 'Win probability (est.)', group: 'ingame', hotkey: '3' },
+  { id: 'spikeTimer', label: 'Spike timer', group: 'ingame', hotkey: '4' },
+  { id: 'sponsor', label: 'Sponsor bug', group: 'ingame', hotkey: '5' },
   { id: 'economy', label: 'Economy board', group: 'between', hotkey: 'Q' },
   { id: 'roundRecap', label: 'Round recap', group: 'between', hotkey: 'W' },
   { id: 'scoreboard', label: 'Scoreboard', group: 'between', hotkey: 'E' },
@@ -44,7 +41,10 @@ export const LAYER_DEFS: LayerDef[] = [
 export const AUTO_LAYERS = new Set(['spikeTimer', 'sponsor', 'economy', 'roundRecap', 'lowerThird']);
 
 /** Setup's "In-game HUD" switches that are console layers; the rest stay plain HUD flags. */
-export const SETUP_LAYER_KEYS = ['scorebug', 'players', 'killfeed', 'observed', 'minimap', 'winProb', 'spikeTimer', 'sponsor', 'ticker'] as const;
+export const SETUP_LAYER_KEYS = ['scorebug', 'players', 'winProb', 'spikeTimer', 'sponsor', 'ticker'] as const;
+
+/** Valorant's own observer UI already shows these, so Air keeps them off (decision R2). */
+export const GAME_DRAWS = ['killfeed', 'observed', 'minimap'] as const;
 
 /** The mode a layer starts in when Setup has it switched on. */
 export const defaultMode = (id: string): LayerMode => (AUTO_LAYERS.has(id) ? 'auto' : 'on');

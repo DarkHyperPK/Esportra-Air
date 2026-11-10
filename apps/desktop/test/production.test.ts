@@ -66,7 +66,8 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
 
     // Setup changes reach the HUD state.
     await production.updateSetup({ package: 'impact', hud: { ...production.setup.hud, minimap: true } });
-    await production.updateMatch(match.id, { sponsors: ['Acme'], event: { name: 'Community Cup', stage: 'Playoffs' } });
+    await production.updateMatch(match.id, { sponsors: ['Acme'], event: { name: 'Community Cup', stage: 'Playoffs' }, theme: 'impact' });
+    await assert.rejects(production.updateMatch(match.id, { theme: 'neon' as never }), /banner styles/);
     assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.event.name, 'Community Cup', 'the event comes from the match');
     await assert.rejects(production.updateMatch(match.id, { players: [[{ name: 'Juno', gameId: 'no-tag' } as never], []] }), /Name#TAG/);
     await production.updateMatch(match.id, { players: [[{ name: 'Juno', realName: 'June Park', gameId: 'Juno#EU1', photo: '' } as never], []] });
@@ -74,7 +75,9 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.match(production.match!.players[0]![0]!.id, /^[0-9a-f-]{36}$/);
     const styled = await engine.client.get<any>(`/api/${match.code}`);
     assert.equal(styled.state.layout.bannerTheme, 'impact');
-    assert.equal(styled.state.show.minimap, true);
+    assert.equal(styled.state.show.minimap, false, 'the game draws its own minimap; Air keeps it off');
+    assert.equal(styled.state.show.killfeed, false);
+    assert.equal(styled.state.show.observed, false);
     assert.deepEqual(styled.state.sponsors, ['Acme']);
     await assert.rejects(production.updateSetup({ package: 'neon' as never }), /available graphics styles/);
 
@@ -161,7 +164,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     let rows = production.snapshot().layers;
     const row = (id: string) => production.snapshot().layers.find((x) => x.id === id)!;
     assert.deepEqual(['scorebug', 'economy', 'scoreboard', 'spikeTimer'].map((id) => row(id).mode), ['on', 'auto', 'off', 'auto']);
-    assert.equal(rows.filter((x) => x.group === 'ingame').length, 8);
+    assert.equal(rows.filter((x) => x.group === 'ingame').length, 5);
     assert.equal(rows.filter((x) => x.group === 'between').length, 8);
     assert.equal(rows.filter((x) => x.group === 'fullscreen').length, 8);
     await production.setLayer('economy', 'off');
@@ -175,12 +178,15 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await production.updateSetup({ hud: { ...production.setup.hud, ticker: false } });
     assert.equal(row('ticker').mode, 'off', 'turning a layer off in Setup reaches the engine');
 
-    // Full-screen rows pick the graphic in the Fullscreen scene, and line the scene up in Preview.
+    // Full-screen rows pick the graphic the full-screen host shows; OBS is not touched.
     assert.equal(row('fs:map-result').available, true);
+    const previewBefore = production.snapshot().obs.previewScene;
     await production.setLayer('fs:map-result', 'on');
     assert.equal(row('fs:map-result').mode, 'on');
     assert.equal(row('fs:series').mode, 'off');
-    assert.equal(production.snapshot().obs.previewScene, 'Esportra · Fullscreen');
+    assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.airFullscreen, 'map-result');
+    assert.equal(production.snapshot().obs.previewScene, previewBefore, 'no OBS scene change');
+    assert.deepEqual(obsServer.scenes.get('Esportra · Fullscreen')!.map((i) => i.sourceName), ['Esportra · Full screen'], 'one host source in the Fullscreen scene');
     await production.setLayer('fs:series', 'on');
     assert.equal(row('fs:map-result').mode, 'off', 'one at a time');
     assert.equal(row('fs:series').mode, 'on');
@@ -336,10 +342,11 @@ test('autopilot walks the rundown through the real engine and a fake OBS, with h
     await assert.rejects(production.camsSet({ delayMs: 99999 }), /0–10,000/);
     await assert.rejects(production.camCreate(2, 0), /team and player/);
     await production.camsSet({ layout: 'grid10' });
+    await new Promise((r) => setTimeout(r, 50));
     room = (await engine.client.get<any>(`/api/${code}`)).state;
     assert.equal(room.airCams.layout, 'grid10');
     assert.equal(room.show.playerCams, false, 'the grid replaces the in-game frames');
-    assert.equal(production.snapshot().obs.previewScene, 'Esportra · Fullscreen', 'the grid is lined up in Preview');
+    assert.equal(room.airFullscreen, 'cam-grid', 'the grid shows in the full-screen host');
     await production.camsSet({ layout: 'ingame' });
     await production.camRemove(0, 2);
     assert.equal(production.snapshot().cams.slots[2]!.id, null);

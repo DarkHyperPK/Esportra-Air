@@ -1191,3 +1191,16 @@ async fn joined_observers_feed_the_current_match_and_players_only_their_own_data
     assert!(TcpStream::connect(("127.0.0.1", port)).await.is_err());
     assert_eq!(join_status(&r).await["enabled"], json!(false));
 }
+
+#[tokio::test]
+async fn the_fullscreen_host_shows_one_named_graphic() {
+    let r = engine(temp_dir()).await;
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-result" })).await.status, 200);
+    assert_eq!(show(&r, "FS").await["airFullscreen"], json!("map-result"));
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "not-a-graphic" })).await.status, 400);
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": null })).await.status, 200);
+    assert_eq!(show(&r, "FS").await["airFullscreen"], json!(null));
+    let page = request(&r, "GET", "/overlays/fullscreen.html", None, false).await;
+    assert_eq!(page.status, 200);
+    assert!(page.body.contains("data-modules=\"fullscreen\""));
+}

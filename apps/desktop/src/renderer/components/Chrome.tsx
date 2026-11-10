@@ -5,6 +5,7 @@ import { ICONS, LOGO } from './ui.tsx';
 const RAIL: Array<[Exclude<Page, 'setup' | 'settings'>, string]> = [
   ['console', 'Live'],
   ['ready', 'Matches'],
+  ['library', 'Library'],
   ['scenes', 'Scenes'],
   ['outputs', 'Outputs'],
   ['capture', 'Capture'],

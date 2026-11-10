@@ -208,29 +208,25 @@
       pips.forEach((p, i) => { tv(p, s, i); p.innerHTML = ''; for (let j = 0; j < need(s); j++) E('i', j < s.teams[i].series ? 'w' : '', p); p.style.display = s.event.bestOf > 1 ? '' : 'none'; });
       heads.forEach((h, i) => [...h.children].forEach((d, j) => d.classList.toggle('dead', !s.players[i][j].alive)));
       heads.forEach(h => h.style.display = vis.players(s) ? 'none' : '');
-      txt(top, `ROUND ${s.round.number}`); txt(bot, `MAP ${s.map.number}  /  ${s.map.name}`);
+      txt(bot, `MAP ${s.map.number}  /  ${s.map.name}`);
       const st = HUD.status(s); tag.classList.toggle('show', !!st);
       if (st) { txt(tag, st.text); tag.style.background = st.team >= 0 ? s.teams[st.team].color : 'var(--red)'; tag.style.color = st.team >= 0 ? ink(s.teams[st.team].color) : '#fff'; }
       this.tick(s);
     }, tick(s) {
-      const r = s.round, t = timeLeft(r); let cls = '', label = fmt(t);
+      // The game draws its own round timer, so the scorebug shows the round number instead,
+      // and a beating spike while the spike is planted.
+      const r = s.round; let cls = 'round', label = String(r.number || '');
       if (r.phase === 'planted') {
         cls = 'planted'; label = '';
         pulseSpike(tm, r);
       } else {
         tm.style.removeProperty('--spike-delay'); delete tm.dataset.spikeDeadline;
-        if (r.phase === 'buy') { cls = 'buy'; }
-        else if (r.phase === 'paused') { cls = 'paused'; label = 'PAUSE'; }
-        else if (r.phase === 'end') label = '0:00';
+        if (r.phase === 'paused') { cls = 'paused'; label = 'PAUSE'; }
       }
-      const urgent = r.phase === 'live' && t <= 15;
-      if (urgent) { cls += ' urgent'; label = fmtHundredths(t); }
-      renderTimer(label, urgent);
+      txt(top, r.phase === 'planted' ? 'SPIKE PLANTED' : 'ROUND');
+      renderTimer(label, false);
       const timerClass = 'tm ' + cls;
       if (tm.className !== timerClass) tm.className = timerClass;
-    }, frame(s) {
-      const r = s.round;
-      if (r.endsAt && r.phase === 'live' && timeLeft(r) <= 15) this.tick(s);
     } };
   };
 
@@ -942,6 +938,31 @@
       toggle(m, s.show.seriesMaps !== false);
       sm.innerHTML = s.series.map((x, i) => buildTile(s, x, i)).join('');
     } };
+  };
+
+  // Full-screen host: one browser source that shows the graphic named in state.airFullscreen
+  // (set by Esportra Air), so switching full-screen graphics never touches OBS.
+  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid' };
+  M.fullscreen = root => {
+    const slots = {};
+    let shown = null;
+    const slot = key => {
+      if (!slots[key]) { const el = E('div', 'fs-slot', root); el.style.display = 'none'; slots[key] = { el, part: M[FULLSCREEN[key]](el) }; }
+      return slots[key];
+    };
+    return {
+      update(s, opts) {
+        const want = FULLSCREEN[s.airFullscreen] ? s.airFullscreen : null;
+        if (want !== shown) {
+          if (shown) slots[shown].el.style.display = 'none';
+          if (want) { const sl = slot(want); sl.el.style.display = ''; }
+          shown = want;
+        }
+        if (shown) slots[shown].part.update(s, opts);
+      },
+      tick(s) { if (shown && slots[shown].part.tick) slots[shown].part.tick(s); },
+      frame(s) { if (shown && slots[shown].part.frame) slots[shown].part.frame(s); },
+    };
   };
 
   M.ingame = root => { const parts = ['minimap', 'eventbug', 'seriesmaps', 'scorebug', 'winprob', 'roundhistory', 'toast', 'killfeed', 'moments', 'poll', 'players', 'playercams', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird', 'stinger'].map(k => M[k](root)); return { update(s, opts) { parts.forEach(p => p.update(s, opts)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); }, frame(s) { parts.forEach(p => p.frame && p.frame(s)); } }; };

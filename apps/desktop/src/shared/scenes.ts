@@ -33,7 +33,7 @@ export const SCENES: Record<SceneKey, SceneDef> = {
     key: 'gameplay', name: `${PREFIX}Gameplay`, label: 'Gameplay', note: 'Live rounds', exclusive: false,
     slots: [{ id: 'game', label: 'Game feed', scene: `${PREFIX}Game feed`, frame: { x: 0, y: 0, width: 1920, height: 1080 } }],
   },
-  fullscreen: { key: 'fullscreen', name: `${PREFIX}Fullscreen`, label: 'Fullscreen', note: 'Intro, veto, agent select, results', slots: [], exclusive: true },
+  fullscreen: { key: 'fullscreen', name: `${PREFIX}Fullscreen`, label: 'Fullscreen', note: 'Intro, veto, agent select, results (one host source)', slots: [], exclusive: false },
   replay: { key: 'replay', name: `${PREFIX}Replay`, label: 'Replay', note: 'Replays', slots: [], exclusive: false },
   casters: {
     key: 'casters', name: `${PREFIX}Casters`, label: 'Casters', note: 'Desk segments', exclusive: false,

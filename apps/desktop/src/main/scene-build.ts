@@ -106,6 +106,16 @@ export async function buildScenes(options: { socket: ObsSocket; scenes: BuildSce
       save();
     }
 
+    // Graphics Air placed earlier that this build no longer has (e.g. one source per full-screen
+    // graphic, now one full-screen host): remove only Air's own scene items.
+    const wanted = new Set(scene.sources.map((s) => `src:${s.id}`));
+    for (const [key, item] of Object.entries(own(scene.name).items)) {
+      if (!key.startsWith('src:') || wanted.has(key)) continue;
+      await call('RemoveSceneItem', { sceneName: scene.name, sceneItemId: item.sceneItemId }).catch(() => {});
+      delete own(scene.name).items[key];
+      save();
+    }
+
     for (const slot of scene.slots) {
       const key = `slot:${slot.id}`;
       const mine = own(scene.name).items[key];
