@@ -4,6 +4,8 @@ import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import { JoinPanel } from '../components/Join.tsx';
 import type { PageProps } from '../App.tsx';
+import { PageHeader } from '../components/Chrome.tsx';
+import { gameName } from '../../shared/games.ts';
 
 const SPEEDS = [0.5, 1, 2, 4, 8];
 
@@ -47,9 +49,9 @@ function Simulate({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
   return (
     <section className="panel">
-      <div className="head"><Cap>Simulate · no game needed</Cap>{t.running && <Tally kind="covered">Rehearsal</Tally>}</div>
+      <div className="head"><Cap>Test round on your outputs</Cap>{t.running && <Tally kind="covered">Sample data on air</Tally>}</div>
       <div className="body-pad stack" style={{ gap: 12 }}>
-        <p className="muted" style={{ fontSize: 12.5 }}>Plays a recorded sample match (three rounds, with your team names) through every output and autopilot, so you can rehearse before the game starts. The match goes back exactly as it was. Round clocks run in real time whatever the speed.</p>
+        <p className="muted t-sm">Plays three recorded rounds through the real outputs, so you can check OBS end to end before the game. It is on air: use it before you go live. Afterwards the match goes back exactly as it was. To watch a whole show privately, use Rehearse on the match page.</p>
         <div className="datastrip" aria-live="polite"><span className="k">Position</span>{t.running || drag !== null ? <span>{mmss(shown)} / {mmss(t.durationMs)}</span> : <span className="muted">Not playing</span>}</div>
         <input type="range" aria-label="Position in the sample match" min={0} max={Math.max(1, t.durationMs)} step={500} value={shown} disabled={!s.match}
           onChange={(e) => setDrag(Number(e.target.value))}
@@ -67,13 +69,17 @@ function Simulate({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-export function CaptureScreen({ s, run, askCapture }: PageProps) {
+export function CaptureScreen({ s, run, askCapture, go }: PageProps) {
   const c = s.capture;
   const kind = s.feed.state === 'live' ? (s.feed.paused ? 'covered' : 'live') : s.feed.state === 'waiting' ? 'covered' : s.feed.state === 'unavailable' ? 'bad' : 'off';
   const r = s.readout;
   const source = s.testRound.running ? 'Simulation' : s.feed.state === 'off' ? 'Off' : 'Valorant GEP';
   const stat = (k: string, v: string, note: string) => <div className="stat"><Cap>{k}</Cap><div className="v">{v}</div><div className="muted" style={{ fontSize: 11.5 }}>{note}</div></div>;
   return (
+    <>
+    <PageHeader eyebrow="Capture" title="Game data" actions={s.feed.state === 'off' ? <button className="btn primary" onClick={askCapture}>Start capture</button> : <button className="btn" onClick={() => void run(() => air.stopCapture())}>Stop capture</button>}>
+      What Air reads from {s.match ? gameName(s.match.game) : 'the game'} on this PC, how fresh it is, and what each graphic can rely on. Capture only starts when you allow it.
+    </PageHeader>
     <div className="cols" style={{ gridTemplateColumns: 'minmax(0, 1fr) 380px' }}>
       <div className="stack">
         <div className="stats4" aria-label="Capture health">
@@ -129,5 +135,6 @@ export function CaptureScreen({ s, run, askCapture }: PageProps) {
         </section>
       </div>
     </div>
+    </>
   );
 }

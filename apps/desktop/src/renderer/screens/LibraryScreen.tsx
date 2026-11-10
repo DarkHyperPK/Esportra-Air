@@ -6,6 +6,7 @@ import { air } from '../bridge.ts';
 import { Cap } from '../components/ui.tsx';
 import { Preview, overlayUrl } from '../components/Preview.tsx';
 import type { PageProps } from '../App.tsx';
+import { PageHeader } from '../components/Chrome.tsx';
 
 const THEME_NOTES: Record<BannerTheme, string> = {
   broadcast: 'Full-width banners. The default.',
@@ -61,14 +62,9 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   useEffect(() => () => { void air.libraryPlay(false).catch(() => {}); }, []);
   return (
     <div className="stack" style={{ gap: 22 }}>
-      <header className="lib-head">
-        <div>
-          <Cap>HUD library · {gameName(game)}</Cap>
-          <h1 className="title-lg" style={{ marginTop: 8 }}>Esportra Broadcast</h1>
-          <p className="lead" style={{ marginTop: 6 }}>Every graphic Air puts on air, live, {s.match ? <>with <b>{s.match.teams[0].name}</b> and <b>{s.match.teams[1].name}</b></> : 'with sample teams'}. Nothing here touches your show.</p>
-        </div>
-        <button className={`btn ${playing ? '' : 'primary'}`} onClick={() => void run(() => air.libraryPlay(!playing)).then((ok) => ok && setPlaying(!playing))}>{playing ? 'Stop sample round' : 'Play a sample round'}</button>
-      </header>
+      <PageHeader eyebrow={`HUD library · ${gameName(game)}`} title="Esportra Broadcast" actions={<button className={`btn ${playing ? '' : 'primary'}`} onClick={() => void run(() => air.libraryPlay(!playing)).then((ok) => ok && setPlaying(!playing))}>{playing ? 'Stop sample round' : 'Play a sample round'}</button>}>
+        Every graphic Air puts on air, live, {s.match ? <>with <b>{s.match.teams[0].name}</b> and <b>{s.match.teams[1].name}</b></> : 'with sample teams'}. Nothing here touches your show.
+      </PageHeader>
 
       <section className="stack" style={{ gap: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

@@ -59,7 +59,7 @@ export function JoinPanel({ s, run }: { s: Snapshot; run: Run }) {
 export function PcModeCard({ s, run }: { s: Snapshot; run: Run }) {
   const capturing = s.feed.state === 'live' || s.feed.state === 'waiting';
   return (
-    <section className="panel" style={{ maxWidth: 640 }}>
+    <section className="panel">
       <div className="head"><Cap>This PC</Cap></div>
       <div className="body-pad stack" style={{ gap: 12 }}>
         <div className="seg" role="group" aria-label="What this PC does">

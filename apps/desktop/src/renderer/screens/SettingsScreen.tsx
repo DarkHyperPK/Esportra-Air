@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { LAYER_DEFS, hotkeyLabel } from '../../shared/layers.ts';
+import { useEffect, useState } from 'react';
+import { LAYER_DEFS } from '../../shared/layers.ts';
+import { PageHeader } from '../components/Chrome.tsx';
+import { SHORTCUTS } from '../components/Global.tsx';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import { JoinPanel, PcModeCard } from '../components/Join.tsx';
@@ -43,35 +45,47 @@ function ObsConnection({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-const KEYS: Array<[string, string]> = [
-  ['Space', 'Take what is cued'],
-  ['H / S', 'Hold / skip the next autopilot step'],
-  ['F1 – F8', 'Tech pause, timeout, replay, toast, caster lower third, poll, stinger, sponsor read'],
-  ['Ctrl + D', 'Fix data'],
-];
+
+/** Which section is in view, so the list on the left shows where you are. */
+function useSection() {
+  const [current, setCurrent] = useState<string>(SECTIONS[0][0]);
+  useEffect(() => {
+    const io = new IntersectionObserver((entries) => {
+      const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (top) setCurrent(top.target.id.replace('set-', ''));
+    }, { rootMargin: '0px 0px -60% 0px' });
+    for (const [id] of SECTIONS) {
+      const el = document.getElementById(`set-${id}`);
+      if (el) io.observe(el);
+    }
+    return () => io.disconnect();
+  }, []);
+  return current;
+}
 
 export function SettingsScreen(props: PageProps) {
   const { s, run } = props;
+  const current = useSection();
   return (
     <div className="settings">
       <nav className="settings-nav" aria-label="Settings sections">
         <Cap>Settings</Cap>
-        {SECTIONS.map(([id, label]) => <a key={id} href={`#set-${id}`}>{label}</a>)}
+        {SECTIONS.map(([id, label]) => <a key={id} href={`#set-${id}`} aria-current={current === id ? 'true' : undefined}>{label}</a>)}
       </nav>
       <div className="stack settings-body">
-        <div><Cap>Software</Cap><h1 className="title-lg" style={{ marginTop: 8 }}>Settings</h1><p className="lead" style={{ marginTop: 6 }}>How this copy of Air runs on this PC. Teams, players, event and graphics belong to each match.</p></div>
+        <PageHeader eyebrow="Software" title="Settings">How this copy of Air runs on this PC. Teams, players, event and graphics belong to each match.</PageHeader>
         <div id="set-pc"><PcModeCard s={s} run={run} /></div>
         <div id="set-obs"><ObsConnection s={s} run={run} /></div>
         <div id="set-account"><SyncScreen {...props} /></div>
         <div id="set-network"><JoinPanel s={s} run={run} /></div>
         <section className="panel" id="set-keys">
-          <div className="head"><Cap>Keyboard</Cap></div>
+          <div className="head"><Cap>Keyboard</Cap><span className="faint t-xs">Press <span className="kbd">?</span> anywhere for the full list</span></div>
           <div className="body-pad">
-            <table className="seg-table"><tbody>
-              {KEYS.map(([k, v]) => <tr key={k}><td style={{ width: 120 }}><span className="kbd">{k}</span></td><td>{v}</td></tr>)}
-              <tr><td><span className="kbd">1 – 8 · Q – I · A – K</span></td><td>Graphic layers: {LAYER_DEFS.slice(0, 4).map((d) => `${hotkeyLabel(d.hotkey)} ${d.label}`).join(', ')} …</td></tr>
-            </tbody></table>
-            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Shortcuts work while the Air window is focused and you are not typing.</p>
+            <div className="shortcuts">
+              {SHORTCUTS.map(([k, v]) => <div key={k}><span>{v}</span><span className="kbd">{k}</span></div>)}
+              <div><span>Graphic layers ({LAYER_DEFS.length})</span><span className="kbd">1 – 5 · Q – I · A – K</span></div>
+            </div>
+            <p className="faint t-xs" style={{ marginTop: 10 }}>Shortcuts work while the Air window is focused and you are not typing.</p>
           </div>
         </section>
         <section className="panel" id="set-about">

@@ -251,9 +251,17 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await new Promise((r) => setTimeout(r, 500));
     await engine.poll();
     assert.equal(production.snapshot().testRound.running, true);
+    // Editing the match while the test round is on air is fine: it reaches the engine when the round ends.
+    await production.updateMatch(match.id, { event: { name: 'Edited During Test', stage: '' } });
     await production.testRound('stop');
     await engine.poll();
     assert.equal(production.snapshot().testRound.running, false);
+    const end = Date.now() + 4000;
+    while ((await engine.client.get<any>(`/api/${match.code}`)).state.event.name !== 'Edited During Test') {
+      assert.ok(Date.now() < end, 'the edit is sent once the test round ends');
+      await engine.poll();
+      await new Promise((r) => setTimeout(r, 100));
+    }
     overlay.close();
   } finally {
     await obs.disconnect();

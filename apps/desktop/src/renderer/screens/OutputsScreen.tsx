@@ -3,6 +3,7 @@ import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
+import { ObsHeader } from './ScenesScreen.tsx';
 
 /** A live, scaled view of an overlay. Loaded by match code, so it does not count as an OBS connection. */
 function Preview({ src, onAir, pvw }: { src: string | null; onAir: boolean; pvw: boolean }) {
@@ -28,14 +29,11 @@ function Preview({ src, onAir, pvw }: { src: string | null; onAir: boolean; pvw:
   );
 }
 
-export function OutputsScreen({ s, run }: PageProps) {
+export function OutputsScreen({ s, run, go }: PageProps) {
   const connected = s.obs.state === 'connected';
   return (
     <div className="stack" style={{ gap: 18 }}>
-      <div>
-        <Cap>Outputs · browser sources served by this PC</Cap>
-        <p className="muted" style={{ marginTop: 6 }}>Add each once in OBS. They never need to change: the content follows the match.</p>
-      </div>
+      <div><ObsHeader s={s} run={run} go={go} page="outputs" /></div>
       <div className="out-grid">
         {SCENE_KEYS.map((key) => {
           const def = SCENES[key];
@@ -50,7 +48,7 @@ export function OutputsScreen({ s, run }: PageProps) {
               {primary ? <Preview onAir={onAir} pvw={pvw} src={s.match ? `http://127.0.0.1:${s.engine.port}/overlays/${primary.overlay}.html?match=${encodeURIComponent(s.match.code)}&screen=1` : null} /> : <div className="shot">No graphics enabled</div>}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <h2 className="title-sm" style={{ fontSize: 15 }}>{def.label}</h2>
-                {onAir ? <Tally kind="onair" /> : pvw ? <Tally kind="pvw" /> : st?.inObs ? <Tally kind={loading === outs.length ? 'live' : 'covered'}>{loading} of {outs.length} loading</Tally> : connected ? <Tally kind="bad" /> : <Tally kind="ready" />}
+                {onAir ? <Tally kind="onair" /> : pvw ? <Tally kind="pvw" /> : st?.inObs ? <Tally kind={loading === outs.length ? 'live' : 'covered'}>{loading} of {outs.length} connected</Tally> : connected ? <Tally kind="bad" /> : <Tally kind="ready" />}
               </div>
               <div>
                 {outs.map((o) => {

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Page, Snapshot } from '../shared/api.ts';
 import { air } from './bridge.ts';
-import { ChipBar, Rail, TitleBar } from './components/Chrome.tsx';
+import { Rail, TopBar } from './components/Chrome.tsx';
+import { CommandPalette, ShortcutsDialog, Toasts, type PaletteActions, type Toast } from './components/Global.tsx';
+import { LOGO } from './components/ui.tsx';
 import { CastersDrawer, ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
 import { FixData } from './components/FixData.tsx';
 import { CaptureScreen } from './screens/CaptureScreen.tsx';
@@ -15,6 +17,8 @@ import { LibraryScreen } from './screens/LibraryScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
+
+export type MatchCommand = { name: 'new-match' | 'rehearse' | 'autopilot' | 'teams'; n: number } | null;
 
 export interface PageProps {
   s: Snapshot;
@@ -32,7 +36,10 @@ export function App() {
   // Until the producer chooses Run manually, Console opens the readiness check.
   const [started, setStarted] = useState(false);
   const [tab, setTab] = useState<SetupTab>('graphics');
-  const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [palette, setPalette] = useState(false);
+  const [help, setHelp] = useState(false);
+  const [command, setCommand] = useState<MatchCommand>(null);
   const [status, setStatus] = useState<StatusId | null>(null);
   const [consent, setConsent] = useState(false);
   const [signIn, setSignIn] = useState(false);
@@ -44,17 +51,36 @@ export function App() {
     return air.onSnapshot(setSnapshot);
   }, []);
 
+  const toast = useCallback((t: Omit<Toast, 'id'>) => setToasts((list) => [...list.filter((x) => x.text !== t.text), { ...t, id: Date.now() + Math.random() }].slice(-3)), []);
+  const dismiss = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), []);
+
   const run: Run = useCallback(async (action) => {
     try {
       const result = await action();
       if (result) setSnapshot(result);
-      setError(null);
       return true;
     } catch (e) {
-      setError((e as Error).message);
+      toast({ kind: 'error', title: 'Not done', text: (e as Error).message });
       return false;
     }
-  }, []);
+  }, [toast]);
+
+  // Ctrl+K anywhere opens search; ? opens keyboard help when not typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(el?.tagName ?? '');
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPalette((v) => !v);
+      } else if (e.key === '?' && !typing && !palette) {
+        e.preventDefault();
+        setHelp((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [palette]);
 
   const go = useCallback((next: Page, nextTab?: SetupTab) => {
     setPage(next);
@@ -62,36 +88,40 @@ export function App() {
     setStatus(null);
   }, []);
 
-  if (!s) return <div className="win"><div className="page"><p className="muted">Starting Esportra Air…</p></div></div>;
+  const actions: PaletteActions = useMemo(() => ({
+    go: (p) => go(p),
+    command: (name) => { go('ready'); setCommand({ name, n: Date.now() }); },
+    askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true), openSignIn: () => setSignIn(true), help: () => setHelp(true),
+  }), [go]);
+
+  if (!s) return <div className="win"><TopBar s={null} /><div className="splash" role="status"><div>{LOGO}<span>Starting Esportra Air…</span></div></div></div>;
 
   if (s.mode === 'capture') {
     return (
       <div className="win">
-        <TitleBar s={s} />
+        <TopBar s={s} />
         <div className="body"><div className="main"><main className="page"><CaptureOnlyScreen s={s} run={run} askCapture={() => setConsent(true)} /></main></div></div>
         {consent && <ConsentDialog close={() => setConsent(false)} accept={async () => { setConsent(false); await run(() => air.startCapture({ consent: true })); }} />}
-        {error && <div className="alert" role="alert"><span>{error}</span><button className="btn quiet small" onClick={() => setError(null)}>Dismiss</button></div>}
+        <Toasts list={toasts} dismiss={dismiss} />
       </div>
     );
   }
 
   const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true), openSignIn: () => setSignIn(true) };
-  const railPage: Page = page === 'setup' ? 'ready' : page;
 
   return (
     <div className="win">
-      <TitleBar s={s} />
+      <TopBar s={s} page={page} open={(id) => setStatus(id)} search={() => setPalette(true)} help={() => setHelp(true)} />
       <div className="body">
-        <Rail page={railPage} go={(p) => go(p)} />
+        <Rail page={page} go={(p) => go(p)} />
         <div className="main">
-          <ChipBar s={s} open={(id) => setStatus(id)} />
           {s.engine.state !== 'running' && (
-            <div className={`notice ${s.engine.state === 'failed' ? 'bad' : ''}`} role="status" style={{ margin: '0 20px 8px' }}>
+            <div className={`notice ${s.engine.state === 'failed' ? 'bad' : ''}`} role="status" style={{ margin: '12px 24px 0' }}>
               {s.engine.state === 'starting' ? 'Starting the graphics engine…' : s.engine.error}
             </div>
           )}
           <main className="page">
-            {page === 'ready' && <ReadyScreen {...props} start={() => { setStarted(true); setPage('console'); }} />}
+            {page === 'ready' && <ReadyScreen {...props} command={command} start={() => { setStarted(true); setPage('console'); }} />}
             {page === 'console' && <ConsoleScreen {...props} />}
             {page === 'library' && <LibraryScreen {...props} />}
             {page === 'scenes' && <ScenesScreen {...props} />}
@@ -108,12 +138,9 @@ export function App() {
       {fix && <Drawer title="Fix data" close={() => setFix(false)} wide><FixData s={s} run={run} close={() => setFix(false)} /></Drawer>}
       {casters && <CastersDrawer s={s} run={run} close={() => setCasters(false)} />}
       {consent && <ConsentDialog close={() => setConsent(false)} accept={async () => { setConsent(false); await run(() => air.startCapture({ consent: true })); }} />}
-      {error && (
-        <div className="alert" role="alert">
-          <span>{error}</span>
-          <button className="btn quiet small" onClick={() => setError(null)}>Dismiss</button>
-        </div>
-      )}
+      {palette && <CommandPalette s={s} run={run} actions={actions} close={() => setPalette(false)} />}
+      {help && <ShortcutsDialog close={() => setHelp(false)} />}
+      <Toasts list={toasts} dismiss={dismiss} />
     </div>
   );
 }

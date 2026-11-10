@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Caster, Page, Snapshot } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
-import { Cap } from './ui.tsx';
+import { Cap, Tally } from './ui.tsx';
+import { statusOf, type StatusId } from './Chrome.tsx';
 
-export type StatusId = 'feed' | 'obs' | 'esportra' | 'graphics';
+export type { StatusId } from './Chrome.tsx';
 
 function useEscape(close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -59,6 +60,16 @@ const EXPLAIN: Record<StatusId, (s: Snapshot) => string> = {
 };
 const TITLE: Record<StatusId, string> = { feed: 'Game data', obs: 'OBS', esportra: 'Esportra', graphics: 'Graphics engine' };
 
+const secs = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(1)} s ago`);
+
+/** The facts behind each status, so a producer (or support) can read the situation at a glance. */
+function details(id: StatusId, s: Snapshot): Array<[string, string]> {
+  if (id === 'feed') return [['Game', 'Valorant'], ['Capture', s.feed.state === 'off' ? 'Off' : s.feed.state === 'waiting' ? 'Waiting for the game' : s.feed.state === 'live' ? (s.feed.paused ? 'Paused (quiet for 10 s)' : 'Receiving') : 'Unavailable'], ['Last data', secs(s.feed.ageMs)], ['Where data goes', 'This PC and your local network only']];
+  if (id === 'obs') return [['State', s.obs.state === 'connected' ? 'Connected' : s.obs.state === 'connecting' ? 'Connecting' : s.obs.state === 'error' ? 'Error' : 'Not connected'], ['Address', `ws://${s.setup.obs.host}:${s.setup.obs.port}`], ['Version', s.obs.version ?? '—'], ['Scene collection', s.obs.collection ?? '—'], ['On air in OBS', s.obs.programScene ?? '—'], ['Esportra scenes', s.obs.installed ? 'Installed' : 'Not installed'], ['Replay buffer', s.obs.replay.bufferActive === null ? 'Not set up' : s.obs.replay.bufferActive ? 'Active' : 'Off']];
+  if (id === 'esportra') return [['Account', s.esportra.email ?? '—'], ['Server', s.esportra.host ?? '—'], ['State', statusOf(s).esportra.value]];
+  return [['State', statusOf(s).graphics.value], ['Address', s.engine.port ? `http://127.0.0.1:${s.engine.port}` : '—'], ['Outputs', `${s.outputs.length}`], ['Reattached after restart', s.engine.reattached ? 'Yes' : 'No']];
+}
+
 export function StatusDrawer({ id, s, close, go, run, askCapture, openSignIn }: { id: StatusId; s: Snapshot; close: () => void; go: (p: Page) => void; run: Run; askCapture: () => void; openSignIn: () => void }) {
   let fix: { label: string; act: () => void } | null = null;
   if (id === 'feed' && s.feed.state === 'off') fix = { label: 'Start capture', act: () => { close(); askCapture(); } };
@@ -66,11 +77,15 @@ export function StatusDrawer({ id, s, close, go, run, askCapture, openSignIn }: 
   if (id === 'esportra' && s.esportra.state === 'signed-out') fix = { label: 'Sign in', act: () => { close(); openSignIn(); } };
   if (id === 'esportra' && s.esportra.state !== 'signed-out') fix = { label: 'Account settings', act: () => { close(); go('settings'); } };
   if (id === 'obs' && s.obs.state !== 'connected') fix = { label: 'Open OBS setup', act: () => { close(); go('scenes'); } };
+  const st = statusOf(s)[id];
   return (
     <Drawer title={TITLE[id]} close={close}>
       <Cap>Status</Cap>
-      <h2 className="title-md">{TITLE[id]}</h2>
-      <p style={{ color: 'var(--text-2)', lineHeight: 1.55 }}>{EXPLAIN[id](s)}</p>
+      <div className="row between"><h2 className="title-md">{TITLE[id]}</h2><Tally kind={st.dot === 'ok' ? 'ok' : st.dot === 'bad' ? 'bad' : st.dot === 'warn' ? 'covered' : 'off'}>{st.value}</Tally></div>
+      <p className="muted" style={{ lineHeight: 1.55 }}>{EXPLAIN[id](s)}</p>
+      <dl className="kv panel" style={{ padding: 16 }}>
+        {details(id, s).map(([k, v]) => <div key={k} style={{ display: 'contents' }}><dt>{k}</dt><dd>{v}</dd></div>)}
+      </dl>
       {fix && <button className="btn primary" style={{ alignSelf: 'flex-start' }} onClick={fix.act}>{fix.label}</button>}
     </Drawer>
   );

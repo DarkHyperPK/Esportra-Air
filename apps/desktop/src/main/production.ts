@@ -222,6 +222,12 @@ export class Production extends EventEmitter {
       this.log.target(null);
       return;
     }
+    // A test round is on air and hands back the room exactly as it was; send the match once it ends.
+    if (this.deps.engine.status?.rooms.find((r) => r.match === match.code.toUpperCase())?.testRound?.running) {
+      this.syncAfterTest = true;
+      return;
+    }
+    this.syncAfterTest = false;
     const code = encodeURIComponent(match.code);
     await this.client.post(`/api/${code}/config`, {
       airContext: { showId: setup.id, matchId: match.id, source: match.kind },
@@ -268,10 +274,16 @@ export class Production extends EventEmitter {
     }
   }
 
+  private syncAfterTest = false;
+
   private async readRoom() {
     const match = this.match;
     if (!match || this.deps.engine.state !== 'running') return;
     const room = this.deps.engine.status?.rooms.find((r) => r.match === match.code.toUpperCase());
+    if (this.syncAfterTest && room && !room.testRound?.running) {
+      this.syncAfterTest = false;
+      void this.syncEngine().catch(() => {});
+    }
     if (room && room.v === this.roomV) {
       this.emit('change');
       return;

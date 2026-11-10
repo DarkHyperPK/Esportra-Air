@@ -4,6 +4,7 @@ import { air } from '../bridge.ts';
 import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { Cap } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
+import { PageHeader } from '../components/Chrome.tsx';
 
 export type SetupTab = 'graphics' | 'brand';
 
@@ -80,11 +81,13 @@ function EventAndSponsors({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-export function SetupScreen({ s, run, tab, setTab }: PageProps & { tab: SetupTab; setTab: (t: SetupTab) => void }) {
+export function SetupScreen({ s, run, go, tab, setTab }: PageProps & { tab: SetupTab; setTab: (t: SetupTab) => void }) {
   const tabs: Array<[SetupTab, string]> = [['graphics', 'Graphics'], ['brand', 'Event and sponsors']];
   return (
     <>
-      <div style={{ marginBottom: 14 }}><Cap>Match graphics</Cap><h1 className="title-lg" style={{ marginTop: 8 }}>{s.match?.title ?? 'No match selected'}</h1></div>
+      <PageHeader eyebrow="Match graphics" title={s.match?.title ?? 'No match selected'} actions={<button className="btn" onClick={() => go('ready')}>Back to the match</button>}>
+        Which graphics this production uses in OBS and which HUD elements start on. Banner styles and previews are in the Library.
+      </PageHeader>
       <div className="tabs" role="tablist" aria-label="Graphics sections">
         {tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>

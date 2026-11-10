@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ActionId, Snapshot, Team } from '../../shared/api.ts';
 import { gameName } from '../../shared/games.ts';
 import { LineupEditor, TalentFields, TeamFields, imageUrl, type Lineups } from '../components/MatchEditors.tsx';
@@ -7,7 +7,7 @@ import { air } from '../bridge.ts';
 import { Box, Cap } from '../components/ui.tsx';
 import { AutopilotRules, NextFive } from '../components/Autopilot.tsx';
 import { RehearsePanel } from '../components/Rehearse.tsx';
-import type { PageProps } from '../App.tsx';
+import type { MatchCommand, PageProps } from '../App.tsx';
 
 const when = (iso: string | null) => {
   if (!iso) return 'Time not set';
@@ -139,9 +139,15 @@ function MatchList({ s, run, newMatch }: Pick<PageProps, 's' | 'run'> & { newMat
   );
 }
 
-export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, start }: PageProps & { start: () => void }) {
+export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, start, command }: PageProps & { start: () => void; command?: MatchCommand }) {
   const [wizard, setWizard] = useState(!s.match && s.matches.length === 0);
   const [tab, setTab] = useState<Tab>('ready');
+  // Commands from the palette (Ctrl+K): open the wizard or a tab of the match.
+  useEffect(() => {
+    if (!command) return;
+    if (command.name === 'new-match') setWizard(true);
+    else setTab(command.name);
+  }, [command]);
   const informational = (id: string, health: string) => id === 'esportra' && health === 'off';
   const counted = s.checks.filter((c) => !informational(c.id, c.health));
   const ready = counted.filter((c) => c.health === 'ok').length;

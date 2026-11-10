@@ -129,9 +129,9 @@ function makePng(hex) {
   await btn('Connect', { exact: true });
   await page.getByText('Connected', { exact: true }).first().waitFor();
   await shot('settings');
-  await rail('Scenes');
+  await rail('OBS');
   await btn('Add for me');
-  await page.getByRole('button', { name: 'Rebuild', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Rebuild scenes', exact: true }).waitFor();
   await page.getByLabel('Use an existing OBS source for Game feed').selectOption('Game Capture');
   await page.getByText('Game Capture').first().waitFor();
   await shot('scenes');
@@ -147,8 +147,9 @@ function makePng(hex) {
   }
   await page.waitForTimeout(2500);
 
-  await rail('Outputs');
-  await page.getByText(/\d of \d loading/).first().waitFor();
+  await rail('OBS');
+  await page.getByRole('tab', { name: 'Browser sources' }).click();
+  await page.getByText(/\d of \d connected/).first().waitFor();
   await shot('outputs');
 
   // Readiness: start capture through its fix button
@@ -288,7 +289,7 @@ function makePng(hex) {
   await page.getByRole('tab', { name: 'Event and sponsors' }).click();
   await page.getByLabel('Event name (on the event bug)').fill('Community Cup');
   await btn('Save');
-  await page.getByText(/Night Owls vs Crimson Five · Community Cup/).first().waitFor();
+  await page.locator('.crumbs').filter({ hasText: /Night Owls vs Crimson Five\s*· Community Cup/ }).waitFor();
   await shot('match-event');
 
   // Esportra (Stage 2): sign in against the stand-in backend, pick a scheduled match.
@@ -340,9 +341,29 @@ function makePng(hex) {
   await rail('Capture');
   await page.getByRole('switch', { name: 'Allow other PCs to join' }).click();
   await page.getByText('Joined PCs').waitFor({ state: 'detached' });
-  await page.locator('.chipbar').getByRole('button', { name: /OBS/ }).click();
+  await page.locator('.topbar').getByRole('button', { name: /^OBS:/ }).click();
   await page.getByRole('dialog').waitFor();
   await shot('status-drawer');
+  await page.keyboard.press('Escape');
+
+  // Search and go to anything (Ctrl+K), and the keyboard help (?).
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search' }).fill('rehe');
+  await shot('command-palette');
+  await page.keyboard.press('Enter');
+  await page.getByRole('region', { name: 'Rehearse' }).waitFor();
+  await page.keyboard.press('?');
+  await page.getByRole('dialog', { name: 'Keyboard shortcuts' }).waitFor();
+  await shot('keyboard-help');
+  await page.keyboard.press('Escape');
+
+  // A laptop screen: every main page at 1280x800.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  for (const [name, label] of [['laptop-live', 'Live'], ['laptop-matches', 'Matches'], ['laptop-library', 'Library'], ['laptop-obs', 'OBS'], ['laptop-capture', 'Capture'], ['laptop-settings', 'Settings']]) {
+    await rail(label);
+    await page.waitForTimeout(900);
+    await shot(name);
+  }
 
   const loading = (await call('snapshot')).outputs.filter((o) => o.connections > 0).length;
   if (loading !== snap.outputs.length) errors.push(`only ${loading} of ${snap.outputs.length} outputs connected`);
