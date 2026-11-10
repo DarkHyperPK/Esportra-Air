@@ -17,6 +17,7 @@ import { AUTO_LAYERS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode 
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
+import { ArtCheck } from './art-check.ts';
 import type { EsportraAccount } from './esportra.ts';
 import { JoinHost } from './join.ts';
 import type { IngestClient } from '../../../../packages/capture/src/ingest.ts';
@@ -41,6 +42,7 @@ export interface ProductionDeps {
   linkIngest?: IngestClient;
   /** Overrides for tests. */
   lanAddresses?: () => string[];
+  artFetch?: typeof fetch;
   ingest: Pick<IngestClient, 'target'>;
   /** What the capture delivers; the app records every game message here. */
   stats?: CaptureStats;
@@ -83,6 +85,25 @@ export function tagsFor(a: string, b: string): [string, string] {
   return [first, second];
 }
 
+const RIOT_ID = /^[^#<>\x00-\x1f]{3,16}#[A-Za-z0-9]{2,5}$/;
+const PHOTO = /^(https:\/\/[^\s"'<>]{1,500}|\/assets\/[0-9a-f-]{36}\.png)$/i;
+
+/** Two lineups of up to seven players each, plain text, optional Riot ID and photo. */
+export function validPlayers(input: unknown): Match['players'] {
+  if (!Array.isArray(input) || input.length !== 2) throw new Error('Provide a lineup for each team.');
+  return input.map((team, t) => {
+    if (!Array.isArray(team) || team.length > 7) throw new Error('A team has up to seven players.');
+    return team.map((p: any, i: number) => {
+      const label = `Team ${t ? 'B' : 'A'} player ${i + 1}`;
+      const gameId = typeof p?.gameId === 'string' ? p.gameId.trim() : '';
+      if (gameId && !RIOT_ID.test(gameId)) throw new Error(`${label}: write the Riot ID as Name#TAG.`);
+      const photo = typeof p?.photo === 'string' ? p.photo : '';
+      if (photo && !PHOTO.test(photo)) throw new Error(`${label}: choose the photo again.`);
+      return { id: typeof p?.id === 'string' && /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : randomUUID(), name: text(p?.name, 32, `${label} name`), realName: p?.realName ? text(p.realName, 60, `${label} real name`) : '', gameId, photo };
+    });
+  }) as Match['players'];
+}
+
 export class Production extends EventEmitter {
   private readonly deps: ProductionDeps;
   private room: any = null;
@@ -91,6 +112,7 @@ export class Production extends EventEmitter {
   readonly replay: Replay;
   readonly autopilot: Autopilot;
   readonly stats: CaptureStats;
+  readonly art: ArtCheck;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
@@ -100,6 +122,7 @@ export class Production extends EventEmitter {
     super();
     this.deps = deps;
     this.stats = deps.stats ?? new CaptureStats();
+    this.art = new ArtCheck({ fetch: deps.artFetch, changed: () => this.emit('change') });
     const memory = new Map<string, string>();
     const secrets = deps.secrets ?? { get: (k: string) => memory.get(k) ?? null, set: (k: string, v: string | null) => void (v === null ? memory.delete(k) : memory.set(k, v)) };
     this.joinHost = new JoinHost({ store: deps.store, secrets, client: () => deps.engine.client, matchCode: () => this.match?.code ?? null, changed: () => this.emit('change'), addresses: deps.lanAddresses });
@@ -160,9 +183,9 @@ export class Production extends EventEmitter {
     await this.client.post(`/api/${code}/config`, {
       airContext: { showId: setup.id, matchId: match.id, source: match.kind },
       teams: match.teams,
-      event: { name: match.source?.tournament || setup.brand.eventName || setup.name, stage: setup.brand.stage, bestOf: match.bestOf },
+      event: { name: match.event.name || match.source?.tournament || setup.name, stage: match.event.stage, bestOf: match.bestOf },
       casters: match.casters.length ? match.casters : [{ name: '', handle: '' }, { name: '', handle: '' }],
-      sponsors: setup.sponsors,
+      sponsors: match.sponsors,
       layout: { bannerTheme: setup.package, minimap: setup.minimap },
       show: { eventBug: setup.hud.eventBug !== false },
     });
@@ -230,6 +253,7 @@ export class Production extends EventEmitter {
     const match: Match = {
       id, code: `Q${id.replace(/-/g, '').slice(0, 7).toUpperCase()}`, kind: 'quick', title: `${names[0]} vs ${names[1]}`,
       bestOf: input.bestOf, teams, casters: [], createdAt: (this.deps.now ?? Date.now)(),
+      game: input.game ?? 'valorant', players: [[], []], ...this.carryOver(null),
     };
     const data = this.deps.store.data;
     data.matches = [match, ...data.matches].slice(0, 50);
@@ -245,7 +269,14 @@ export class Production extends EventEmitter {
     await this.syncEngine();
   }
 
-  async updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title'>>) {
+  /** A new match starts with the event and sponsors of the latest match (of the same tournament, when there is one). */
+  private carryOver(tournamentId: string | null): Pick<Match, 'event' | 'sponsors'> {
+    const list = this.deps.store.data.matches;
+    const from = (tournamentId && list.find((m) => m.source?.tournamentId === tournamentId)) || list[0];
+    return { event: { ...(from?.event ?? { name: '', stage: '' }) }, sponsors: [...(from?.sponsors ?? [])] };
+  }
+
+  async updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players'>>) {
     const match = this.deps.store.data.matches.find((m) => m.id === id);
     if (!match) throw new Error('That match is no longer available.');
     if (patch.title !== undefined) match.title = text(patch.title, 80, 'Match title');
@@ -253,6 +284,14 @@ export class Production extends EventEmitter {
       if (!Array.isArray(patch.casters) || patch.casters.length > 2) throw new Error('Add up to two casters.');
       match.casters = patch.casters.map((c, i) => ({ name: text(c.name, 40, `Caster ${i + 1}`), handle: c.handle ? text(c.handle, 40, `Caster ${i + 1} handle`) : '' }));
     }
+    if (patch.event !== undefined) {
+      match.event = { name: patch.event.name ? text(patch.event.name, 60, 'Event name') : '', stage: patch.event.stage ? text(patch.event.stage, 60, 'Stage') : '' };
+    }
+    if (patch.sponsors !== undefined) {
+      if (!Array.isArray(patch.sponsors) || patch.sponsors.length > 12) throw new Error('Add up to 12 sponsors.');
+      match.sponsors = patch.sponsors.map((s, i) => text(s, 40, `Sponsor ${i + 1}`));
+    }
+    if (patch.players !== undefined) match.players = validPlayers(patch.players);
     this.save();
     if (match.id === this.match?.id) await this.syncEngine();
   }
@@ -556,7 +595,9 @@ export class Production extends EventEmitter {
       data.selectedMatchId = existing.id;
     } else {
       const id = randomUUID();
-      const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, casters: [], createdAt: (this.deps.now ?? Date.now)(), source };
+      const players = [0, 1].map((t) => (lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];
+      const carried = this.carryOver(found.tournamentId);
+      const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, casters: [], createdAt: (this.deps.now ?? Date.now)(), source, game: 'valorant', players, event: { name: found.tournament || carried.event.name, stage: carried.event.stage }, sponsors: carried.sponsors };
       data.matches = [match, ...data.matches].slice(0, 50);
       data.selectedMatchId = id;
     }
@@ -667,7 +708,7 @@ export class Production extends EventEmitter {
   }
 
   async sponsorRead(sponsor: string | null) {
-    if (sponsor !== null && !this.setup.sponsors.includes(sponsor)) throw new Error('Add this sponsor in Setup › Brand first.');
+    if (sponsor !== null && !this.requireMatch().sponsors.includes(sponsor)) throw new Error('Add this sponsor to the match first.');
     await this.act(sponsor ? 'lowerthird.generic' : 'lowerthird.hide', sponsor ? { title: sponsor, sub: 'Presented by', team: -1 } : {});
     this.log.add(sponsor ? `Sponsor read · ${sponsor}` : 'Lower third off');
   }
@@ -854,6 +895,7 @@ export class Production extends EventEmitter {
       autopilotBlock: this.autopilot.block(),
       log: this.log.list(),
       checks: [],
+      art: this.art.state,
     };
     snapshot.checks = checks(snapshot);
     return snapshot;
@@ -875,7 +917,7 @@ export function checks(s: Snapshot): CheckItem[] {
   );
   out.push(
     s.match
-      ? { id: 'match', title: 'Show and match', detail: `${s.setup.name} · ${s.match.title} · Bo${s.match.bestOf}`, health: 'ok' }
+      ? { id: 'match', title: 'Show and match', detail: `${s.match.title}${s.match.event.name ? ` · ${s.match.event.name}` : ''} · Bo${s.match.bestOf}`, health: 'ok' }
       : { id: 'match', title: 'Show and match', detail: 'No match selected yet.', health: 'warn', action: { id: 'choose-match', label: 'Create a match' } },
   );
   const found = s.readout ? s.readout.playersFound[0] + s.readout.playersFound[1] : 0;
@@ -915,6 +957,12 @@ export function checks(s: Snapshot): CheckItem[] {
       ? { id: 'talent', title: 'Talent', detail: `${casters} caster${casters > 1 ? 's' : ''} ready for the lower third.`, health: 'ok' }
       : { id: 'talent', title: 'Talent', detail: 'No casters added. The caster lower third needs their names.', health: s.match ? 'warn' : 'off', ...(s.match ? { action: { id: 'add-casters' as const, label: 'Add casters' } } : {}) },
   );
-  out.push({ id: 'internet', title: 'Internet', detail: 'Graphics run on this PC and keep running offline. Agent and weapon art loads from the internet.', health: 'off' });
+  out.push(
+    s.art === 'ok'
+      ? { id: 'art', title: 'Agent and map art', detail: 'Agent, weapon and map pictures load from media.valorant-api.com.', health: 'ok' }
+      : s.art === 'checking'
+        ? { id: 'art', title: 'Agent and map art', detail: 'Checking that agent and map pictures can load…', health: 'off' }
+        : { id: 'art', title: 'Agent and map art', detail: 'This PC cannot reach media.valorant-api.com. Graphics still run, but without agent, weapon and map pictures. Check the internet connection or firewall.', health: 'warn' },
+  );
   return out;
 }

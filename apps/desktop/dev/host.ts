@@ -81,6 +81,7 @@ const production = new Production({ store, engine, obs, capture, ingest, stats, 
 let clipboard = '';
 const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; } };
 await production.syncEngine();
+production.art.start();
 
 const monitors = new Set<(data: string) => void>();
 production.on('monitor', (frame) => { const data = JSON.stringify(frame); for (const l of monitors) l(data); });

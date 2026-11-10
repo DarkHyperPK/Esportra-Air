@@ -64,7 +64,7 @@ export function StatusDrawer({ id, s, close, go, run, askCapture, openSignIn }: 
   if (id === 'feed' && s.feed.state === 'off') fix = { label: 'Start capture', act: () => { close(); askCapture(); } };
   if (id === 'feed' && (s.feed.state === 'waiting' || s.feed.state === 'live')) fix = { label: 'Stop capture', act: () => void run(() => air.stopCapture()).then(close) };
   if (id === 'esportra' && s.esportra.state === 'signed-out') fix = { label: 'Sign in', act: () => { close(); openSignIn(); } };
-  if (id === 'esportra' && s.esportra.state !== 'signed-out') fix = { label: 'Open Sync', act: () => { close(); go('sync'); } };
+  if (id === 'esportra' && s.esportra.state !== 'signed-out') fix = { label: 'Account settings', act: () => { close(); go('settings'); } };
   if (id === 'obs' && s.obs.state !== 'connected') fix = { label: 'Open OBS setup', act: () => { close(); go('scenes'); } };
   return (
     <Drawer title={TITLE[id]} close={close}>

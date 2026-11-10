@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react';
 import type { Page, Snapshot } from '../../shared/api.ts';
 import { ICONS, LOGO } from './ui.tsx';
 
-const RAIL: Array<[Exclude<Page, 'setup' | 'ready'>, string]> = [
-  ['console', 'Console'],
+const RAIL: Array<[Exclude<Page, 'setup' | 'settings'>, string]> = [
+  ['console', 'Live'],
+  ['ready', 'Matches'],
   ['scenes', 'Scenes'],
-  ['capture', 'Capture'],
   ['outputs', 'Outputs'],
-  ['data', 'Data'],
-  ['sync', 'Sync'],
+  ['capture', 'Capture'],
 ];
 
 export function TitleBar({ s }: { s: Snapshot }) {
@@ -16,7 +15,7 @@ export function TitleBar({ s }: { s: Snapshot }) {
     <div className="titlebar">
       {LOGO}
       <b>Esportra Air</b>
-      <span>— {s.setup.name}{s.match ? ` · ${s.match.title}` : ''}</span>
+      <span>{s.match ? `— ${s.match.title}${s.match.event.name ? ` · ${s.match.event.name}` : ''}` : '— No match selected'}</span>
     </div>
   );
 }
@@ -31,9 +30,9 @@ export function Rail({ page, go }: { page: Page; go: (p: Page) => void }) {
         </button>
       ))}
       <span className="spacer" />
-      <button aria-current={page === 'setup' ? 'page' : undefined} onClick={() => go('setup')}>
+      <button aria-current={page === 'settings' ? 'page' : undefined} onClick={() => go('settings')}>
         {ICONS.setup}
-        Setup
+        Settings
       </button>
     </nav>
   );

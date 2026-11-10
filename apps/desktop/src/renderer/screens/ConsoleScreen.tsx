@@ -10,9 +10,9 @@ import { CamerasPanel } from '../components/Cameras.tsx';
 import type { PageProps } from '../App.tsx';
 
 function nextSponsor(s: Snapshot) {
-  if (!s.setup.sponsors.length) return null;
-  const i = s.triggers.sponsor ? s.setup.sponsors.indexOf(s.triggers.sponsor) : -1;
-  return s.setup.sponsors[(i + 1) % s.setup.sponsors.length] ?? null;
+  if (!(s.match?.sponsors ?? []).length) return null;
+  const i = s.triggers.sponsor ? (s.match?.sponsors ?? []).indexOf(s.triggers.sponsor) : -1;
+  return (s.match?.sponsors ?? [])[(i + 1) % (s.match?.sponsors ?? []).length] ?? null;
 }
 
 const clock = (ms: number) => {
@@ -109,7 +109,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
     { key: 'F5', label: 'Caster lower third', detail: casters.length ? (snap.triggers.strap ? 'On screen · press again to hide' : casters.map((c) => c.name).join(' & ')) : 'Add casters first', state: snap.triggers.strap ? 'live' : 'idle', built: true, fire: () => (casters.length ? void run(() => air.casterStrap(!snap.triggers.strap)) : openCasters()) },
     { key: 'F6', label: 'Poll', detail: snap.triggers.poll ? 'On screen' : 'Two options with a split', state: snap.triggers.poll ? 'live' : form === 'poll' ? 'warn' : 'idle', built: true, fire: () => setForm(form === 'poll' ? null : 'poll') },
     { key: 'F7', label: 'Stinger', detail: 'Graphic wipe over the HUD', state: 'idle', built: true, fire: () => void run(() => air.stingerPlay()) },
-    { key: 'F8', label: 'Sponsor read', detail: snap.setup.sponsors.length ? (snap.triggers.sponsor ? `${snap.triggers.sponsor} on screen` : `Next: ${nextSponsor(snap)}`) : 'Add sponsors in Setup', state: snap.triggers.sponsor ? 'live' : 'idle', built: snap.setup.sponsors.length > 0, fire: () => void run(() => air.sponsorRead(snap.triggers.sponsor ? null : nextSponsor(snap))) },
+    { key: 'F8', label: 'Sponsor read', detail: (snap.match?.sponsors ?? []).length ? (snap.triggers.sponsor ? `${snap.triggers.sponsor} on screen` : `Next: ${nextSponsor(snap)}`) : 'Add sponsors in Setup', state: snap.triggers.sponsor ? 'live' : 'idle', built: (snap.match?.sponsors ?? []).length > 0, fire: () => void run(() => air.sponsorRead(snap.triggers.sponsor ? null : nextSponsor(snap))) },
   ];
 
   const cycle = (row: LayerRow) => void run(() => air.setLayer(row.id, row.id.startsWith('fs:') ? (row.mode === 'on' ? 'off' : 'on') : nextMode(row.id, row.mode)));

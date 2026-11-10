@@ -10,7 +10,7 @@ import { OutputsScreen } from './screens/OutputsScreen.tsx';
 import { ReadyScreen } from './screens/ReadyScreen.tsx';
 import { ScenesScreen } from './screens/ScenesScreen.tsx';
 import { SetupScreen, type SetupTab } from './screens/SetupScreen.tsx';
-import { SyncScreen } from './screens/SyncScreen.tsx';
+import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
@@ -75,13 +75,13 @@ export function App() {
   }
 
   const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true), openSignIn: () => setSignIn(true) };
-  const railPage: Page = page === 'ready' ? 'console' : page;
+  const railPage: Page = page === 'setup' ? 'ready' : page;
 
   return (
     <div className="win">
       <TitleBar s={s} />
       <div className="body">
-        <Rail page={railPage} go={(p) => (p === 'data' ? setFix(true) : go(p === 'console' && !started ? 'ready' : p))} />
+        <Rail page={railPage} go={(p) => go(p)} />
         <div className="main">
           <ChipBar s={s} open={(id) => setStatus(id)} />
           {s.engine.state !== 'running' && (
@@ -95,7 +95,7 @@ export function App() {
             {page === 'scenes' && <ScenesScreen {...props} />}
             {page === 'capture' && <CaptureScreen {...props} />}
             {page === 'outputs' && <OutputsScreen {...props} />}
-            {page === 'sync' && <SyncScreen {...props} />}
+            {page === 'settings' && <SettingsScreen {...props} />}
             {page === 'setup' && <SetupScreen {...props} tab={tab} setTab={setTab} />}
           </main>
         </div>

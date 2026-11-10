@@ -1,10 +1,7 @@
 /* Esportra Air — Command Console design system (PRD index.html §6 tokens, §8 motion, §12 accessibility). */
-@font-face { font-family: 'Inter'; font-weight: 400; src: url('./fonts/inter-latin-400-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 500; src: url('./fonts/inter-latin-500-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 600; src: url('./fonts/inter-latin-600-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Inter'; font-weight: 700; src: url('./fonts/inter-latin-700-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Poppins'; font-weight: 700; src: url('./fonts/Poppins-Bold.ttf') format('truetype'); }
-@font-face { font-family: 'Poppins'; font-weight: 800; src: url('./fonts/Poppins-ExtraBold.ttf') format('truetype'); }
+/* Archivo: one variable family with width (62–125) and weight (100–900) axes. OFL. */
+@font-face { font-family: 'Archivo'; font-weight: 100 900; font-stretch: 62% 125%; src: url('./fonts/archivo-latin-wdth-normal.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Archivo'; font-weight: 100 900; font-stretch: 62% 125%; src: url('./fonts/archivo-latin-ext-wdth-normal.woff2') format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: 'JetBrains Mono'; font-weight: 100 800; src: url('./fonts/JetBrainsMono.ttf') format('truetype'); }
 
 :root {
@@ -28,8 +25,12 @@
   --warn: #fbbf24;
   --bad: #f87171;
   --off: #5b5b66;
-  --font: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  --display: 'Poppins', 'Inter', system-ui, sans-serif;
+  --font: 'Archivo', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  /* Display = Archivo expanded: titles, scores and big numbers. */
+  --display: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  --display-stretch: 125%;
+  /* An ambient accent for backgrounds and focus only; it carries no meaning (rose = on air, amber = cued). */
+  --glow: #6d7bff;
   --mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
   /* motion (§8) */
   --enter: 180ms cubic-bezier(0.2, 0, 0, 1);
@@ -119,9 +120,9 @@ h1, h2, h3, p { margin: 0; }
 .panel > .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 0; }
 .panel .body-pad { padding: 14px 16px 16px; }
 .numbered { position: relative; }
-.title-lg { font-family: var(--display); font-weight: 800; font-size: 34px; line-height: 1.1; letter-spacing: -0.01em; }
-.title-md { font-family: var(--display); font-weight: 800; font-size: 22px; line-height: 1.15; }
-.title-sm { font-family: var(--display); font-weight: 700; font-size: 17px; }
+.title-lg { font-family: var(--display); font-stretch: var(--display-stretch); font-weight: 800; font-size: 32px; line-height: 1.05; letter-spacing: -0.015em; }
+.title-md { font-family: var(--display); font-stretch: var(--display-stretch); font-weight: 750; font-size: 21px; line-height: 1.15; letter-spacing: -0.01em; }
+.title-sm { font-family: var(--display); font-stretch: 112%; font-weight: 700; font-size: 16px; letter-spacing: -0.005em; }
 .lead { color: var(--text-2); font-size: 14px; }
 
 /* ── forms ── */
@@ -283,7 +284,7 @@ h1, h2, h3, p { margin: 0; }
 .stats4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--hair); background: var(--panel); }
 .stats4 .stat { padding: 14px 16px; border-right: 1px solid var(--hair); }
 .stats4 .stat:last-child { border-right: 0; }
-.stats4 .v { font-family: var(--display, 'Poppins'), sans-serif; font-weight: 800; font-size: 26px; margin: 4px 0 2px; }
+.stats4 .v { font-family: var(--display); font-stretch: var(--display-stretch); font-weight: 800; font-size: 26px; margin: 4px 0 2px; }
 .seg-table.feat td { vertical-align: middle; padding: 8px; }
 .readout { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 13px; margin: 0; }
 .readout dt { color: var(--text-3); font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; align-self: center; }
@@ -356,3 +357,37 @@ button, input, select { border-radius: var(--r-md); }
 .hotkey { min-width: 20px; width: auto; padding-left: 6px; padding-right: 6px; }
 .joincode { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); background: #0e0e11; }
 .joincode strong { font-family: var(--mono); font-size: 22px; letter-spacing: 0.1em; flex: 1; white-space: nowrap; }
+
+
+/* ═══ Stage R1 look: Archivo, depth and a little life ═══ */
+body { font-size: 13.5px; font-feature-settings: 'ss01' on, 'tnum' on; letter-spacing: 0.002em;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(109, 123, 255, 0.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(244, 63, 94, 0.06), transparent 60%),
+    var(--stage); }
+.cap { font-family: var(--font); font-stretch: 110%; font-size: 10.5px; font-weight: 650; letter-spacing: 0.12em; }
+.titlebar { font-stretch: 110%; }
+.titlebar b { font-stretch: 125%; font-weight: 800; letter-spacing: 0.08em; }
+.panel, .checklist, .out-card, .stats4, .datastrip { position: relative; }
+.panel::before, .checklist::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent); pointer-events: none; }
+.btn { font-weight: 650; letter-spacing: 0.01em; transition: background 140ms ease, border-color 140ms ease, transform 80ms ease, box-shadow 160ms ease; }
+.btn.primary { box-shadow: 0 6px 20px rgba(255, 255, 255, 0.08); }
+.btn.primary:hover:not(:disabled) { box-shadow: 0 8px 26px rgba(255, 255, 255, 0.14); }
+.rail { background: rgba(9, 9, 11, 0.6); backdrop-filter: blur(8px); }
+.rail button { font-stretch: 105%; }
+.rail button[aria-current='page'] { background: linear-gradient(180deg, #23232b, #1a1a20); color: var(--white); }
+.rail button[aria-current='page'] svg { filter: drop-shadow(0 0 6px rgba(109, 123, 255, 0.55)); }
+.clock { font-family: var(--display); font-stretch: var(--display-stretch); font-weight: 700; letter-spacing: 0.02em; }
+:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+.lead { font-size: 14.5px; line-height: 1.5; }
+.score-num, .datastrip .sc { font-family: var(--display); font-stretch: var(--display-stretch); font-weight: 800; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.page > * { animation: rise 260ms cubic-bezier(0.2, 0, 0, 1); }
+@media (prefers-reduced-motion: reduce) { .page > * { animation: none; } }
+.settings { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; align-items: start; max-width: 1100px; }
+.settings-nav { position: sticky; top: 8px; display: flex; flex-direction: column; gap: 2px; padding-top: 4px; }
+.settings-nav .cap { padding: 0 10px 8px; }
+.settings-nav a { color: var(--text-2); text-decoration: none; padding: 8px 10px; border-radius: var(--r-md); font-weight: 550; }
+.settings-nav a:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.settings-body > div[id], .settings-body > section[id] { scroll-margin-top: 12px; }
+.settings-body .panel { max-width: 860px; }

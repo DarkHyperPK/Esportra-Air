@@ -107,6 +107,14 @@ export class Store {
     });
     setup.obs = { host: setup.obs?.host ?? '127.0.0.1', port: setup.obs?.port ?? 4455, stinger: setup.obs?.stinger ?? null };
     if (!this.data.owned || typeof this.data.owned !== 'object' || !('scenes' in this.data.owned)) this.data.owned = emptyOwned();
+    // Match v2: game, lineups, event and sponsors live on the match (they used to be production-wide).
+    for (const m of this.data.matches ?? []) {
+      const old = m as Partial<Match> & Match;
+      old.game ??= 'valorant';
+      old.event ??= { name: old.source?.tournament || setup.brand?.eventName || '', stage: setup.brand?.stage ?? '' };
+      old.sponsors ??= [...(setup.sponsors ?? [])];
+      old.players ??= [0, 1].map((t) => (old.source?.lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];
+    }
   }
 
   save() {

@@ -78,7 +78,7 @@ function EsportraMatches({ s, run, openSignIn }: Pick<PageProps, 's' | 'run' | '
 
 export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, start }: PageProps & { start: () => void }) {
   const [creating, setCreating] = useState(!s.match && s.matches.length === 0);
-  const informational = (id: string, health: string) => (id === 'esportra' || id === 'internet') && health === 'off';
+  const informational = (id: string, health: string) => id === 'esportra' && health === 'off';
   const counted = s.checks.filter((c) => !informational(c.id, c.health));
   const ready = counted.filter((c) => c.health === 'ok').length;
   const all = ready === counted.length;
@@ -95,16 +95,14 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, s
     <div className="ready-grid">
       <aside className="ready-side" aria-label="This PC and show">
         <section>
-          <Cap>This PC · production</Cap>
-          <h1 className="title-lg" style={{ marginTop: 8 }}>Studio desk</h1>
-          <p className="lead" style={{ marginTop: 8 }}>Runs the graphics for <b style={{ color: 'var(--text)' }}>{s.setup.name}</b>. Graphics stay on air if Air closes.</p>
-        </section>
-
-        <section className="stack" style={{ gap: 8 }}>
-          <Cap>Show</Cap>
-          <button className="picker" style={{ width: '100%', height: 40, padding: '0 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--stage)', border: '1px solid var(--hair-strong)', fontSize: 13.5 }} onClick={() => go('setup')}>
-            <span>{s.setup.name}</span><span className="muted">Setup ›</span>
-          </button>
+          <Cap>Matches</Cap>
+          <h1 className="title-lg" style={{ marginTop: 8 }}>{s.match ? s.match.title : 'Pick a match'}</h1>
+          {s.match ? (
+            <p className="lead" style={{ marginTop: 8 }}>{s.match.event.name || 'No event name yet'} · Bo{s.match.bestOf}. Graphics stay on air if Air closes.</p>
+          ) : (
+            <p className="lead" style={{ marginTop: 8 }}>Everything on air comes from the match: teams, players, event and graphics.</p>
+          )}
+          {s.match && <button className="btn" style={{ marginTop: 12 }} onClick={() => go('setup')}>Graphics, event and sponsors</button>}
         </section>
 
         <EsportraMatches s={s} run={run} openSignIn={openSignIn} />

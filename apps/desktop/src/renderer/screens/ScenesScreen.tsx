@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { TRIGGERS, TRIGGER_LABEL, type Segment } from '../../shared/autopilot.ts';
 import { air } from '../bridge.ts';
@@ -76,10 +75,7 @@ function SegmentTable({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-export function ScenesScreen({ s, run }: PageProps) {
-  const [host, setHost] = useState(s.setup.obs.host);
-  const [port, setPort] = useState(String(s.setup.obs.port));
-  const [password, setPassword] = useState('');
+export function ScenesScreen({ s, run, go }: PageProps) {
   const connected = s.obs.state === 'connected';
   const stingers = s.obs.transitions.filter((t) => t.kind === 'stinger');
   const activeStinger = stingers.find((t) => t.name === s.setup.obs.stinger) ?? stingers[0] ?? null;
@@ -88,31 +84,10 @@ export function ScenesScreen({ s, run }: PageProps) {
     <div className="cols" style={{ gridTemplateColumns: '300px minmax(0, 1fr) 320px' }}>
       <div className="stack">
         <section className="panel">
-          <div className="head"><Cap>Connection</Cap>{connected ? <Tally kind="ok">Connected</Tally> : <Tally kind={s.obs.state === 'error' ? 'bad' : 'off'}>{s.obs.state === 'connecting' ? 'Connecting' : s.obs.state === 'error' ? 'Lost' : 'Not connected'}</Tally>}</div>
-          <div className="body-pad stack" style={{ gap: 12 }}>
-            {connected && <div><h2 className="title-sm">OBS Studio {s.obs.version}</h2><p className="muted" style={{ fontSize: 12.5 }}>This PC · ws://{s.setup.obs.host}:{s.setup.obs.port}</p></div>}
-            {connected && (
-              <>
-                <div className="row-item" style={{ padding: 0, border: 0 }}>
-                  <span><b>Studio Mode</b><br /><span className="muted" style={{ fontSize: 12 }}>{s.obs.studioMode ? 'On · takes go through Preview' : 'Off · turn on to use Take, Cut and Stinger'}</span></span>
-                  <button className="switch" role="switch" aria-checked={s.obs.studioMode} aria-label="Studio Mode" onClick={() => void run(() => air.obsStudioMode(!s.obs.studioMode))} />
-                </div>
-                <div><b>Scene collection</b><br /><span className="muted" style={{ fontSize: 12 }}>{s.obs.collection ?? '—'}</span></div>
-                <div><b>Control</b><br /><span className="muted" style={{ fontSize: 12 }}>Esportra scenes, transitions, replays. Never streaming or recording.</span></div>
-              </>
-            )}
-            <form className="stack" style={{ gap: 12 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.connectObs({ host, port: Number(port), password })); }}>
-              <div className="grid3" style={{ gridTemplateColumns: '2fr 1fr' }}>
-                <label className="field"><span>Address</span><input value={host} onChange={(e) => setHost(e.target.value)} required /></label>
-                <label className="field"><span>Port</span><input type="number" value={port} onChange={(e) => setPort(e.target.value)} required /></label>
-              </div>
-              <label className="field"><span>Password</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" placeholder={connected ? 'Saved' : ''} /></label>
-              {s.obs.error && !connected && <p style={{ color: 'var(--bad)', fontSize: 13 }}>{s.obs.error}</p>}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn primary" type="submit">{s.obs.state === 'connecting' ? 'Connecting…' : connected ? 'Reconnect' : 'Connect'}</button>
-                {connected && <button type="button" className="btn quiet" onClick={() => void run(() => air.disconnectObs())}>Disconnect</button>}
-              </div>
-            </form>
+          <div className="head"><Cap>OBS</Cap>{connected ? <Tally kind="ok">Connected</Tally> : <Tally kind={s.obs.state === 'error' ? 'bad' : 'off'}>{s.obs.state === 'connecting' ? 'Connecting' : s.obs.state === 'error' ? 'Lost' : 'Not connected'}</Tally>}</div>
+          <div className="body-pad stack" style={{ gap: 10 }}>
+            {connected ? <div><h2 className="title-sm">OBS Studio {s.obs.version}</h2><p className="muted" style={{ fontSize: 12.5 }}>ws://{s.setup.obs.host}:{s.setup.obs.port} · {s.obs.collection ?? '—'}</p></div> : <p className="muted" style={{ fontSize: 12.5 }}>{s.obs.error ?? 'Not connected yet.'}</p>}
+            <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => go('settings')}>Connection settings</button>
           </div>
         </section>
         <section className="panel">

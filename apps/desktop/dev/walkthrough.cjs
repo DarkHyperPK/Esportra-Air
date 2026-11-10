@@ -38,13 +38,15 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await btn('Save casters');
   await page.getByText('2 casters ready').waitFor();
 
-  // Scenes: connect, Studio Mode, add for me, fill the game-feed slot
-  await rail('Scenes');
+  // Settings: connect OBS (software settings), then Scenes: add for me, fill the game-feed slot
+  await rail('Settings');
   await page.getByLabel('Password').fill('secret');
   await btn('Connect', { exact: true });
   await page.getByText('Connected', { exact: true }).first().waitFor();
   await page.getByRole('switch', { name: 'Studio Mode' }).click();
   await page.getByText('On · takes go through Preview').waitFor();
+  await shot('settings');
+  await rail('Scenes');
   await btn('Add for me');
   await page.getByRole('button', { name: 'Rebuild', exact: true }).waitFor();
   await page.getByLabel('Use an existing OBS source for Game feed').selectOption('Game Capture');
@@ -67,7 +69,7 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await shot('outputs');
 
   // Readiness: start capture through its fix button
-  await rail('Console');
+  await rail('Matches');
   await btn('Start capture');
   await page.getByRole('dialog', { name: /Start game capture/ }).waitFor();
   await shot('consent');
@@ -115,7 +117,7 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await page.getByRole('dialog', { name: 'Fix data' }).waitFor({ state: 'detached' });
 
   // Autopilot (S4): start, take two manual segments, let a round going live open a hold window, hold it, take now.
-  await rail('Console');
+  await rail('Live');
   const code = (await (await fetch('http://127.0.0.1:5320/call/snapshot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '[]' })).json()).match.code;
   const post = (body) => fetch(`http://127.0.0.1:5399/api/${code}/ingest/valorant`, { method: 'POST', headers: { 'X-Esportra-Key': 'dev-host-key-0123456789abcdef', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   await btn('Start autopilot');
@@ -145,11 +147,11 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await rail('Scenes');
   await page.getByText('Segment → Scene').scrollIntoViewIfNeeded();
   await shot('segments');
-  await rail('Console');
+  await rail('Live');
   await btn('Run manually');
 
   // Player cameras (S5): make links, copy one, 10-up; the overlay pages show the streams and report connection.
-  await rail('Console');
+  await rail('Live');
   await page.getByLabel('Player cameras').getByRole('button', { name: 'Make link' }).first().click();
   await page.getByLabel('Player cameras').getByRole('button', { name: 'Copy link' }).first().waitFor();
   await page.getByLabel('Player cameras').getByRole('button', { name: 'Make link' }).first().click();
@@ -187,31 +189,34 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await page.getByText(/^\d+:\d\d \/ /).waitFor();
   await page.waitForTimeout(3500);
   await shot('capture');
-  await rail('Sync');
-  await rail('Setup');
-  await shot('setup');
-  await page.getByRole('tab', { name: 'Layout' }).click();
-  await shot('setup-layout');
+  await rail('Matches');
+  await btn('Graphics, event and sponsors');
+  await shot('match-graphics');
+  await page.getByRole('tab', { name: 'Event and sponsors' }).click();
+  await page.getByLabel('Event name (on the event bug)').fill('Community Cup');
+  await btn('Save');
+  await page.getByText(/Night Owls vs Crimson Five · Community Cup/).first().waitFor();
+  await shot('match-event');
 
   // Esportra (Stage 2): sign in against the stand-in backend, pick a scheduled match.
-  await rail('Sync');
+  await rail('Settings');
   await page.getByText('Not signed in').first().waitFor();
+  await page.locator('#set-account').scrollIntoViewIfNeeded();
   await shot('sync-signed-out');
   await btn('Sign in');
   await page.getByRole('dialog', { name: 'Sign in to Esportra' }).waitFor();
-  await page.getByLabel('Email').fill('producer@example.com');
-  await page.getByLabel('Password').fill('wrong password');
+  await page.getByRole('dialog').getByLabel('Email').fill('producer@example.com');
+  await page.getByRole('dialog').getByLabel('Password').fill('wrong password');
   await page.getByRole('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByText(/Check your email and password/).waitFor();
-  await page.getByLabel('Password').fill('correct horse battery');
+  await page.getByRole('dialog').getByLabel('Password').fill('correct horse battery');
   await shot('sign-in');
   await page.getByRole('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('dialog').waitFor({ state: 'detached' });
   await page.getByText('Your scheduled matches').waitFor();
   await page.getByText('Community Cup').first().waitFor();
   await shot('sync-signed-in');
-  await rail('Console');
-  await page.getByRole('button', { name: /Readiness/ }).first().click();
+  await rail('Matches');
   await page.getByRole('group', { name: 'Esportra matches' }).getByRole('button', { name: /Paper Rex/ }).click();
   await page.getByRole('button', { name: /Paper Rex/ }).and(page.locator('[aria-pressed=true]')).first().waitFor();
   await page.getByText(/signed in as|Signed in as/i).first().waitFor();
@@ -225,8 +230,7 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   if (!/^[A-Z2-9]{6}$/.test(joinCode)) throw new Error('unexpected join code ' + joinCode);
   await page.getByText('Joined PCs · 0').scrollIntoViewIfNeeded();
   await shot('join-panel');
-  await rail('Setup');
-  await page.getByRole('tab', { name: 'This PC' }).click();
+  await rail('Settings');
   await page.getByRole('button', { name: 'Capture-only' }).click();
   await page.getByText('Observer PC').first().waitFor();
   await page.getByLabel('Producer’s address').fill('127.0.0.1:5301');
@@ -239,7 +243,7 @@ const call = async (m) => (await fetch(`${HOST}/call/${m}`, { method: 'POST', bo
   await shot('capture-only');
   await btn('Disconnect');
   await btn('Switch this PC back to Production');
-  await page.getByRole('tab', { name: 'This PC' }).waitFor();
+  await page.getByRole('button', { name: 'Capture-only' }).waitFor();
   await rail('Capture');
   await page.getByRole('switch', { name: 'Allow other PCs to join' }).click();
   await page.getByText('Joined PCs').waitFor({ state: 'detached' });

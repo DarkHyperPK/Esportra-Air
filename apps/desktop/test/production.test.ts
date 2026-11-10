@@ -65,7 +65,13 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(first.state.teams[1].name, 'Team Bravo');
 
     // Setup changes reach the HUD state.
-    await production.updateSetup({ package: 'impact', hud: { ...production.setup.hud, minimap: true }, sponsors: ['Acme'] });
+    await production.updateSetup({ package: 'impact', hud: { ...production.setup.hud, minimap: true } });
+    await production.updateMatch(match.id, { sponsors: ['Acme'], event: { name: 'Community Cup', stage: 'Playoffs' } });
+    assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.event.name, 'Community Cup', 'the event comes from the match');
+    await assert.rejects(production.updateMatch(match.id, { players: [[{ name: 'Juno', gameId: 'no-tag' } as never], []] }), /Name#TAG/);
+    await production.updateMatch(match.id, { players: [[{ name: 'Juno', realName: 'June Park', gameId: 'Juno#EU1', photo: '' } as never], []] });
+    assert.equal(production.match!.players[0]![0]!.gameId, 'Juno#EU1');
+    assert.match(production.match!.players[0]![0]!.id, /^[0-9a-f-]{36}$/);
     const styled = await engine.client.get<any>(`/api/${match.code}`);
     assert.equal(styled.state.layout.bannerTheme, 'impact');
     assert.equal(styled.state.show.minimap, true);

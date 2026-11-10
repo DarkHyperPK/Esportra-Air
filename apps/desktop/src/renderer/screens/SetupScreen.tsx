@@ -1,12 +1,11 @@
-import { PcModeCard } from '../components/Join.tsx';
 import { useEffect, useState } from 'react';
-import { BANNER_THEMES, type Screen, type Setup } from '../../shared/api.ts';
+import { BANNER_THEMES, type Setup } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
 import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { Cap } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
 
-export type SetupTab = 'graphics' | 'brand' | 'layout' | 'pc';
+export type SetupTab = 'graphics' | 'brand';
 
 const THEME_NOTES: Record<(typeof BANNER_THEMES)[number], string> = {
   broadcast: 'Full-width round banners. The default.',
@@ -56,28 +55,30 @@ function Graphics({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-function Brand({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const [name, setName] = useState(s.setup.name);
-  const [eventName, setEvent] = useState(s.setup.brand.eventName);
-  const [stage, setStage] = useState(s.setup.brand.stage);
+function EventAndSponsors({ s, run }: Pick<PageProps, 's' | 'run'>) {
+  const match = s.match;
+  const [eventName, setEvent] = useState(match?.event.name ?? '');
+  const [stage, setStage] = useState(match?.event.stage ?? '');
   const [sponsor, setSponsor] = useState('');
-  const sponsors = s.setup.sponsors;
+  useEffect(() => { setEvent(match?.event.name ?? ''); setStage(match?.event.stage ?? ''); }, [match?.id]);
+  if (!match) return <div className="notice">Choose a match first. The event name and sponsors belong to each match.</div>;
+  const sponsors = match.sponsors;
+  const save = (patch: Parameters<typeof air.updateMatch>[1]) => run(() => air.updateMatch(match.id, patch));
   return (
     <div className="grid2" style={{ alignItems: 'start' }}>
-      <form className="panel body-pad stack" style={{ gap: 14 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.updateSetup({ name, brand: { eventName, stage } })); }}>
-        <Cap>Production</Cap>
-        <label className="field"><span>Production name (in Air only)</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required /></label>
+      <form className="panel body-pad stack" style={{ gap: 14 }} onSubmit={(e) => { e.preventDefault(); void save({ event: { name: eventName, stage } }); }}>
+        <Cap>Event · {match.title}</Cap>
         <label className="field"><span>Event name (on the event bug)</span><input value={eventName} onChange={(e) => setEvent(e.target.value)} maxLength={60} placeholder="e.g. Community Cup" /></label>
         <label className="field"><span>Stage (on lower thirds)</span><input value={stage} onChange={(e) => setStage(e.target.value)} maxLength={60} placeholder="e.g. Playoffs" /></label>
-        <p className="muted" style={{ fontSize: 12.5 }}>Team names, tags and colours belong to each match.</p>
+        <p className="muted" style={{ fontSize: 12.5 }}>The next match of the same tournament starts with these.</p>
         <button className="btn primary" style={{ alignSelf: 'flex-start' }} type="submit">Save</button>
       </form>
       <section className="panel body-pad stack" style={{ gap: 10 }}>
-        <Cap>Sponsors</Cap>
+        <Cap>Sponsors · {match.title}</Cap>
         <p className="muted" style={{ fontSize: 12.5 }}>Rotated in the sponsor slot and used by Sponsor read (F8).</p>
         {sponsors.length === 0 && <p className="muted">No sponsors yet.</p>}
-        {sponsors.map((n) => <div key={n} className="row-item" style={{ border: '1px solid var(--hair)' }}><b>{n}</b><button className="btn quiet small" onClick={() => void run(() => air.updateSetup({ sponsors: sponsors.filter((x) => x !== n) }))}>Remove</button></div>)}
-        <form style={{ display: 'flex', gap: 8 }} onSubmit={async (e) => { e.preventDefault(); if (await run(() => air.updateSetup({ sponsors: [...sponsors, sponsor] }))) setSponsor(''); }}>
+        {sponsors.map((n) => <div key={n} className="row-item" style={{ border: '1px solid var(--hair)', borderRadius: 'var(--r-md)' }}><b>{n}</b><button className="btn quiet small" onClick={() => void save({ sponsors: sponsors.filter((x) => x !== n) })}>Remove</button></div>)}
+        <form style={{ display: 'flex', gap: 8 }} onSubmit={async (e) => { e.preventDefault(); if (await save({ sponsors: [...sponsors, sponsor] })) setSponsor(''); }}>
           <input className="cell" aria-label="Sponsor name" value={sponsor} onChange={(e) => setSponsor(e.target.value)} placeholder="Sponsor name" maxLength={40} />
           <button className="btn" type="submit" disabled={!sponsor.trim()}>Add</button>
         </form>
@@ -86,66 +87,16 @@ function Brand({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-function Layout({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const [screens, setScreens] = useState<Screen[]>(s.setup.screens);
-  const [selected, setSelected] = useState(s.setup.screens.find((x) => x.id === 'in-game')?.id ?? s.setup.screens[0]!.id);
-  const [minimap, setMinimap] = useState(s.setup.minimap);
-  useEffect(() => setScreens(s.setup.screens), [s.setup.screens]);
-  const dirty = JSON.stringify(screens) !== JSON.stringify(s.setup.screens) || JSON.stringify(minimap) !== JSON.stringify(s.setup.minimap);
-  const set = (id: string, patch: Partial<Screen>) => setScreens(screens.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-  const frame = (id: string, key: keyof Screen['frame'], value: string) => set(id, { frame: { ...screens.find((x) => x.id === id)!.frame, [key]: Math.round(Number(value) || 0) } });
-  const current = screens.find((x) => x.id === selected) ?? screens[0]!;
-  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
-  return (
-    <div className="cols" style={{ gridTemplateColumns: 'minmax(0, 1fr) 320px' }}>
-      <section className="panel body-pad">
-        <Cap>Graphics · placement</Cap>
-        <p className="muted" style={{ fontSize: 12.5, margin: '6px 0 12px' }}>Where each graphic sits in its OBS scene on the 1920 × 1080 canvas. Saved placement reaches OBS when you rebuild the scenes.</p>
-        <div className="screen-row screen-head" aria-hidden="true"><span /><span>Graphic</span><span>X</span><span>Y</span><span>Width</span><span>Height</span></div>
-        {SCENE_KEYS.map((key) => (
-          <div key={key}>
-            <p className="cap" style={{ margin: '12px 0 6px' }}>{SCENES[key].label}</p>
-            {screens.filter((x) => x.scene === key).map((screen) => (
-              <div className="screen-row" key={screen.id} onFocus={() => setSelected(screen.id)}>
-                <span />
-                <span>{screen.title}</span>
-                {(['x', 'y', 'width', 'height'] as const).map((k) => <input className="cell" key={k} type="number" aria-label={`${screen.title} ${k}`} value={screen.frame[k]} onChange={(e) => frame(screen.id, k, e.target.value)} />)}
-              </div>
-            ))}
-          </div>
-        ))}
-      </section>
-      <div className="stack">
-        <section className="panel body-pad stack" style={{ gap: 10 }}>
-          <Cap>{current.title}</Cap>
-          <div className="frame-prev" aria-label={`Placement of ${current.title}`}><span className="frame" style={{ left: pct(current.frame.x, 1920), top: pct(current.frame.y, 1080), width: pct(current.frame.width, 1920), height: pct(current.frame.height, 1080) }}>{current.frame.width} × {current.frame.height}</span></div>
-        </section>
-        <section className="panel body-pad stack" style={{ gap: 10 }}>
-          <Cap>Minimap frame</Cap>
-          <div className="grid3">{(['x', 'y', 'size'] as const).map((k) => <label className="field" key={k}><span>{k === 'size' ? 'Size' : k.toUpperCase()}</span><input type="number" value={minimap[k]} onChange={(e) => setMinimap({ ...minimap, [k]: Math.round(Number(e.target.value) || 0) })} /></label>)}</div>
-        </section>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn primary" disabled={!dirty} onClick={() => void run(() => air.updateSetup({ screens, minimap }))}>Save layout</button>
-          <button className="btn quiet" disabled={!dirty} onClick={() => { setScreens(s.setup.screens); setMinimap(s.setup.minimap); }}>Discard</button>
-        </div>
-        <p className="muted" style={{ fontSize: 12.5 }}>Saved layout reaches OBS the next time you rebuild the scenes.</p>
-      </div>
-    </div>
-  );
-}
-
 export function SetupScreen({ s, run, tab, setTab }: PageProps & { tab: SetupTab; setTab: (t: SetupTab) => void }) {
-  const tabs: Array<[SetupTab, string]> = [['graphics', 'Graphics'], ['brand', 'Brand'], ['layout', 'Layout'], ['pc', 'This PC']];
+  const tabs: Array<[SetupTab, string]> = [['graphics', 'Graphics'], ['brand', 'Event and sponsors']];
   return (
     <>
-      <div style={{ marginBottom: 14 }}><Cap>Production setup · done once, used for every match</Cap><h1 className="title-lg" style={{ marginTop: 8 }}>{s.setup.name}</h1></div>
-      <div className="tabs" role="tablist" aria-label="Setup sections">
+      <div style={{ marginBottom: 14 }}><Cap>Match graphics</Cap><h1 className="title-lg" style={{ marginTop: 8 }}>{s.match?.title ?? 'No match selected'}</h1></div>
+      <div className="tabs" role="tablist" aria-label="Graphics sections">
         {tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
       {tab === 'graphics' && <Graphics s={s} run={run} />}
-      {tab === 'brand' && <Brand s={s} run={run} />}
-      {tab === 'layout' && <Layout s={s} run={run} />}
-      {tab === 'pc' && <PcModeCard s={s} run={run} />}
+      {tab === 'brand' && <EventAndSponsors s={s} run={run} />}
     </>
   );
 }

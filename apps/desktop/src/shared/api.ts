@@ -1,10 +1,11 @@
 import type { LayerGroup, LayerMode } from './layers.ts';
+import type { GameId } from './games.ts';
 import type { SceneKey, SlotId } from './scenes.ts';
 
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
-export type Page = 'ready' | 'console' | 'scenes' | 'capture' | 'outputs' | 'data' | 'sync' | 'setup';
+export type Page = 'ready' | 'console' | 'scenes' | 'capture' | 'outputs' | 'settings' | 'setup';
 export type Health = 'ok' | 'warn' | 'off' | 'bad';
 
 export interface Team {
@@ -19,6 +20,18 @@ export interface Caster {
   handle: string;
 }
 
+/** A player in a match's lineup, as the producer entered them. */
+export interface PlayerInfo {
+  id: string;
+  /** Shown on air. */
+  name: string;
+  realName: string;
+  /** How the game reports them (Valorant: Riot ID `Name#TAG`), so live data can be matched to this player. */
+  gameId: string;
+  /** Photo URL served by the engine's asset store, or ''. */
+  photo: string;
+}
+
 export interface Match {
   id: string;
   /** Room code on the engine; outputs follow the selected match's room. */
@@ -29,6 +42,12 @@ export interface Match {
   teams: [Team, Team];
   casters: Caster[];
   createdAt: number;
+  game: GameId;
+  /** Lineups per team (starters first). */
+  players: [PlayerInfo[], PlayerInfo[]];
+  /** Shown on the event bug and lower thirds. */
+  event: { name: string; stage: string };
+  sponsors: string[];
   /** Set for matches taken from an Esportra tournament. */
   source?: { matchId: string; tournamentId: string; tournament: string; scheduledAt: string | null; lineups: [string[], string[]] | null };
 }
@@ -57,8 +76,9 @@ export interface Setup {
   name: string;
   /** The HUD's banner theme (core/hud-settings.js). */
   package: BannerTheme;
-  /** Shown on the event bug and lower thirds. Team colours come from each team. */
+  /** @deprecated Moved onto each match (event, sponsors). Kept only to migrate older saves. */
   brand: { eventName: string; stage: string };
+  /** @deprecated See `brand`. */
   sponsors: string[];
   screens: Screen[];
   /** HUD element switches, written to the match state's `show` flags. */
@@ -142,7 +162,7 @@ export interface OutputHealth {
 }
 
 export interface CheckItem {
-  id: 'esportra' | 'match' | 'feed' | 'obs' | 'scenes' | 'sources' | 'talent' | 'internet';
+  id: 'esportra' | 'match' | 'feed' | 'obs' | 'scenes' | 'sources' | 'talent' | 'art';
   title: string;
   detail: string;
   health: Health;
@@ -242,12 +262,15 @@ export interface Snapshot {
   autopilotBlock: string | null;
   log: LogEntry[];
   checks: CheckItem[];
+  /** Whether agent, weapon and map art can be loaded (media.valorant-api.com). */
+  art: 'checking' | 'ok' | 'offline';
 }
 
 export interface QuickMatchInput {
   teamA: string;
   teamB: string;
   bestOf: 1 | 3 | 5;
+  game?: GameId;
 }
 
 export interface CorrectionInput {
@@ -287,7 +310,7 @@ export interface AirApi {
   useSlotSource(slot: SlotId, source: string): Promise<Snapshot>;
   createQuickMatch(input: QuickMatchInput): Promise<Snapshot>;
   selectMatch(id: string): Promise<Snapshot>;
-  updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title'>>): Promise<Snapshot>;
+  updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players'>>): Promise<Snapshot>;
   updateSetup(patch: Partial<Setup>): Promise<Snapshot>;
   connectObs(input: { host: string; port: number; password: string }): Promise<Snapshot>;
   disconnectObs(): Promise<Snapshot>;
