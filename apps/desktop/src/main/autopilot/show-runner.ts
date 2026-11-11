@@ -94,6 +94,15 @@ export class ShowRunner extends EventEmitter {
     this.change();
   }
 
+  /** Marks steps already done before a restart, so starting resumes at the next unfinished one. */
+  restore(states: Record<string, 'done' | 'on_air'>) {
+    for (const seg of this.segments) {
+      const s = states[seg.id];
+      if (s) seg.state = s;
+    }
+    this.change();
+  }
+
   /**
    * Applies edits and a new order to segments that have not started. Active or finished segments are
    * left alone (the edit applies at the next boundary), as in the legacy replaceUpcoming.

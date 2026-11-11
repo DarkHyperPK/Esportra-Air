@@ -286,6 +286,46 @@ impl ValorantAdapter {
         }
     }
 
+    /// After a restart: rebuild the working memory from the saved match state, so the next update
+    /// continues the match (same seats, same score baseline, same spike) instead of starting over.
+    pub fn resume_from(&mut self, s: &Value) {
+        if let Some(Value::Array(teams)) = s.get("players") {
+            for (t, team) in teams.iter().enumerate().take(2) {
+                let Value::Array(list) = team else { continue };
+                for (j, p) in list.iter().enumerate().take(5) {
+                    let id = p.get("puuid");
+                    if truthy(id) {
+                        let key = self.map_key(id);
+                        self.slots.insert(key, (t, j));
+                    }
+                    let name = p
+                        .get("inGameName")
+                        .filter(|v| truthy(Some(v)))
+                        .or_else(|| p.get("name"));
+                    if truthy(name) {
+                        self.by_name.insert(name_key(name), (t, j));
+                    }
+                }
+            }
+        }
+        let scores: Vec<f64> = s
+            .get("teams")
+            .and_then(Value::as_array)
+            .map(|t| t.iter().filter_map(|x| x.get("score").and_then(Value::as_f64)).collect())
+            .unwrap_or_default();
+        if let [a, b] = scores[..] {
+            self.last_score = Some([a, b]);
+        }
+        self.spike.planted = get(s.get("round"), "phase").and_then(Value::as_str) == Some("planted");
+        self.rebaseline();
+    }
+
+    /// After a gap in game data: credits seen next are a new baseline, not a change. A +300 that
+    /// happened while data was missing must not be read as a spike plant.
+    pub fn rebaseline(&mut self) {
+        self.prev_money = None;
+    }
+
     /// Agent codenames seen that are not in the table yet.
     pub fn unknown_codenames(&self) -> impl Iterator<Item = &String> {
         self.unknown_codenames.iter()

@@ -69,6 +69,8 @@ Overlays: `http://localhost:5300/overlays/<name>.html?match=CODE`. WebSocket `ws
 | Legacy app | Removed in Stage 4 (the old Electron app in `src/`, its tests, the capture child and root build files). Recoverable from git history before commit "Stage 4" |
 | Output aliases | `hud.js` only recognises UUID aliases (`/o/<uuid>`); Air's screens carry a UUID `outputId` |
 | Rehearsal | Private inside Air (`__ESA_SIM_REH_<code>`, never an OBS output). Sample rooms (`__ESA_SIM_*`) may change graphics during a test round; match rooms may not |
+| Restarts and reconnects | Air restarting re-attaches to the running engine (nothing changes on air). An engine restart rebuilds the parser's memory from the saved match (`ValorantAdapter::resume_from`): same seats, same score baseline. Game data after a gap of 10 s or more is a new credit baseline (no inferred spike plant). Autopilot progress is saved per match and offered as "Resume at …". Up to 0.3 s of changes can be lost if the engine crashes (saves every 300 ms) |
+| Player PCs | Send only their own `me` data and heartbeats; the engine drops anything else from a player PC (`join.rs` `admit`) |
 | `adapters/test-valorant.js` | Already failing before this work: it expects player-PC data from non-UUID ids, which `player-coverage.js` rejects |
 
 ## Locked decisions

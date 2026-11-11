@@ -49,8 +49,10 @@ export interface Segment {
 export type AutopilotPause = 'tech' | 'timeout' | null;
 
 export interface AutopilotView {
-  /** Off until the producer chooses Start autopilot; never restored after a restart. */
+  /** Off until the producer chooses Start (or Resume) autopilot; never switches itself on. */
   enabled: boolean;
+  /** Steps already done in this match (saved across restarts): Start then resumes at this step. */
+  resumeAt?: string | null;
   paused: AutopilotPause;
   /** On air now. */
   now: Segment | null;

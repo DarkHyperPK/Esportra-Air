@@ -63,7 +63,12 @@ export function AutopilotCard({ s, run }: { s: Snapshot; run: Run }) {
         <div className="head"><Cap>Autopilot</Cap><Tally kind="off">Off</Tally></div>
         <div className="body-pad stack" style={{ gap: 10 }}>
           <p className="muted" style={{ fontSize: 12.5 }}>Graphics change only when you take them. Autopilot follows the match and puts the right full-screen graphic up after a hold window you can stop. OBS scenes are never switched.</p>
-          <button className="btn" disabled={!!s.autopilotBlock} onClick={() => void run(() => air.autopilotStart())}>Start autopilot</button>
+          {a.resumeAt ? (
+            <>
+              <button className="btn primary" disabled={!!s.autopilotBlock} onClick={() => void run(() => air.autopilotStart())}>Resume autopilot at {a.resumeAt}</button>
+              <button className="btn quiet small" style={{ alignSelf: 'flex-start' }} onClick={() => void run(() => air.autopilotRestart())}>Start the rundown again from the first step</button>
+            </>
+          ) : <button className="btn" disabled={!!s.autopilotBlock} onClick={() => void run(() => air.autopilotStart())}>Start autopilot</button>}
           {s.autopilotBlock && <p className="muted" style={{ fontSize: 12 }}>{s.autopilotBlock}</p>}
         </div>
       </section>

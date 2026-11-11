@@ -174,7 +174,10 @@ export class Production extends EventEmitter {
     deps.engine.on('change', changed);
     deps.engine.on('status', () => void this.readRoom());
     // A restarted engine has the saved state; re-send outputs and context so nothing drifts.
-    deps.engine.on('restarted', () => void this.syncEngine().catch(() => {}));
+    deps.engine.on('restarted', () => {
+      this.noteRecovery();
+      void this.syncEngine().catch(() => {});
+    });
     deps.obs.on('change', changed);
     this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => this.autopilot.onGameEvent(event) });
     this.autopilot = new Autopilot({
@@ -194,6 +197,34 @@ export class Production extends EventEmitter {
     // The Capture page's sparklines move once a second while data is flowing.
     const tick = setInterval(() => deps.capture.state === 'live' && this.emit('change'), 1000);
     tick.unref?.();
+  }
+
+  // ── recovery after a restart ──
+
+  private recoveredAt: number | null = null;
+
+  /** Air reopened on a running engine, or the engine came back: tell the producer, once, in plain words. */
+  noteRecovery() {
+    if (!this.match) return;
+    this.recoveredAt = Date.now();
+    this.log.add('Recovered after a restart');
+    this.emit('change');
+  }
+
+  /** Called once at start-up: Air re-attached to a graphics engine that kept running. */
+  checkRecovery() {
+    if (this.deps.engine.reattached) this.noteRecovery();
+  }
+
+  dismissRecovery() {
+    this.recoveredAt = null;
+    this.emit('change');
+  }
+
+  private recoveryText(): string | null {
+    if (this.recoveredAt === null) return null;
+    const at = this.autopilot.view().resumeAt;
+    return `Recovered after a restart. Graphics kept the last data${at ? `; autopilot is ready to resume at ${at}` : ''}.`;
   }
 
   get setup() {
@@ -901,7 +932,13 @@ export class Production extends EventEmitter {
 
   // ── autopilot ──
 
+  autopilotRestart() {
+    this.autopilot.restartRundown();
+    this.log.add('Autopilot rundown starts again from the first step');
+  }
+
   autopilotStart() {
+    this.recoveredAt = null;
     this.autopilot.start();
   }
   autopilotStop() {
@@ -1125,6 +1162,7 @@ export class Production extends EventEmitter {
       autopilotBlock: this.autopilot.block(),
       log: this.log.list(),
       checks: [],
+      recovery: this.recoveryText(),
       art: this.art.status,
       rehearsal: this.rehearsal.view(),
     };

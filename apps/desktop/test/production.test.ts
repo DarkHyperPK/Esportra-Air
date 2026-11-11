@@ -356,6 +356,14 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     assert.equal(view().next, null);
     production.autopilot.loadForMatch();
     assert.equal(view().enabled, false);
+    // ...but it remembers where the show is: after a restart it offers to resume, and says so.
+    assert.equal(view().resumeAt, 'Winner');
+    production.noteRecovery();
+    assert.match(production.snapshot().recovery ?? '', /Recovered after a restart\. Graphics kept the last data; autopilot is ready to resume at Winner\./);
+    production.dismissRecovery();
+    assert.equal(production.snapshot().recovery, null);
+    production.autopilotRestart();
+    assert.equal(view().resumeAt, null, 'starting the rundown again forgets the progress');
 
     // Presets: Minimal keeps the result and the return to the game; Manual leaves nothing automatic.
     production.autopilotPreset('minimal');

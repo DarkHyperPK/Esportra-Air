@@ -19,6 +19,8 @@ export interface Saved {
   enginePort: number;
   /** The producer's rundown edits, per match. Whether autopilot is on is never saved. */
   rundown?: Record<string, RundownEdits>;
+  /** Where autopilot is in each match's rundown, so a restart resumes instead of starting over. */
+  autopilotProgress?: Record<string, { states: Record<string, 'done' | 'on_air'>; savedAt: number }>;
   /** The signed-in Esportra account (tokens are kept separately, encrypted). */
   esportra?: SavedEsportra;
   /** This PC's id with Esportra (stable across sign-ins). */

@@ -120,6 +120,12 @@ export function App() {
               {s.engine.state === 'starting' ? 'Starting the graphics engine…' : s.engine.error}
             </div>
           )}
+          {s.recovery && (
+            <div className="notice info" role="status" style={{ margin: '12px 24px 0' }}>
+              <span className="grow">{s.recovery}</span>
+              <button className="btn quiet small" onClick={() => void run(() => air.recoveryDismiss())}>Dismiss</button>
+            </div>
+          )}
           <main className="page">
             {page === 'ready' && <ReadyScreen {...props} command={command} start={() => { setStarted(true); setPage('console'); }} />}
             {page === 'console' && <ConsoleScreen {...props} />}

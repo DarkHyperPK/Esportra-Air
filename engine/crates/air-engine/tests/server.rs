@@ -1296,3 +1296,61 @@ async fn sample_rooms_change_graphics_during_a_test_round_and_keep_them_after() 
     assert_eq!(stop.status, 200);
     assert_eq!(show(&r, room).await["airFullscreen"], "halftime");
 }
+
+/// The ingest batches of the embedded test round (three recorded rounds).
+fn recorded_batches() -> Vec<Value> {
+    let all: Value = serde_json::from_str(include_str!("../test-round.json")).unwrap();
+    all["steps"].as_array().unwrap().iter().filter(|s| s["kind"] == "ingest").map(|s| s["body"].clone()).collect()
+}
+
+fn summary(state: &Value) -> Value {
+    let players: Vec<String> = state["players"].as_array().unwrap().iter().flat_map(|t| t.as_array().unwrap().iter().map(|p| format!("{}|{}|{}", p["name"], p["k"], p["d"]))).collect();
+    json!({ "score": [state["teams"][0]["score"], state["teams"][1]["score"]], "rounds": state["rounds"].as_array().map_or(0, |r| r.len()), "players": players })
+}
+
+fn logged_events(data: &std::path::Path, code: &str) -> Vec<String> {
+    std::fs::read_to_string(data.join(format!("{code}.ndjson"))).unwrap_or_default().lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter_map(|l| l["event"]["type"].as_str().map(|t| if t == "round.won" { format!("round.won#{}", l["event"]["round"]) } else { t.to_string() }))
+        .filter(|t| t != "round.phase")
+        .collect()
+}
+
+#[tokio::test]
+async fn an_engine_restart_mid_match_continues_the_match() {
+    let batches = recorded_batches();
+    let (first, second) = batches.split_at(14);
+    // Control: the whole recording without interruption.
+    let control_dir = temp_dir();
+    let control = engine(control_dir.clone()).await;
+    for b in &batches { request(&control, "POST", "/api/RC/ingest/valorant", Some(b), true).await; }
+    let control_end = summary(&show(&control, "RC").await);
+    let control_events = logged_events(&control_dir, "RC");
+
+    // Same recording, with the engine stopped and started again in the middle of round 2.
+    let dir = temp_dir();
+    let a = engine(dir.clone()).await;
+    for b in first { request(&a, "POST", "/api/RC/ingest/valorant", Some(b), true).await; }
+    tokio::time::sleep(Duration::from_millis(700)).await; // the saver writes every 300 ms
+    a.task.abort();
+    let b = engine(dir.clone()).await;
+    for m in second { request(&b, "POST", "/api/RC/ingest/valorant", Some(m), true).await; }
+    assert_eq!(summary(&show(&b, "RC").await), control_end, "same score, same round history, players in the same places");
+    assert_eq!(logged_events(&dir, "RC"), control_events, "no round win lost, nothing doubled");
+}
+
+#[tokio::test]
+async fn credits_after_a_data_gap_are_a_baseline_not_a_spike_plant() {
+    let board = |money: u32| json!([
+        { "info": { "match_info": { "round_phase": "combat" } }, "feature": "match_info" },
+        { "feature": "match_info", "key": "scoreboard_0", "data": json!({ "player_id": "p0", "name": "A #1", "character": "Clay", "team": 0, "alive": true, "money": money }).to_string() },
+    ]);
+    for (code, gap_ms, expect_plant) in [("GAPLONG", 20_000, false), ("GAPSHORT", 2_000, true)] {
+        let data = temp_dir();
+        let r = engine(data.clone()).await;
+        request(&r, "POST", &format!("/api/{code}/ingest/valorant?ageMs={gap_ms}"), Some(&board(3900)), true).await;
+        request(&r, "POST", &format!("/api/{code}/ingest/valorant"), Some(&board(4200)), true).await;
+        let planted = logged_events(&data, code).iter().any(|e| e == "spike.planted");
+        assert_eq!(planted, expect_plant, "{code}: a +300 after a {gap_ms} ms gap");
+    }
+}

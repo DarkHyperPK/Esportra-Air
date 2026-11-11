@@ -111,7 +111,7 @@ export class Rehearsal extends EventEmitter {
     const client = this.deps.client();
     const act = (name: string, args: Record<string, unknown>) => client.post('/control/action', { match: room, name, args });
     const ap = new Autopilot({
-      store: this.deps.store, match: () => this.deps.match(), screens: () => this.deps.screens(), clock: scaledClock(speed),
+      store: this.deps.store, match: () => this.deps.match(), screens: () => this.deps.screens(), clock: scaledClock(speed), persist: false,
       showGraphic: async (id, transition) => {
         if (transition === 'stinger') {
           await act('stinger.play', {});

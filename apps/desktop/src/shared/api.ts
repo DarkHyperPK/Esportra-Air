@@ -273,6 +273,8 @@ export interface Snapshot {
   checks: CheckItem[];
   /** Agent, weapon and map pictures on this PC (downloaded once from media.valorant-api.com). */
   art: { total: number; have: number; downloading: boolean; lastError: string | null };
+  /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
+  recovery: string | null;
   /** The private rehearsal of the selected match (never on air). */
   rehearsal: RehearsalView;
 }
@@ -340,6 +342,9 @@ export interface AirApi {
   libraryPlay(on: boolean): Promise<Snapshot>;
   /** Downloads any agent, weapon and map pictures not yet on this PC. */
   artDownload(): Promise<Snapshot>;
+  /** Forgets this match's autopilot progress so the rundown starts again from the first step. */
+  autopilotRestart(): Promise<Snapshot>;
+  recoveryDismiss(): Promise<Snapshot>;
   /** Plays the match privately inside Air, with autopilot firing. Nothing reaches OBS. */
   rehearsalStart(options: Partial<RehearsalOptions>): Promise<Snapshot>;
   rehearsalStop(): Promise<Snapshot>;

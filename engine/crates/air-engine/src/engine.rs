@@ -335,6 +335,10 @@ impl Room {
         self.stop_test(None);
         let capture_at = now_ms() - age_ms;
         let mut inner = self.lock();
+        // Data returning after a gap (or the first data after a restart) sets a new baseline.
+        if inner.last_gep_at.is_none_or(|last| capture_at - last > FEED_STALE_MS) {
+            inner.adapter.rebaseline();
+        }
         let mut state = inner.state.clone();
         let mut events = Vec::new();
         for message in messages {
@@ -724,12 +728,14 @@ impl Engine {
         let fixes_file = self.data.join(format!("{code}.display-fixes.json"));
         let mut state = self.defaults.clean.clone();
         let mut saved_fixes = None;
+        let mut resumed = false;
         if !ephemeral {
             if let Some(saved) = fs::read(&file)
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
             {
                 state = merge(state, &saved);
+                resumed = true;
             }
             let small = fs::metadata(&fixes_file).is_ok_and(|m| m.len() <= MAX_FIXES_FILE);
             if small {
@@ -746,7 +752,14 @@ impl Engine {
                 v: 0,
                 state: Value::Null,
                 fixes: DisplayFixes::new(saved_fixes.as_ref()),
-                adapter: ValorantAdapter::new(),
+                adapter: {
+                    // A saved match continues where it was: same seats, same score, no invented moments.
+                    let mut adapter = ValorantAdapter::new();
+                    if resumed {
+                        adapter.resume_from(&state);
+                    }
+                    adapter
+                },
                 last_gep_at: None,
                 last_feed_at: None,
                 dirty: false,

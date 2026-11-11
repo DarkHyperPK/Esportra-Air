@@ -21,6 +21,8 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'librarySeed': await p.librarySeed(); break;
     case 'libraryPlay': await p.libraryPlay(a[0] === true); break;
     case 'artDownload': await p.art.download(); break;
+    case 'autopilotRestart': p.autopilotRestart(); break;
+    case 'recoveryDismiss': p.dismissRecovery(); break;
     case 'rehearsalStart': await p.rehearsal.start(a[0] && typeof a[0] === 'object' ? a[0] : {}); break;
     case 'rehearsalStop': p.rehearsal.stop(); break;
     case 'rehearsalTake': await p.rehearsal.take(); break;

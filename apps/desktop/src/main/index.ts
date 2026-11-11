@@ -103,6 +103,7 @@ async function main() {
   await engine.start();
   if (engine.state === 'running') await production.syncEngine().catch((e) => console.warn('[air] engine sync', e));
   production.art.start();
+  production.checkRecovery();
   const password = secrets.get('obsPassword');
   const { host, port } = store.data.setup.obs;
   if (password !== null || host === '127.0.0.1') {

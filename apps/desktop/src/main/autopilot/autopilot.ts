@@ -20,6 +20,8 @@ export interface AutopilotDeps {
   log(text: string): void;
   changed(): void;
   clock?: Clock;
+  /** Save progress for resuming after a restart (off for the private rehearsal). Default true. */
+  persist?: boolean;
 }
 
 const describe = (entry: RunnerLog): string | null => {
@@ -46,7 +48,10 @@ export class Autopilot {
     this.deps = deps;
     this.clock = deps.clock ?? realClock;
     this.runner = new ShowRunner({ take: (segment, stillAllowed) => this.takeSegment(segment, stillAllowed) }, this.clock);
-    this.runner.on('change', () => deps.changed());
+    this.runner.on('change', () => {
+      this.saveProgress();
+      deps.changed();
+    });
     this.runner.on('log', (entry: RunnerLog) => {
       const line = describe(entry);
       if (line) deps.log(line);
@@ -58,11 +63,44 @@ export class Autopilot {
     return (all[match.id] ??= emptyEdits());
   }
 
-  /** Builds the rundown for the selected match. Autopilot is off afterwards, whatever it was before. */
+  /**
+   * Builds the rundown for the selected match. Autopilot is off afterwards, whatever it was before;
+   * steps already done in this match (before a restart) stay done, so Start resumes where it was.
+   */
   loadForMatch() {
     const match = this.deps.match();
     this.loadedFor = match?.id ?? null;
+    this.loading = true;
     this.runner.load(match ? buildRundown(match.bestOf, this.edits(match)) : [], match ? this.edits(match).preset ?? 'standard' : 'standard');
+    const saved = match && this.deps.persist !== false ? this.deps.store.data.autopilotProgress?.[match.id] : undefined;
+    if (saved) this.runner.restore(saved.states);
+    this.loading = false;
+  }
+
+  private loading = false;
+
+  /** Saves which steps are done or on air for this match. */
+  private saveProgress() {
+    const match = this.deps.match();
+    if (this.loading || this.deps.persist === false || !match || match.id !== this.loadedFor) return;
+    const states: Record<string, 'done' | 'on_air'> = {};
+    for (const s of this.runner.view().segments) if (s.state === 'done' || s.state === 'on_air') states[s.id] = s.state;
+    const all = (this.deps.store.data.autopilotProgress ??= {});
+    const before = JSON.stringify(all[match.id]?.states ?? {});
+    if (before === JSON.stringify(states)) return;
+    if (Object.keys(states).length) all[match.id] = { states, savedAt: Date.now() };
+    else delete all[match.id];
+    this.deps.store.save();
+  }
+
+  /** Forgets this match's progress: the rundown starts again from the first step. */
+  restartRundown() {
+    const match = this.deps.match();
+    if (!match) throw new Error('Choose a match first.');
+    if (this.runner.view().enabled) throw new Error('Run manually first, then start the rundown again.');
+    if (this.deps.store.data.autopilotProgress) delete this.deps.store.data.autopilotProgress[match.id];
+    this.deps.store.save();
+    this.loadForMatch();
   }
 
   /** Reloads only when the selected match changed (called on every room read). */
@@ -71,7 +109,10 @@ export class Autopilot {
   }
 
   view(): AutopilotView {
-    return this.runner.view();
+    const v = this.runner.view();
+    const started = v.segments.some((s) => s.state === 'done' || s.state === 'on_air');
+    const next = v.segments.find((s) => s.state === 'queued');
+    return { ...v, resumeAt: !v.enabled && started && next ? next.name : null };
   }
 
   /** Why Start autopilot cannot be pressed yet. Run manually always works. */
@@ -98,7 +139,7 @@ export class Autopilot {
     if (block) throw new Error(block);
     const result = this.runner.start();
     if (!result.ok) throw new Error(result.error);
-    this.deps.log('Autopilot started');
+    this.deps.log(this.runner.view().segments.some((s) => s.state === 'done' || s.state === 'on_air') ? `Autopilot resumed · ${this.runner.view().next?.name ?? ''}` : 'Autopilot started');
   }
 
   stop() {
