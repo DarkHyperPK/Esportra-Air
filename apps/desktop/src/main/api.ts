@@ -1,6 +1,7 @@
 // Dispatches interface calls to the production model. Arguments are validated in Production.
 import type { ApiMethod, Snapshot } from '../shared/api.ts';
 import type { Production } from './production.ts';
+import type { EventPatch, SponsorInput, TalentInput } from '../shared/model.ts';
 import type { ObsLink } from './obs.ts';
 import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 
@@ -29,6 +30,13 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'createMatch': await p.createMatch(a[0]); break;
     case 'uploadImage': return p.uploadImage(String(a[0]));
     case 'updateMatch': await p.updateMatch(String(a[0]), a[1] ?? {}); break;
+    case 'createEvent': await p.createEvent(String(a[0] ?? '')); break;
+    case 'updateEvent': await p.updateEvent(String(a[0]), (a[1] ?? {}) as EventPatch); break;
+    case 'saveTalent': await p.saveTalent(String(a[0]), (a[1] ?? {}) as TalentInput); break;
+    case 'removeTalent': await p.removeTalent(String(a[0]), String(a[1])); break;
+    case 'renewTalentLink': await p.renewTalentLink(String(a[0]), String(a[1])); break;
+    case 'saveSponsor': await p.saveSponsor(String(a[0]), (a[1] ?? {}) as SponsorInput); break;
+    case 'removeSponsor': await p.removeSponsor(String(a[0]), String(a[1])); break;
     case 'updateSetup': await p.updateSetup(a[0] ?? {}); break;
     case 'connectObs': {
       const { host, port, password } = a[0] ?? {};

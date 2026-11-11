@@ -1,11 +1,11 @@
 // New match wizard: the prerequisites of a show, in order, ending with a private rehearsal.
 import { useEffect, useState } from 'react';
-import type { BannerTheme, Caster, Snapshot, Team } from '../../shared/api.ts';
+import type { BannerTheme, Snapshot, Team } from '../../shared/api.ts';
 import { BannerStyles } from '../screens/LibraryScreen.tsx';
 import { GAMES, type GameId } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
-import { GamePicker, LineupEditor, TalentFields, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
+import { EventPeople, GamePicker, LineupEditor, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
 import { RehearsePanel } from './Rehearse.tsx';
 
 const STEPS = ['Game', 'Teams', 'Players', 'Talent and event', 'Graphics', 'Rehearse'] as const;
@@ -21,9 +21,9 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
     { name: '', tag: '', color: '#f43f5e', logo: '' },
   ]);
   const [lineups, setLineups] = useState<Lineups>([Array.from({ length: 5 }, emptyPlayer), Array.from({ length: 5 }, emptyPlayer)]);
-  const [casters, setCasters] = useState<Caster[]>([]);
-  const [event, setEvent] = useState({ name: last?.event.name ?? '', stage: last?.event.stage ?? '' });
-  const [sponsors, setSponsors] = useState<string[]>(last?.sponsors ?? []);
+  // The new match joins the selected match's event (or the first one); talent and sponsors come from it.
+  const event = s.event ?? s.events[0] ?? null;
+  const [stage, setStage] = useState(last?.stage ?? '');
   const [theme, setTheme] = useState<BannerTheme>(last?.theme ?? 'broadcast');
   const [busy, setBusy] = useState(false);
   // Once created, the match is edited on its own page; the wizard only rehearses it.
@@ -35,7 +35,7 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
   const finish = async () => {
     setBusy(true);
     const players = lineups.map((team) => team.filter((p) => p.name.trim())) as Lineups;
-    const ok = await run(() => air.createMatch({ game, bestOf, teams, players, casters: casters.filter((c) => c.name.trim()), event, sponsors, theme }));
+    const ok = await run(() => air.createMatch({ game, bestOf, teams, players, ...(event ? { eventId: event.id } : {}), stage, theme }));
     setBusy(false);
     if (ok) {
       setCreated(true);
@@ -102,8 +102,9 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
           )}
           {step === 3 && (
             <div className="stack" style={{ gap: 14 }}>
-              <p className="lead">Casters for the lower thirds, and the event shown on the event bug. {last ? 'Event and sponsors start from your last match.' : ''}</p>
-              <TalentFields casters={casters} onCasters={setCasters} event={event} onEvent={setEvent} sponsors={sponsors} onSponsors={setSponsors} />
+              <p className="lead">{event ? `This match is part of ${event.name}. Its people on air and sponsors are used; switch any off for this match after it is created.` : 'Name the event this match belongs to. Its people on air and sponsors are shared by its matches.'}</p>
+              {event && <label className="field" style={{ maxWidth: 360 }}><span>Stage (lower thirds)</span><input value={stage} onChange={(e) => setStage(e.target.value)} maxLength={40} placeholder="e.g. Playoffs" /></label>}
+              <EventPeople s={s} run={run} event={event} />
             </div>
           )}
         </div>

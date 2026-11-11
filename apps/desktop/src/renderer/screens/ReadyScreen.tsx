@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ActionId, Snapshot, Team } from '../../shared/api.ts';
 import { gameName } from '../../shared/games.ts';
-import { LineupEditor, TalentFields, TeamFields, imageUrl, type Lineups } from '../components/MatchEditors.tsx';
+import { EventPeople, LineupEditor, TeamFields, eventName, imageUrl, type Lineups } from '../components/MatchEditors.tsx';
 import { NewMatchWizard } from '../components/NewMatch.tsx';
 import { air } from '../bridge.ts';
 import { Box, Cap } from '../components/ui.tsx';
@@ -71,7 +71,7 @@ function MatchHero({ s }: { s: Snapshot }) {
       <div className="hero-mid">
         <span className="game-badge">{gameName(m.game)}</span>
         <span className="hero-vs">VS</span>
-        <span className="muted" style={{ fontSize: 12 }}>{m.event.name || 'No event name'} · Bo{m.bestOf}</span>
+        <span className="muted" style={{ fontSize: 12 }}>{s.event?.name || 'No event'}{m.stage ? ` · ${m.stage}` : ''} · Bo{m.bestOf}</span>
       </div>
       {side(1)}
     </header>
@@ -102,17 +102,16 @@ function TeamsTab({ s, run }: Pick<PageProps, 's' | 'run'>) {
 
 function TalentTab({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const m = s.match!;
-  const [casters, setCasters] = useState(m.casters);
-  const [event, setEvent] = useState(m.event);
-  const [sponsors, setSponsors] = useState(m.sponsors);
-  const dirty = JSON.stringify([casters.filter((c) => c.name.trim()), event, sponsors]) !== JSON.stringify([m.casters, m.event, m.sponsors]);
+  const [stage, setStage] = useState(m.stage);
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <TalentFields casters={casters} onCasters={setCasters} event={event} onEvent={setEvent} sponsors={sponsors} onSponsors={setSponsors} />
-      <div className="savebar">
-        <span className="muted" style={{ fontSize: 12.5 }}>{dirty ? 'Unsaved changes.' : 'Saved.'}</span>
-        <button className="btn primary" disabled={!dirty} onClick={() => void run(() => air.updateMatch(m.id, { casters: casters.filter((c) => c.name.trim()), event, sponsors }))}>Save talent and event</button>
-      </div>
+      <form style={{ display: 'flex', gap: 8, alignItems: 'flex-end', maxWidth: 480 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.updateMatch(m.id, { stage })); }}>
+        <label className="field" style={{ flex: 1 }}><span>Stage (lower thirds)</span><input value={stage} onChange={(e) => setStage(e.target.value)} maxLength={40} placeholder="e.g. Playoffs" list="event-stages" /></label>
+        <datalist id="event-stages">{(s.event?.stages ?? []).map((x) => <option key={x} value={x} />)}</datalist>
+        <button className="btn" disabled={stage === m.stage}>Save stage</button>
+      </form>
+      <EventPeople s={s} run={run} event={s.event} match={m} />
+      <span className="muted" style={{ fontSize: 12.5 }}>People and sponsors belong to the event; the switches choose who appears in this match.</span>
     </div>
   );
 }
@@ -130,7 +129,7 @@ function MatchList({ s, run, newMatch }: Pick<PageProps, 's' | 'run'> & { newMat
             <span className="mi-crests">
               {m.teams.map((t, i) => (t.logo ? <img key={i} src={imageUrl(s, t.logo)} alt="" /> : <span key={i} className="mi-crest" style={{ background: t.color }} />))}
             </span>
-            <span className="mi-text"><b>{m.teams[0].name} <span className="muted">vs</span> {m.teams[1].name}</b><span className="muted">{gameName(m.game)} · Bo{m.bestOf}{m.event.name ? ` · ${m.event.name}` : ''}</span></span>
+            <span className="mi-text"><b>{m.teams[0].name} <span className="muted">vs</span> {m.teams[1].name}</b><span className="muted">{gameName(m.game)} · Bo{m.bestOf}{eventName(s, m) ? ` · ${eventName(s, m)}` : ''}</span></span>
           </button>
         ))}
       </div>

@@ -97,10 +97,10 @@ function commands(s: Snapshot, run: Run, a: PaletteActions): Command[] {
     { id: 'rehearse', group: 'Match', label: 'Rehearse this match', keywords: 'preview sample practice', run: () => a.command('rehearse') },
     { id: 'autopilot-rules', group: 'Match', label: 'Autopilot steps and presets', keywords: 'rules rundown', run: () => a.command('autopilot') },
     { id: 'teams', group: 'Match', label: 'Teams and players', keywords: 'lineup roster riot photo', run: () => a.command('teams') },
-    { id: 'casters', group: 'Match', label: 'Edit casters', keywords: 'talent lower third', run: a.openCasters },
+    { id: 'casters', group: 'Match', label: 'People on air', keywords: 'talent casters lower third', run: a.openCasters },
   );
   for (const m of s.matches.filter((m) => m.id !== s.match?.id).slice(0, 8)) {
-    list.push({ id: `match-${m.id}`, group: 'Switch match', label: m.title, hint: m.event.name || undefined, run: () => void run(() => air.selectMatch(m.id)) });
+    list.push({ id: `match-${m.id}`, group: 'Switch match', label: m.title, hint: s.events.find((e) => e.id === m.eventId)?.name || undefined, run: () => void run(() => air.selectMatch(m.id)) });
   }
   list.push(
     s.autopilot.enabled

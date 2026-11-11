@@ -9,11 +9,15 @@ import { emptyOwned, type Owned } from './scene-build.ts';
 import type { SceneKey } from '../shared/scenes.ts';
 import type { RundownEdits } from './autopilot/rundown.ts';
 import type { SavedEsportra } from './esportra.ts';
+import type { EventInfo } from '../shared/model.ts';
+import { DEFAULT_ACCENT, migrateToEvents } from './event-model.ts';
 
 export interface Saved {
   version: 1;
   setup: Setup;
   matches: Match[];
+  /** Events own the branding, talent and sponsors their matches use. */
+  events: EventInfo[];
   selectedMatchId: string | null;
   owned: Owned;
   enginePort: number;
@@ -83,7 +87,7 @@ export function defaultSetup(): Setup {
 }
 
 export function defaults(): Saved {
-  return { version: 1, setup: defaultSetup(), matches: [], selectedMatchId: null, owned: emptyOwned(), enginePort: 5300 };
+  return { version: 1, setup: defaultSetup(), matches: [], events: [], selectedMatchId: null, owned: emptyOwned(), enginePort: 5300 };
 }
 
 export class Store {
@@ -116,13 +120,29 @@ export class Store {
     // Valorant draws its own killfeed, observer card and minimap; Air no longer offers them.
     for (const k of ['killfeed', 'observed', 'minimap']) delete setup.hud[k];
     // Match v2: game, lineups, event and sponsors live on the match (they used to be production-wide).
-    for (const m of this.data.matches ?? []) {
-      const old = m as Partial<Match> & Match;
+    type Legacy = Match & { casters?: Array<{ name: string; handle: string }>; event?: { name: string; stage: string }; sponsors?: string[] };
+    const matches = (this.data.matches ?? []) as Legacy[];
+    for (const old of matches) {
       old.game ??= 'valorant';
       old.theme ??= setup.package ?? 'broadcast';
-      old.event ??= { name: old.source?.tournament || setup.brand?.eventName || '', stage: setup.brand?.stage ?? '' };
-      old.sponsors ??= [...(setup.sponsors ?? [])];
+      if (!old.eventId) {
+        old.event ??= { name: old.source?.tournament || setup.brand?.eventName || '', stage: setup.brand?.stage ?? '' };
+        old.sponsors ??= [...(setup.sponsors ?? [])];
+      }
       old.players ??= [0, 1].map((t) => (old.source?.lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];
+    }
+    // Match v3: talent and sponsors belong to events; a match switches the ones it does not use off.
+    this.data.events = migrateToEvents(matches, Array.isArray(this.data.events) ? this.data.events : [], setup.name || 'My event');
+    for (const e of this.data.events) {
+      e.accent ??= DEFAULT_ACCENT;
+      e.stages ??= [];
+      e.talent ??= [];
+      e.sponsors ??= [];
+    }
+    for (const m of matches) {
+      m.stage ??= '';
+      m.talentOff ??= [];
+      m.sponsorsOff ??= [];
     }
   }
 

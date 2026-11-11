@@ -8,11 +8,15 @@ import { Cap, Tally } from '../components/ui.tsx';
 import { AutopilotCard } from '../components/Autopilot.tsx';
 import { CamerasPanel } from '../components/Cameras.tsx';
 import type { PageProps } from '../App.tsx';
+import { ROLE_NAME, onAir } from '../../shared/model.ts';
+
+const sponsorsOn = (s: Snapshot) => (s.match ? onAir(s.match, s.event).sponsors : []);
 
 function nextSponsor(s: Snapshot) {
-  if (!(s.match?.sponsors ?? []).length) return null;
-  const i = s.triggers.sponsor ? (s.match?.sponsors ?? []).indexOf(s.triggers.sponsor) : -1;
-  return (s.match?.sponsors ?? [])[(i + 1) % (s.match?.sponsors ?? []).length] ?? null;
+  const list = sponsorsOn(s);
+  if (!list.length) return null;
+  const i = s.triggers.sponsor ? list.findIndex((x) => x.id === s.triggers.sponsor) : -1;
+  return list[(i + 1) % list.length] ?? null;
 }
 
 const clock = (ms: number) => {
@@ -119,17 +123,17 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   const frame = useMonitor(s.obs.state === 'connected');
   const now = useNow(!!s.readout);
   const cued = s.cue.pending.length > 0;
-  const casters = (s.match?.casters ?? []).filter((c) => c.name);
+  const casters = s.match ? onAir(s.match, s.event).talent : [];
 
   const triggers = (snap: Snapshot): Trigger[] => [
     { key: 'F1', label: 'Tech pause', detail: snap.triggers.pause === 'technical' ? 'On screen · press again to resume' : 'Pause panel with a running clock', state: snap.triggers.pause === 'technical' ? 'warn' : 'idle', built: true, fire: () => void run(() => air.pause(snap.triggers.pause === 'technical' ? null : 'technical')) },
     { key: 'F2', label: 'Timeout', detail: snap.triggers.pause === 'timeout' ? 'On screen · press again to end' : 'Team timeout panel', state: snap.triggers.pause === 'timeout' ? 'warn' : 'idle', built: true, fire: () => void run(() => air.pause(snap.triggers.pause === 'timeout' ? null : 'timeout')) },
     { key: 'F3', label: 'Replay', detail: snap.obs.replay.bufferActive === false ? 'Replay buffer is off in OBS' : snap.obs.replay.bufferActive === null ? 'Set up the replay buffer in OBS' : 'Save the last moments in OBS', state: 'idle', built: snap.obs.state === 'connected', fire: () => void run(() => air.replay()) },
     { key: 'F4', label: 'Toast', detail: 'Short on-screen update', state: form === 'toast' ? 'warn' : 'idle', built: true, fire: () => setForm(form === 'toast' ? null : 'toast') },
-    { key: 'F5', label: 'Caster lower third', detail: casters.length ? (snap.triggers.strap ? 'On screen · press again to hide' : casters.map((c) => c.name).join(' & ')) : 'Add casters first', state: snap.triggers.strap ? 'live' : 'idle', built: true, fire: () => (casters.length ? void run(() => air.casterStrap(!snap.triggers.strap)) : openCasters()) },
+    { key: 'F5', label: 'Caster lower third', detail: casters.length ? (snap.triggers.strap ? 'On screen · press again to hide' : casters.map((c) => c.name).join(' & ')) : 'Add people in Event first', state: snap.triggers.strap ? 'live' : 'idle', built: true, fire: () => (casters.length ? void run(() => air.casterStrap(!snap.triggers.strap)) : openCasters()) },
     { key: 'F6', label: 'Poll', detail: snap.triggers.poll ? 'On screen' : 'Two options with a split', state: snap.triggers.poll ? 'live' : form === 'poll' ? 'warn' : 'idle', built: true, fire: () => setForm(form === 'poll' ? null : 'poll') },
     { key: 'F7', label: 'Stinger', detail: snap.cue.pending.length ? 'Take the cue behind the HUD wipe' : 'Graphic wipe over the HUD', state: snap.cue.pending.length ? 'warn' : 'idle', built: true, fire: () => void run(() => (snap.cue.pending.length ? air.cueTake('stinger') : air.stingerPlay())) },
-    { key: 'F8', label: 'Sponsor read', detail: (snap.match?.sponsors ?? []).length ? (snap.triggers.sponsor ? `${snap.triggers.sponsor} on screen` : `Next: ${nextSponsor(snap)}`) : 'Add sponsors in Setup', state: snap.triggers.sponsor ? 'live' : 'idle', built: (snap.match?.sponsors ?? []).length > 0, fire: () => void run(() => air.sponsorRead(snap.triggers.sponsor ? null : nextSponsor(snap))) },
+    { key: 'F8', label: 'Sponsor read', detail: sponsorsOn(snap).length ? (snap.triggers.sponsor ? `${sponsorsOn(snap).find((x) => x.id === snap.triggers.sponsor)?.name ?? 'Sponsor'} on screen` : `Next: ${nextSponsor(snap)?.name}`) : 'Add sponsors in Event', state: snap.triggers.sponsor ? 'live' : 'idle', built: sponsorsOn(snap).length > 0, fire: () => void run(() => air.sponsorRead(snap.triggers.sponsor ? null : nextSponsor(snap)?.id ?? null)) },
   ];
 
   // Steps on from the cued mode, so pressing a key twice while cueing moves two steps.
@@ -297,12 +301,12 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
         <section className="panel">
           <div className="head"><Cap>Lower thirds · one click</Cap></div>
           <div className="body-pad stack" style={{ gap: 8 }}>
-            {casters.map((c, i) => {
+            {casters.map((c) => {
               const on = s.triggers.person === c.name;
               return (
-                <div key={c.name} className="row-item" style={{ border: '1px solid var(--hair)', minHeight: 52 }}>
-                  <span><b>{c.name}</b><br /><span className="muted" style={{ fontSize: 11.5 }}>{i ? 'Caster · analyst' : 'Caster · play-by-play'}</span></span>
-                  <button className="btn small" aria-pressed={on} onClick={() => void run(() => air.lowerThird(on ? null : { kind: 'person', name: c.name, role: i ? 'Caster · analyst' : 'Caster · play-by-play' }))}>{on ? 'Hide' : 'Show'}</button>
+                <div key={c.id} className="row-item" style={{ border: '1px solid var(--hair)', minHeight: 52 }}>
+                  <span><b>{c.name}</b><br /><span className="muted" style={{ fontSize: 11.5 }}>{ROLE_NAME[c.role]}</span></span>
+                  <button className="btn small" aria-pressed={on} onClick={() => void run(() => air.lowerThird(on ? null : { kind: 'person', name: c.name, role: ROLE_NAME[c.role] }))}>{on ? 'Hide' : 'Show'}</button>
                 </div>
               );
             })}

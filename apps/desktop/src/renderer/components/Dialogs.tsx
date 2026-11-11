@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Caster, Page, Snapshot } from '../../shared/api.ts';
+import type { Page, Snapshot } from '../../shared/api.ts';
+import { EventPeople } from './MatchEditors.tsx';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { Cap, Tally } from './ui.tsx';
@@ -93,22 +94,12 @@ export function StatusDrawer({ id, s, close, go, run, askCapture, openSignIn }: 
 
 export function CastersDrawer({ s, run, close }: { s: Snapshot; run: Run; close: () => void }) {
   const match = s.match;
-  const [casters, setCasters] = useState<Caster[]>([match?.casters[0] ?? { name: '', handle: '' }, match?.casters[1] ?? { name: '', handle: '' }]);
-  if (!match) return <Drawer title="Casters" close={close}><p className="muted">Choose a match first.</p></Drawer>;
-  const set = (i: number, key: keyof Caster, v: string) => setCasters(casters.map((c, j) => (j === i ? { ...c, [key]: v } : c)));
+  if (!match) return <Drawer title="People on air" close={close}><p className="muted">Choose a match first.</p></Drawer>;
   return (
-    <Drawer title="Casters" close={close}>
+    <Drawer title="People on air" close={close}>
       <Cap>Talent</Cap>
-      <h2 className="title-md">Casters for {match.title}</h2>
-      <form className="stack" style={{ gap: 14 }} onSubmit={async (e) => { e.preventDefault(); if (await run(() => air.updateMatch(match.id, { casters: casters.filter((c) => c.name.trim()) }))) close(); }}>
-        {casters.map((c, i) => (
-          <div className="grid2" key={i}>
-            <label className="field"><span>{i ? 'Analyst' : 'Play-by-play'}</span><input value={c.name} onChange={(e) => set(i, 'name', e.target.value)} maxLength={40} /></label>
-            <label className="field"><span>Handle (optional)</span><input value={c.handle} onChange={(e) => set(i, 'handle', e.target.value)} maxLength={40} placeholder="@handle" /></label>
-          </div>
-        ))}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" className="btn quiet" onClick={close}>Cancel</button><button type="submit" className="btn primary">Save casters</button></div>
-      </form>
+      <h2 className="title-md">On air for {match.title}</h2>
+      <EventPeople s={s} run={run} event={s.event} match={match} />
     </Drawer>
   );
 }

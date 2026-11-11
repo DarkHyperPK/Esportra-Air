@@ -73,11 +73,22 @@ function makePng(hex) {
   await wizard.locator('.lineup').nth(0).locator('.player-row .imgpick-btn img').first().waitFor();
   await shot('wizard-players');
   await wizard.getByRole('button', { name: 'Continue' }).click();
-  await wizard.getByLabel('Play-by-play').fill('Sara Malik');
-  await wizard.getByLabel('Analyst').fill('Omar Sheikh');
-  await wizard.getByLabel('Event name (event bug)').fill('Community Cup');
-  await wizard.getByLabel('Sponsor name').fill('Acme Energy');
-  await wizard.getByRole('button', { name: 'Add', exact: true }).click();
+  // First match: name the event; its people and sponsors are shared by its matches.
+  await wizard.getByLabel('Event name').fill('Community Cup');
+  await wizard.getByRole('button', { name: 'Create event' }).click();
+  await wizard.getByLabel('Stage (lower thirds)').fill('Playoffs');
+  const people = wizard.locator('form').filter({ has: page.getByLabel('Role') });
+  for (const [name, role] of [['Sara Malik', 'play-by-play'], ['Omar Sheikh', 'analyst']]) {
+    await people.getByLabel('Name').fill(name);
+    await people.getByLabel('Role').selectOption(role);
+    await people.getByRole('button', { name: 'Add' }).click();
+    await wizard.getByText(name, { exact: true }).waitFor();
+  }
+  const sponsors = wizard.locator('form').filter({ has: page.getByLabel('Tier') });
+  await sponsors.getByLabel('Sponsor name').fill('Acme Energy');
+  await sponsors.getByLabel('Tier').selectOption('title');
+  await sponsors.getByRole('button', { name: 'Add' }).click();
+  await wizard.getByText('Acme Energy', { exact: true }).waitFor();
   await shot('wizard-talent');
   await wizard.getByRole('button', { name: 'Continue' }).click();
   await wizard.getByRole('radio', { name: /Impact/ }).click();
@@ -97,7 +108,7 @@ function makePng(hex) {
   await shot('wizard-rehearse-map-result');
   await wizard.getByRole('button', { name: 'Finish · Readiness' }).click();
   await wizard.waitFor({ state: 'detached' });
-  await page.getByText('2 casters ready').waitFor();
+  await page.getByText('Sara Malik, Omar Sheikh · 1 sponsor').waitFor();
   await shot('readiness-first-run');
   await page.getByRole('tab', { name: 'Teams and players' }).click();
   await shot('match-teams');
@@ -287,9 +298,9 @@ function makePng(hex) {
   await page.getByRole('tab', { name: 'Graphics' }).click();
   await shot('match-graphics');
   await page.getByRole('tab', { name: 'Event and sponsors' }).click();
-  await page.getByLabel('Event name (on the event bug)').fill('Community Cup');
+  await page.getByLabel('Event name (on the event bug)').fill('Community Cup Finals');
   await btn('Save');
-  await page.locator('.crumbs').filter({ hasText: /Night Owls vs Crimson Five\s*· Community Cup/ }).waitFor();
+  await page.locator('.crumbs').filter({ hasText: /Night Owls vs Crimson Five\s*· Community Cup Finals/ }).waitFor();
   await shot('match-event');
 
   // Esportra (Stage 2): sign in against the stand-in backend, pick a scheduled match.

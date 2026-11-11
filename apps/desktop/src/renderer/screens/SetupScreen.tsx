@@ -5,6 +5,7 @@ import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { Cap } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
+import { EventPeople } from '../components/MatchEditors.tsx';
 
 export type SetupTab = 'graphics' | 'brand';
 
@@ -50,33 +51,19 @@ function Graphics({ s, run }: Pick<PageProps, 's' | 'run'>) {
 }
 
 function EventAndSponsors({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const match = s.match;
-  const [eventName, setEvent] = useState(match?.event.name ?? '');
-  const [stage, setStage] = useState(match?.event.stage ?? '');
-  const [sponsor, setSponsor] = useState('');
-  useEffect(() => { setEvent(match?.event.name ?? ''); setStage(match?.event.stage ?? ''); }, [match?.id]);
-  if (!match) return <div className="notice">Choose a match first. The event name and sponsors belong to each match.</div>;
-  const sponsors = match.sponsors;
-  const save = (patch: Parameters<typeof air.updateMatch>[1]) => run(() => air.updateMatch(match.id, patch));
+  const event = s.event;
+  const [name, setName] = useState(event?.name ?? '');
+  useEffect(() => { setName(event?.name ?? ''); }, [event?.id]);
   return (
-    <div className="grid2" style={{ alignItems: 'start' }}>
-      <form className="panel body-pad stack" style={{ gap: 14 }} onSubmit={(e) => { e.preventDefault(); void save({ event: { name: eventName, stage } }); }}>
-        <Cap>Event · {match.title}</Cap>
-        <label className="field"><span>Event name (on the event bug)</span><input value={eventName} onChange={(e) => setEvent(e.target.value)} maxLength={60} placeholder="e.g. Community Cup" /></label>
-        <label className="field"><span>Stage (on lower thirds)</span><input value={stage} onChange={(e) => setStage(e.target.value)} maxLength={60} placeholder="e.g. Playoffs" /></label>
-        <p className="muted" style={{ fontSize: 12.5 }}>The next match of the same tournament starts with these.</p>
-        <button className="btn primary" style={{ alignSelf: 'flex-start' }} type="submit">Save</button>
-      </form>
-      <section className="panel body-pad stack" style={{ gap: 10 }}>
-        <Cap>Sponsors · {match.title}</Cap>
-        <p className="muted" style={{ fontSize: 12.5 }}>Rotated in the sponsor slot and used by Sponsor read (F8).</p>
-        {sponsors.length === 0 && <p className="muted">No sponsors yet.</p>}
-        {sponsors.map((n) => <div key={n} className="row-item" style={{ border: '1px solid var(--hair)', borderRadius: 'var(--r-md)' }}><b>{n}</b><button className="btn quiet small" onClick={() => void save({ sponsors: sponsors.filter((x) => x !== n) })}>Remove</button></div>)}
-        <form style={{ display: 'flex', gap: 8 }} onSubmit={async (e) => { e.preventDefault(); if (await save({ sponsors: [...sponsors, sponsor] })) setSponsor(''); }}>
-          <input className="cell" aria-label="Sponsor name" value={sponsor} onChange={(e) => setSponsor(e.target.value)} placeholder="Sponsor name" maxLength={40} />
-          <button className="btn" type="submit" disabled={!sponsor.trim()}>Add</button>
+    <div className="stack" style={{ gap: 16 }}>
+      {event && (
+        <form style={{ display: 'flex', gap: 8, alignItems: 'flex-end', maxWidth: 480 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.updateEvent(event.id, { name })); }}>
+          <label className="field" style={{ flex: 1 }}><span>Event name (on the event bug)</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></label>
+          <button className="btn" disabled={name === event.name}>Save</button>
         </form>
-      </section>
+      )}
+      <EventPeople s={s} run={run} event={event} match={s.match} />
+      <p className="muted" style={{ fontSize: 12.5 }}>Sponsors rotate in the sponsor slot (title sponsors most often) and are used by Sponsor read (F8).</p>
     </div>
   );
 }

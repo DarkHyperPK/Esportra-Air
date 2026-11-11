@@ -33,6 +33,10 @@ import { randomBytes } from 'node:crypto';
 import type { CamsView } from '../shared/api.ts';
 import type { Preset, SegmentEdit } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
+import { HEX, IMAGE, text } from './validate.ts';
+import type { EventInfo, EventPatch, SponsorInput, TalentInput } from '../shared/model.ts';
+import type { MatchPatch } from '../shared/api.ts';
+import { applyEventPatch, engineConfig, newEvent, onAir, renewTalentLink, upsertSponsor, upsertTalent, validOff } from './event-model.ts';
 
 export interface ProductionDeps {
   store: Store;
@@ -59,15 +63,7 @@ export interface ProductionDeps {
   now?: () => number;
 }
 
-const PLAIN = /^[^<>\x00-\x1f\x7f]*$/;
 const COLORS = ['#4fd3ea', '#e0445e'];
-
-function text(value: unknown, max: number, label: string): string {
-  if (typeof value !== 'string' || !value.trim() || value.trim().length > max || !PLAIN.test(value)) {
-    throw new Error(`${label}: use plain text, 1–${max} characters.`);
-  }
-  return value.trim();
-}
 
 const GENERIC = new Set(['TEAM', 'THE', 'ESPORTS', 'GAMING', 'CLUB', 'GG']);
 
@@ -93,9 +89,6 @@ export function tagsFor(a: string, b: string): [string, string] {
 }
 
 const RIOT_ID = /^[^#<>\x00-\x1f]{3,16}#[A-Za-z0-9]{2,5}$/;
-/** Images Air stored in the engine's asset store, or an https URL (Esportra logos). */
-const IMAGE = /^(https:\/\/[^\s"'<>]{1,500}|\/air-assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
-const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Two lineups of up to seven players each, plain text, optional Riot ID and photo. */
 /** Two teams: name, tag, colour and logo. */
@@ -263,9 +256,7 @@ export class Production extends EventEmitter {
     await this.client.post(`/api/${code}/config`, {
       airContext: { showId: setup.id, matchId: match.id, source: match.kind },
       teams: match.teams,
-      event: { name: match.event.name || match.source?.tournament || setup.name, stage: match.event.stage, bestOf: match.bestOf },
-      casters: match.casters.length ? match.casters : [{ name: '', handle: '' }, { name: '', handle: '' }],
-      sponsors: match.sponsors,
+      ...engineConfig(match, this.eventOf(match), setup.name),
       layout: { bannerTheme: match.theme ?? setup.package, minimap: setup.minimap },
       show: { eventBug: setup.hud.eventBug !== false },
     });
@@ -342,7 +333,7 @@ export class Production extends EventEmitter {
     const teams = names.map((name, i) => ({ name, tag: tags[i]!, color: COLORS[i]!, logo: '' })) as [Team, Team];
     const match: Match = {
       id, code: `Q${id.replace(/-/g, '').slice(0, 7).toUpperCase()}`, kind: 'quick', title: `${names[0]} vs ${names[1]}`,
-      bestOf: input.bestOf, teams, casters: [], createdAt: (this.deps.now ?? Date.now)(),
+      bestOf: input.bestOf, teams, createdAt: (this.deps.now ?? Date.now)(),
       game: input.game ?? 'valorant', players: [[], []], ...this.carryOver(null),
     };
     const data = this.deps.store.data;
@@ -360,16 +351,17 @@ export class Production extends EventEmitter {
     if (![1, 3, 5].includes(input.bestOf)) throw new Error('Choose best of 1, 3 or 5.');
     const teams = validTeams(input.teams);
     const players = validPlayers(input.players ?? [[], []]);
-    if (!Array.isArray(input.casters) || input.casters.length > 2) throw new Error('Add up to two casters.');
-    const casters = input.casters.filter((c) => c?.name?.trim()).map((c, i) => ({ name: text(c.name, 40, `Caster ${i + 1}`), handle: c.handle ? text(c.handle, 40, `Caster ${i + 1} handle`) : '' }));
-    if (!Array.isArray(input.sponsors) || input.sponsors.length > 12) throw new Error('Add up to 12 sponsors.');
+    const carried = this.carryOver(null);
+    const event = input.eventId ? this.requireEvent(input.eventId) : this.eventOf({ eventId: carried.eventId } as Match) ?? this.requireEvent(carried.eventId);
     const id = randomUUID();
     const match: Match = {
       id, code: `Q${id.replace(/-/g, '').slice(0, 7).toUpperCase()}`, kind: 'quick', title: `${teams[0].name} vs ${teams[1].name}`,
-      bestOf: input.bestOf, teams, casters, createdAt: (this.deps.now ?? Date.now)(), game: game.id, players,
-      event: { name: input.event?.name ? text(input.event.name, 60, 'Event name') : '', stage: input.event?.stage ? text(input.event.stage, 60, 'Stage') : '' },
-      sponsors: input.sponsors.map((s, i) => text(s, 40, `Sponsor ${i + 1}`)),
-      theme: input.theme && BANNER_THEMES.includes(input.theme) ? input.theme : this.carryOver(null).theme,
+      bestOf: input.bestOf, teams, createdAt: (this.deps.now ?? Date.now)(), game: game.id, players,
+      eventId: event.id,
+      stage: input.stage ? text(input.stage, 40, 'Stage') : event.id === carried.eventId ? carried.stage : '',
+      talentOff: input.talentOff ? validOff(input.talentOff, event.talent, 'Talent') : [],
+      sponsorsOff: input.sponsorsOff ? validOff(input.sponsorsOff, event.sponsors, 'Sponsors') : [],
+      theme: input.theme && BANNER_THEMES.includes(input.theme) ? input.theme : carried.theme,
     };
     const data = this.deps.store.data;
     data.matches = [match, ...data.matches].slice(0, 50);
@@ -401,9 +393,10 @@ export class Production extends EventEmitter {
         const mine = m.players[t]?.[i];
         return mine ? { ...p, name: mine.name.toUpperCase(), photo: mine.photo } : p;
       }));
-      if (m.event.name) state.event = { ...state.event, name: m.event.name.toUpperCase(), stage: (m.event.stage || state.event.stage).toUpperCase() };
-      if (m.casters.length) state.casters = m.casters.map((c) => ({ name: c.name, handle: c.handle }));
-      if (m.sponsors.length) state.sponsors = m.sponsors;
+      const air = engineConfig(m, this.eventOf(m), this.setup.name);
+      if (this.eventOf(m)) state.event = { ...state.event, ...air.event, name: air.event.name.toUpperCase(), stage: (air.event.stage || state.event.stage).toUpperCase() };
+      if (air.casters.some((c) => c.name)) state.casters = air.casters;
+      if (air.sponsors.length) state.sponsors = air.sponsors;
     }
     state.layout = { ...(state.layout ?? {}), bannerTheme: m?.theme ?? this.setup.package };
     // A rehearsal is map 1 of this match's own best-of, with nothing played yet.
@@ -446,27 +439,91 @@ export class Production extends EventEmitter {
   }
 
   /** A new match starts with the event and sponsors of the latest match (of the same tournament, when there is one). */
-  private carryOver(tournamentId: string | null): Pick<Match, 'event' | 'sponsors' | 'theme'> {
-    const list = this.deps.store.data.matches;
-    const from = (tournamentId && list.find((m) => m.source?.tournamentId === tournamentId)) || list[0];
-    return { event: { ...(from?.event ?? { name: '', stage: '' }) }, sponsors: [...(from?.sponsors ?? [])], theme: from?.theme ?? this.setup.package ?? 'broadcast' };
+  private carryOver(tournamentId: string | null, tournamentName = ''): Pick<Match, 'eventId' | 'stage' | 'talentOff' | 'sponsorsOff' | 'theme'> {
+    const data = this.deps.store.data;
+    const list = data.matches;
+    const from = (tournamentId && list.find((m) => m.source?.tournamentId === tournamentId)) || (!tournamentId ? list[0] : undefined);
+    let event = tournamentId ? data.events.find((e) => e.tournamentId === tournamentId) : from ? this.eventOf(from) : data.events[0];
+    if (!event) {
+      event = newEvent(tournamentName || this.setup.name || 'My event', tournamentId);
+      data.events = [...data.events, event];
+    }
+    return { eventId: event.id, stage: from?.stage ?? '', talentOff: [], sponsorsOff: [], theme: from?.theme ?? this.setup.package ?? 'broadcast' };
   }
 
-  async updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players' | 'teams' | 'bestOf' | 'theme'>>) {
+  // ── events ──
+
+  eventOf(match: Pick<Match, 'eventId'>): EventInfo | null {
+    return this.deps.store.data.events.find((e) => e.id === match.eventId) ?? null;
+  }
+
+  private requireEvent(id: string): EventInfo {
+    const event = this.deps.store.data.events.find((e) => e.id === id);
+    if (!event) throw new Error('That event is no longer available.');
+    return event;
+  }
+
+  /** Replaces an event and re-sends the selected match when it uses it. */
+  private async putEvent(next: EventInfo) {
+    const data = this.deps.store.data;
+    data.events = data.events.map((e) => (e.id === next.id ? next : e));
+    // A match keeps switch-offs only for people and sponsors the event still has.
+    for (const m of data.matches.filter((x) => x.eventId === next.id)) {
+      m.talentOff = m.talentOff.filter((id) => next.talent.some((t) => t.id === id));
+      m.sponsorsOff = m.sponsorsOff.filter((id) => next.sponsors.some((s) => s.id === id));
+    }
+    this.save();
+    if (this.match?.eventId === next.id) await this.syncEngine();
+  }
+
+  async createEvent(name: string) {
+    const event = newEvent(text(name, 60, 'Event name'));
+    this.deps.store.data.events = [...this.deps.store.data.events, event];
+    this.save();
+    return event;
+  }
+
+  async updateEvent(id: string, patch: EventPatch) {
+    await this.putEvent(applyEventPatch(this.requireEvent(id), patch ?? {}));
+  }
+
+  async saveTalent(eventId: string, input: TalentInput) {
+    await this.putEvent(upsertTalent(this.requireEvent(eventId), input ?? {}));
+  }
+
+  async removeTalent(eventId: string, talentId: string) {
+    const event = this.requireEvent(eventId);
+    if (!event.talent.some((t) => t.id === talentId)) throw new Error('That person is no longer in this event.');
+    await this.putEvent({ ...event, talent: event.talent.filter((t) => t.id !== talentId) });
+  }
+
+  async renewTalentLink(eventId: string, talentId: string) {
+    await this.putEvent(renewTalentLink(this.requireEvent(eventId), talentId));
+  }
+
+  async saveSponsor(eventId: string, input: SponsorInput) {
+    await this.putEvent(upsertSponsor(this.requireEvent(eventId), input ?? {}));
+  }
+
+  async removeSponsor(eventId: string, sponsorId: string) {
+    const event = this.requireEvent(eventId);
+    if (!event.sponsors.some((s) => s.id === sponsorId)) throw new Error('That sponsor is no longer in this event.');
+    await this.putEvent({ ...event, sponsors: event.sponsors.filter((s) => s.id !== sponsorId) });
+  }
+
+  async updateMatch(id: string, patch: MatchPatch) {
     const match = this.deps.store.data.matches.find((m) => m.id === id);
     if (!match) throw new Error('That match is no longer available.');
     if (patch.title !== undefined) match.title = text(patch.title, 80, 'Match title');
-    if (patch.casters !== undefined) {
-      if (!Array.isArray(patch.casters) || patch.casters.length > 2) throw new Error('Add up to two casters.');
-      match.casters = patch.casters.map((c, i) => ({ name: text(c.name, 40, `Caster ${i + 1}`), handle: c.handle ? text(c.handle, 40, `Caster ${i + 1} handle`) : '' }));
+    if (patch.eventId !== undefined && patch.eventId !== match.eventId) {
+      this.requireEvent(patch.eventId);
+      // Switch-offs belong to the old event's people and sponsors.
+      Object.assign(match, { eventId: patch.eventId, talentOff: [], sponsorsOff: [] });
     }
-    if (patch.event !== undefined) {
-      match.event = { name: patch.event.name ? text(patch.event.name, 60, 'Event name') : '', stage: patch.event.stage ? text(patch.event.stage, 60, 'Stage') : '' };
-    }
-    if (patch.sponsors !== undefined) {
-      if (!Array.isArray(patch.sponsors) || patch.sponsors.length > 12) throw new Error('Add up to 12 sponsors.');
-      match.sponsors = patch.sponsors.map((s, i) => text(s, 40, `Sponsor ${i + 1}`));
-    }
+    const event = this.eventOf(match);
+    if (patch.stage !== undefined) match.stage = patch.stage ? text(patch.stage, 40, 'Stage') : '';
+    if (patch.talentOff !== undefined) match.talentOff = validOff(patch.talentOff, event?.talent ?? [], 'Talent');
+    if (patch.sponsorsOff !== undefined) match.sponsorsOff = validOff(patch.sponsorsOff, event?.sponsors ?? [], 'Sponsors');
     if (patch.players !== undefined) match.players = validPlayers(patch.players);
     if (patch.teams !== undefined) {
       match.teams = validTeams(patch.teams);
@@ -498,10 +555,6 @@ export class Production extends EventEmitter {
         eventName: patch.brand.eventName ? text(patch.brand.eventName, 60, 'Event name') : '',
         stage: patch.brand.stage ? text(patch.brand.stage, 60, 'Stage') : '',
       };
-    }
-    if (patch.sponsors !== undefined) {
-      if (!Array.isArray(patch.sponsors) || patch.sponsors.length > 12) throw new Error('Add up to 12 sponsors.');
-      setup.sponsors = patch.sponsors.map((s, i) => text(s, 40, `Sponsor ${i + 1}`));
     }
     if (patch.screens !== undefined) setup.screens = this.validScreens(patch.screens);
     const toggled: string[] = [];
@@ -849,14 +902,14 @@ export class Production extends EventEmitter {
     const source = { matchId, tournamentId: found.tournamentId, tournament: found.tournament, scheduledAt: found.scheduledAt, lineups };
     const existing = data.matches.find((m) => m.source?.matchId === matchId);
     if (existing) {
-      // The tournament may have changed names, logos or best-of; the producer's casters are kept.
+      // The tournament may have changed names, logos or best-of; the producer's talent and sponsors are kept.
       Object.assign(existing, { title: `${found.teamA} vs ${found.teamB}`, teams, bestOf: found.bestOf as 1 | 3 | 5, source });
       data.selectedMatchId = existing.id;
     } else {
       const id = randomUUID();
       const players = [0, 1].map((t) => (lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];
-      const carried = this.carryOver(found.tournamentId);
-      const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, casters: [], createdAt: (this.deps.now ?? Date.now)(), source, game: 'valorant', players, event: { name: found.tournament || carried.event.name, stage: carried.event.stage }, sponsors: carried.sponsors, theme: carried.theme };
+      const carried = this.carryOver(found.tournamentId, found.tournament);
+      const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, createdAt: (this.deps.now ?? Date.now)(), source, game: 'valorant', players, ...carried };
       data.matches = [match, ...data.matches].slice(0, 50);
       data.selectedMatchId = id;
     }
@@ -971,13 +1024,16 @@ export class Production extends EventEmitter {
 
   async casterStrap(on: boolean) {
     const match = this.requireMatch();
-    if (on && !match.casters.some((c) => c.name)) throw new Error('Add the casters’ names first.');
+    if (on && !onAir(match, this.eventOf(match)).talent.length) throw new Error('Add the people on air in Event first.');
     await this.graphic(on ? 'Caster lower third' : 'Lower third off', [{ name: on ? 'lowerthird.caster' : 'lowerthird.hide', args: {} }]);
   }
 
-  async sponsorRead(sponsor: string | null) {
-    if (sponsor !== null && !this.requireMatch().sponsors.includes(sponsor)) throw new Error('Add this sponsor to the match first.');
-    await this.graphic(sponsor ? `Sponsor read · ${sponsor}` : 'Lower third off', [sponsor ? { name: 'lowerthird.generic', args: { title: sponsor, sub: 'Presented by', team: -1 } } : { name: 'lowerthird.hide', args: {} }]);
+  async sponsorRead(sponsorId: string | null) {
+    if (sponsorId === null) return this.graphic('Lower third off', [{ name: 'lowerthird.hide', args: {} }]);
+    const match = this.requireMatch();
+    const sponsor = onAir(match, this.eventOf(match)).sponsors.find((s) => s.id === sponsorId);
+    if (!sponsor) throw new Error('This sponsor is not on for this match.');
+    await this.graphic(`Sponsor read · ${sponsor.name}`, [{ name: 'lowerthird.generic', args: { title: sponsor.name, sub: sponsor.read || 'Presented by', team: -1 } }]);
   }
 
   async lowerThird(input: { kind: 'caster' } | { kind: 'person'; name: string; role: string } | { kind: 'player' } | null) {
@@ -1065,11 +1121,13 @@ export class Production extends EventEmitter {
     const layers = room?.airLayers ?? {};
     const lt = room?.lowerThird ?? {};
     const lowerOn = layers.lowerThird === 'on';
-    const sponsor = lowerOn && lt.kind === 'generic' && lt.sub === 'Presented by' ? String(lt.title) : null;
+    const match = this.match;
+    const sponsors = match ? onAir(match, this.eventOf(match)).sponsors : [];
+    const sponsor = lowerOn && lt.kind === 'generic' && lt.team === -1 ? sponsors.find((x) => x.name === lt.title) ?? null : null;
     return {
       pause: room?.airPause?.kind ?? null,
       strap: lowerOn && lt.kind === 'caster',
-      sponsor,
+      sponsor: sponsor?.id ?? null,
       person: lowerOn && lt.kind === 'generic' && !sponsor ? String(lt.title) : null,
       player: lowerOn && lt.kind === 'player',
       poll: layers.poll === 'on',
@@ -1137,6 +1195,8 @@ export class Production extends EventEmitter {
       engine: { state: engine.state, port: engine.port, reattached: engine.reattached, error: engine.error },
       setup: this.setup,
       matches: this.deps.store.data.matches,
+      events: this.deps.store.data.events,
+      event: this.match ? this.eventOf(this.match) : null,
       match,
       readout,
       feed: { state: feedState, reason: capture.reason, ageMs: roomStatus?.feedAgeMs ?? null, paused: roomStatus?.feedPaused ?? false },
@@ -1195,7 +1255,7 @@ export function checks(s: Snapshot): CheckItem[] {
   );
   out.push(
     s.match
-      ? { id: 'match', title: 'Show and match', detail: `${s.match.title}${s.match.event.name ? ` · ${s.match.event.name}` : ''} · Bo${s.match.bestOf}`, health: 'ok' }
+      ? { id: 'match', title: 'Show and match', detail: `${s.match.title}${s.event?.name ? ` · ${s.event.name}` : ''} · Bo${s.match.bestOf}`, health: 'ok' }
       : { id: 'match', title: 'Show and match', detail: 'No match selected yet.', health: 'warn', action: { id: 'choose-match', label: 'Create a match' } },
   );
   const found = s.readout ? s.readout.playersFound[0] + s.readout.playersFound[1] : 0;
@@ -1229,11 +1289,12 @@ export function checks(s: Snapshot): CheckItem[] {
         ? { id: 'sources', title: 'Browser sources', detail: `${loading} of ${s.outputs.length} connected · not loading: ${idle.map((o) => o.title).join(', ')}. OBS loads a source when its scene is opened once.`, health: 'warn' }
         : { id: 'sources', title: 'Browser sources', detail: 'Shown once scenes are in OBS.', health: 'off' },
   );
-  const casters = s.match?.casters.filter((c) => c.name).length ?? 0;
+  const air = s.match ? onAir(s.match, s.event) : { talent: [], sponsors: [] };
+  const people = air.talent.length;
   out.push(
-    casters
-      ? { id: 'talent', title: 'Talent', detail: `${casters} caster${casters > 1 ? 's' : ''} ready for the lower third.`, health: 'ok' }
-      : { id: 'talent', title: 'Talent', detail: 'No casters added. The caster lower third needs their names.', health: s.match ? 'warn' : 'off', ...(s.match ? { action: { id: 'add-casters' as const, label: 'Add casters' } } : {}) },
+    people
+      ? { id: 'talent', title: 'Talent and sponsors', detail: `${air.talent.map((t) => t.name).join(', ')}${air.sponsors.length ? ` · ${air.sponsors.length} sponsor${air.sponsors.length > 1 ? 's' : ''}` : ''}`, health: 'ok' }
+      : { id: 'talent', title: 'Talent and sponsors', detail: 'Nobody on air for this match. Talent graphics need their names.', health: s.match ? 'warn' : 'off', ...(s.match ? { action: { id: 'add-casters' as const, label: 'Add people' } } : {}) },
   );
   out.push(
     artCheck(s.art),

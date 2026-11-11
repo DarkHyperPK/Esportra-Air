@@ -55,7 +55,7 @@ export function TopBar({ s, page, open, search, help }: { s: Snapshot | null; pa
         <nav className="crumbs" aria-label="You are here">
           <span className="sep">/</span>
           <span>{PAGE_NAME[page]}</span>
-          {s?.match && <><span className="sep">/</span><b title={s.match.title}>{s.match.title}</b>{s.match.event.name && <span className="event">· {s.match.event.name}</span>}</>}
+          {s?.match && <><span className="sep">/</span><b title={s.match.title}>{s.match.title}</b>{s.event?.name && <span className="event">· {s.event.name}</span>}</>}
         </nav>
       )}
       {!page && <span className="spacer" />}

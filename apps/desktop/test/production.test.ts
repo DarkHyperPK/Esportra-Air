@@ -66,7 +66,10 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
 
     // Setup changes reach the HUD state.
     await production.updateSetup({ package: 'impact', hud: { ...production.setup.hud, minimap: true } });
-    await production.updateMatch(match.id, { sponsors: ['Acme'], event: { name: 'Community Cup', stage: 'Playoffs' }, theme: 'impact' });
+    const ev = production.eventOf(match)!;
+    await production.updateEvent(ev.id, { name: 'Community Cup' });
+    await production.saveSponsor(ev.id, { name: 'Acme', tier: 'partner', read: 'Official partner' });
+    await production.updateMatch(match.id, { stage: 'Playoffs', theme: 'impact' });
     await assert.rejects(production.updateMatch(match.id, { theme: 'neon' as never }), /banner styles/);
     assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.event.name, 'Community Cup', 'the event comes from the match');
     await assert.rejects(production.updateMatch(match.id, { players: [[{ name: 'Juno', gameId: 'no-tag' } as never], []] }), /Name#TAG/);
@@ -78,7 +81,8 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(styled.state.show.minimap, false, 'the game draws its own minimap; Air keeps it off');
     assert.equal(styled.state.show.killfeed, false);
     assert.equal(styled.state.show.observed, false);
-    assert.deepEqual(styled.state.sponsors, ['Acme']);
+    assert.deepEqual(styled.state.sponsors, [{ name: 'ACME', logo: '', line: 'Official partner' }, { name: 'ACME', logo: '', line: 'Official partner' }], 'sponsors reach the HUD as objects, a partner twice per rotation');
+    assert.equal(styled.state.event.stage, 'Playoffs');
     await assert.rejects(production.updateSetup({ package: 'neon' as never }), /available graphics styles/);
 
     // Check guides: connect OBS, then install, then loading.
@@ -159,18 +163,25 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(production.snapshot().feed.state, 'waiting');
 
     // Triggers write the state the overlays already understand.
-    await assert.rejects(production.casterStrap(true), /casters’ names/);
-    await production.updateMatch(match.id, { casters: [{ name: 'Caster One', handle: '@one' }, { name: 'Caster Two', handle: '' }] });
+    await assert.rejects(production.casterStrap(true), /people on air/);
+    await production.saveTalent(ev.id, { name: 'Caster Two', role: 'analyst' });
+    await production.saveTalent(ev.id, { name: 'Caster One', handle: '@one', role: 'play-by-play' });
     await production.casterStrap(true);
     let state = (await engine.client.get<any>(`/api/${match.code}`)).state;
     assert.equal(state.show.lowerThird, true);
     assert.equal(state.lowerThird.kind, 'caster');
     assert.equal(state.casters[0].name, 'Caster One');
-    await production.sponsorRead('Acme');
+    const acme = production.eventOf(match)!.sponsors[0]!.id;
+    await production.sponsorRead(acme);
     state = (await engine.client.get<any>(`/api/${match.code}`)).state;
     assert.equal(state.lowerThird.title, 'Acme');
     assert.equal(production.snapshot().triggers.strap, false, 'one lower third at a time');
-    assert.equal(production.snapshot().triggers.sponsor, 'Acme', 'on-screen state is read back from the engine');
+    assert.equal(state.lowerThird.sub, 'Official partner', 'the read text is the sponsor’s own');
+    assert.equal(production.snapshot().triggers.sponsor, acme, 'on-screen state is read back from the engine');
+    await production.updateMatch(match.id, { sponsorsOff: [acme] });
+    await assert.rejects(production.sponsorRead(acme), /not on for this match/);
+    assert.deepEqual((await engine.client.get<any>(`/api/${match.code}`)).state.sponsors, [], 'a sponsor switched off leaves the rotation');
+    await production.updateMatch(match.id, { sponsorsOff: [] });
     await production.pause('technical');
     state = (await engine.client.get<any>(`/api/${match.code}`)).state;
     assert.equal(state.airPause.kind, 'technical');
@@ -252,7 +263,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await engine.poll();
     assert.equal(production.snapshot().testRound.running, true);
     // Editing the match while the test round is on air is fine: it reaches the engine when the round ends.
-    await production.updateMatch(match.id, { event: { name: 'Edited During Test', stage: '' } });
+    await production.updateEvent(production.match!.eventId, { name: 'Edited During Test' });
     await production.testRound('stop');
     await engine.poll();
     assert.equal(production.snapshot().testRound.running, false);
@@ -455,14 +466,16 @@ test('an Esportra match becomes the match on this PC, with its tournament, teams
     assert.equal(room.teams[1].name, 'Fnatic');
     assert.equal(room.airContext.source, 'esportra');
 
-    // Choosing it again updates the same match instead of adding a second one, and keeps the casters.
-    await production.updateMatch(match.id, { casters: [{ name: 'Caster One', handle: '' }] });
+    // Choosing it again updates the same match instead of adding a second one, and keeps its talent.
+    assert.equal(production.eventOf(match)!.tournamentId, match.source!.tournamentId, 'the tournament is the event');
+    await production.saveTalent(match.eventId, { name: 'Caster One' });
     wanted.teamB = 'Fnatic Esports';
     await production.esportraRefresh();
     await production.useEsportraMatch(wanted.id);
     assert.equal(store.data.matches.filter((m) => m.source?.matchId === wanted.id).length, 1);
     assert.equal(production.match!.teams[1].name, 'Fnatic Esports');
-    assert.equal(production.match!.casters[0]!.name, 'Caster One');
+    assert.equal(production.eventOf(production.match!)!.talent[0]!.name, 'Caster One');
+    assert.equal(production.match!.eventId, match.eventId);
 
     // A game Air cannot produce, and a refused account, both say why.
     backend.matches.push({ ...wanted, id: randomUUID(), game: 'cs2' });
@@ -507,14 +520,15 @@ test('the New match wizard: teams with logos, lineups with Riot IDs and photos r
       game: 'valorant' as const, bestOf: 3 as const,
       teams: [{ name: 'Night Owls', tag: 'NOW', color: '#22d3ee', logo }, { name: 'Crimson Five', tag: '', color: '#f43f5e', logo: '' }] as never,
       players: [[{ name: 'Juno Park', realName: 'June Park', gameId: 'Juno#EU1', photo }], []] as never,
-      casters: [{ name: 'Sara Malik', handle: '' }], event: { name: 'Community Cup', stage: 'Playoffs' }, sponsors: ['Acme'],
+      stage: 'Playoffs',
     };
     await assert.rejects(production.createMatch({ ...base, game: 'cs2' }), /coming to Air/);
     await assert.rejects(production.createMatch({ ...base, teams: [{ name: 'Same', tag: '', color: '#ffffff', logo: '' }, { name: 'same', tag: '', color: '#000000', logo: '' }] as never }), /different names/);
     await assert.rejects(production.createMatch({ ...base, teams: [{ name: 'A', tag: '', color: '#fff', logo: 'javascript:alert(1)' }, { name: 'B', tag: '', color: '#000', logo: '' }] as never }), /logo again/);
     await production.createMatch(base);
     const match = production.match!;
-    assert.deepEqual([match.game, match.title, match.teams[0].logo, match.teams[1].tag, match.casters.length], ['valorant', 'Night Owls vs Crimson Five', logo, 'CF', 1]);
+    await production.updateEvent(match.eventId, { name: 'Community Cup' });
+    assert.deepEqual([match.game, match.title, match.teams[0].logo, match.teams[1].tag, match.stage], ['valorant', 'Night Owls vs Crimson Five', logo, 'CF', 'Playoffs']);
 
     // Game data with the Riot ID shows the producer's display name and photo.
     await engine.client.post(`/api/${match.code}/ingest/valorant`, [{ feature: 'match_info', key: 'scoreboard_0', data: JSON.stringify({ player_id: 'p0', name: 'Juno #EU1', character: 'Clay', team: 0, alive: true, money: 3900 }) }]);
@@ -595,7 +609,6 @@ test('rehearsal plays the match privately with its own players, and autopilot fi
       game: 'valorant', bestOf: 1,
       teams: [{ name: 'Night Owls', tag: 'NOW', color: '#22d3ee', logo: '' }, { name: 'Crimson Five', tag: 'CF', color: '#f43f5e', logo: '' }] as never,
       players: [[{ name: 'Juno Park', realName: '', gameId: 'Juno#EU1', photo }], [{ name: 'Kai Ito', realName: '', gameId: 'Kai#JP1', photo: '' }]] as never,
-      casters: [], event: { name: 'Community Cup', stage: '' }, sponsors: [],
     });
     const code = production.match!.code;
     const live = async () => (await engine.client.get<any>(`/api/${code}`)).state;

@@ -1,6 +1,7 @@
 import type { LayerGroup, LayerMode } from './layers.ts';
 import type { GameId } from './games.ts';
 import type { SceneKey, SlotId } from './scenes.ts';
+import type { EventInfo, EventPatch, SponsorInput, TalentInput } from './model.ts';
 
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
@@ -13,11 +14,6 @@ export interface Team {
   tag: string;
   color: string;
   logo: string;
-}
-
-export interface Caster {
-  name: string;
-  handle: string;
 }
 
 /** A player in a match's lineup, as the producer entered them. */
@@ -40,14 +36,17 @@ export interface Match {
   title: string;
   bestOf: 1 | 3 | 5;
   teams: [Team, Team];
-  casters: Caster[];
   createdAt: number;
   game: GameId;
   /** Lineups per team (starters first). */
   players: [PlayerInfo[], PlayerInfo[]];
-  /** Shown on the event bug and lower thirds. */
-  event: { name: string; stage: string };
-  sponsors: string[];
+  /** The event this match belongs to: its branding, talent and sponsors. */
+  eventId: string;
+  /** The event stage shown on air, e.g. "Playoffs" (free text). */
+  stage: string;
+  /** The event's people and sponsors switched off for this match (everyone else is on). */
+  talentOff: string[];
+  sponsorsOff: string[];
   /** The banner style used by this match's graphics. */
   theme: BannerTheme;
   /** Set for matches taken from an Esportra tournament. */
@@ -225,6 +224,9 @@ export interface Snapshot {
   setup: Setup;
   matches: Match[];
   match: Match | null;
+  events: EventInfo[];
+  /** The selected match's event. */
+  event: EventInfo | null;
   readout: RoundReadout | null;
   feed: { state: 'off' | 'waiting' | 'live' | 'unavailable'; reason: string | null; ageMs: number | null; paused: boolean };
   obs: {
@@ -253,6 +255,7 @@ export interface Snapshot {
   triggers: {
     pause: 'technical' | 'timeout' | null;
     strap: boolean;
+    /** The id of the sponsor whose read is on air. */
     sponsor: string | null;
     /** A lower third showing one person (a caster) by name. */
     person: string | null;
@@ -284,11 +287,15 @@ export interface NewMatchInput {
   bestOf: 1 | 3 | 5;
   teams: [Team, Team];
   players: [Array<Omit<PlayerInfo, 'id'> & { id?: string }>, Array<Omit<PlayerInfo, 'id'> & { id?: string }>];
-  casters: Caster[];
-  event: { name: string; stage: string };
-  sponsors: string[];
+  /** Defaults to the latest match's event (a new event is made when there is none). */
+  eventId?: string;
+  stage?: string;
+  talentOff?: string[];
+  sponsorsOff?: string[];
   theme?: BannerTheme;
 }
+
+export type MatchPatch = Partial<Pick<Match, 'title' | 'players' | 'teams' | 'bestOf' | 'theme' | 'eventId' | 'stage' | 'talentOff' | 'sponsorsOff'>>;
 
 export interface QuickMatchInput {
   teamA: string;
@@ -335,7 +342,16 @@ export interface AirApi {
   useSlotSource(slot: SlotId, source: string): Promise<Snapshot>;
   createQuickMatch(input: QuickMatchInput): Promise<Snapshot>;
   selectMatch(id: string): Promise<Snapshot>;
-  updateMatch(id: string, patch: Partial<Pick<Match, 'casters' | 'title' | 'event' | 'sponsors' | 'players' | 'teams' | 'bestOf' | 'theme'>>): Promise<Snapshot>;
+  updateMatch(id: string, patch: MatchPatch): Promise<Snapshot>;
+  createEvent(name: string): Promise<Snapshot>;
+  updateEvent(id: string, patch: EventPatch): Promise<Snapshot>;
+  /** Adds (no id) or changes a person on air. A camera link gets its id here. */
+  saveTalent(eventId: string, input: TalentInput): Promise<Snapshot>;
+  removeTalent(eventId: string, talentId: string): Promise<Snapshot>;
+  /** A new camera link for this person; the old one stops working. */
+  renewTalentLink(eventId: string, talentId: string): Promise<Snapshot>;
+  saveSponsor(eventId: string, input: SponsorInput): Promise<Snapshot>;
+  removeSponsor(eventId: string, sponsorId: string): Promise<Snapshot>;
   /** Seeds the HUD library's sample room with this match's teams (or sample teams) and the given banner style. */
   librarySeed(): Promise<Snapshot>;
   /** Plays the sample round in the library room so the previews move. */
@@ -375,7 +391,8 @@ export interface AirApi {
   camRemove(team: number, slot: number): Promise<Snapshot>;
   pause(kind: 'technical' | 'timeout' | null): Promise<Snapshot>;
   casterStrap(on: boolean): Promise<Snapshot>;
-  sponsorRead(sponsor: string | null): Promise<Snapshot>;
+  /** The "presented by" lower third for one of the match's sponsors (by id), or off. */
+  sponsorRead(sponsorId: string | null): Promise<Snapshot>;
   correct(input: CorrectionCall): Promise<Snapshot>;
   copy(text: string): Promise<void>;
 }
