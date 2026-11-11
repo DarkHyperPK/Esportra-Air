@@ -45,11 +45,38 @@ function makePng(hex) {
   const btn = (name, opts) => page.getByRole('button', { name, ...opts }).first().click();
 
   await page.goto(`${HOST}/?host=${HOST}`);
-  // First run: the New match wizard opens by itself.
+  // First run (spec 4A): welcome, guest, game (no default), setup, Connect OBS, then Matches.
+  await page.getByRole('heading', { name: 'Run a professional broadcast from one place.' }).waitFor();
+  await shot('first-run-welcome');
+  await btn('Get started');
+  await page.getByRole('button', { name: 'Continue as guest' }).waitFor();
+  await shot('first-run-account');
+  await btn('Continue as guest');
+  const cont = page.getByRole('button', { name: 'Continue', exact: true });
+  if (!(await cont.isDisabled())) throw new Error('Continue must wait until a game is chosen');
+  if (await page.getByRole('radio', { checked: true }).count()) throw new Error('No game may be chosen by default');
+  await page.getByRole('radio', { name: /Valorant/ }).click();
+  await page.getByText('What Air shows for Valorant').waitFor();
+  await shot('first-run-game');
+  await cont.click();
+  await page.getByRole('radio', { name: /With player PCs/ }).click();
+  await shot('first-run-setup');
+  await cont.click();
+  await page.getByLabel('Password').fill('secret');
+  await btn('Connect', { exact: true });
+  await page.getByText(/^Connected to OBS/).waitFor();
+  await shot('first-run-obs');
+  await btn('Finish');
+  await page.getByRole('heading', { name: 'Set up your first show' }).waitFor();
+  await shot('first-show');
+  // The game for the whole app: a menu beside the product name.
+  await page.getByRole('button', { name: /^Valorant/ }).click();
+  await page.getByRole('menu', { name: 'Game for the whole app' }).waitFor();
+  await shot('game-switcher');
+  await page.keyboard.press('Escape');
+  await btn('New match');
   const wizard = page.getByRole('dialog', { name: 'New match' });
   await wizard.waitFor();
-  await shot('wizard-game');
-  await wizard.getByRole('button', { name: 'Continue' }).click();
   // Teams: names, colours and logos.
   const png = (hex) => { const fs = require('node:fs'); const f = path.join(OUT, `img-${hex.slice(1)}.png`); fs.writeFileSync(f, require('node:zlib') && makePng(hex)); return f; };
   const teamCards = wizard.locator('.team-card');
@@ -66,7 +93,7 @@ function makePng(hex) {
     const rows = wizard.locator('.lineup').nth(t).locator('.player-row');
     for (let i = 0; i < 5; i++) {
       await rows.nth(i).getByLabel('Display name').fill(roster[t][i][0] + roster[t][i].slice(1).toLowerCase());
-      await rows.nth(i).getByLabel('Riot ID').fill(`${roster[t][i]}#${t ? "FNC" : "PRX"}`);
+      await rows.nth(i).getByLabel('In-game name').fill(`${roster[t][i]}#${t ? "FNC" : "PRX"}`);
     }
   }
   await wizard.locator('.lineup').nth(0).locator('.player-row').nth(0).locator('input[type=file]').setInputFiles(png('#a78bfa'));
@@ -135,9 +162,8 @@ function makePng(hex) {
   await page.keyboard.press('Escape');
 
   // Settings: connect OBS (software settings), then Scenes: add for me, fill the game-feed slot
+  // OBS was connected in first run; Settings shows the connection.
   await rail('Settings');
-  await page.getByLabel('Password').fill('secret');
-  await btn('Connect', { exact: true });
   await page.getByText('Connected', { exact: true }).first().waitFor();
   await shot('settings');
   await rail('OBS');

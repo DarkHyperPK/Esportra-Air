@@ -15,6 +15,7 @@ import { SetupScreen, type SetupTab } from './screens/SetupScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { LibraryScreen } from './screens/LibraryScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
+import { FirstRun } from './components/FirstRun.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
@@ -107,11 +108,20 @@ export function App() {
     );
   }
 
+  if (!s.onboarding.done) {
+    return (
+      <>
+        <FirstRun s={s} run={run} />
+        <Toasts list={toasts} dismiss={dismiss} />
+      </>
+    );
+  }
+
   const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true), openSignIn: () => setSignIn(true) };
 
   return (
     <div className="win">
-      <TopBar s={s} page={page} open={(id) => setStatus(id)} search={() => setPalette(true)} help={() => setHelp(true)} />
+      <TopBar s={s} page={page} open={(id) => setStatus(id)} search={() => setPalette(true)} help={() => setHelp(true)} run={run} />
       <div className="body">
         <Rail page={page} go={(p) => go(p)} />
         <div className="main">

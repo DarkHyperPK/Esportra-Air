@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import type { Match, PlayerInfo, Snapshot, Team } from '../../shared/api.ts';
 import { ROLE_NAME, SPONSOR_TIERS, TALENT_ROLES, TIER_NAME, type EventInfo, type SponsorTier, type TalentRole } from '../../shared/model.ts';
 import type { Run } from '../App.tsx';
-import { GAMES, type GameId } from '../../shared/games.ts';
+import { gameOf, type GameId } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 
 export type DraftPlayer = Omit<PlayerInfo, 'id'> & { id?: string };
@@ -54,19 +54,6 @@ export function ImagePick({ s, value, onChange, label, size = 64, round = false,
   );
 }
 
-export function GamePicker({ value, onChange }: { value: GameId; onChange: (g: GameId) => void }) {
-  return (
-    <div className="games" role="radiogroup" aria-label="Game">
-      {GAMES.map((g) => (
-        <button key={g.id} type="button" role="radio" aria-checked={value === g.id} disabled={!g.available} className={`game-card ${g.id}`} onClick={() => onChange(g.id)}>
-          <span className="game-name">{g.name}</span>
-          <span className="game-state">{g.available ? 'Live data · HUD ready' : 'Coming to Air'}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function TeamFields({ s, team, index, onChange }: { s: Snapshot; team: Team; index: 0 | 1; onChange: (t: Team) => void }) {
   return (
     <div className="team-card" style={{ ['--team' as string]: team.color }}>
@@ -84,7 +71,7 @@ export function TeamFields({ s, team, index, onChange }: { s: Snapshot; team: Te
 }
 
 export function LineupEditor({ s, teams, lineups, onChange, game }: { s: Snapshot; teams: [Team, Team]; lineups: Lineups; onChange: (l: Lineups) => void; game: GameId }) {
-  const id = GAMES.find((g) => g.id === game)?.playerId;
+  const id = gameOf(game)?.identity;
   const set = (t: 0 | 1, i: number, p: Partial<DraftPlayer>) => onChange(lineups.map((team, ti) => (ti === t ? team.map((x, xi) => (xi === i ? { ...x, ...p } : x)) : team)) as Lineups);
   return (
     <div className="lineups">
@@ -107,7 +94,7 @@ export function LineupEditor({ s, teams, lineups, onChange, game }: { s: Snapsho
           {lineups[t].length < 7 && <button type="button" className="btn small" onClick={() => onChange(lineups.map((team, ti) => (ti === t ? [...team, emptyPlayer()] : team)) as Lineups)}>+ Add player</button>}
         </section>
       ))}
-      {id && <p className="muted" style={{ fontSize: 12.5, gridColumn: '1 / -1' }}>The {id.label} is how Air recognises each player in live game data, so their display name and photo appear on air. Players without one keep their in-game name.</p>}
+      {id && <p className="muted" style={{ fontSize: 12.5, gridColumn: '1 / -1' }}>{id.help} Players without one appear under the name the game reports.</p>}
     </div>
   );
 }

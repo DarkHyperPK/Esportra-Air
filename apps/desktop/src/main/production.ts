@@ -16,7 +16,7 @@ import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, typ
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
-import { GAMES } from '../shared/games.ts';
+import { gameName, gameOf, type GameId, type Profile } from '../shared/games.ts';
 import { LIBRARY_ROOM } from '../shared/library.ts';
 import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
@@ -115,7 +115,7 @@ export function validPlayers(input: unknown): Match['players'] {
     return team.map((p: any, i: number) => {
       const label = `Team ${t ? 'B' : 'A'} player ${i + 1}`;
       const gameId = typeof p?.gameId === 'string' ? p.gameId.trim() : '';
-      if (gameId && !RIOT_ID.test(gameId)) throw new Error(`${label}: write the Riot ID as Name#TAG.`);
+      if (gameId && !RIOT_ID.test(gameId)) throw new Error(`${label}: write the in-game name as Name#TAG.`);
       const photo = typeof p?.photo === 'string' ? p.photo : '';
       if (photo && !IMAGE.test(photo)) throw new Error(`${label}: choose the photo again.`);
       return { id: typeof p?.id === 'string' && /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : randomUUID(), name: text(p?.name, 32, `${label} name`), realName: p?.realName ? text(p.realName, 60, `${label} real name`) : '', gameId, photo };
@@ -222,6 +222,59 @@ export class Production extends EventEmitter {
 
   get setup() {
     return this.deps.store.data.setup;
+  }
+
+  // ── first run and the game ──
+
+  /** Why the game cannot change now: a show is live on this PC. */
+  gameLocked(): string | null {
+    const capturing = this.deps.capture.state === 'live' || this.deps.capture.state === 'waiting';
+    const testRound = !!this.match && !!this.deps.engine.status?.rooms.find((r) => r.match === this.match!.code.toUpperCase())?.testRound?.running;
+    return capturing || testRound ? 'Switch game after the show: game data or a test round is running.' : null;
+  }
+
+  /** The chosen game's module; refuses when none is chosen or it cannot be produced. */
+  private requireGame() {
+    const game = gameOf(this.setup.game);
+    if (!game) throw new Error('Choose a game first.');
+    if (!game.available) throw new Error(`${game.name} is coming later. Choose another game from the top bar.`);
+    return game;
+  }
+
+  async chooseGame(id: GameId) {
+    const game = gameOf(id);
+    if (!game) throw new Error('Choose one of the games in the list.');
+    if (!game.available) throw new Error(`${game.name} is coming later.`);
+    if (this.setup.game === id) return;
+    const locked = this.gameLocked();
+    if (locked) throw new Error(locked);
+    this.rehearsal.stop();
+    this.setup.game = id;
+    // The selected match belongs to the old game; its graphics leave the screens.
+    const data = this.deps.store.data;
+    if (this.match && this.match.game !== id) data.selectedMatchId = null;
+    if (this.setup.profile === 'player-pcs' && !game.playerPcData) this.setup.profile = 'observer';
+    this.save();
+    await this.syncEngine();
+  }
+
+  async chooseProfile(profile: Profile) {
+    if (!['one-pc', 'observer', 'player-pcs'].includes(profile)) throw new Error('Choose one of the setups.');
+    const game = this.requireGame();
+    if (profile === 'player-pcs' && !game.playerPcData) throw new Error(`${game.name} gets nothing extra from player PCs. Choose another setup.`);
+    this.setup.profile = profile;
+    this.save();
+  }
+
+  async finishOnboarding() {
+    this.requireGame();
+    this.deps.store.data.onboarding = { done: true };
+    this.save();
+  }
+
+  async restartOnboarding() {
+    this.deps.store.data.onboarding = { done: false };
+    this.save();
   }
   get match(): Match | null {
     const { matches, selectedMatchId } = this.deps.store.data;
@@ -334,7 +387,7 @@ export class Production extends EventEmitter {
     const match: Match = {
       id, code: `Q${id.replace(/-/g, '').slice(0, 7).toUpperCase()}`, kind: 'quick', title: `${names[0]} vs ${names[1]}`,
       bestOf: input.bestOf, teams, createdAt: (this.deps.now ?? Date.now)(),
-      game: input.game ?? 'valorant', players: [[], []], ...this.carryOver(null),
+      game: this.requireGame().id, players: [[], []], ...this.carryOver(null),
     };
     const data = this.deps.store.data;
     data.matches = [match, ...data.matches].slice(0, 50);
@@ -345,9 +398,7 @@ export class Production extends EventEmitter {
 
   /** The New match wizard: game, teams, lineups, talent, event and sponsors in one go. */
   async createMatch(input: NewMatchInput) {
-    const game = GAMES.find((g) => g.id === input?.game);
-    if (!game) throw new Error('Choose a game.');
-    if (!game.available) throw new Error(`${game.name} is coming to Air. Choose VALORANT for now.`);
+    const game = this.requireGame();
     if (![1, 3, 5].includes(input.bestOf)) throw new Error('Choose best of 1, 3 or 5.');
     const teams = validTeams(input.teams);
     const players = validPlayers(input.players ?? [[], []]);
@@ -884,7 +935,8 @@ export class Production extends EventEmitter {
     const account = this.esportra;
     const found = account.view().matches.find((m) => m.id === matchId);
     if (!found) throw new Error('That match is no longer in your Esportra schedule. Refresh the list.');
-    if (!found.supported) throw new Error('Air only produces Valorant matches for now.');
+    if (!found.supported) throw new Error('Air cannot produce this match’s game yet.');
+    if (this.setup.game !== 'valorant') throw new Error(`This is a Valorant match and Air is set to ${this.setup.game ? gameName(this.setup.game) : 'no game'}. Switch game from the top bar first.`);
     if (account.view().state === 'denied') throw new Error(account.view().warning ?? 'Esportra has not confirmed Air access for this PC.');
     let lineups: [string[], string[]] | null = null;
     try {
@@ -1194,7 +1246,10 @@ export class Production extends EventEmitter {
       version,
       engine: { state: engine.state, port: engine.port, reattached: engine.reattached, error: engine.error },
       setup: this.setup,
-      matches: this.deps.store.data.matches,
+      matches: this.deps.store.data.matches.filter((m) => m.game === this.setup.game),
+      onboarding: { done: this.deps.store.data.onboarding?.done ?? false },
+      game: gameOf(this.setup.game),
+      gameLocked: this.gameLocked(),
       events: this.deps.store.data.events,
       event: this.match ? this.eventOf(this.match) : null,
       match,

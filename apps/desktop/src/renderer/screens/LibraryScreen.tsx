@@ -54,7 +54,7 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const [group, setGroup] = useState<LibraryGroup>('ingame');
   const [open, setOpen] = useState<LibraryItem | null>(null);
   const [playing, setPlaying] = useState(false);
-  const game = s.match?.game ?? 'valorant';
+  const game = s.game?.id ?? 'valorant';
   const items = LIBRARY[game].filter((i) => i.group === group);
   const theme = s.match?.theme ?? s.setup.package;
   // The sample room follows the selected match's teams, players and banner style.

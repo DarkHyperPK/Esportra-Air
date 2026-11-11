@@ -5,10 +5,12 @@ import { SHORTCUTS } from '../components/Global.tsx';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import { JoinPanel, PcModeCard } from '../components/Join.tsx';
+import { ProfilePicker } from '../components/FirstRun.tsx';
 import { SyncScreen } from './SyncScreen.tsx';
 import type { PageProps } from '../App.tsx';
 
 const SECTIONS = [
+  ['setup', 'Setup'],
   ['pc', 'This PC'],
   ['obs', 'OBS connection'],
   ['account', 'Esportra account'],
@@ -74,6 +76,13 @@ export function SettingsScreen(props: PageProps) {
       </nav>
       <div className="stack settings-body">
         <PageHeader eyebrow="Software" title="Settings">How this copy of Air runs on this PC. Teams, players, event and graphics belong to each match.</PageHeader>
+        <section className="panel" id="set-setup">
+          <div className="head"><Cap>Setup · {s.game?.name ?? 'no game chosen'}</Cap><button className="btn quiet small" onClick={() => void run(() => air.restartOnboarding())}>Run first-time setup again</button></div>
+          <div className="body-pad stack" style={{ gap: 10 }}>
+            <ProfilePicker s={s} value={s.setup.profile} onPick={(p) => void run(() => air.chooseProfile(p))} />
+            <p className="faint t-xs">Air checks the right things for your setup. The game is chosen from the top bar.</p>
+          </div>
+        </section>
         <div id="set-pc"><PcModeCard s={s} run={run} /></div>
         <div id="set-obs"><ObsConnection s={s} run={run} /></div>
         <div id="set-account"><SyncScreen {...props} /></div>

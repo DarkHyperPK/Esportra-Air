@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ActionId, Snapshot, Team } from '../../shared/api.ts';
 import { gameName } from '../../shared/games.ts';
+import { StageLight } from '../components/FirstRun.tsx';
 import { EventPeople, LineupEditor, TeamFields, eventName, imageUrl, type Lineups } from '../components/MatchEditors.tsx';
 import { NewMatchWizard } from '../components/NewMatch.tsx';
 import { air } from '../bridge.ts';
@@ -40,7 +41,7 @@ function EsportraMatches({ s, run, openSignIn }: Pick<PageProps, 's' | 'run' | '
           {list.map((m) => {
             const active = s.match?.source?.matchId === m.id;
             return (
-              <button key={m.id} aria-pressed={active} disabled={!m.supported || e.state === 'denied'} onClick={() => void run(() => air.useEsportraMatch(m.id))} title={m.supported ? undefined : 'Air only produces Valorant matches for now'}>
+              <button key={m.id} aria-pressed={active} disabled={!m.supported || e.state === 'denied'} onClick={() => void run(() => air.useEsportraMatch(m.id))} title={m.supported ? undefined : 'Air cannot produce this game yet'}>
                 <span className="vs" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
                   <span>{m.teamA} <span className="muted">vs</span> {m.teamB}</span>
                   <span className="muted" style={{ fontSize: 11.5 }}>{m.tournament} · {when(m.scheduledAt)}</span>
@@ -139,7 +140,7 @@ function MatchList({ s, run, newMatch }: Pick<PageProps, 's' | 'run'> & { newMat
 }
 
 export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, start, command }: PageProps & { start: () => void; command?: MatchCommand }) {
-  const [wizard, setWizard] = useState(!s.match && s.matches.length === 0);
+  const [wizard, setWizard] = useState(false);
   const [tab, setTab] = useState<Tab>('ready');
   // Commands from the palette (Ctrl+K): open the wizard or a tab of the match.
   useEffect(() => {
@@ -176,11 +177,25 @@ export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, s
 
       <div className="ready-main">
         {!s.match ? (
-          <div className="empty">
-            <h2 className="title-md">No match selected</h2>
-            <p className="muted">Create a match, or pick one from your Esportra schedule.</p>
-            <button className="btn primary" onClick={() => setWizard(true)}>New match</button>
-          </div>
+          s.matches.length === 0 ? (
+            <div className="empty first-show">
+              <StageLight />
+              <div className="first-show-body">
+                <h2 className="title-lg">Set up your first show</h2>
+                <p className="muted">Create your first {s.game?.name ?? ''} match: teams, players, the event and its talent, then rehearse it privately.</p>
+                <div className="fr-actions" style={{ justifyContent: 'center' }}>
+                  <button className="btn primary big" onClick={() => setWizard(true)}>New match</button>
+                  {s.esportra.state === 'signed-out' && <button className="btn big" onClick={openSignIn}>Sign in to load your Esportra matches</button>}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="empty">
+              <h2 className="title-md">No match selected</h2>
+              <p className="muted">Pick a match from the list, or create one.</p>
+              <button className="btn primary" onClick={() => setWizard(true)}>New match</button>
+            </div>
+          )
         ) : (
           <>
             <MatchHero s={s} />

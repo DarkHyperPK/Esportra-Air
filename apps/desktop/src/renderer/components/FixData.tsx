@@ -55,7 +55,7 @@ export function FixData({ s, run, close }: { s: Snapshot; run: Run; close?: () =
         </div>
       </section>
       <section className="stack" style={{ gap: 8 }}>
-        <Cap>Names on screen · Riot ID → display</Cap>
+        <Cap>Names on screen · in-game name → display</Cap>
         {r && r.roster.flat().some((p) => p.name) ? (
           r.roster.flatMap((team, t) => team.map((p, i) => ({ p, t, i }))).filter(({ p }) => p.name).map(({ p, t, i }) => (
             <div key={`${t}:${i}`} style={{ display: 'grid', gridTemplateColumns: '1fr 14px 1fr', gap: 8, alignItems: 'center' }}>

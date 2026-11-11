@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -41,6 +42,18 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
   const store = new Store(join(dir, 'air.json'));
   const production = new Production({ store, engine, obs, capture, ingest: { target: (url) => targets.push(url) }, version: 'test' });
   try {
+    // First run: no game and no matches until the producer chooses a game.
+    assert.deepEqual([production.snapshot().onboarding.done, production.snapshot().game], [false, null]);
+    await assert.rejects(production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 3 }), /Choose a game first/);
+    await assert.rejects(production.finishOnboarding(), /Choose a game first/);
+    await assert.rejects(production.chooseGame('cs2'), /coming later/);
+    await production.chooseGame('valorant');
+    await production.chooseProfile('player-pcs');
+    await production.finishOnboarding();
+    assert.deepEqual([production.snapshot().game?.name, production.setup.profile], ['Valorant', 'player-pcs']);
+    const reopened = new Store(join(dir, 'air.json'));
+    assert.deepEqual([reopened.data.onboarding?.done, reopened.data.setup.game], [true, 'valorant'], 'first run is not shown again');
+
     // No match yet: nothing on the Match step, capture refuses.
     assert.equal(production.snapshot().match, null);
     assert.throws(() => production.startCapture(), /Choose or create a match/);
@@ -48,6 +61,9 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await assert.rejects(production.createQuickMatch({ teamA: '<b>x</b>', teamB: 'Bravo', bestOf: 3 }), /plain text/);
 
     await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 3 });
+    store.data.matches.push({ ...production.match!, id: randomUUID(), game: 'cs2' });
+    assert.deepEqual(production.snapshot().matches.map((m) => m.game), ['valorant'], 'matches of another game are kept but hidden');
+    store.data.matches.pop();
     const match = production.match!;
     assert.match(match.code, /^Q[0-9A-F]{7}$/);
     assert.match(targets.at(-1)!, new RegExp(`match=${match.code}&role=ingest`));
@@ -160,6 +176,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(snap.checks.find((c) => c.id === 'scenes')!.health, 'ok');
     assert.equal(snap.checks.find((c) => c.id === 'feed')!.action!.id, 'start-capture');
     production.startCapture();
+    assert.match(production.snapshot().gameLocked ?? '', /after the show/, 'the game cannot switch while game data runs');
     assert.equal(production.snapshot().feed.state, 'waiting');
 
     // Triggers write the state the overlays already understand.
@@ -289,6 +306,7 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
   const obsServer = new FakeObs();
   const obs = new ObsLink(() => obsServer, { backoffMs: [50] });
   const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs, capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
   const wait = async (check: () => boolean | Promise<boolean>, label: string, ms = 4000) => {
     const end = Date.now() + ms;
     while (!(await check())) {
@@ -443,6 +461,7 @@ test('an Esportra match becomes the match on this PC, with its tournament, teams
   const values = new Map<string, string>();
   const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets: { get: (k) => values.get(k) ?? null, set: (k, v) => void (v === null ? values.delete(k) : values.set(k, v)) }, deviceId: randomUUID(), deviceName: 'TEST-PC' });
   const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, esportra, version: 'test' });
+  production.setup.game = 'valorant';
   try {
     const row = () => production.snapshot().checks.find((c) => c.id === 'esportra')!;
     assert.equal(row().action!.id, 'sign-in');
@@ -480,7 +499,7 @@ test('an Esportra match becomes the match on this PC, with its tournament, teams
     // A game Air cannot produce, and a refused account, both say why.
     backend.matches.push({ ...wanted, id: randomUUID(), game: 'cs2' });
     await production.esportraRefresh();
-    await assert.rejects(production.useEsportraMatch(backend.matches.at(-1)!.id), /only produces Valorant/);
+    await assert.rejects(production.useEsportraMatch(backend.matches.at(-1)!.id), /cannot produce this match’s game/);
     backend.allowed = false;
     await production.esportraRefresh().catch(() => {});
     assert.equal(row().health, 'warn');
@@ -505,6 +524,7 @@ test('the New match wizard: teams with logos, lineups with Riot IDs and photos r
   const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'wizard-test-key-0123456789ab', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
   await engine.start();
   const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
   const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   try {
     await assert.rejects(production.uploadImage('data:image/gif;base64,R0lGOD'), /PNG, JPEG or WebP/);
@@ -517,12 +537,11 @@ test('the New match wizard: teams with logos, lineups with Riot IDs and photos r
     assert.equal(served.headers.get('content-type'), 'image/png');
 
     const base = {
-      game: 'valorant' as const, bestOf: 3 as const,
+      bestOf: 3 as const,
       teams: [{ name: 'Night Owls', tag: 'NOW', color: '#22d3ee', logo }, { name: 'Crimson Five', tag: '', color: '#f43f5e', logo: '' }] as never,
       players: [[{ name: 'Juno Park', realName: 'June Park', gameId: 'Juno#EU1', photo }], []] as never,
       stage: 'Playoffs',
     };
-    await assert.rejects(production.createMatch({ ...base, game: 'cs2' }), /coming to Air/);
     await assert.rejects(production.createMatch({ ...base, teams: [{ name: 'Same', tag: '', color: '#ffffff', logo: '' }, { name: 'same', tag: '', color: '#000000', logo: '' }] as never }), /different names/);
     await assert.rejects(production.createMatch({ ...base, teams: [{ name: 'A', tag: '', color: '#fff', logo: 'javascript:alert(1)' }, { name: 'B', tag: '', color: '#000', logo: '' }] as never }), /logo again/);
     await production.createMatch(base);
@@ -560,6 +579,7 @@ test('agent and map art is downloaded to this PC and served by the engine; Readi
   await engine.start();
   const obs = new ObsLink(() => new FakeObs(), { backoffMs: [50] });
   const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs, capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test', artOrigin: `http://127.0.0.1:${(host.address() as { port: number }).port}/` });
+  production.setup.game = 'valorant';
   const row = () => production.snapshot().checks.find((c) => c.id === 'art')!;
   try {
     await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
@@ -593,6 +613,7 @@ test('rehearsal plays the match privately with its own players, and autopilot fi
   await engine.start();
   const capture = new FakeCapture();
   const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture, ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
   const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   const view = () => production.snapshot().rehearsal;
   const wait = async (check: () => boolean, label: string, ms = 60_000) => {
@@ -606,7 +627,7 @@ test('rehearsal plays the match privately with its own players, and autopilot fi
     await assert.rejects(production.rehearsal.start(), /Choose a match/);
     const photo = await production.uploadImage(PNG);
     await production.createMatch({
-      game: 'valorant', bestOf: 1,
+      bestOf: 1,
       teams: [{ name: 'Night Owls', tag: 'NOW', color: '#22d3ee', logo: '' }, { name: 'Crimson Five', tag: 'CF', color: '#f43f5e', logo: '' }] as never,
       players: [[{ name: 'Juno Park', realName: '', gameId: 'Juno#EU1', photo }], [{ name: 'Kai Ito', realName: '', gameId: 'Kai#JP1', photo: '' }]] as never,
     });

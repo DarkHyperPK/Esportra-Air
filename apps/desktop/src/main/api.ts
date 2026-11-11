@@ -2,6 +2,7 @@
 import type { ApiMethod, Snapshot } from '../shared/api.ts';
 import type { Production } from './production.ts';
 import type { EventPatch, SponsorInput, TalentInput } from '../shared/model.ts';
+import type { GameId, Profile } from '../shared/games.ts';
 import type { ObsLink } from './obs.ts';
 import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 
@@ -30,6 +31,10 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'createMatch': await p.createMatch(a[0]); break;
     case 'uploadImage': return p.uploadImage(String(a[0]));
     case 'updateMatch': await p.updateMatch(String(a[0]), a[1] ?? {}); break;
+    case 'chooseGame': await p.chooseGame(String(a[0]) as GameId); break;
+    case 'chooseProfile': await p.chooseProfile(String(a[0]) as Profile); break;
+    case 'finishOnboarding': await p.finishOnboarding(); break;
+    case 'restartOnboarding': await p.restartOnboarding(); break;
     case 'createEvent': await p.createEvent(String(a[0] ?? '')); break;
     case 'updateEvent': await p.updateEvent(String(a[0]), (a[1] ?? {}) as EventPatch); break;
     case 'saveTalent': await p.saveTalent(String(a[0]), (a[1] ?? {}) as TalentInput); break;

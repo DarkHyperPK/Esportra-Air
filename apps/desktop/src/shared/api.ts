@@ -1,5 +1,5 @@
 import type { LayerGroup, LayerMode } from './layers.ts';
-import type { GameId } from './games.ts';
+import type { GameDef, GameId, Profile } from './games.ts';
 import type { SceneKey, SlotId } from './scenes.ts';
 import type { EventInfo, EventPatch, SponsorInput, TalentInput } from './model.ts';
 
@@ -77,6 +77,10 @@ export type BannerTheme = (typeof BANNER_THEMES)[number];
 export interface Setup {
   id: string;
   name: string;
+  /** The game this production makes graphics for (chosen in first run, switched from the top bar). */
+  game: GameId | null;
+  /** How the production's PCs are laid out; null until the producer chooses. */
+  profile: Profile | null;
   /** The HUD's banner theme (core/hud-settings.js). */
   package: BannerTheme;
   /** @deprecated Moved onto each match (event, sponsors). Kept only to migrate older saves. */
@@ -224,6 +228,12 @@ export interface Snapshot {
   setup: Setup;
   matches: Match[];
   match: Match | null;
+  /** First run is shown until it is finished (never on a capture-only PC). */
+  onboarding: { done: boolean };
+  /** The chosen game's module, or null before first run picks one. */
+  game: GameDef | null;
+  /** Why the game cannot be switched right now (a show is live), or null. */
+  gameLocked: string | null;
   events: EventInfo[];
   /** The selected match's event. */
   event: EventInfo | null;
@@ -283,7 +293,6 @@ export interface Snapshot {
 }
 
 export interface NewMatchInput {
-  game: GameId;
   bestOf: 1 | 3 | 5;
   teams: [Team, Team];
   players: [Array<Omit<PlayerInfo, 'id'> & { id?: string }>, Array<Omit<PlayerInfo, 'id'> & { id?: string }>];
@@ -301,7 +310,6 @@ export interface QuickMatchInput {
   teamA: string;
   teamB: string;
   bestOf: 1 | 3 | 5;
-  game?: GameId;
 }
 
 export interface CorrectionInput {
@@ -343,6 +351,11 @@ export interface AirApi {
   createQuickMatch(input: QuickMatchInput): Promise<Snapshot>;
   selectMatch(id: string): Promise<Snapshot>;
   updateMatch(id: string, patch: MatchPatch): Promise<Snapshot>;
+  /** The game for the whole app. Refused while a show is live. */
+  chooseGame(id: GameId): Promise<Snapshot>;
+  chooseProfile(profile: Profile): Promise<Snapshot>;
+  finishOnboarding(): Promise<Snapshot>;
+  restartOnboarding(): Promise<Snapshot>;
   createEvent(name: string): Promise<Snapshot>;
   updateEvent(id: string, patch: EventPatch): Promise<Snapshot>;
   /** Adds (no id) or changes a person on air. A camera link gets its id here. */

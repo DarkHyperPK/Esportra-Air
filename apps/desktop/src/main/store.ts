@@ -31,6 +31,8 @@ export interface Saved {
   deviceId?: string;
   /** What this PC does: run the show, or only capture the game and send it to a producer's Air. */
   mode?: 'production' | 'capture';
+  /** First run: shown until finished. Saves from before first run existed count as finished. */
+  onboarding?: { done: boolean };
   /** Producer side: allow other PCs on the network to join. The code itself is kept encrypted. */
   join?: { enabled: boolean; port: number };
   /** Capture-only side: the producer's address and this PC's role. The code is kept encrypted. */
@@ -76,6 +78,8 @@ export function defaultSetup(): Setup {
   return {
     id: randomUUID(),
     name: 'My production',
+    game: null,
+    profile: null,
     package: 'broadcast',
     brand: { eventName: '', stage: '' },
     sponsors: [],
@@ -87,7 +91,7 @@ export function defaultSetup(): Setup {
 }
 
 export function defaults(): Saved {
-  return { version: 1, setup: defaultSetup(), matches: [], events: [], selectedMatchId: null, owned: emptyOwned(), enginePort: 5300 };
+  return { version: 1, setup: defaultSetup(), onboarding: { done: false }, matches: [], events: [], selectedMatchId: null, owned: emptyOwned(), enginePort: 5300 };
 }
 
 export class Store {
@@ -102,6 +106,11 @@ export class Store {
       if (saved.version === 1) this.data = { ...defaults(), ...saved, setup: { ...defaultSetup(), ...saved.setup } as Setup };
       // Every screen needs a UUID output alias (older saves may lack one).
       this.migrate();
+      // Saves from before first run existed were set up by hand, and every match then was Valorant.
+      if (saved.version === 1 && !saved.onboarding) {
+        this.data.onboarding = { done: true };
+        this.data.setup.game ??= 'valorant';
+      }
     } catch {
       // First run, or an unreadable file: start from defaults (the old file is overwritten on save).
     }

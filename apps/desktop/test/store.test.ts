@@ -58,3 +58,20 @@ test('casters and sponsors become the event’s, and each match keeps exactly wh
   assert.deepEqual(again.data.events, store.data.events);
   assert.deepEqual(again.data.matches, store.data.matches);
 });
+
+test('first run is for new installs only; older saves count as set up for Valorant', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-store-'));
+  const fresh = new Store(join(dir, 'none.json'));
+  assert.deepEqual([fresh.data.onboarding, fresh.data.setup.game, fresh.data.setup.profile], [{ done: false }, null, null]);
+  fresh.save();
+  assert.deepEqual(new Store(join(dir, 'none.json')).data.onboarding, { done: false }, 'a new install that has not finished first run still sees it');
+
+  const file = join(dir, 'old.json');
+  const old = defaults() as any;
+  delete old.onboarding;
+  delete old.setup.game;
+  delete old.setup.profile;
+  writeFileSync(file, JSON.stringify(old));
+  const store = new Store(file);
+  assert.deepEqual([store.data.onboarding, store.data.setup.game, store.data.setup.profile], [{ done: true }, 'valorant', null]);
+});

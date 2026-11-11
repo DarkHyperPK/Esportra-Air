@@ -65,7 +65,7 @@ export function CamerasPanel({ s, run }: { s: Snapshot; run: Run }) {
                 </div>
               ))}
             </div>
-            <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Send each player their link. It opens their camera in a browser (VDO.Ninja, no account); nothing is recorded. The dot turns green once the picture arrives. Delay lines the camera up with the game feed.</p>
+            <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Send each player their link. It opens their camera in a browser, with nothing to install; nothing is recorded. The dot turns green once the picture arrives. Delay lines the camera up with the game feed.</p>
           </>
         )}
       </div>

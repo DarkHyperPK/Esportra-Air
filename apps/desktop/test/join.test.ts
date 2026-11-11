@@ -62,6 +62,7 @@ test('a capture-only PC joins with the code and its game data reaches the produc
   const store = new Store(join(dir, 'air.json'));
   store.data.join = { enabled: false, port: joinPort };
   const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, lanAddresses: () => ['192.168.1.40'], version: 'test' });
+  production.setup.game = 'valorant';
   // The other PC: its own store, secrets and ingest client.
   const otherStore = new Store(join(dir, 'other.json'));
   const otherSecrets = new Map<string, string>();
