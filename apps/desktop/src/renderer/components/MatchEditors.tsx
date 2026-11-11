@@ -1,8 +1,6 @@
-// Editors shared by the New match wizard and a match's own pages: teams, lineups, talent and event.
+// Editors shared by the New match wizard and a match's own pages: teams, lineups and pictures.
 import { useRef, useState } from 'react';
 import type { Match, PlayerInfo, Snapshot, Team } from '../../shared/api.ts';
-import { ROLE_NAME, SPONSOR_TIERS, TALENT_ROLES, TIER_NAME, type EventInfo, type SponsorTier, type TalentRole } from '../../shared/model.ts';
-import type { Run } from '../App.tsx';
 import { gameOf, type GameId } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 
@@ -99,69 +97,3 @@ export function LineupEditor({ s, teams, lineups, onChange, game }: { s: Snapsho
   );
 }
 
-/**
- * The event's people on air and sponsors. With a match, each can be switched on or off for it;
- * without one, this edits the event itself. Every change is saved straight away.
- */
-export function EventPeople({ s, run, event, match }: { s: Snapshot; run: Run; event: EventInfo | null; match?: Match | null }) {
-  const [person, setPerson] = useState({ name: '', role: 'play-by-play' as TalentRole });
-  const [sponsor, setSponsor] = useState({ name: '', tier: 'partner' as SponsorTier });
-  const [eventName, setEventName] = useState('');
-  if (!event) {
-    return (
-      <form className="stack" style={{ gap: 10, maxWidth: 420 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.createEvent(eventName)); }}>
-        <label className="field"><span>Event name</span><input value={eventName} onChange={(e) => setEventName(e.target.value)} maxLength={60} placeholder="e.g. Community Cup" /></label>
-        <button className="btn primary" disabled={!eventName.trim()}>Create event</button>
-      </form>
-    );
-  }
-  const off = (list: string[], id: string, on: boolean) => (on ? list.filter((x) => x !== id) : [...list, id]);
-  return (
-    <div className="grid2" style={{ alignItems: 'start' }}>
-      <section className="stack" style={{ gap: 8 }}>
-        <span className="cap">People on air · {event.name}</span>
-        {event.talent.length === 0 && <span className="muted" style={{ fontSize: 12.5 }}>Nobody yet.</span>}
-        {event.talent.map((t) => {
-          const on = !match?.talentOff.includes(t.id);
-          return (
-            <div key={t.id} className="row-item" style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto auto', gap: 12, alignItems: 'center' }}>
-              <ImagePick s={s} value={t.photo} size={40} round label={`Photo of ${t.name}`} onChange={(photo) => void run(() => air.saveTalent(event.id, { id: t.id, photo }))} />
-              <span><b>{t.name}</b><br /><span className="muted" style={{ fontSize: 12.5 }}>{ROLE_NAME[t.role]}{t.handle ? ` · ${t.handle}` : ''}</span></span>
-              {match
-                ? <button type="button" className="switch" role="switch" aria-checked={on} aria-label={`${t.name} on air for this match`} onClick={() => void run(() => air.updateMatch(match.id, { talentOff: off(match.talentOff, t.id, !on) }))} />
-                : <span />}
-              <button type="button" className="btn quiet small" onClick={() => void run(() => air.removeTalent(event.id, t.id))}>Remove</button>
-            </div>
-          );
-        })}
-        <form style={{ display: 'flex', gap: 8 }} onSubmit={async (e) => { e.preventDefault(); if (await run(() => air.saveTalent(event.id, person))) setPerson({ ...person, name: '' }); }}>
-          <input className="cell" aria-label="Name" value={person.name} onChange={(e) => setPerson({ ...person, name: e.target.value })} placeholder="Name" maxLength={40} />
-          <select className="cell" aria-label="Role" value={person.role} onChange={(e) => setPerson({ ...person, role: e.target.value as TalentRole })}>{TALENT_ROLES.map((r) => <option key={r} value={r}>{ROLE_NAME[r]}</option>)}</select>
-          <button className="btn" disabled={!person.name.trim()}>Add</button>
-        </form>
-      </section>
-      <section className="stack" style={{ gap: 8 }}>
-        <span className="cap">Sponsors</span>
-        {event.sponsors.length === 0 && <span className="muted" style={{ fontSize: 12.5 }}>None yet.</span>}
-        {event.sponsors.map((x) => {
-          const on = !match?.sponsorsOff.includes(x.id);
-          return (
-            <div key={x.id} className="row-item" style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto auto', gap: 12, alignItems: 'center' }}>
-              <ImagePick s={s} value={x.logo} size={40} label={`Logo of ${x.name}`} onChange={(logo) => void run(() => air.saveSponsor(event.id, { id: x.id, logo }))} />
-              <span><b>{x.name}</b><br /><span className="muted" style={{ fontSize: 12.5 }}>{TIER_NAME[x.tier]}</span></span>
-              {match
-                ? <button type="button" className="switch" role="switch" aria-checked={on} aria-label={`${x.name} on for this match`} onClick={() => void run(() => air.updateMatch(match.id, { sponsorsOff: off(match.sponsorsOff, x.id, !on) }))} />
-                : <span />}
-              <button type="button" className="btn quiet small" onClick={() => void run(() => air.removeSponsor(event.id, x.id))}>Remove</button>
-            </div>
-          );
-        })}
-        <form style={{ display: 'flex', gap: 8 }} onSubmit={async (e) => { e.preventDefault(); if (await run(() => air.saveSponsor(event.id, sponsor))) setSponsor({ ...sponsor, name: '' }); }}>
-          <input className="cell" aria-label="Sponsor name" value={sponsor.name} onChange={(e) => setSponsor({ ...sponsor, name: e.target.value })} placeholder="Sponsor name" maxLength={40} />
-          <select className="cell" aria-label="Tier" value={sponsor.tier} onChange={(e) => setSponsor({ ...sponsor, tier: e.target.value as SponsorTier })}>{SPONSOR_TIERS.map((t) => <option key={t} value={t}>{TIER_NAME[t]}</option>)}</select>
-          <button className="btn" disabled={!sponsor.name.trim()}>Add</button>
-        </form>
-      </section>
-    </div>
-  );
-}

@@ -6,7 +6,7 @@ import type { EventInfo, EventPatch, SponsorInput, TalentInput } from './model.t
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
-export type Page = 'ready' | 'console' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings' | 'setup';
+export type Page = 'ready' | 'event' | 'console' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings' | 'setup';
 export type Health = 'ok' | 'warn' | 'off' | 'bad';
 
 export interface Team {

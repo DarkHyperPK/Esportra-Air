@@ -1,239 +1,115 @@
+// Matches (approved mock): every match grouped by when, with how prepared it is; Esportra's schedule
+// and quick matches in one list. Opening a match shows its workspace.
 import { useEffect, useState } from 'react';
-import type { ActionId, Snapshot, Team } from '../../shared/api.ts';
-import { gameName } from '../../shared/games.ts';
+import type { ActionId, Match } from '../../shared/api.ts';
+import type { EsportraMatch } from '../../shared/esportra.ts';
+import { groupByWhen, prepState } from '../../shared/schedule.ts';
 import { StageLight } from '../components/FirstRun.tsx';
-import { EventPeople, LineupEditor, TeamFields, eventName, imageUrl, type Lineups } from '../components/MatchEditors.tsx';
 import { NewMatchWizard } from '../components/NewMatch.tsx';
 import { air } from '../bridge.ts';
-import { Box, Cap } from '../components/ui.tsx';
-import { AutopilotRules, NextFive } from '../components/Autopilot.tsx';
-import { RehearsePanel } from '../components/Rehearse.tsx';
 import type { MatchCommand, PageProps } from '../App.tsx';
+import { MatchWorkspace, TeamMark, type Tab } from './MatchWorkspace.tsx';
 
-const when = (iso: string | null) => {
-  if (!iso) return 'Time not set';
-  const d = new Date(iso);
-  const day = d.toDateString() === new Date().toDateString() ? 'Today' : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-  return `${day} · ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
-};
+type Row = { key: string; at: string | null; createdAt: number; local: Match | null; remote: EsportraMatch | null };
 
-/** The producer's scheduled Esportra matches, chosen with one click. */
-function EsportraMatches({ s, run, openSignIn }: Pick<PageProps, 's' | 'run' | 'openSignIn'>) {
-  const e = s.esportra;
-  if (e.state === 'signed-out') {
-    return (
-      <section className="stack" style={{ gap: 8 }}>
-        <Cap>Esportra tournaments</Cap>
-        <button className="btn" onClick={openSignIn}>Sign in to Esportra</button>
-        <p className="muted" style={{ fontSize: 12.5 }}>Your scheduled matches load with their teams, logos and best-of.</p>
-      </section>
-    );
-  }
-  const list = e.matches.filter((m) => m.status !== 'completed' && m.status !== 'cancelled').slice(0, 8);
-  return (
-    <section className="stack" style={{ gap: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Cap>Esportra tournaments</Cap>
-        <button className="btn quiet small" onClick={() => void run(() => air.esportraRefresh())}>Refresh</button>
-      </div>
-      {list.length === 0 ? <p className="muted" style={{ fontSize: 12.5 }}>No scheduled matches right now{e.state === 'online' ? '' : ' (the list below is the last one saved)'}.</p> : (
-        <div className="picker" role="group" aria-label="Esportra matches">
-          {list.map((m) => {
-            const active = s.match?.source?.matchId === m.id;
-            return (
-              <button key={m.id} aria-pressed={active} disabled={!m.supported || e.state === 'denied'} onClick={() => void run(() => air.useEsportraMatch(m.id))} title={m.supported ? undefined : 'Air cannot produce this game yet'}>
-                <span className="vs" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
-                  <span>{m.teamA} <span className="muted">vs</span> {m.teamB}</span>
-                  <span className="muted" style={{ fontSize: 11.5 }}>{m.tournament} · {when(m.scheduledAt)}</span>
-                </span>
-                <span className="muted mono" style={{ fontSize: 11 }}>Bo{m.bestOf}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
+const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—');
+const dayClock = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB', { weekday: 'short' }) + ' ' + clock(iso) : '—');
 
-type Tab = 'ready' | 'teams' | 'talent' | 'autopilot' | 'rehearse';
-
-function MatchHero({ s }: { s: Snapshot }) {
-  const m = s.match!;
-  const side = (i: 0 | 1) => (
-    <div className={`hero-team ${i ? 'r' : ''}`} style={{ ['--team' as string]: m.teams[i].color }}>
-      {m.teams[i].logo ? <img src={imageUrl(s, m.teams[i].logo)} alt="" /> : <span className="hero-crest">{m.teams[i].tag}</span>}
-      <div><div className="hero-name">{m.teams[i].name}</div><div className="muted" style={{ fontSize: 12 }}>{m.players[i].length ? `${m.players[i].length} players` : 'No lineup yet'}</div></div>
-    </div>
-  );
-  return (
-    <header className="hero" style={{ ['--hero-a' as string]: m.teams[0].color, ['--hero-b' as string]: m.teams[1].color }}>
-      {side(0)}
-      <div className="hero-mid">
-        <span className="game-badge">{gameName(m.game)}</span>
-        <span className="hero-vs">VS</span>
-        <span className="muted" style={{ fontSize: 12 }}>{s.event?.name || 'No event'}{m.stage ? ` · ${m.stage}` : ''} · Bo{m.bestOf}</span>
-      </div>
-      {side(1)}
-    </header>
-  );
-}
-
-function TeamsTab({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const m = s.match!;
-  const [teams, setTeams] = useState<[Team, Team]>(m.teams);
-  const [lineups, setLineups] = useState<Lineups>(m.players);
-  const dirty = JSON.stringify(teams) !== JSON.stringify(m.teams) || JSON.stringify(lineups) !== JSON.stringify(m.players);
-  return (
-    <div className="stack" style={{ gap: 16 }}>
-      <div className="teams-vs">
-        <TeamFields s={s} team={teams[0]} index={0} onChange={(t) => setTeams([t, teams[1]])} />
-        <span className="vs-mark">VS</span>
-        <TeamFields s={s} team={teams[1]} index={1} onChange={(t) => setTeams([teams[0], t])} />
-      </div>
-      <LineupEditor s={s} teams={teams} lineups={lineups} onChange={setLineups} game={m.game} />
-      <div className="savebar">
-        <span className="muted" style={{ fontSize: 12.5 }}>{dirty ? 'Unsaved changes.' : 'Saved. On air as soon as you save.'}</span>
-        <button className="btn quiet" disabled={!dirty} onClick={() => { setTeams(m.teams); setLineups(m.players); }}>Discard</button>
-        <button className="btn primary" disabled={!dirty} onClick={() => void run(() => air.updateMatch(m.id, { teams, players: lineups.map((t) => t.filter((p) => p.name.trim())) as never }))}>Save teams and players</button>
-      </div>
-    </div>
-  );
-}
-
-function TalentTab({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const m = s.match!;
-  const [stage, setStage] = useState(m.stage);
-  return (
-    <div className="stack" style={{ gap: 16 }}>
-      <form style={{ display: 'flex', gap: 8, alignItems: 'flex-end', maxWidth: 480 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.updateMatch(m.id, { stage })); }}>
-        <label className="field" style={{ flex: 1 }}><span>Stage (lower thirds)</span><input value={stage} onChange={(e) => setStage(e.target.value)} maxLength={40} placeholder="e.g. Playoffs" list="event-stages" /></label>
-        <datalist id="event-stages">{(s.event?.stages ?? []).map((x) => <option key={x} value={x} />)}</datalist>
-        <button className="btn" disabled={stage === m.stage}>Save stage</button>
-      </form>
-      <EventPeople s={s} run={run} event={s.event} match={m} />
-      <span className="muted" style={{ fontSize: 12.5 }}>People and sponsors belong to the event; the switches choose who appears in this match.</span>
-    </div>
-  );
-}
-
-function MatchList({ s, run, newMatch }: Pick<PageProps, 's' | 'run'> & { newMatch: () => void }) {
-  return (
-    <section className="stack" style={{ gap: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Cap>On this PC</Cap>
-      </div>
-      {s.matches.length === 0 && <p className="muted" style={{ fontSize: 12.5 }}>No matches yet.</p>}
-      <div className="match-list" role="group" aria-label="Matches">
-        {s.matches.slice(0, 12).map((m) => (
-          <button key={m.id} className="match-item" aria-pressed={m.id === s.match?.id} onClick={() => void run(() => air.selectMatch(m.id))}>
-            <span className="mi-crests">
-              {m.teams.map((t, i) => (t.logo ? <img key={i} src={imageUrl(s, t.logo)} alt="" /> : <span key={i} className="mi-crest" style={{ background: t.color }} />))}
-            </span>
-            <span className="mi-text"><b>{m.teams[0].name} <span className="muted">vs</span> {m.teams[1].name}</b><span className="muted">{gameName(m.game)} · Bo{m.bestOf}{eventName(s, m) ? ` · ${eventName(s, m)}` : ''}</span></span>
-          </button>
-        ))}
-      </div>
-      <button className="btn" onClick={newMatch}>+ New match</button>
-    </section>
-  );
-}
-
-export function ReadyScreen({ s, run, go, askCapture, openCasters, openSignIn, start, command }: PageProps & { start: () => void; command?: MatchCommand }) {
+export function ReadyScreen({ s, run, go, askCapture, openSignIn, start, command, open, setOpen }: PageProps & { start: () => void; command?: MatchCommand; open: boolean; setOpen: (open: boolean) => void }) {
   const [wizard, setWizard] = useState(false);
   const [tab, setTab] = useState<Tab>('ready');
   // Commands from the palette (Ctrl+K): open the wizard or a tab of the match.
   useEffect(() => {
     if (!command) return;
     if (command.name === 'new-match') setWizard(true);
-    else setTab(command.name);
+    else if (s.match) {
+      setTab(command.name);
+      setOpen(true);
+    }
   }, [command]);
-  const informational = (id: string, health: string) => id === 'esportra' && health === 'off';
-  const counted = s.checks.filter((c) => !informational(c.id, c.health));
-  const ready = counted.filter((c) => c.health === 'ok').length;
-  const all = ready === counted.length;
+  useEffect(() => { if (!s.match) setOpen(false); }, [s.match?.id]);
+
   const act = (id: ActionId) => {
     if (id === 'start-capture') return askCapture();
     if (id === 'download-art') return void run(() => air.artDownload());
     if (id === 'connect-obs') return go('settings');
-    if (id === 'choose-match') return setWizard(true);
-    if (id === 'add-casters') return s.match ? setTab('talent') : openCasters();
+    if (id === 'choose-match') return setOpen(false);
+    if (id === 'add-casters') return setTab('talent');
     if (id === 'open-sources') return go('outputs');
     if (id === 'sign-in') return openSignIn();
     if (id === 'install-graphics') void run(() => air.installGraphics());
   };
-  return (
-    <div className="ready-grid">
-      <aside className="ready-side" aria-label="Matches">
-        <section>
-          <Cap>Matches</Cap>
-          <h1 className="title-lg" style={{ marginTop: 8 }}>Matches</h1>
-          <p className="lead" style={{ marginTop: 6 }}>Everything on air comes from the match: teams, players, event and graphics.</p>
-          <button className="btn primary" style={{ marginTop: 14, width: '100%' }} onClick={() => setWizard(true)}>New match</button>
-        </section>
-        <EsportraMatches s={s} run={run} openSignIn={openSignIn} />
-        <MatchList s={s} run={run} newMatch={() => setWizard(true)} />
-      </aside>
+  const openLocal = async (m: Match) => { if (await run(() => air.selectMatch(m.id))) { setTab('ready'); setOpen(true); } };
+  const openRemote = async (e: EsportraMatch) => { if (await run(() => air.useEsportraMatch(e.id))) { setTab('ready'); setOpen(true); } };
 
-      <div className="ready-main">
-        {!s.match ? (
-          s.matches.length === 0 ? (
-            <div className="empty first-show">
-              <StageLight />
-              <div className="first-show-body">
-                <h2 className="title-lg">Set up your first show</h2>
-                <p className="muted">Create your first {s.game?.name ?? ''} match: teams, players, the event and its talent, then rehearse it privately.</p>
-                <div className="fr-actions" style={{ justifyContent: 'center' }}>
-                  <button className="btn primary big" onClick={() => setWizard(true)}>New match</button>
-                  {s.esportra.state === 'signed-out' && <button className="btn big" onClick={openSignIn}>Sign in to load your Esportra matches</button>}
-                </div>
-              </div>
+  // The wizard stays mounted in one place while the page behind it changes (empty → list → match).
+  const wizardEl = wizard && <NewMatchWizard s={s} run={run} close={() => { setWizard(false); if (s.match) { setTab('ready'); setOpen(true); } }} />;
+  return <>{open && s.match ? <MatchWorkspace s={s} run={run} go={go} tab={tab} setTab={setTab} act={act} start={start} back={() => setOpen(false)} /> : <MatchList s={s} run={run} go={go} openSignIn={openSignIn} newMatch={() => setWizard(true)} openLocal={openLocal} openRemote={openRemote} />}{wizardEl}</>;
+}
+
+function MatchList({ s, run, go, openSignIn, newMatch, openLocal, openRemote }: Pick<PageProps, 's' | 'run' | 'go' | 'openSignIn'> & { newMatch: () => void; openLocal: (m: Match) => void; openRemote: (e: EsportraMatch) => void }) {
+
+  const known = new Set(s.matches.map((m) => m.source?.matchId).filter(Boolean));
+  const remote = s.esportra.matches.filter((e) => e.supported && !known.has(e.id) && e.status !== 'completed' && e.status !== 'cancelled');
+  const rows: Row[] = [
+    ...s.matches.map((m) => ({ key: m.id, at: m.source?.scheduledAt ?? null, createdAt: m.createdAt, local: m, remote: null })),
+    ...remote.map((e) => ({ key: `e:${e.id}`, at: e.scheduledAt, createdAt: 0, local: null, remote: e })),
+  ];
+  const groups = groupByWhen(rows, Date.now());
+  const eventOf = (m: Match) => s.events.find((e) => e.id === m.eventId) ?? null;
+
+  if (rows.length === 0) {
+    return (
+      <>
+        <div className="empty first-show">
+          <StageLight />
+          <div className="first-show-body">
+            <h2 className="title-lg">Set up your first show</h2>
+            <p className="muted">Start with your event: its logo, people on air and sponsors are used by every match. Then add the match.</p>
+            <div className="fr-actions" style={{ justifyContent: 'center' }}>
+              <button className="btn primary big" onClick={() => go('event')}>Set up the event</button>
+              <button className="btn big" onClick={newMatch}>New match</button>
             </div>
-          ) : (
-            <div className="empty">
-              <h2 className="title-md">No match selected</h2>
-              <p className="muted">Pick a match from the list, or create one.</p>
-              <button className="btn primary" onClick={() => setWizard(true)}>New match</button>
-            </div>
-          )
-        ) : (
-          <>
-            <MatchHero s={s} />
-            <div className="tabs" role="tablist" aria-label="Match">
-              {([['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and event'], ['autopilot', 'Autopilot'], ['rehearse', 'Rehearse']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
-              <button role="tab" aria-selected={false} onClick={() => go('setup')}>Graphics</button>
-            </div>
-            {tab === 'teams' && <TeamsTab key={s.match.id} s={s} run={run} />}
-            {tab === 'talent' && <TalentTab key={s.match.id} s={s} run={run} />}
-            {tab === 'autopilot' && <AutopilotRules s={s} run={run} rehearse={() => setTab('rehearse')} />}
-            {tab === 'rehearse' && <RehearsePanel s={s} run={run} />}
-            {tab === 'ready' && (
-              <>
-                <div className="row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                  <h2 className="title-md">{all ? 'Ready when you are' : 'Almost ready'}</h2>
-                  <span className={`tag-count ${all ? 'ok' : ''}`}>{ready} of {counted.length} ready</span>
-                </div>
-                <section className="checklist" aria-label="Readiness checks">
-                  {s.checks.map((c) => (
-                    <div className="checkrow" key={c.id}>
-                      <Box health={c.health} />
-                      <span><strong>{c.title}</strong><span className="d">{c.detail}</span></span>
-                      {c.action ? <button className="btn fix" onClick={() => act(c.action!.id)}>{c.action.label}</button> : <span />}
-                    </div>
-                  ))}
-                </section>
-                <NextFive s={s} />
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button className="btn primary big" disabled={!!s.autopilotBlock} onClick={() => void run(() => air.autopilotStart()).then((ok) => ok && start())}>Start autopilot</button>
-                  <button className="btn big" onClick={() => void run(() => air.autopilotStop()).then(start)}>Run manually</button>
-                  <span className="muted" style={{ fontSize: 12.5, maxWidth: 420 }}>{s.autopilotBlock ?? 'Autopilot puts full-screen graphics up for you after a hold window you can stop with H. Off unless you start it.'}</span>
-                </div>
-              </>
-            )}
-          </>
-        )}
+            {s.esportra.state === 'signed-out' && <button className="btn quiet" onClick={openSignIn}>Sign in to load your Esportra matches</button>}
+          </div>
+        </div>
+      </>
+    );
+  }
+  return (
+    <div className="stack" style={{ gap: 22 }}>
+      <div className="between">
+        <div><h1 className="title-lg">Matches</h1><p className="muted">{s.events.length === 1 ? s.events[0]!.name : `${s.events.length} events`}</p></div>
+        <div className="row-gap">
+          {s.esportra.state === 'signed-out'
+            ? <button className="btn quiet" onClick={openSignIn}>Sign in to load your Esportra matches</button>
+            : <button className="btn quiet" onClick={() => void run(() => air.esportraRefresh())}>Refresh from Esportra</button>}
+          <button className="btn primary" onClick={newMatch}>New match</button>
+        </div>
       </div>
-      {wizard && <NewMatchWizard s={s} run={run} close={() => { setWizard(false); setTab('ready'); }} />}
+      {groups.map(({ group, rows: list }) => (
+        <section key={group} className="stack" style={{ gap: 8 }}>
+          <h2 className="title-sm">{group}</h2>
+          <div className="lst">
+            {list.map((r) => {
+              const teams = r.local ? r.local.teams : null;
+              const state = r.local ? prepState(r.local, eventOf(r.local)) : null;
+              const selected = r.local && r.local.id === s.match?.id;
+              return (
+                <button key={r.key} className="li mrow" aria-current={selected ? 'true' : undefined} onClick={() => void (r.local ? openLocal(r.local) : openRemote(r.remote!))}>
+                  <span className="mono t-sm">{group === 'Today' ? clock(r.at) : dayClock(r.at)}</span>
+                  <span className="mrow-teams">
+                    {teams ? <><TeamMark s={s} team={teams[0]} size={26} /><b>{teams[0].name}</b><span className="faint">vs</span><b>{teams[1].name}</b><TeamMark s={s} team={teams[1]} size={26} /></>
+                      : <><b>{r.remote!.teamA}</b><span className="faint">vs</span><b>{r.remote!.teamB}</b></>}
+                  </span>
+                  <span className="muted t-sm">Best of {r.local?.bestOf ?? r.remote!.bestOf}{r.local ? (eventOf(r.local) ? ` · ${eventOf(r.local)!.name}` : '') : ` · ${r.remote!.tournament}`}</span>
+                  {state ? <span className={`state ${state.health}`}><i className={`dot ${state.health}`} />{selected ? 'Selected · ' : ''}{state.label}</span> : <span className="state"><i className="dot off" />From Esportra</span>}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

@@ -85,3 +85,14 @@ export function onAir(match: Pick<Match, 'talentOff' | 'sponsorsOff'>, event: Ev
     sponsors: event.sponsors.filter((s) => !sponsorsOff.has(s.id)),
   };
 }
+
+/** The browser link a person opens to send their camera (nothing to install; nothing is recorded). */
+export function cameraLinkUrl(id: string, label: string): string {
+  return `https://vdo.ninja/?push=${encodeURIComponent(id)}&webcam&autostart&quality=0&label=${encodeURIComponent(label)}`;
+}
+
+/** Each sponsor's share of the HUD's rotation (0..1), from the tier weights. */
+export function rotationShare(sponsors: Sponsor[]): Record<string, number> {
+  const total = sponsors.reduce((n, s) => n + TIER_WEIGHT[s.tier], 0);
+  return Object.fromEntries(sponsors.map((s) => [s.id, total ? TIER_WEIGHT[s.tier] / total : 0]));
+}

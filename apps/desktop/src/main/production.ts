@@ -34,7 +34,7 @@ import type { CamsView } from '../shared/api.ts';
 import type { Preset, SegmentEdit } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 import { HEX, IMAGE, text } from './validate.ts';
-import type { EventInfo, EventPatch, SponsorInput, TalentInput } from '../shared/model.ts';
+import { cameraLinkUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
 import type { MatchPatch } from '../shared/api.ts';
 import { applyEventPatch, engineConfig, newEvent, onAir, renewTalentLink, upsertSponsor, upsertTalent, validOff } from './event-model.ts';
 
@@ -241,6 +241,11 @@ export class Production extends EventEmitter {
     return game;
   }
 
+  /** Switching match changes every graphic on air; not while a show is running. */
+  private assertCanSwitch() {
+    if (this.gameLocked()) throw new Error('Stop game data or the test round before switching matches.');
+  }
+
   async chooseGame(id: GameId) {
     const game = gameOf(id);
     if (!game) throw new Error('Choose one of the games in the list.');
@@ -378,6 +383,7 @@ export class Production extends EventEmitter {
   // ── matches ──
 
   async createQuickMatch(input: QuickMatchInput) {
+    this.assertCanSwitch();
     const names = [text(input.teamA, 40, 'Team A'), text(input.teamB, 40, 'Team B')];
     if (names[0]!.toLowerCase() === names[1]!.toLowerCase()) throw new Error('The two teams need different names.');
     if (![1, 3, 5].includes(input.bestOf)) throw new Error('Choose best of 1, 3 or 5.');
@@ -398,6 +404,7 @@ export class Production extends EventEmitter {
 
   /** The New match wizard: game, teams, lineups, talent, event and sponsors in one go. */
   async createMatch(input: NewMatchInput) {
+    this.assertCanSwitch();
     const game = this.requireGame();
     if (![1, 3, 5].includes(input.bestOf)) throw new Error('Choose best of 1, 3 or 5.');
     const teams = validTeams(input.teams);
@@ -483,6 +490,7 @@ export class Production extends EventEmitter {
 
   async selectMatch(id: string) {
     if (!this.deps.store.data.matches.some((m) => m.id === id)) throw new Error('That match is no longer available.');
+    if (this.deps.store.data.selectedMatchId !== id) this.assertCanSwitch();
     if (this.deps.store.data.selectedMatchId !== id) this.rehearsal.stop();
     this.deps.store.data.selectedMatchId = id;
     this.save();
@@ -935,6 +943,7 @@ export class Production extends EventEmitter {
     const account = this.esportra;
     const found = account.view().matches.find((m) => m.id === matchId);
     if (!found) throw new Error('That match is no longer in your Esportra schedule. Refresh the list.');
+    if (this.match?.source?.matchId !== matchId) this.assertCanSwitch();
     if (!found.supported) throw new Error('Air cannot produce this match’s game yet.');
     if (this.setup.game !== 'valorant') throw new Error(`This is a Valorant match and Air is set to ${this.setup.game ? gameName(this.setup.game) : 'no game'}. Switch game from the top bar first.`);
     if (account.view().state === 'denied') throw new Error(account.view().warning ?? 'Esportra has not confirmed Air access for this PC.');
@@ -976,17 +985,12 @@ export class Production extends EventEmitter {
     return (this.deps.store.data.cams ??= { layout: 'ingame', delayMs: 0, ids: [[null, null, null, null, null], [null, null, null, null, null]] });
   }
 
-  /** The link a player opens on their own PC to send their camera (VDO.Ninja, no account needed). */
-  private pushUrl(id: string, label: string) {
-    return `https://vdo.ninja/?push=${id}&webcam&autostart&quality=0&label=${encodeURIComponent(label)}`;
-  }
-
   private camsView(connected?: boolean[][]): CamsView {
     const cams = this.cams;
     const slots = [0, 1].flatMap((team) => [0, 1, 2, 3, 4].map((slot) => {
       const id = cams.ids[team]?.[slot] ?? null;
       const name = this.room?.players?.[team]?.[slot]?.name || `${this.match?.teams[team]?.tag ?? (team ? 'B' : 'A')} · Player ${slot + 1}`;
-      return { team, slot, name, id, pushUrl: id ? this.pushUrl(id, name) : null, connected: !!id && !!connected?.[team]?.[slot] };
+      return { team, slot, name, id, pushUrl: id ? cameraLinkUrl(id, name) : null, connected: !!id && !!connected?.[team]?.[slot] };
     }));
     return { layout: cams.layout, delayMs: cams.delayMs, slots };
   }

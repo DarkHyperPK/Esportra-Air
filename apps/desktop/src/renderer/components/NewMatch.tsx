@@ -4,10 +4,10 @@ import type { BannerTheme, Snapshot, Team } from '../../shared/api.ts';
 import { BannerStyles } from '../screens/LibraryScreen.tsx';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
-import { EventPeople, LineupEditor, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
+import { LineupEditor, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
 import { RehearsePanel } from './Rehearse.tsx';
 
-const STEPS = ['Teams', 'Players', 'Talent and event', 'Graphics', 'Rehearse'] as const;
+const STEPS = ['Teams', 'Players', 'Event', 'Graphics', 'Rehearse'] as const;
 const REHEARSE = 4;
 
 export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close: () => void }) {
@@ -22,7 +22,10 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
   ]);
   const [lineups, setLineups] = useState<Lineups>([Array.from({ length: 5 }, emptyPlayer), Array.from({ length: 5 }, emptyPlayer)]);
   // The new match joins the selected match's event (or the first one); talent and sponsors come from it.
-  const event = s.event ?? s.events[0] ?? null;
+  const [eventId, setEventId] = useState<string | null>((s.event ?? s.events[0])?.id ?? null);
+  // '__last' is an event just created: it is added last.
+  const event = (eventId === '__last' ? s.events.at(-1) : s.events.find((e) => e.id === eventId)) ?? null;
+  const [newEvent, setNewEvent] = useState('');
   const [stage, setStage] = useState(last?.stage ?? '');
   const [theme, setTheme] = useState<BannerTheme>(last?.theme ?? 'broadcast');
   const [busy, setBusy] = useState(false);
@@ -96,9 +99,24 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
           )}
           {step === 2 && (
             <div className="stack" style={{ gap: 14 }}>
-              <p className="lead">{event ? `This match is part of ${event.name}. Its people on air and sponsors are used; switch any off for this match after it is created.` : 'Name the event this match belongs to. Its people on air and sponsors are shared by its matches.'}</p>
-              {event && <label className="field" style={{ maxWidth: 360 }}><span>Stage (lower thirds)</span><input value={stage} onChange={(e) => setStage(e.target.value)} maxLength={40} placeholder="e.g. Playoffs" /></label>}
-              <EventPeople s={s} run={run} event={event} />
+              <p className="lead">The event gives this match its logo, people on air and sponsors. Switch any off for this match after it is created.</p>
+              {s.events.length > 0 && (
+                <div className="grid2" style={{ maxWidth: 640 }}>
+                  <label className="field"><span>Event</span><select value={event?.id ?? ''} onChange={(e) => setEventId(e.target.value)}>{s.events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
+                  <label className="field"><span>Stage on air</span><input value={stage} onChange={(e) => setStage(e.target.value)} maxLength={40} placeholder="e.g. Playoffs" list="wizard-stages" /></label>
+                  <datalist id="wizard-stages">{(event?.stages ?? []).map((x) => <option key={x} value={x} />)}</datalist>
+                </div>
+              )}
+              <form className="row-gap" style={{ maxWidth: 520 }} onSubmit={async (e) => { e.preventDefault(); if (await run(() => air.createEvent(newEvent))) { setNewEvent(''); setEventId('__last'); } }}>
+                <input className="cell" aria-label="New event name" value={newEvent} onChange={(e) => setNewEvent(e.target.value)} placeholder={s.events.length ? 'Or a new event' : 'Name the event this match belongs to'} maxLength={60} style={{ flex: 1 }} />
+                <button className="btn" disabled={!newEvent.trim()}>Create event</button>
+              </form>
+              {event && (
+                <div className="stack" style={{ gap: 6 }}>
+                  <span className="faint t-xs">On air from {event.name}</span>
+                  <span className="muted">{event.talent.length ? event.talent.map((t) => t.name).join(', ') : 'Nobody yet'} · {event.sponsors.length} sponsor{event.sponsors.length === 1 ? '' : 's'}. Edit them in Event.</span>
+                </div>
+              )}
             </div>
           )}
         </div>

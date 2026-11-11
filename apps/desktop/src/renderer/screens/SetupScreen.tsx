@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
 import { BANNER_THEMES, type Setup } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
 import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 import { Cap } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
-import { EventPeople } from '../components/MatchEditors.tsx';
 
 export type SetupTab = 'graphics' | 'brand';
 
@@ -50,36 +48,14 @@ function Graphics({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-function EventAndSponsors({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const event = s.event;
-  const [name, setName] = useState(event?.name ?? '');
-  useEffect(() => { setName(event?.name ?? ''); }, [event?.id]);
-  return (
-    <div className="stack" style={{ gap: 16 }}>
-      {event && (
-        <form style={{ display: 'flex', gap: 8, alignItems: 'flex-end', maxWidth: 480 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.updateEvent(event.id, { name })); }}>
-          <label className="field" style={{ flex: 1 }}><span>Event name (on the event bug)</span><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></label>
-          <button className="btn" disabled={name === event.name}>Save</button>
-        </form>
-      )}
-      <EventPeople s={s} run={run} event={event} match={s.match} />
-      <p className="muted" style={{ fontSize: 12.5 }}>Sponsors rotate in the sponsor slot (title sponsors most often) and are used by Sponsor read (F8).</p>
-    </div>
-  );
-}
 
 export function SetupScreen({ s, run, go, tab, setTab }: PageProps & { tab: SetupTab; setTab: (t: SetupTab) => void }) {
-  const tabs: Array<[SetupTab, string]> = [['graphics', 'Graphics'], ['brand', 'Event and sponsors']];
   return (
     <>
       <PageHeader eyebrow="Match graphics" title={s.match?.title ?? 'No match selected'} actions={<button className="btn" onClick={() => go('ready')}>Back to the match</button>}>
         Which graphics this production uses in OBS and which HUD elements start on. Banner styles and previews are in the Library.
       </PageHeader>
-      <div className="tabs" role="tablist" aria-label="Graphics sections">
-        {tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
-      </div>
-      {tab === 'graphics' && <Graphics s={s} run={run} />}
-      {tab === 'brand' && <EventAndSponsors s={s} run={run} />}
+      <Graphics s={s} run={run} />
     </>
   );
 }

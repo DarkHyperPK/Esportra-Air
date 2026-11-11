@@ -10,6 +10,7 @@ type RailPage = Exclude<Page, 'setup' | 'settings' | 'outputs'>;
 const RAIL: Array<[RailPage, string]> = [
   ['console', 'Live'],
   ['ready', 'Matches'],
+  ['event', 'Event'],
   ['library', 'Library'],
   ['scenes', 'OBS'],
   ['capture', 'Capture'],
@@ -17,7 +18,7 @@ const RAIL: Array<[RailPage, string]> = [
 
 /** What each page is called, for the top bar and the command palette. */
 export const PAGE_NAME: Record<Page, string> = {
-  console: 'Live', ready: 'Matches', library: 'Library', scenes: 'OBS scenes', outputs: 'Browser sources',
+  console: 'Live', ready: 'Matches', event: 'Event', library: 'Library', scenes: 'OBS scenes', outputs: 'Browser sources',
   capture: 'Capture', settings: 'Settings', setup: 'Match graphics',
 };
 

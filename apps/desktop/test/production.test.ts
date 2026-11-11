@@ -177,6 +177,12 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(snap.checks.find((c) => c.id === 'feed')!.action!.id, 'start-capture');
     production.startCapture();
     assert.match(production.snapshot().gameLocked ?? '', /after the show/, 'the game cannot switch while game data runs');
+    const other = { ...production.match!, id: randomUUID(), code: 'QOTHER01' };
+    store.data.matches.push(other);
+    await assert.rejects(production.selectMatch(other.id), /before switching matches/, 'every graphic would change mid-show');
+    await assert.rejects(production.createQuickMatch({ teamA: 'Late', teamB: 'Entry', bestOf: 1 }), /before switching matches/);
+    await production.selectMatch(production.match!.id);
+    store.data.matches.pop();
     assert.equal(production.snapshot().feed.state, 'waiting');
 
     // Triggers write the state the overlays already understand.

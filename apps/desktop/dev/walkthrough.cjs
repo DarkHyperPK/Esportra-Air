@@ -23,6 +23,9 @@ function makePng(hex) {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
+// On failure, a picture of where the journey stopped.
+let failShot = async () => {};
+
 (async () => {
   const errors = [];
   const launched = await chromium.launch();
@@ -37,6 +40,7 @@ function makePng(hex) {
   const browser = { newPage: async (o) => offline(await launched.newPage(o)), close: () => launched.close() };
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
   page.on('pageerror', (e) => errors.push(e.message));
+  failShot = async () => { console.error('toasts on screen:', await page.locator('.toast').allInnerTexts()); await page.screenshot({ path: path.join(OUT, 'failure.png') }); };
   // Agent/weapon art loads from media.valorant-api.com; sandboxes without internet cannot fetch it.
   page.on('console', (m) => m.type() === 'error' && !/ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|status of 400|status of 404/.test(m.text()) && errors.push(m.text()));
   let n = 0;
@@ -74,7 +78,44 @@ function makePng(hex) {
   await page.getByRole('menu', { name: 'Game for the whole app' }).waitFor();
   await shot('game-switcher');
   await page.keyboard.press('Escape');
-  await btn('New match');
+
+  // Event first (build step 3): identity, the people on air and the sponsors every match uses.
+  await btn('Set up the event');
+  await page.getByLabel('Event name').fill('Community Cup');
+  await btn('Create event');
+  await page.getByRole('heading', { name: 'Community Cup' }).waitFor();
+  await page.getByLabel('Stages').fill('Groups, Playoffs, Grand final');
+  await btn('Save', { exact: true });
+  await page.getByText('Groups · Playoffs · Grand final').waitFor();
+  const editor = (name) => page.getByRole('dialog', { name });
+  await btn('Add person');
+  await editor('Add a person').getByLabel('Name on air').fill('Sara Malik');
+  await editor('Add a person').getByLabel('Handle').fill('@saram');
+  await editor('Add a person').getByRole('button', { name: 'Save' }).click();
+  await editor('Add a person').waitFor({ state: 'detached' });
+  await btn('Add person');
+  await editor('Add a person').getByLabel('Name on air').fill('Omar Sheikh');
+  await editor('Add a person').getByLabel('Role').selectOption('analyst');
+  await editor('Add a person').getByRole('button', { name: 'OBS source' }).click();
+  await editor('Add a person').getByLabel('OBS source').fill('Game Capture');
+  await editor('Add a person').getByRole('button', { name: 'Save' }).click();
+  await editor('Add a person').waitFor({ state: 'detached' });
+  await page.locator('.talent-row').filter({ hasText: 'Sara Malik' }).getByRole('button', { name: 'Edit' }).click();
+  await editor('Sara Malik').getByLabel('Camera link').waitFor();
+  await shot('event-person-editor');
+  await editor('Sara Malik').getByRole('button', { name: 'Cancel' }).click();
+  await btn('Add sponsor');
+  await editor('Add a sponsor').getByLabel('Name').fill('Acme Energy');
+  await editor('Add a sponsor').getByRole('button', { name: 'Title sponsor' }).click();
+  await editor('Add a sponsor').getByLabel('Read').fill('This match is brought to you by Acme Energy.');
+  await shot('event-sponsor-editor');
+  await editor('Add a sponsor').getByRole('button', { name: 'Save' }).click();
+  await editor('Add a sponsor').waitFor({ state: 'detached' });
+  await page.getByText('Half the slots or more').waitFor();
+  await shot('event');
+
+  await rail('Matches');
+  await btn('New match', { exact: true });
   const wizard = page.getByRole('dialog', { name: 'New match' });
   await wizard.waitFor();
   // Teams: names, colours and logos.
@@ -100,23 +141,10 @@ function makePng(hex) {
   await wizard.locator('.lineup').nth(0).locator('.player-row .imgpick-btn img').first().waitFor();
   await shot('wizard-players');
   await wizard.getByRole('button', { name: 'Continue' }).click();
-  // First match: name the event; its people and sponsors are shared by its matches.
-  await wizard.getByLabel('Event name').fill('Community Cup');
-  await wizard.getByRole('button', { name: 'Create event' }).click();
-  await wizard.getByLabel('Stage (lower thirds)').fill('Playoffs');
-  const people = wizard.locator('form').filter({ has: page.getByLabel('Role') });
-  for (const [name, role] of [['Sara Malik', 'play-by-play'], ['Omar Sheikh', 'analyst']]) {
-    await people.getByLabel('Name').fill(name);
-    await people.getByLabel('Role').selectOption(role);
-    await people.getByRole('button', { name: 'Add' }).click();
-    await wizard.getByText(name, { exact: true }).waitFor();
-  }
-  const sponsors = wizard.locator('form').filter({ has: page.getByLabel('Tier') });
-  await sponsors.getByLabel('Sponsor name').fill('Acme Energy');
-  await sponsors.getByLabel('Tier').selectOption('title');
-  await sponsors.getByRole('button', { name: 'Add' }).click();
-  await wizard.getByText('Acme Energy', { exact: true }).waitFor();
-  await shot('wizard-talent');
+  // The event step: the match joins Community Cup; its people come from the event.
+  await wizard.getByLabel('Stage on air').fill('Playoffs');
+  await wizard.getByText('Sara Malik, Omar Sheikh · 1 sponsor.', { exact: false }).waitFor();
+  await shot('wizard-event');
   await wizard.getByRole('button', { name: 'Continue' }).click();
   await wizard.getByRole('radio', { name: /Impact/ }).click();
   await page.waitForTimeout(2500);
@@ -139,6 +167,20 @@ function makePng(hex) {
   await shot('readiness-first-run');
   await page.getByRole('tab', { name: 'Teams and players' }).click();
   await shot('match-teams');
+  await page.locator('.lineup-row').first().click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Make a camera link' }).waitFor();
+  await shot('player-editor');
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('tab', { name: 'Talent and sponsors' }).click();
+  await page.getByRole('switch', { name: 'Omar Sheikh on air for this match' }).click();
+  await page.getByRole('switch', { name: 'Omar Sheikh on air for this match', checked: false }).waitFor();
+  await shot('match-talent');
+  await page.getByRole('switch', { name: 'Omar Sheikh on air for this match' }).click();
+  await page.getByRole('switch', { name: 'Omar Sheikh on air for this match', checked: true }).waitFor();
+  await btn('← Matches');
+  await page.locator('.mrow').first().waitFor();
+  await shot('matches');
+  await page.locator('.mrow').first().click();
   await page.getByRole('tab', { name: 'Rehearse' }).click();
   await page.getByRole('region', { name: 'Rehearse' }).waitFor();
   await page.waitForTimeout(1500);
@@ -323,9 +365,9 @@ function makePng(hex) {
   await rail('Matches');
   await page.getByRole('tab', { name: 'Graphics' }).click();
   await shot('match-graphics');
-  await page.getByRole('tab', { name: 'Event and sponsors' }).click();
-  await page.getByLabel('Event name (on the event bug)').fill('Community Cup Finals');
-  await btn('Save');
+  await rail('Event');
+  await page.getByLabel('Name', { exact: true }).fill('Community Cup Finals');
+  await btn('Save', { exact: true });
   await page.locator('.crumbs').filter({ hasText: /Night Owls vs Crimson Five\s*· Community Cup Finals/ }).waitFor();
   await shot('match-event');
 
@@ -348,8 +390,20 @@ function makePng(hex) {
   await page.getByText('Community Cup').first().waitFor();
   await shot('sync-signed-in');
   await rail('Matches');
-  await page.getByRole('group', { name: 'Esportra matches' }).getByRole('button', { name: /Paper Rex/ }).click();
-  await page.getByRole('button', { name: /Paper Rex/ }).and(page.locator('[aria-pressed=true]')).first().waitFor();
+  await btn('← Matches');
+  await page.locator('.mrow').filter({ hasText: 'Paper Rex' }).first().waitFor();
+  await shot('matches-with-esportra');
+  // Switching match changes every graphic on air, so it is refused while game data or a test round runs.
+  const callWith = (m, args = []) => fetch(`${HOST}/call/${m}`, { method: "POST", body: JSON.stringify(args) });
+  if ((await call('snapshot')).gameLocked) {
+    await page.locator('.mrow').filter({ hasText: 'Paper Rex' }).first().click();
+    await page.getByText('Stop game data or the test round before switching matches.').first().waitFor();
+  }
+  await callWith("testRound", ["stop"]);
+  await callWith("stopCapture");
+  for (let i = 0; i < 50 && (await call('snapshot')).gameLocked; i++) await page.waitForTimeout(200);
+  await page.locator('.mrow').filter({ hasText: 'Paper Rex' }).first().click();
+  await page.locator('.tl-name').filter({ hasText: 'Paper Rex' }).first().waitFor();
   await page.getByText(/signed in as|Signed in as/i).first().waitFor();
   await shot('readiness-esportra');
 
@@ -407,4 +461,4 @@ function makePng(hex) {
   await browser.close();
   if (errors.length) { console.error('Problems:\n' + errors.join('\n')); process.exit(1); }
   console.log(`Walkthrough complete: ${n} screenshots in ${OUT}`);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch(async (e) => { console.error(e); await failShot().catch(() => {}); process.exit(1); });

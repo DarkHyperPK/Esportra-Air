@@ -81,7 +81,7 @@ interface Command { id: string; group: string; label: string; hint?: string; key
 
 export interface PaletteActions {
   go: (page: Page) => void;
-  command: (name: 'new-match' | 'rehearse' | 'autopilot' | 'teams') => void;
+  command: (name: 'new-match' | 'rehearse' | 'autopilot' | 'teams' | 'talent') => void;
   askCapture: () => void;
   openFix: () => void;
   openCasters: () => void;
@@ -90,14 +90,14 @@ export interface PaletteActions {
 }
 
 function commands(s: Snapshot, run: Run, a: PaletteActions): Command[] {
-  const pages: Page[] = ['console', 'ready', 'library', 'scenes', 'outputs', 'capture', 'settings', 'setup'];
+  const pages: Page[] = ['console', 'ready', 'event', 'library', 'scenes', 'outputs', 'capture', 'settings', 'setup'];
   const list: Command[] = pages.map((p) => ({ id: `go-${p}`, group: 'Go to', label: PAGE_NAME[p], run: () => a.go(p) }));
   list.push(
     { id: 'new-match', group: 'Match', label: 'New match', keywords: 'create wizard', run: () => a.command('new-match') },
     { id: 'rehearse', group: 'Match', label: 'Rehearse this match', keywords: 'preview sample practice', run: () => a.command('rehearse') },
     { id: 'autopilot-rules', group: 'Match', label: 'Autopilot steps and presets', keywords: 'rules rundown', run: () => a.command('autopilot') },
     { id: 'teams', group: 'Match', label: 'Teams and players', keywords: 'lineup roster riot photo', run: () => a.command('teams') },
-    { id: 'casters', group: 'Match', label: 'People on air', keywords: 'talent casters lower third', run: a.openCasters },
+    { id: 'casters', group: 'Match', label: 'People on air', keywords: 'talent casters lower third', run: () => a.command('talent') },
   );
   for (const m of s.matches.filter((m) => m.id !== s.match?.id).slice(0, 8)) {
     list.push({ id: `match-${m.id}`, group: 'Switch match', label: m.title, hint: s.events.find((e) => e.id === m.eventId)?.name || undefined, run: () => void run(() => air.selectMatch(m.id)) });

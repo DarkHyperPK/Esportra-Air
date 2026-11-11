@@ -4,7 +4,7 @@ import { air } from './bridge.ts';
 import { Rail, TopBar } from './components/Chrome.tsx';
 import { CommandPalette, ShortcutsDialog, Toasts, type PaletteActions, type Toast } from './components/Global.tsx';
 import { LOGO } from './components/ui.tsx';
-import { CastersDrawer, ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
+import { ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
 import { FixData } from './components/FixData.tsx';
 import { CaptureScreen } from './screens/CaptureScreen.tsx';
 import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
@@ -14,12 +14,13 @@ import { ScenesScreen } from './screens/ScenesScreen.tsx';
 import { SetupScreen, type SetupTab } from './screens/SetupScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { LibraryScreen } from './screens/LibraryScreen.tsx';
+import { EventScreen } from './screens/EventScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 import { FirstRun } from './components/FirstRun.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
-export type MatchCommand = { name: 'new-match' | 'rehearse' | 'autopilot' | 'teams'; n: number } | null;
+export type MatchCommand = { name: 'new-match' | 'rehearse' | 'autopilot' | 'teams' | 'talent'; n: number } | null;
 
 export interface PageProps {
   s: Snapshot;
@@ -41,11 +42,12 @@ export function App() {
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [command, setCommand] = useState<MatchCommand>(null);
+  // Matches shows the open match's workspace until the producer goes back to the list.
+  const [matchOpen, setMatchOpen] = useState(false);
   const [status, setStatus] = useState<StatusId | null>(null);
   const [consent, setConsent] = useState(false);
   const [signIn, setSignIn] = useState(false);
   const [fix, setFix] = useState(false);
-  const [casters, setCasters] = useState(false);
 
   useEffect(() => {
     void air.snapshot().then((snap) => snap && setSnapshot(snap as Snapshot));
@@ -92,7 +94,7 @@ export function App() {
   const actions: PaletteActions = useMemo(() => ({
     go: (p) => go(p),
     command: (name) => { go('ready'); setCommand({ name, n: Date.now() }); },
-    askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true), openSignIn: () => setSignIn(true), help: () => setHelp(true),
+    askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => { go('ready'); setCommand({ name: 'talent', n: Date.now() }); }, openSignIn: () => setSignIn(true), help: () => setHelp(true),
   }), [go]);
 
   if (!s) return <div className="win"><TopBar s={null} /><div className="splash" role="status"><div>{LOGO}<span>Starting Esportra Air…</span></div></div></div>;
@@ -117,7 +119,7 @@ export function App() {
     );
   }
 
-  const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => setCasters(true), openSignIn: () => setSignIn(true) };
+  const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => { go('ready'); setCommand({ name: 'talent', n: Date.now() }); }, openSignIn: () => setSignIn(true) };
 
   return (
     <div className="win">
@@ -137,7 +139,8 @@ export function App() {
             </div>
           )}
           <main className="page">
-            {page === 'ready' && <ReadyScreen {...props} command={command} start={() => { setStarted(true); setPage('console'); }} />}
+            {page === 'ready' && <ReadyScreen {...props} command={command} open={matchOpen} setOpen={setMatchOpen} start={() => { setStarted(true); setPage('console'); }} />}
+            {page === 'event' && <EventScreen s={s} run={run} />}
             {page === 'console' && <ConsoleScreen {...props} />}
             {page === 'library' && <LibraryScreen {...props} />}
             {page === 'scenes' && <ScenesScreen {...props} />}
@@ -152,7 +155,6 @@ export function App() {
       {status && <StatusDrawer id={status} s={s} close={() => setStatus(null)} go={go} run={run} askCapture={() => setConsent(true)} openSignIn={() => setSignIn(true)} />}
       {signIn && <SignInDialog s={s} run={run} close={() => setSignIn(false)} />}
       {fix && <Drawer title="Fix data" close={() => setFix(false)} wide><FixData s={s} run={run} close={() => setFix(false)} /></Drawer>}
-      {casters && <CastersDrawer s={s} run={run} close={() => setCasters(false)} />}
       {consent && <ConsentDialog close={() => setConsent(false)} accept={async () => { setConsent(false); await run(() => air.startCapture({ consent: true })); }} />}
       {palette && <CommandPalette s={s} run={run} actions={actions} close={() => setPalette(false)} />}
       {help && <ShortcutsDialog close={() => setHelp(false)} />}

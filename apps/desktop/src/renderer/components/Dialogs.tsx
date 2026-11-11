@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Page, Snapshot } from '../../shared/api.ts';
-import { EventPeople } from './MatchEditors.tsx';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { Cap, Tally } from './ui.tsx';
@@ -8,18 +7,25 @@ import { statusOf, type StatusId } from './Chrome.tsx';
 
 export type { StatusId } from './Chrome.tsx';
 
-function useEscape(close: () => void) {
+/**
+ * Focuses the dialog once when it opens, closes it on Escape, and gives focus back when it closes.
+ * `close` is usually a new function on every render (each snapshot); keeping it in a ref stops a
+ * re-render from moving focus back to the first field while the producer is typing.
+ */
+export function useEscape(close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
+  const latest = useRef(close);
+  latest.current = close;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     ref.current?.querySelector<HTMLElement>('button, input')?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && latest.current();
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       previous?.focus?.();
     };
-  }, [close]);
+  }, []);
   return ref;
 }
 
@@ -92,17 +98,6 @@ export function StatusDrawer({ id, s, close, go, run, askCapture, openSignIn }: 
   );
 }
 
-export function CastersDrawer({ s, run, close }: { s: Snapshot; run: Run; close: () => void }) {
-  const match = s.match;
-  if (!match) return <Drawer title="People on air" close={close}><p className="muted">Choose a match first.</p></Drawer>;
-  return (
-    <Drawer title="People on air" close={close}>
-      <Cap>Talent</Cap>
-      <h2 className="title-md">On air for {match.title}</h2>
-      <EventPeople s={s} run={run} event={s.event} match={match} />
-    </Drawer>
-  );
-}
 
 export function SignInDialog({ s, run, close }: { s: Snapshot; run: Run; close: () => void }) {
   const [email, setEmail] = useState(s.esportra.email ?? '');
