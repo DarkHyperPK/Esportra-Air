@@ -1175,11 +1175,20 @@ async fn joined_observers_feed_the_current_match_and_players_only_their_own_data
     next_json(&mut player).await;
     player.send(data(scoreboard(3))).await.unwrap();
     player.send(data(json!({ "feature": "me", "key": "health", "data": "80", "playerId": "11111111-2222-3333-4444-555555555555" }))).await.unwrap();
+    // The Player app's refresh carries the player's own view of the match next to `me`: only `me` counts.
+    let before = show(&r, "JB").await;
+    player.send(data(json!({ "info": { "me": { "health": "64" }, "match_info": { "match_score": "{\"won\":5,\"lost\":2}", "round_phase": "end", "round_number": "9" } }, "playerId": "11111111-2222-3333-4444-555555555555" }))).await.unwrap();
+    player.send(data(json!({ "events": [{ "name": "kill_feed", "data": "{}" }], "playerId": "11111111-2222-3333-4444-555555555555" }))).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let after = show(&r, "JB").await;
+    assert_eq!(after["teams"], before["teams"], "a player PC cannot change the score");
+    assert_eq!(after["round"]["number"], before["round"]["number"], "a player PC cannot change the round");
+    assert_eq!(after["round"]["phase"], before["round"]["phase"]);
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(show(&r, "JB").await["players"][0][1]["name"], json!(""), "an untagged scoreboard from a player PC is ignored");
     let status = join_status(&r).await;
     let counts: Vec<(String, u64)> = status["peers"].as_array().unwrap().iter().map(|p| (p["role"].as_str().unwrap().to_string(), p["messages"].as_u64().unwrap())).collect();
-    assert!(counts.contains(&("player".into(), 1)), "{counts:?}");
+    assert!(counts.contains(&("player".into(), 2)), "two `me` messages admitted (scoreboard and kill feed dropped): {counts:?}");
 
     // A new code drops everyone; switching off closes the port.
     request(&r, "PUT", "/control/join", Some(&json!({ "enabled": true, "code": "NEWCODE2", "match": "JB", "host": "127.0.0.1", "port": port })), true).await;

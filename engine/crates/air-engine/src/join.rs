@@ -225,9 +225,24 @@ async fn upgrade(State(app): State<JoinApp>, ConnectInfo(addr): ConnectInfo<Sock
     ws.max_message_size(1_000_000).on_upgrade(move |socket| peer(app.engine.clone(), socket, role, name, addr.ip().to_string()))
 }
 
-/// A player PC may only send its own data: messages tagged with its player id.
-fn allowed(role: &str, message: &Value) -> bool {
-    role != "player" || message.get("playerId").and_then(Value::as_str).is_some_and(|id| id.len() == 36)
+/// What a joined PC may add to the match. An observer sends the match. A player PC sends only its
+/// own player's data, tagged with its player id: `me` (health, abilities, ultimate) and heartbeats.
+/// Anything else a player PC's game reports (its own view of the score, round, kills) is dropped,
+/// so one player PC can never change the match on air.
+pub fn admit(role: &str, message: &Value) -> Option<Value> {
+    if role != "player" {
+        return Some(message.clone());
+    }
+    let id = message.get("playerId").and_then(Value::as_str).filter(|id| id.len() == 36)?;
+    let is_me = |v: Option<&Value>| v.and_then(Value::as_str) == Some("me");
+    if is_me(message.get("feature")) || is_me(message.get("category")) {
+        return Some(message.clone());
+    }
+    if message.get("captureHeartbeat") == Some(&Value::Bool(true)) {
+        return Some(json!({ "playerId": id, "captureHeartbeat": true }));
+    }
+    let me = message.get("info").and_then(|i| i.get("me")).filter(|m| m.is_object())?;
+    Some(json!({ "info": { "me": me }, "feature": "me", "playerId": id }))
 }
 
 async fn peer(engine: Arc<Engine>, mut socket: WebSocket, role: &'static str, name: String, ip: String) {
@@ -259,10 +274,9 @@ async fn peer(engine: Arc<Engine>, mut socket: WebSocket, role: &'static str, na
                 if m.get("type").and_then(Value::as_str) != Some("valorant") {
                     continue;
                 }
-                let payload = m.get("message").unwrap_or(&Value::Null);
-                if !allowed(role, payload) {
+                let Some(payload) = admit(role, m.get("message").unwrap_or(&Value::Null)) else {
                     continue;
-                }
+                };
                 let age = match m.get("bufferedAgeMs") {
                     None => 0.0,
                     Some(v) => air_state::js::to_number(Some(v)),
@@ -272,7 +286,7 @@ async fn peer(engine: Arc<Engine>, mut socket: WebSocket, role: &'static str, na
                 }
                 // The room is looked up for every message, so a peer follows the producer's current match.
                 let code = engine.join.match_code();
-                engine.room(Some(&code)).ingest(std::slice::from_ref(payload), age);
+                engine.room(Some(&code)).ingest(std::slice::from_ref(&payload), age);
                 if let Some(p) = engine.join.lock().peers.get_mut(&id) {
                     p.last = Some(now_ms());
                     p.messages += 1;
@@ -285,4 +299,26 @@ async fn peer(engine: Arc<Engine>, mut socket: WebSocket, role: &'static str, na
         }
     }
     engine.join.lock().peers.remove(&id);
+}
+
+#[cfg(test)]
+mod admit_tests {
+    use super::admit;
+    use serde_json::json;
+
+    const ID: &str = "11111111-2222-3333-4444-555555555555";
+
+    #[test]
+    fn a_player_pc_sends_only_its_own_player() {
+        let full = json!({ "info": { "me": { "health": "64" }, "match_info": { "match_score": "{}", "round_number": "9" } }, "playerId": ID });
+        assert_eq!(admit("player", &full), Some(json!({ "info": { "me": { "health": "64" } }, "feature": "me", "playerId": ID })));
+        let key = json!({ "feature": "me", "key": "health", "data": "80", "playerId": ID });
+        assert_eq!(admit("player", &key), Some(key.clone()));
+        assert_eq!(admit("player", &json!({ "playerId": ID, "captureHeartbeat": true })), Some(json!({ "playerId": ID, "captureHeartbeat": true })));
+        assert_eq!(admit("player", &json!({ "info": { "match_info": { "round_number": "9" } }, "playerId": ID })), None);
+        assert_eq!(admit("player", &json!({ "events": [{ "name": "kill_feed", "data": "{}" }], "playerId": ID })), None);
+        assert_eq!(admit("player", &json!({ "feature": "me", "key": "health", "data": "80" })), None, "untagged");
+        let observer = json!({ "info": { "match_info": { "round_number": "9" } } });
+        assert_eq!(admit("observer", &observer), Some(observer.clone()));
+    }
 }

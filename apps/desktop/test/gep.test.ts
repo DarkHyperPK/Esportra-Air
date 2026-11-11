@@ -77,5 +77,8 @@ test('player PCs forward only their own data, tagged with their Riot id', () => 
   assert.equal(out.length, 2);
   assert.ok(out.every((p) => p.playerId === id));
   assert.deepEqual(source.heartbeat(), { playerId: id, captureHeartbeat: true });
+  // The 2-second refresh forwards getInfo(): only `me` goes out, never the player's view of the match.
+  const poll = source.prepare({ info: { me: { health: '64' }, match_info: { match_score: '{"won":5,"lost":2}', round_number: '9' } } });
+  assert.deepEqual(poll, [{ feature: 'me', info: { me: { health: '64' } }, playerId: id }]);
   assert.throws(() => new PlayerSource('player', 'not-a-uuid'));
 });

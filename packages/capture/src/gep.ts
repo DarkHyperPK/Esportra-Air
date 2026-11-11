@@ -47,7 +47,9 @@ export class PlayerSource {
     const identity = me?.player_id || (key === 'player_id' ? (message.data ?? message.value) : null);
     if (typeof identity === 'string' && UUID.test(identity)) this.playerId = identity;
     if (!me && !key) return [];
-    const packet = { ...message };
+    // Only this player's own data leaves the PC. A full getInfo() also carries the player's own view of
+    // the match (score, round), which must never reach the production PC.
+    const packet = me ? { feature: 'me', info: { me } } : { ...message };
     if (!this.playerId) {
       this.pending = this.pending.filter((item) => this.now() - item.at < 60_000).slice(-99);
       this.pending.push({ at: this.now(), packet });
