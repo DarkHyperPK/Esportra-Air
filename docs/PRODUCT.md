@@ -32,6 +32,8 @@ Studios with their own in-house graphics teams are out of scope.
 
 The rework plan and its stages are in `/root/.claude/plans` for this session and summarised in the status table below.
 
+**`docs/SPEC.md` (approved 11 Nov) is the full product specification**: product model (event, talent, sponsors, cameras), the producer's journey, screens, Live, look and feel, language, reliability and game modules. Where this file and the spec differ, the spec wins.
+
 ## Product decisions
 
 | Area | Decision |

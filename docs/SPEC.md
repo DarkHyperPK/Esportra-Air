@@ -1,6 +1,6 @@
 # Esportra Air — product specification
 
-Draft for review, 11 November 2026. When approved this becomes the reference every screen, mock and build is checked against. `PRODUCT.md` keeps the decisions log; this document describes the whole product.
+Approved 11 November 2026. The reference every screen, mock and build is checked against. `PRODUCT.md` keeps the decisions log; this document describes the whole product.
 
 ---
 
@@ -355,15 +355,13 @@ Generic screens read these, so no Valorant wording appears outside the Valorant 
 
 ---
 
-## 11. Decisions I need from you
+## 11. Decisions (11 November 2026)
 
-1. **Talent cameras:** remote camera links (like player cams), local OBS sources, or both? I suggest both, with remote links as the default.
-2. **Sponsor videos:** play them in OBS as media sources that Air adds to the holding and break scenes, or leave video to the producer? I suggest Air adds them.
-3. **The Event screen:** a new top-level item, or inside Matches? I suggest top-level: events outlive matches.
-4. **Interviews and guests:** in scope for v1 (a lower third and a desk position), or later?
-5. **The manual:** in the app only, or also as a PDF for crews? I suggest both, from one source.
-
----
+1. **Talent cameras: both.** Remote camera links (the default, like player cams) and local OBS sources.
+2. **Sponsor videos: Air adds them** to OBS as media sources in the holding and break scenes.
+3. **Event: a top-level screen.**
+4. **Manual: both**, in the app and as a PDF for crews, from one source.
+5. **Interviews and guests: later** (not decided; not in v1).
 
 ## 12. Delivery
 
