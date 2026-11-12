@@ -2,6 +2,7 @@ import type { LayerGroup, LayerMode } from './layers.ts';
 import type { GameDef, GameId, Profile } from './games.ts';
 import type { SceneKey, SlotId } from './scenes.ts';
 import type { EventInfo, EventPatch, SponsorInput, TalentInput } from './model.ts';
+import type { DevicesView } from './devices.ts';
 
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
@@ -171,14 +172,14 @@ export interface OutputHealth {
 }
 
 export interface CheckItem {
-  id: 'esportra' | 'match' | 'feed' | 'obs' | 'scenes' | 'sources' | 'talent' | 'art';
+  id: 'esportra' | 'match' | 'feed' | 'obs' | 'scenes' | 'sources' | 'talent' | 'art' | 'player-pcs';
   title: string;
   detail: string;
   health: Health;
   action?: { id: ActionId; label: string };
 }
 
-export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in' | 'download-art';
+export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in' | 'download-art' | 'open-devices';
 
 import type { AutopilotView, SegmentEdit } from './autopilot.ts';
 import type { RehearsalOptions, RehearsalView } from './rehearsal.ts';
@@ -279,6 +280,8 @@ export interface Snapshot {
   esportra: EsportraView;
   mode: PcMode;
   join: JoinView;
+  /** Player PCs in their seats, observers and PCs without a seat (Devices). */
+  devices: DevicesView;
   link: LinkView;
   /** Why Start autopilot is not available yet (Run manually always is). */
   autopilotBlock: string | null;

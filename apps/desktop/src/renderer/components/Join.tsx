@@ -29,7 +29,7 @@ export function JoinPanel({ s, run }: { s: Snapshot; run: Run }) {
               <button className="btn quiet small" title="Disconnects every joined PC" onClick={() => void run(() => air.joinRotate())}>New code</button>
             </div>
             <div>
-              <p className="muted" style={{ fontSize: 12 }}>On the other PC, open Air, choose Capture-only, and enter:</p>
+              <p className="muted" style={{ fontSize: 12 }}>On each player or observer PC, open Esportra Player and enter the code and this address:</p>
               {j.addresses.length ? j.addresses.map((a) => <p key={a} className="mono" style={{ fontSize: 13 }}>{a}</p>) : <p className="muted" style={{ fontSize: 12.5 }}>No network address found. Connect this PC to the same network first.</p>}
             </div>
             <div>

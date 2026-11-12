@@ -25,6 +25,8 @@ export interface BuildSlot {
   id: SlotId;
   sceneName: string;
   formerly?: string;
+  /** What Air puts in the slot (a talent camera): a camera link page, or an OBS source the crew has. */
+  fill?: { kind: 'link'; inputName: string; url: string } | { kind: 'source'; sourceName: string };
   frame: { x: number; y: number; width: number; height: number };
 }
 
@@ -53,6 +55,33 @@ const settingsOf = (source: BuildSource) => (source.kind === 'media'
   // A sponsor loop: plays from the start whenever the producer shows it, and loops until hidden.
   ? { local_file: source.url, looping: true, restart_on_activate: true, close_when_inactive: true }
   : { url: source.url, width: 1920, height: 1080, fps: 60, reroute_audio: false, shutdown: false });
+
+/**
+ * Puts a talent camera in its slot scene: a camera link as a browser source Air owns, or the crew's own
+ * OBS source added as an item. Anything else in the slot is left as it is.
+ */
+async function fillSlot(call: (name: string, data?: Record<string, unknown>) => Promise<any>, slot: BuildSlot, inputs: Map<string, { inputKind: string }>, own: (scene: string) => Owned['scenes'][string]) {
+  const fill = slot.fill!;
+  const items: Array<{ sourceName: string; sceneItemId: number }> = (await call('GetSceneItemList', { sceneName: slot.sceneName })).sceneItems ?? [];
+  const full = { x: 0, y: 0, width: 1920, height: 1080 };
+  if (fill.kind === 'source') {
+    if (!inputs.has(fill.sourceName)) throw new Error(`OBS has no source called “${fill.sourceName}”. Choose the camera again in Event.`);
+    if (!items.some((i) => i.sourceName === fill.sourceName)) await call('CreateSceneItem', { sceneName: slot.sceneName, sourceName: fill.sourceName, sceneItemEnabled: true });
+    return;
+  }
+  const input = inputs.get(fill.inputName);
+  if (input && input.inputKind !== 'browser_source') throw new Error(`The OBS source “${fill.inputName}” already exists. Rename it in OBS.`);
+  if (!input) {
+    const made = await call('CreateInput', { sceneName: slot.sceneName, inputName: fill.inputName, inputKind: 'browser_source', inputSettings: { url: fill.url, width: 1920, height: 1080, fps: 30, reroute_audio: false, shutdown: false }, sceneItemEnabled: true });
+    await call('SetSceneItemTransform', { sceneName: slot.sceneName, sceneItemId: made.sceneItemId, sceneItemTransform: transform(full, 'OBS_BOUNDS_SCALE_INNER') });
+    inputs.set(fill.inputName, { inputKind: 'browser_source' });
+    own(slot.sceneName).items[`fill:${fill.inputName}`] = { sceneItemId: made.sceneItemId, geometry: geometry(full) };
+    return;
+  }
+  const settings = await call('GetInputSettings', { inputName: fill.inputName });
+  if (settings.inputSettings?.url !== fill.url) await call('SetInputSettings', { inputName: fill.inputName, inputSettings: { url: fill.url }, overlay: true });
+  if (!items.some((i) => i.sourceName === fill.inputName)) await call('CreateSceneItem', { sceneName: slot.sceneName, sourceName: fill.inputName, sceneItemEnabled: true });
+}
 
 export async function buildScenes(options: { socket: ObsSocket; scenes: BuildScene[]; owned: Owned; saveOwned: (owned: Owned) => void }) {
   const { socket, saveOwned } = options;
@@ -170,6 +199,15 @@ export async function buildScenes(options: { socket: ObsSocket; scenes: BuildSce
         await call('SetSceneItemTransform', { sceneName: scene.name, sceneItemId, sceneItemTransform: transform(slot.frame, 'OBS_BOUNDS_SCALE_INNER') });
       }
       own(scene.name).items[key] = { sceneItemId: sceneItemId as number, geometry: geometry(slot.frame) };
+      save();
+      // A camera Air put in this slot for someone no longer there leaves it (only Air's own item).
+      const keep = slot.fill?.kind === 'link' ? `fill:${slot.fill.inputName}` : null;
+      for (const [k, item] of Object.entries(own(slot.sceneName).items)) {
+        if (!k.startsWith('fill:') || k === keep) continue;
+        await call('RemoveSceneItem', { sceneName: slot.sceneName, sceneItemId: item.sceneItemId }).catch(() => {});
+        delete own(slot.sceneName).items[k];
+      }
+      if (slot.fill) await fillSlot(call, slot, inputs, own);
       save();
     }
   }

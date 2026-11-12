@@ -6,7 +6,7 @@ import { CommandPalette, ShortcutsDialog, Toasts, type PaletteActions, type Toas
 import { LOGO } from './components/ui.tsx';
 import { ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
 import { FixData } from './components/FixData.tsx';
-import { CaptureScreen } from './screens/CaptureScreen.tsx';
+import { DevicesScreen } from './screens/DevicesScreen.tsx';
 import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
 import { OutputsScreen } from './screens/OutputsScreen.tsx';
 import { ReadyScreen } from './screens/ReadyScreen.tsx';
@@ -150,7 +150,7 @@ export function App() {
             {page === 'console' && <ConsoleScreen {...props} />}
             {page === 'library' && <LibraryScreen {...props} />}
             {page === 'scenes' && <ScenesScreen {...props} />}
-            {page === 'capture' && <CaptureScreen {...props} />}
+            {page === 'capture' && <DevicesScreen {...props} />}
             {page === 'outputs' && <OutputsScreen {...props} />}
             {page === 'settings' && <SettingsScreen {...props} />}
           </main>

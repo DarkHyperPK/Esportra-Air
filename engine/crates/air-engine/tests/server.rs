@@ -1189,6 +1189,10 @@ async fn joined_observers_feed_the_current_match_and_players_only_their_own_data
     let status = join_status(&r).await;
     let counts: Vec<(String, u64)> = status["peers"].as_array().unwrap().iter().map(|p| (p["role"].as_str().unwrap().to_string(), p["messages"].as_u64().unwrap())).collect();
     assert!(counts.contains(&("player".into(), 2)), "two `me` messages admitted (scoreboard and kill feed dropped): {counts:?}");
+    let pc = status["peers"].as_array().unwrap().iter().find(|p| p["role"] == "player").unwrap();
+    assert_eq!(pc["playerId"], json!("11111111-2222-3333-4444-555555555555"), "a player PC says which player it is, so Air can seat it");
+    let observer = status["peers"].as_array().unwrap().iter().find(|p| p["role"] == "observer").unwrap();
+    assert_eq!(observer["playerId"], Value::Null);
 
     // A new code drops everyone; switching off closes the port.
     request(&r, "PUT", "/control/join", Some(&json!({ "enabled": true, "code": "NEWCODE2", "match": "JB", "host": "127.0.0.1", "port": port })), true).await;

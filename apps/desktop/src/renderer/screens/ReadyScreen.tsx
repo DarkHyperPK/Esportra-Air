@@ -36,6 +36,7 @@ export function ReadyScreen({ s, run, go, askCapture, openSignIn, start, command
     if (id === 'choose-match') return setOpen(false);
     if (id === 'add-casters') return setTab('talent');
     if (id === 'open-sources') return go('outputs');
+    if (id === 'open-devices') return go('capture');
     if (id === 'sign-in') return openSignIn();
     if (id === 'install-graphics') void run(() => air.installGraphics());
   };

@@ -331,7 +331,7 @@ h1, h2, h3, p { margin: 0; }
 .out-card .shot.onair { border-color: var(--rose); }
 .out-card .url { height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 0 10px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); background: var(--field); font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
 .out-card .url span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.joincode { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); background: var(--field); }
+.joincode { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); background: var(--field); }
 .joincode strong { flex: 1; font-family: var(--mono); font-size: 22px; letter-spacing: 0.1em; white-space: nowrap; }
 
 /* Settings */
@@ -698,3 +698,14 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .rundown-row:first-child { border-top: 1px solid var(--hair); }
 .rundown-row.done { opacity: 0.5; }
 .rundown-thumb .pv { border-radius: 4px; }
+
+/* Devices: the seat board (five per team), device rows */
+.seats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.seat { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 8px; text-align: center; font-size: 12.5px; min-width: 0; }
+.seat b { font-weight: 650; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat .state { font-size: 11.5px; white-space: normal; justify-content: center; }
+.seat.quiet, .seat.joined { background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.seat.none { opacity: 0.75; }
+.device-row { grid-template-columns: 14px minmax(0, 1fr) auto; }
+.cam-row { grid-template-columns: 32px minmax(0, 1fr) auto; }
+.alert.info { background: rgba(255, 255, 255, 0.03); border-color: var(--hair-strong); }

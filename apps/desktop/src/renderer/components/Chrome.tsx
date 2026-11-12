@@ -13,13 +13,13 @@ const RAIL: Array<[RailPage, string]> = [
   ['ready', 'Matches'],
   ['library', 'Library'],
   ['scenes', 'OBS'],
-  ['capture', 'Capture'],
+  ['capture', 'Devices'],
 ];
 
 /** What each page is called, for the top bar and the command palette. */
 export const PAGE_NAME: Record<Page, string> = {
   console: 'Live', ready: 'Matches', event: 'Event', library: 'Library', scenes: 'OBS scenes', outputs: 'Browser sources',
-  capture: 'Capture', settings: 'Settings',
+  capture: 'Devices', settings: 'Settings',
 };
 
 /** Pages in the rail's order, for the command palette. */

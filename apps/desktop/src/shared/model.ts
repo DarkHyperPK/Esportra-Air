@@ -96,3 +96,8 @@ export function rotationShare(sponsors: Sponsor[]): Record<string, number> {
   const total = sponsors.reduce((n, s) => n + TIER_WEIGHT[s.tier], 0);
   return Object.fromEntries(sponsors.map((s) => [s.id, total ? TIER_WEIGHT[s.tier] / total : 0]));
 }
+
+/** What OBS shows for a camera link: the picture only (sound comes from the talent's own mic setup). */
+export function cameraViewUrl(id: string): string {
+  return `https://vdo.ninja/?view=${encodeURIComponent(id)}&solo&noaudio&cleanoutput&api=esportra-air`;
+}

@@ -35,7 +35,7 @@ export interface JoinHostDeps {
 
 interface EnginePeers {
   enabled: boolean;
-  peers: Array<{ id: number; role: PcRole; name: string; ip: string; since: number; lastAgeMs: number | null; messages: number }>;
+  peers: Array<{ id: number; role: PcRole; name: string; ip: string; since: number; lastAgeMs: number | null; messages: number; playerId?: string | null }>;
 }
 
 export class JoinHost {

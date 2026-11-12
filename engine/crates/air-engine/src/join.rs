@@ -42,6 +42,8 @@ struct Peer {
     since: f64,
     last: Option<f64>,
     messages: u64,
+    /// A player PC's in-game player id (from its own data), so Air can put it in its seat.
+    player_id: Option<String>,
     /// Fired to drop this peer (code changed, joining switched off).
     kick: watch::Sender<bool>,
 }
@@ -120,7 +122,7 @@ impl Join {
             "match": inner.match_code,
             "peers": peers.iter().map(|(id, p)| json!({
                 "id": id, "role": p.role, "name": p.name, "ip": p.ip, "since": p.since,
-                "lastAgeMs": p.last.map(|at| (now - at).max(0.0)), "messages": p.messages,
+                "lastAgeMs": p.last.map(|at| (now - at).max(0.0)), "messages": p.messages, "playerId": p.player_id,
             })).collect::<Vec<_>>(),
         })
     }
@@ -248,7 +250,7 @@ pub fn admit(role: &str, message: &Value) -> Option<Value> {
 async fn peer(engine: Arc<Engine>, mut socket: WebSocket, role: &'static str, name: String, ip: String) {
     let id = NEXT_PEER.fetch_add(1, Ordering::Relaxed);
     let (kick, mut kicked) = watch::channel(false);
-    engine.join.lock().peers.insert(id, Peer { role: role.into(), name, ip, since: now_ms(), last: None, messages: 0, kick });
+    engine.join.lock().peers.insert(id, Peer { role: role.into(), name, ip, since: now_ms(), last: None, messages: 0, player_id: None, kick });
     let hello = json!({ "type": "hello", "role": role }).to_string();
     let mut ok = socket.send(Message::Text(hello.into())).await.is_ok();
     let mut ping = tokio::time::interval(PING_EVERY);
@@ -290,6 +292,9 @@ async fn peer(engine: Arc<Engine>, mut socket: WebSocket, role: &'static str, na
                 if let Some(p) = engine.join.lock().peers.get_mut(&id) {
                     p.last = Some(now_ms());
                     p.messages += 1;
+                    if let Some(pid) = payload.get("playerId").and_then(Value::as_str) {
+                        p.player_id = Some(pid.to_string());
+                    }
                 }
             }
             _ = kicked.changed() => break,

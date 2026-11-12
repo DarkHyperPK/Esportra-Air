@@ -14,6 +14,8 @@ export interface JoinedPc {
   since: number;
   lastAgeMs: number | null;
   messages: number;
+  /** A player PC's in-game player id, once its game has sent it. */
+  playerId?: string | null;
 }
 
 /** The producer's side: allow other PCs to send game data to this Air with a short code. */

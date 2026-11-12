@@ -10,12 +10,13 @@ import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from '../../../../packages/capture/src/gep.ts';
 import type { ObsLink } from './obs.ts';
-import type { BuildScene } from './scene-build.ts';
+import type { BuildScene, BuildSlot } from './scene-build.ts';
 import { SCENE_KEYS, SCENES, legacySourceName, sourceName, type SlotId } from '../shared/scenes.ts';
 import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
+import { devicesView } from '../shared/devices.ts';
 import { gameName, gameOf, type GameId, type Profile } from '../shared/games.ts';
 import { LIBRARY_ROOM } from '../shared/library.ts';
 import { join } from 'node:path';
@@ -34,7 +35,7 @@ import type { CamsView } from '../shared/api.ts';
 import type { Preset, SegmentEdit } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 import { HEX, IMAGE, text } from './validate.ts';
-import { cameraLinkUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
+import { cameraLinkUrl, cameraViewUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
 import type { MatchPatch } from '../shared/api.ts';
 import { applyEventPatch, engineConfig, newEvent, onAir, renewTalentLink, upsertSponsor, upsertTalent, validOff } from './event-model.ts';
 
@@ -668,13 +669,22 @@ export class Production extends EventEmitter {
     const full = { x: 0, y: 0, width: 1920, height: 1080 };
     // Sponsor loops of the selected match's sponsors, hidden until shown (a break, or by autopilot).
     const sponsorVideos = this.match ? onAir(this.match, this.eventOf(this.match)).sponsors.filter((x) => x.video) : [];
+    // The desk's two camera windows: the first two people on air with a camera, in the event's order.
+    const cams = this.match ? onAir(this.match, this.eventOf(this.match)).talent.filter((t) => t.camera.kind !== 'none').slice(0, 2) : [];
+    const deskFill = (slot: string): BuildSlot['fill'] | null => {
+      const t = cams[slot === 'cam1' ? 0 : slot === 'cam2' ? 1 : 2];
+      if (!t) return null;
+      if (t.camera.kind === 'obs' && t.camera.obsSource) return { kind: 'source', sourceName: t.camera.obsSource };
+      if (t.camera.kind === 'link' && t.camera.linkId) return { kind: 'link', inputName: sourceName(`Camera · ${t.name}`), url: cameraViewUrl(t.camera.linkId) };
+      return null;
+    };
     return SCENE_KEYS.map((key) => {
       const def = SCENES[key];
       return {
         name: def.name,
         formerly: def.formerly,
         exclusive: def.exclusive,
-        slots: def.slots.map((slot) => ({ id: slot.id, sceneName: slot.scene, formerly: slot.formerly, frame: slot.frame })),
+        slots: def.slots.map((slot) => ({ id: slot.id, sceneName: slot.scene, formerly: slot.formerly, frame: slot.frame, ...(deskFill(slot.id) ? { fill: deskFill(slot.id)! } : {}) })),
         sources: [
           ...this.setup.screens
             .filter((x) => x.scene === key && x.enabled && !x.hosted)
@@ -1282,6 +1292,7 @@ export class Production extends EventEmitter {
       esportra: this.deps.esportra?.view() ?? signedOut(),
       mode: this.mode,
       join: this.joinHost.view(),
+      devices: devicesView({ lineup: this.match?.players ?? null, roomPlayers: Array.isArray(this.room?.players) ? this.room.players : null, peers: this.joinHost.view().peers, now: Date.now() }),
       link: this.link.view(),
       autopilotBlock: this.autopilot.block(),
       log: this.log.list(),
@@ -1353,6 +1364,14 @@ export function checks(s: Snapshot): CheckItem[] {
         ? { id: 'sources', title: 'Browser sources', detail: `${loading} of ${s.outputs.length} connected · not loading: ${idle.map((o) => o.title).join(', ')}. OBS loads a source when its scene is opened once.`, health: 'warn' }
         : { id: 'sources', title: 'Browser sources', detail: 'Shown once scenes are in OBS.', health: 'off' },
   );
+  // Player PCs: only for setups that use them, and only once a match exists.
+  if (s.setup.profile === 'player-pcs' && s.match) {
+    const d = s.devices;
+    const missing = d.seats.filter((x) => x.state !== 'live').map((x) => x.name).filter(Boolean);
+    out.push(d.checkedIn === d.seats.length && d.seats.length > 0
+      ? { id: 'player-pcs', title: `Player PCs · ${d.checkedIn} of ${d.seats.length} checked in`, detail: 'Every player’s own data is arriving.', health: 'ok' }
+      : { id: 'player-pcs', title: `Player PCs · ${d.checkedIn} of ${d.seats.length} checked in`, detail: d.fromGame ? `${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` and ${missing.length - 4} more` : ''}: health and abilities stay hidden on air until their PC sends them.` : 'Player PCs are seated once the game starts. Until then health and abilities stay hidden on air.', health: 'warn', action: { id: 'open-devices' as const, label: 'Open Devices' } });
+  }
   const air = s.match ? onAir(s.match, s.event) : { talent: [], sponsors: [] };
   const people = air.talent.length;
   out.push(

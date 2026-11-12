@@ -386,7 +386,8 @@ let failShot = async () => {};
   }
   await page.getByLabel('Player cameras').getByRole('button', { name: 'In-game cams' }).click();
 
-  await rail('Capture');
+  await rail('Devices');
+  await page.getByRole('tab', { name: 'Game data' }).click();
   await btn('Stop capture');
   await page.getByRole('button', { name: '4×' }).click();
   await btn('Play');
@@ -445,11 +446,36 @@ let failShot = async () => {};
   await shot('readiness-esportra');
 
   // Observer and player PCs (Stage 3): allow joining, then act as the capture-only PC against ourselves.
-  await rail('Capture');
+  await rail('Devices');
   await page.getByRole('switch', { name: 'Allow other PCs to join' }).click();
   await page.locator('.joincode strong').waitFor();
   const joinCode = (await page.locator('.joincode strong').innerText()).replace('-', '');
   if (!/^[A-Z2-9]{6}$/.test(joinCode)) throw new Error('unexpected join code ' + joinCode);
+
+  // Check-in (build step 6): the observer's game lists ten players; Juno's own PC joins and sends her
+  // health. Her seat turns live by itself, matched by her player id; the other nine say why not.
+  const roomCode = (await call('snapshot')).match.code;
+  const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const names = [['Juno', 'Mira', 'Dax', 'Riku', 'Echo'], ['Kairo', 'Sol', 'Vex', 'Nyx', 'Zen']];
+  const board = names.flatMap((team, t) => team.map((name, i) => ({ feature: 'match_info', key: `scoreboard_${t * 5 + i}`, data: JSON.stringify({ player_id: uuid(t * 5 + i), name: `${name} #EU1`, character: 'Clay', team: t, alive: true, money: 800 }) })));
+  await fetch(`http://127.0.0.1:5399/api/${roomCode}/ingest/valorant`, { method: 'POST', headers: { 'X-Esportra-Key': 'dev-host-key-0123456789abcdef', 'Content-Type': 'application/json' }, body: JSON.stringify(board) });
+  const WebSocket = require('ws');
+  const juno = new WebSocket(`ws://127.0.0.1:5301/join?code=${joinCode}&role=player&name=JUNO-PC`);
+  await new Promise((r) => juno.once('message', r));
+  const sendMe = () => juno.send(JSON.stringify({ type: 'valorant', message: { feature: 'me', info: { me: { health: '80' } }, playerId: uuid(0) } }));
+  sendMe();
+  const beat = setInterval(sendMe, 1000);
+  await page.locator('.seat.live').filter({ hasText: 'JUNO' }).or(page.locator('.seat.live').filter({ hasText: 'Juno' })).first().waitFor();
+  await page.getByText(/Player PCs · 1 of 10 checked in/).waitFor();
+  await page.locator('.seat').filter({ hasText: 'JUNO-PC' }).waitFor();
+  // Earlier steps failed on purpose (a wrong password, a refused switch); clear their notes.
+  for (const close of await page.locator('.toast button').all()) await close.click().catch(() => {});
+  await shot('devices-checkin');
+  await page.getByRole('tab', { name: 'Cameras' }).click();
+  await shot('devices-cameras');
+  await page.getByRole('tab', { name: 'Check-in' }).click();
+  clearInterval(beat);
+  juno.close();
   await page.getByText('Joined PCs · 0').scrollIntoViewIfNeeded();
   await shot('join-panel');
   await rail('Settings');
@@ -466,7 +492,7 @@ let failShot = async () => {};
   await btn('Disconnect');
   await btn('Switch this PC back to Production');
   await page.getByRole('button', { name: 'Capture-only' }).waitFor();
-  await rail('Capture');
+  await rail('Devices');
   await page.getByRole('switch', { name: 'Allow other PCs to join' }).click();
   await page.getByText('Joined PCs').waitFor({ state: 'detached' });
   await page.locator('.topbar').getByRole('button', { name: /^OBS:/ }).click();
@@ -487,7 +513,7 @@ let failShot = async () => {};
 
   // A laptop screen: every main page at 1280x800.
   await page.setViewportSize({ width: 1280, height: 800 });
-  for (const [name, label] of [['laptop-live', 'Live'], ['laptop-matches', 'Matches'], ['laptop-library', 'Library'], ['laptop-obs', 'OBS'], ['laptop-capture', 'Capture'], ['laptop-settings', 'Settings']]) {
+  for (const [name, label] of [['laptop-live', 'Live'], ['laptop-matches', 'Matches'], ['laptop-library', 'Library'], ['laptop-obs', 'OBS'], ['laptop-devices', 'Devices'], ['laptop-settings', 'Settings']]) {
     await rail(label);
     await page.waitForTimeout(900);
     await shot(name);

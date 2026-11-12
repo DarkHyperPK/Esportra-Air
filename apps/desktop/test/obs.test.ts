@@ -178,3 +178,21 @@ test('sponsor videos are looping media sources, hidden until shown', async () =>
   await link.build(p, owned, (o) => { owned = o; });
   assert.equal(obs.inputs.get('ESPORTRA · Sponsor video · Nova')!.settings.local_file, 'C:\\Sponsors\\nova-2.mp4');
 });
+
+test('talent cameras fill the desk windows; a new person replaces Air’s old camera, the crew’s sources stay', async () => {
+  const { obs, link } = await connected((o) => o.inputs.set('Desk cam 2', { inputKind: 'dshow_input', settings: {} }));
+  const desk = (cam1: any, cam2: any): BuildScene[] => [{ name: 'ESPORTRA · Desk', exclusive: false, sources: [], slots: [
+    { id: 'cam1', sceneName: 'ESPORTRA · Desk camera 1', frame: { x: 120, y: 250, width: 820, height: 462 }, ...(cam1 ? { fill: cam1 } : {}) },
+    { id: 'cam2', sceneName: 'ESPORTRA · Desk camera 2', frame: { x: 980, y: 250, width: 820, height: 462 }, ...(cam2 ? { fill: cam2 } : {}) },
+  ] }];
+  let owned = emptyOwned();
+  await link.build(desk({ kind: 'link', inputName: 'ESPORTRA · Camera · Sara', url: 'https://vdo.ninja/?view=abc' }, { kind: 'source', sourceName: 'Desk cam 2' }), owned, (o) => { owned = o; });
+  assert.deepEqual(obs.scenes.get('ESPORTRA · Desk camera 1')!.map((i) => i.sourceName), ['ESPORTRA · Camera · Sara']);
+  assert.equal(obs.inputs.get('ESPORTRA · Camera · Sara')!.settings.url, 'https://vdo.ninja/?view=abc');
+  assert.deepEqual(obs.scenes.get('ESPORTRA · Desk camera 2')!.map((i) => i.sourceName), ['Desk cam 2'], 'an OBS source the crew already has');
+  obs.addSource('ESPORTRA · Desk camera 1', 'Crew overlay');
+  await link.build(desk({ kind: 'link', inputName: 'ESPORTRA · Camera · Lena', url: 'https://vdo.ninja/?view=xyz' }, null), owned, (o) => { owned = o; });
+  assert.deepEqual(obs.scenes.get('ESPORTRA · Desk camera 1')!.map((i) => i.sourceName), ['Crew overlay', 'ESPORTRA · Camera · Lena'], 'Sara’s camera leaves, the crew’s item stays');
+  assert.deepEqual(obs.scenes.get('ESPORTRA · Desk camera 2')!.map((i) => i.sourceName), ['Desk cam 2'], 'the crew’s own source is never removed');
+  await assert.rejects(link.build(desk({ kind: 'source', sourceName: 'Missing cam' }, null), owned, () => {}), /no source called “Missing cam”/);
+});
