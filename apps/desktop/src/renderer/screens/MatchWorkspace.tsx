@@ -6,7 +6,7 @@ import type { ActionId, Snapshot, Team } from '../../shared/api.ts';
 import { ROLE_NAME, TIER_NAME, onAir } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
 import type { PageProps } from '../App.tsx';
-import { AutopilotRules, NextFive } from '../components/Autopilot.tsx';
+import { AutopilotRules, NextFive, action, triggerLine } from '../components/Autopilot.tsx';
 import { EditorDrawer, PlayerEditor, Switch, cameraText } from '../components/Editors.tsx';
 import { TeamFields, imageUrl } from '../components/MatchEditors.tsx';
 import { RehearsePanel } from '../components/Rehearse.tsx';
@@ -213,9 +213,30 @@ function MyShow({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const hudItems = items.filter((i) => showLink(i).kind === 'hud' && inShow(s.setup, i));
   return (
     <div className="stack" style={{ gap: 22 }}>
+      <section className="stack" style={{ gap: 8 }}>
+        <div className="between">
+          <h2 className="title-sm">Rundown</h2>
+          <span className="faint t-xs">The order the show runs in. Change it on the Autopilot tab.</span>
+        </div>
+        <ol className="rundown">
+          {s.autopilot.segments.map((seg, i) => {
+            const screen = seg.show ? s.setup.screens.find((x) => x.id === seg.show) : null;
+            const overlay = screen?.overlay ?? 'ingame';
+            return (
+              <li key={seg.id} className={`rundown-row ${seg.state === 'done' ? 'done' : ''}`}>
+                <span className="mono faint t-xs">{String(i + 1).padStart(2, '0')}</span>
+                <span className="rundown-thumb"><Preview src={overlayUrl(s, overlay)} label={seg.name} /></span>
+                <span><b>{seg.name}</b><br /><span className="muted t-sm">{triggerLine(seg)}</span></span>
+                <span className="mono faint t-xs">{action(seg)}</span>
+                <span className="faint t-xs">{seg.state === 'done' ? 'Done' : seg.state === 'on_air' ? 'On air' : seg.mode === 'manual' ? 'Waits for you' : 'By itself'}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
       <div className="between">
-        <p className="muted" style={{ margin: 0 }}>These go to OBS for every match of this production, under these names.</p>
-        <button className="btn" onClick={() => setPack(true)}>Add from the Library</button>
+        <h2 className="title-sm">Graphics in OBS</h2>
+        <span className="row-gap"><span className="faint t-xs">For every match of this production.</span><button className="btn" onClick={() => setPack(true)}>Add from the Library</button></span>
       </div>
       {SCENE_KEYS.map((key) => {
         const screens = s.setup.screens.filter((x) => x.scene === key && x.enabled);
