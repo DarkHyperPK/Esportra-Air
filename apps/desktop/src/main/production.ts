@@ -210,6 +210,8 @@ export class Production extends EventEmitter {
       act: (name, args) => this.companionAct(name, args),
     });
     this.on('change', () => this.companion.onChange());
+    // Companion is parked (12 Nov): the choice is not offered, so an earlier choice goes back to Air.
+    if (deps.store.data.control && deps.store.data.control !== 'air') deps.store.data.control = 'air';
     void this.companion.sync();
     deps.obs.watchSlots(SCENE_KEYS.flatMap((key) => SCENES[key].slots.map((slot) => slot.scene)));
     deps.capture.on('change', changed);
@@ -1437,9 +1439,12 @@ export class Production extends EventEmitter {
 function artCheck(a: ArtStatus): CheckItem {
   const title = 'Agent and map art';
   if (!a.total) return { id: 'art', title, detail: 'Looking for the agent and map pictures on this PC…', health: 'off' };
-  if (a.have >= a.total) return { id: 'art', title, detail: `All ${a.total} agent, weapon and map pictures are on this PC. Graphics show them without internet.`, health: 'ok' };
+  const gone = a.unavailable.length;
+  const names = gone ? ` Riot’s art server does not have ${gone === 1 ? 'this picture' : `these ${gone} pictures`}: ${a.unavailable.slice(0, 6).join(', ')}${gone > 6 ? ', …' : ''}. Graphics show the name instead.` : '';
+  const missing = a.total - a.have - gone;
+  if (missing <= 0) return { id: 'art', title, detail: `${a.have} of ${a.total} agent, weapon and map pictures are on this PC. Graphics show them without internet.${names}`, health: gone ? 'warn' : 'ok' };
   if (a.downloading) return { id: 'art', title, detail: `Downloading pictures to this PC: ${a.have} of ${a.total}…`, health: 'off' };
-  return { id: 'art', title, detail: `${a.total - a.have} of ${a.total} pictures are not on this PC yet, and media.valorant-api.com could not be reached. Graphics run without them; Air tries again every minute.`, health: 'warn', action: { id: 'download-art', label: 'Download now' } };
+  return { id: 'art', title, detail: `${missing} of ${a.total} pictures are not on this PC yet. media.valorant-api.com could not be reached${a.lastError ? ` (${a.lastError.replace(/\.$/, '')})` : ''}; Air tries again every minute.${names}`, health: 'warn', action: { id: 'download-art', label: 'Download now' } };
 }
 
 export function checks(s: Snapshot): CheckItem[] {

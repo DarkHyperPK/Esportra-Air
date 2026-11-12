@@ -35,7 +35,7 @@ export function EventScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const matches = s.matches.filter((m) => m.eventId === event.id).length;
   const share = rotationShare(event.sponsors);
   const dirty = form.name !== event.name || form.stages !== event.stages.join(', ') || form.accent !== event.accent;
-  const logo = (path: string, size: number) => (path ? <img src={imageUrl(s, path)} alt="" style={{ width: size, height: size, objectFit: 'contain' }} /> : <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true"><path d="M24 4 42 14v20L24 44 6 34V14z" fill="none" stroke="var(--accent)" strokeWidth="3" /></svg>);
+  const logo = (path: string, size: number) => (path ? <img src={imageUrl(s, path)} alt="" style={{ width: size, height: size, objectFit: 'contain' }} /> : <span aria-hidden="true" style={{ width: size, height: size, display: "grid", placeItems: "center", border: "1px dashed var(--hair-strong)", color: "var(--text-3)", fontSize: Math.round(size / 4), fontWeight: 700 }}>LOGO</span>);
   return (
     <div className="stack" style={{ gap: 22 }}>
       <header className="eventband" style={{ ['--accent' as string]: event.accent }}>

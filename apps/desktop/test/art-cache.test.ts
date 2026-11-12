@@ -61,3 +61,29 @@ test('downloads missing pictures, skips ones already here, refuses non-PNGs and 
     server.close();
   }
 });
+
+test('a picture the art server does not have (404) is named, counted apart and not retried', async () => {
+  let asked = 0;
+  const server = createServer((req, res) => {
+    if (req.url === `/agents/${B}/killfeedportrait.png`) { asked++; return res.writeHead(404).end(); }
+    res.writeHead(200, { 'content-type': 'image/png' }).end(PNG);
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}/`;
+  const dir = mkdtempSync(join(tmpdir(), 'air-art404-'));
+  const catalogue = join(dir, 'catalog.js');
+  const remote = (p: string) => `https://media.valorant-api.com/${p}`;
+  writeFileSync(catalogue, `window.VCAT={"agents":{"BREACH":{"uuid":"${B}","name":"Breach","icon":"${remote(`agents/${B}/displayicon.png`)}","kf":"${remote(`agents/${B}/killfeedportrait.png`)}"}}};`);
+  const cache = new ArtCache({ catalogue, dir: join(dir, 'art'), origin, retryMs: 20 });
+  try {
+    await cache.download();
+    assert.deepEqual([cache.status.total, cache.status.have, cache.status.lastError], [2, 1, null], 'a 404 is not a connection problem');
+    assert.deepEqual(cache.status.unavailable, ['Breach · kill feed']);
+    await new Promise((r) => setTimeout(r, 80));
+    await cache.download();
+    assert.equal(asked, 1, 'not asked for again');
+  } finally {
+    cache.stop();
+    server.close();
+  }
+});

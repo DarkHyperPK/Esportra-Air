@@ -297,7 +297,7 @@ export interface Snapshot {
   log: LogEntry[];
   checks: CheckItem[];
   /** Agent, weapon and map pictures on this PC (downloaded once from media.valorant-api.com). */
-  art: { total: number; have: number; downloading: boolean; lastError: string | null };
+  art: { total: number; have: number; downloading: boolean; lastError: string | null; unavailable: string[] };
   /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
   recovery: string | null;
   /** The private rehearsal of the selected match (never on air). */

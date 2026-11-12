@@ -18,6 +18,20 @@ export interface ArtStatus {
   downloading: boolean;
   /** Why the last attempt left pictures missing (null when none are missing or none failed). */
   lastError: string | null;
+  /** Pictures the art server does not have (it answered 404), by name. Not retried: they will not appear. */
+  unavailable: string[];
+}
+
+/** A picture the art server answered 404 for: it does not exist there, so retrying will not help. */
+class NotOnServer extends Error {}
+
+/** A readable name for a picture path, from the catalogue: "Astra", "Astra · ability", "Vandal", "Lotus". */
+export function artName(source: string, path: string): string {
+  const uuid = path.split('/')[1] ?? '';
+  const at = source.indexOf(`"uuid":"${uuid}"`);
+  const name = at >= 0 ? /"name":"([^"]{1,40})"/.exec(source.slice(at, at + 400))?.[1] : undefined;
+  const what = path.includes('/abilities/') ? 'ability' : /killfeed/.test(path) ? 'kill feed' : /fullportrait/.test(path) ? 'portrait' : '';
+  return `${name ?? path.split('/')[0]}${what ? ` · ${what}` : ''}`;
 }
 
 /** Every picture path in the catalogue (`agents/<uuid>/displayicon.png`, …), without duplicates. */
@@ -43,7 +57,10 @@ export interface ArtCacheOptions {
 }
 
 export class ArtCache extends EventEmitter {
-  status: ArtStatus = { total: 0, have: 0, downloading: false, lastError: null };
+  status: ArtStatus = { total: 0, have: 0, downloading: false, lastError: null, unavailable: [] };
+  /** Paths the server does not have; skipped until Air restarts. */
+  private notOnServer = new Set<string>();
+  private source = '';
   private readonly o: Required<Omit<ArtCacheOptions, 'fetch'>> & { fetch: typeof fetch };
   private paths: string[] = [];
   private running: Promise<void> | null = null;
@@ -76,10 +93,13 @@ export class ArtCache extends EventEmitter {
   private async pass() {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    if (!this.paths.length) this.paths = catalogueArt(await readFile(this.o.catalogue, 'utf8'));
+    if (!this.paths.length) {
+      this.source = await readFile(this.o.catalogue, 'utf8');
+      this.paths = catalogueArt(this.source);
+    }
     const missing: string[] = [];
-    for (const p of this.paths) if (!(await exists(join(this.o.dir, p)))) missing.push(p);
-    this.set({ total: this.paths.length, have: this.paths.length - missing.length, downloading: missing.length > 0, lastError: null });
+    for (const p of this.paths) if (!this.notOnServer.has(p) && !(await exists(join(this.o.dir, p)))) missing.push(p);
+    this.set({ total: this.paths.length, have: this.paths.length - missing.length - this.notOnServer.size, downloading: missing.length > 0, lastError: null });
     let failed = 0;
     let lastError: string | null = null;
     const queue = [...missing];
@@ -89,6 +109,11 @@ export class ArtCache extends EventEmitter {
           await this.fetchOne(p);
           this.set({ have: this.status.have + 1 });
         } catch (error) {
+          if (error instanceof NotOnServer) {
+            this.notOnServer.add(p);
+            this.set({ unavailable: [...this.notOnServer].map((x) => artName(this.source, x)).sort() });
+            continue;
+          }
           failed++;
           lastError = (error as Error).message;
         }
@@ -105,6 +130,7 @@ export class ArtCache extends EventEmitter {
 
   private async fetchOne(path: string) {
     const res = await this.o.fetch(this.o.origin + path, { signal: AbortSignal.timeout(15_000) });
+    if (res.status === 404) throw new NotOnServer(path);
     if (!res.ok) throw new Error(`The art server answered ${res.status}.`);
     if (!/^image\/png\b/i.test(res.headers.get('content-type') ?? '')) throw new Error('The art server sent something that is not a PNG.');
     if (Number(res.headers.get('content-length') ?? 0) > MAX_BYTES) throw new Error('A picture was larger than 5 MB.');

@@ -234,7 +234,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   const d = s.devices;
 
   return (
-    <div className="live">
+    <div className="live-grid">
       <div className="stack" style={{ gap: 12, minWidth: 0 }}>
         {!s.match && <div className="notice">No match selected. <button className="btn fix" onClick={() => go('ready')}>Choose a match</button></div>}
         {s.match && <OnAirMonitor s={s} image={frame?.pgm ?? null} />}
