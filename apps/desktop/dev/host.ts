@@ -3,6 +3,9 @@
 // walked through in a normal browser on any OS (no ow-electron, OBS or Valorant needed).
 //
 //   node dev/host.ts [--port 5320]      then open http://127.0.0.1:5320/
+import { createRequire } from 'node:module';
+import { manualHtml } from '../src/shared/manual.ts';
+import { gameOf } from '../src/shared/games.ts';
 import { createServer } from 'node:http';
 import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
@@ -79,7 +82,21 @@ store.data.deviceId ??= randomUUID();
 const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets, deviceId: store.data.deviceId, deviceName: 'DEV-PC', changed: () => production.emit('change') });
 const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, version: 'dev' });
 let clipboard = '';
-const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; } };
+// The manual as a PDF, printed by the same Chromium the walkthrough uses (no save dialog in the dev host).
+const saveManualPdf = async () => {
+  const { chromium } = createRequire(import.meta.url)('playwright');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(manualHtml(store.data.keymap, gameOf(store.data.setup.game)?.name ?? 'your game'));
+    const file = join(dir, 'Esportra Air manual.pdf');
+    await page.pdf({ path: file, format: 'A4' });
+    return file;
+  } finally {
+    await browser.close();
+  }
+};
+const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; }, saveManualPdf };
 await production.syncEngine();
 production.art.start();
 production.checkRecovery();

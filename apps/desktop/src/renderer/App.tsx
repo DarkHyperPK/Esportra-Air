@@ -14,6 +14,7 @@ import { ScenesScreen } from './screens/ScenesScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { LibraryScreen } from './screens/LibraryScreen.tsx';
 import { EventScreen } from './screens/EventScreen.tsx';
+import { HelpScreen } from './screens/HelpScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 import { FirstRun } from './components/FirstRun.tsx';
 
@@ -147,6 +148,7 @@ export function App() {
           <main className="page">
             {page === 'ready' && <ReadyScreen {...props} command={command} open={matchOpen} setOpen={setMatchOpen} start={() => { setStarted(true); setPage('console'); }} />}
             {page === 'event' && <EventScreen s={s} run={run} />}
+            {page === 'help' && <HelpScreen s={s} run={run} />}
             {page === 'console' && <ConsoleScreen {...props} />}
             {page === 'library' && <LibraryScreen {...props} />}
             {page === 'scenes' && <ScenesScreen {...props} />}
@@ -162,7 +164,7 @@ export function App() {
       {fix && <Drawer title="Fix data" close={() => setFix(false)} wide><FixData s={s} run={run} close={() => setFix(false)} /></Drawer>}
       {consent && <ConsentDialog close={() => setConsent(false)} accept={async () => { setConsent(false); await run(() => air.startCapture({ consent: true })); }} />}
       {palette && <CommandPalette s={s} run={run} actions={actions} close={() => setPalette(false)} />}
-      {help && <ShortcutsDialog close={() => setHelp(false)} />}
+      {help && <ShortcutsDialog s={s} close={() => setHelp(false)} manual={() => { setHelp(false); go('help'); }} />}
       <Toasts list={toasts} dismiss={dismiss} />
     </div>
   );

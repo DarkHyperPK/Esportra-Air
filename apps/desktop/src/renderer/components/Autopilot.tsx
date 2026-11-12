@@ -1,3 +1,4 @@
+import { keyLabel, keyOf } from '../../shared/keymap.ts';
 import { useEffect, useState } from 'react';
 import { PRESETS, TRIGGERS, TRIGGER_LABEL, type Preset, type Segment } from '../../shared/autopilot.ts';
 import type { Snapshot } from '../../shared/api.ts';
@@ -106,9 +107,9 @@ export function AutopilotCard({ s, run }: { s: Snapshot; run: Run }) {
           <p className="muted" style={{ fontSize: 12.5 }}>The rundown is finished.</p>
         )}
         <div className="triple">
-          <button className="btn hold" disabled={!next || held || next.state === 'taking' || !!a.paused} onClick={() => void run(() => air.autopilotHold())} aria-keyshortcuts="H">Hold <span className="kbd">H</span></button>
-          <button className="btn" disabled={!next || next.state === 'taking'} onClick={() => void run(() => air.autopilotSkip())} aria-keyshortcuts="S">Skip <span className="kbd">S</span></button>
-          <button className="btn take" disabled={!next || next.state === 'taking' || !!a.paused} onClick={() => void run(() => air.autopilotTake())} aria-keyshortcuts="Space">Take now</button>
+          <button className="btn hold" disabled={!next || held || next.state === 'taking' || !!a.paused} onClick={() => void run(() => air.autopilotHold())} aria-keyshortcuts={keyOf(s.keymap, 'hold')}>Hold <span className="kbd">{keyLabel(keyOf(s.keymap, 'hold'))}</span></button>
+          <button className="btn" disabled={!next || next.state === 'taking'} onClick={() => void run(() => air.autopilotSkip())} aria-keyshortcuts={keyOf(s.keymap, 'skip')}>Skip <span className="kbd">{keyLabel(keyOf(s.keymap, 'skip'))}</span></button>
+          <button className="btn take" disabled={!next || next.state === 'taking' || !!a.paused} onClick={() => void run(() => air.autopilotTake())} aria-keyshortcuts={keyOf(s.keymap, 'take')}>Take now <span className="kbd">{keyLabel(keyOf(s.keymap, 'take'))}</span></button>
         </div>
         {a.comingUp.length > 0 && (
           <div>

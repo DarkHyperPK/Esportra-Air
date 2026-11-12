@@ -55,6 +55,17 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     const reopened = new Store(join(dir, 'air.json'));
     assert.deepEqual([reopened.data.onboarding?.done, reopened.data.setup.game], [true, 'valorant'], 'first run is not shown again');
 
+    // Keys and moments are this PC's own, and survive a restart.
+    await production.setKey('pause', 'F10');
+    await assert.rejects(production.setKey('pause', 'F2'), /already Timeout/);
+    await production.setMoments(['pause', 'replay']);
+    await assert.rejects(production.setMoments([]), /one to six/);
+    const again = new Store(join(dir, 'air.json'));
+    assert.deepEqual([again.data.keymap, again.data.moments], [{ pause: 'F10' }, ['pause', 'replay']]);
+    assert.deepEqual([production.snapshot().keymap, production.snapshot().moments], [{ pause: 'F10' }, ['pause', 'replay']]);
+    await production.resetKeys();
+    await production.setMoments(['pause', 'timeout', 'replay', 'talent', 'sponsor', 'spotlight']);
+
     // No match yet: nothing on the Match step, capture refuses.
     assert.equal(production.snapshot().match, null);
     assert.throws(() => production.startCapture(), /Choose or create a match/);

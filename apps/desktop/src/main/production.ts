@@ -17,6 +17,7 @@ import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
 import { CaptureStats } from './capture-stats.ts';
 import { devicesView } from '../shared/devices.ts';
+import { DEFAULT_MOMENTS, rebind, validMoments } from '../shared/keymap.ts';
 import { gameName, gameOf, type GameId, type Profile } from '../shared/games.ts';
 import { LIBRARY_ROOM } from '../shared/library.ts';
 import { join } from 'node:path';
@@ -262,6 +263,23 @@ export class Production extends EventEmitter {
     if (this.setup.profile === 'player-pcs' && !game.playerPcData) this.setup.profile = 'observer';
     this.save();
     await this.syncEngine();
+  }
+
+  // ── keyboard (per PC) ──
+
+  async setKey(actionId: string, key: string | null, swap = false) {
+    this.deps.store.data.keymap = rebind(this.deps.store.data.keymap, String(actionId), key === null ? null : String(key), swap === true);
+    this.save();
+  }
+
+  async resetKeys() {
+    this.deps.store.data.keymap = {};
+    this.save();
+  }
+
+  async setMoments(ids: string[]) {
+    this.deps.store.data.moments = validMoments(ids);
+    this.save();
   }
 
   async chooseProfile(profile: Profile) {
@@ -1269,6 +1287,8 @@ export class Production extends EventEmitter {
       onboarding: { done: this.deps.store.data.onboarding?.done ?? false },
       game: gameOf(this.setup.game),
       gameLocked: this.gameLocked(),
+      keymap: this.deps.store.data.keymap ?? {},
+      moments: this.deps.store.data.moments ?? DEFAULT_MOMENTS,
       events: this.deps.store.data.events,
       event: this.match ? this.eventOf(this.match) : null,
       match,

@@ -2,7 +2,9 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, safeStorage, shell } from 'electron';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { manualHtml } from '../shared/manual.ts';
+import { gameOf } from '../shared/games.ts';
 import { join, resolve } from 'node:path';
 import OBSWebSocket from 'obs-websocket-js';
 import { CHANNELS, type ApiMethod } from '../shared/api.ts';
@@ -69,7 +71,21 @@ async function main() {
   const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, toPng, version: app.getVersion() });
   void esportra.start();
   if (store.data.mode === 'capture') production.link.resume();
-  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text) };
+  // The manual as a PDF: the same source as Help, printed in a hidden window, saved where the producer chooses.
+  const saveManualPdf = async () => {
+    const html = manualHtml(store.data.keymap, gameOf(store.data.setup.game)?.name ?? 'your game');
+    const target = await dialog.showSaveDialog(window!, { title: 'Save the manual', defaultPath: join(app.getPath('documents'), 'Esportra Air manual.pdf'), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+    if (target.canceled || !target.filePath) return null;
+    const page = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
+    try {
+      await page.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      writeFileSync(target.filePath, await page.webContents.printToPDF({ pageSize: 'A4', printBackground: false }));
+    } finally {
+      page.destroy();
+    }
+    return target.filePath;
+  };
+  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf };
 
   ipcMain.handle(CHANNELS.call, async (event, method: ApiMethod, args: unknown[]) => {
     if (!window || event.sender !== window.webContents) throw new Error('Not allowed.');

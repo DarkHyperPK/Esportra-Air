@@ -1,7 +1,7 @@
 // App-wide layers: toasts, the command palette (Ctrl+K) and keyboard help (?).
+import { effectiveKeys, keyLabel } from '../../shared/keymap.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Page, Snapshot } from '../../shared/api.ts';
-import { LAYER_DEFS, hotkeyLabel } from '../../shared/layers.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { PAGE_NAME, PAGE_ORDER } from './Chrome.tsx';
@@ -32,44 +32,29 @@ export function Toasts({ list, dismiss }: { list: Toast[]; dismiss: (id: number)
 
 // ── keyboard help ──
 
-export const SHORTCUTS: Array<[string, string]> = [
-  ['Ctrl K', 'Search and go to anything'],
-  ['?', 'This list'],
-  ['Space', 'Take what is cued, or the waiting autopilot step'],
-  ['F7', 'Take the cue behind the stinger'],
-  ['H', 'Hold the next autopilot step'],
-  ['S', 'Skip the next autopilot step'],
-  ['F1', 'Tech pause'],
-  ['F2', 'Timeout'],
-  ['F3', 'Save replay in OBS'],
-  ['F4', 'Toast'],
-  ['F5', 'Caster lower third'],
-  ['F6', 'Poll'],
-  ['F8', 'Sponsor read'],
-  ['Ctrl D', 'Fix data'],
-  ['Esc', 'Close a panel or dialog'],
-];
 
-export function ShortcutsDialog({ close }: { close: () => void }) {
+export function ShortcutsDialog({ s, close, manual }: { s: Snapshot; close: () => void; manual: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => (e.key === 'Escape' || e.key === '?') && close();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [close]);
+  const keys = effectiveKeys(s.keymap);
+  const row = (a: { id: string; label: string; key: string }) => <div key={a.id}><span>{a.label}</span><span className="kbd">{keyLabel(a.key)}</span></div>;
   return (
     <div className="scrim center" onClick={(e) => e.target === e.currentTarget && close()}>
       <div className="dialog" style={{ maxWidth: 760 }} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
         <div className="row between"><div><Cap>Keyboard</Cap><h2 className="title-md" style={{ marginTop: 6 }}>Shortcuts</h2></div><button className="btn quiet small" onClick={close}>Esc · Close</button></div>
         <div className="shortcuts">
-          {SHORTCUTS.map(([k, v]) => <div key={k}><span>{v}</span><span className="kbd">{k}</span></div>)}
+          {row({ id: 'search', label: 'Search and go to anything', key: 'Ctrl+K' })}
+          {row({ id: 'help', label: 'This list', key: '?' })}
+          {keys.filter((a) => a.group !== 'layer').map(row)}
         </div>
         <div>
           <Cap>Graphic layers on Live</Cap>
-          <div className="shortcuts" style={{ marginTop: 6 }}>
-            {LAYER_DEFS.map((d) => <div key={d.id}><span>{d.label}</span><span className="kbd">{hotkeyLabel(d.hotkey)}</span></div>)}
-          </div>
+          <div className="shortcuts" style={{ marginTop: 6 }}>{keys.filter((a) => a.group === 'layer').map(row)}</div>
         </div>
-        <p className="faint t-xs">Shortcuts work while Air is focused and you are not typing in a field.</p>
+        <p className="faint t-xs">Change any key in Settings › Keyboard. Keys work while Air is focused and you are not typing in a field. <button className="btn quiet small" onClick={manual}>Open the manual</button></p>
       </div>
     </div>
   );

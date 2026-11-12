@@ -5,7 +5,7 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { ICONS, LOGO } from './ui.tsx';
 
-type RailPage = Exclude<Page, 'settings' | 'outputs' | 'console'>;
+type RailPage = Exclude<Page, 'settings' | 'outputs' | 'console' | 'help'>;
 
 /** The order a producer works in, top to bottom: who is on air, the match, its graphics, OBS, game data. */
 const RAIL: Array<[RailPage, string]> = [
@@ -19,11 +19,11 @@ const RAIL: Array<[RailPage, string]> = [
 /** What each page is called, for the top bar and the command palette. */
 export const PAGE_NAME: Record<Page, string> = {
   console: 'Live', ready: 'Matches', event: 'Event', library: 'Library', scenes: 'OBS scenes', outputs: 'Browser sources',
-  capture: 'Devices', settings: 'Settings',
+  capture: 'Devices', settings: 'Settings', help: 'Help',
 };
 
 /** Pages in the rail's order, for the command palette. */
-export const PAGE_ORDER: Page[] = ['event', 'ready', 'library', 'scenes', 'outputs', 'capture', 'console', 'settings'];
+export const PAGE_ORDER: Page[] = ['event', 'ready', 'library', 'scenes', 'outputs', 'capture', 'console', 'help', 'settings'];
 
 /** The rail item a page belongs to. */
 export const railOf = (page: Page): Page => (page === 'outputs' ? 'scenes' : page);
@@ -129,6 +129,10 @@ export function Rail({ page, go, onAir }: { page: Page; go: (p: Page) => void; o
         {onAir && <span className="air-dot" aria-hidden="true" />}
       </button>
       <span className="spacer" />
+      <button aria-current={current === 'help' ? 'page' : undefined} onClick={() => go('help')}>
+        {ICONS.help}
+        Help
+      </button>
       <button aria-current={current === 'settings' ? 'page' : undefined} onClick={() => go('settings')}>
         {ICONS.setup}
         Settings

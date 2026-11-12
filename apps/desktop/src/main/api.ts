@@ -11,9 +11,11 @@ export interface ApiContext {
   obs: ObsLink;
   secrets: Secrets;
   copy: (text: string) => void;
+  /** Saves the manual as a PDF where the producer chooses (the app), or next to the dev data (dev host). */
+  saveManualPdf?: () => Promise<string | null>;
 }
 
-export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | void> {
+export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void> {
   const p = ctx.production;
   const a = args as any[];
   switch (method) {
@@ -31,6 +33,10 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'createMatch': await p.createMatch(a[0]); break;
     case 'uploadImage': return p.uploadImage(String(a[0]));
     case 'updateMatch': await p.updateMatch(String(a[0]), a[1] ?? {}); break;
+    case 'setKey': await p.setKey(String(a[0]), a[1] === null ? null : String(a[1]), a[2] === true); break;
+    case 'resetKeys': await p.resetKeys(); break;
+    case 'setMoments': await p.setMoments(a[0] as string[]); break;
+    case 'saveManualPdf': return ctx.saveManualPdf ? ctx.saveManualPdf() : null;
     case 'chooseGame': await p.chooseGame(String(a[0]) as GameId); break;
     case 'chooseProfile': await p.chooseProfile(String(a[0]) as Profile); break;
     case 'finishOnboarding': await p.finishOnboarding(); break;

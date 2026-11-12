@@ -274,21 +274,28 @@ let failShot = async () => {};
   // Live, graphics only: changes are cued (Cued monitor), Space takes them, F7 takes behind the stinger.
   await golive.getByRole('button', { name: 'Open Live' }).click();
   await page.getByText(/Nothing cued/).waitFor();
-  await page.getByText('Waiting for game data').or(page.getByText(/R\d+/)).first().waitFor();
+  await page.getByText('Waiting for game data').or(page.getByText(/Round \d+/)).first().waitFor();
   await page.waitForTimeout(9000);
   await page.keyboard.press('F5');          // caster lower third -> cued
   await page.locator('.cue-chip', { hasText: 'Caster lower third' }).waitFor();
+  // All graphics (Ctrl G): every layer with its key; the layer keys work with it open or closed.
+  await page.keyboard.press('Control+g');
+  const drawer = page.getByRole('dialog', { name: 'All graphics' });
   await page.keyboard.press('2');           // player cards: on -> cued off
-  await page.getByRole('button', { name: /^Player cards: on, cued off/ }).waitFor();
+  await drawer.getByRole('button', { name: /^Player cards: on, cued off/ }).waitFor();
   await page.keyboard.press('q');           // economy board -> cued
-  await page.getByRole('button', { name: /^Economy board: auto, cued/ }).waitFor();
+  await drawer.getByRole('button', { name: /^Economy board: auto, cued/ }).waitFor();
+  await shot('all-graphics');
+  await page.keyboard.press('Escape');
+  await drawer.waitFor({ state: 'detached' });
   await page.waitForTimeout(2500);
-  await page.evaluate(() => document.querySelectorAll('*').forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }));
-  await shot('console-cued');
+  await shot('live-cued');
   await page.keyboard.press(' ');           // Take
   await page.getByText(/Nothing cued/).waitFor();
   await page.getByText('On screen · press again to hide').waitFor();
-  await page.getByRole('button', { name: /^Economy board: \w+, set by hand/ }).first().waitFor();
+  await page.keyboard.press('Control+g');
+  await drawer.getByRole('button', { name: /^Economy board: \w+, set by hand/ }).first().waitFor();
+  await page.keyboard.press('Escape');
   await page.keyboard.press('2');           // player cards back on, cued
   await page.keyboard.press('F4');
   await page.getByLabel(/Short on-screen update/).fill('Map 2 starts in two minutes');
@@ -299,7 +306,7 @@ let failShot = async () => {};
   await page.keyboard.press('F1');          // pauses go straight on air
   await page.waitForTimeout(1500);
   await page.evaluate(() => document.querySelectorAll('*').forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }));
-  await shot('console');
+  await shot('live');
   const ingame = obsPages.find(([o]) => o.screenId === 'in-game')[1];
   await ingame.screenshot({ path: path.join(OUT, `${String(++n).padStart(2, '0')}-obs-in-game-output.png`) });
   await page.keyboard.press('F1');
@@ -355,7 +362,8 @@ let failShot = async () => {};
   await page.getByRole('tab', { name: 'Readiness' }).click();
 
   // Player cameras (S5): make links, copy one, 10-up; the overlay pages show the streams and report connection.
-  await rail('Live');
+  await rail('Devices');
+  await page.getByRole('tab', { name: 'Cameras' }).click();
   await page.getByLabel('Player cameras').getByRole('button', { name: 'Make link' }).first().click();
   await page.getByLabel('Player cameras').getByRole('button', { name: 'Copy link' }).first().waitFor();
   await page.getByLabel('Player cameras').getByRole('button', { name: 'Make link' }).first().click();
@@ -510,6 +518,36 @@ let failShot = async () => {};
   await page.getByRole('dialog', { name: 'Keyboard shortcuts' }).waitFor();
   await shot('keyboard-help');
   await page.keyboard.press('Escape');
+
+  // Help: the manual by situation, with this PC's keys; Save as PDF prints the same source.
+  await page.locator('nav.rail').getByRole('button', { name: 'Help' }).click();
+  await page.getByRole('heading', { name: 'Running a show' }).waitFor();
+  await page.getByRole('button', { name: 'When something breaks' }).click();
+  await page.getByText(/A player PC drops/).waitFor();
+  await shot('manual');
+  await btn('Save as PDF');
+  await page.getByText(/^Saved: .*manual\.pdf$/).waitFor({ timeout: 30_000 });
+  const pdf = (await page.getByText(/^Saved: /).innerText()).replace('Saved: ', '');
+  const head = fs.readFileSync(pdf).subarray(0, 5).toString();
+  if (head !== '%PDF-' || fs.statSync(pdf).size < 20_000) throw new Error(`the manual PDF looks wrong: ${head} ${fs.statSync(pdf).size} bytes`);
+
+  // Settings › Keyboard: Tech pause moves to F10; Timeout cannot take it without a swap; F10 works on Live.
+  await rail('Settings');
+  await page.locator('#set-keys').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Change the key for Tech pause' }).click();
+  await page.keyboard.press('F10');
+  await page.locator('#set-keys').getByText('F10', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Change the key for Timeout' }).click();
+  await page.keyboard.press('F10');
+  await page.getByRole('alert').filter({ hasText: 'F10 is already Tech pause' }).waitFor();
+  await shot('keyboard');
+  await page.getByRole('button', { name: 'Pick another' }).click();
+  await rail('Live');
+  await page.keyboard.press('F10');
+  await page.getByText('On screen · press again to resume').waitFor();
+  await page.keyboard.press('F10');
+  await page.getByText('On screen · press again to resume').waitFor({ state: 'detached' });
+  await call('resetKeys');
 
   // A laptop screen: every main page at 1280x800.
   await page.setViewportSize({ width: 1280, height: 800 });

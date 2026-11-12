@@ -36,6 +36,7 @@ export const ICONS = {
   capture: svg(<><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></>),
   outputs: svg(<><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v6H4V6h6" /></>),
   ready: svg(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M12 5v14M3 12h4M17 12h4" /><circle cx="12" cy="12" r="2.5" /></>),
+  help: svg(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17h.01" /></>),
   event: svg(<path d="M12 3 20 8v8l-8 5-8-5V8z" />),
   library: svg(<><rect x="3" y="4" width="8" height="7" rx="1.5" /><rect x="13" y="4" width="8" height="7" rx="1.5" /><rect x="3" y="13" width="8" height="7" rx="1.5" /><path d="M13 16.5h8M17 13v7" /></>),
   data: svg(<><rect x="4" y="5" width="16" height="14" /><path d="M4 10h16M9 5v14" /></>),

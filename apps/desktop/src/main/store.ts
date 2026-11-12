@@ -33,6 +33,10 @@ export interface Saved {
   mode?: 'production' | 'capture';
   /** First run: shown until finished. Saves from before first run existed count as finished. */
   onboarding?: { done: boolean };
+  /** Keys the producer rebound on this PC (only those that differ from the defaults). */
+  keymap?: Record<string, string>;
+  /** The moments shown on Live, in order. */
+  moments?: string[];
   /** Producer side: allow other PCs on the network to join. The code itself is kept encrypted. */
   join?: { enabled: boolean; port: number };
   /** Capture-only side: the producer's address and this PC's role. The code is kept encrypted. */

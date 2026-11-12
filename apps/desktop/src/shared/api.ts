@@ -7,7 +7,7 @@ import type { DevicesView } from './devices.ts';
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
-export type Page = 'ready' | 'event' | 'console' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings';
+export type Page = 'ready' | 'event' | 'help' | 'console' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings';
 export type Health = 'ok' | 'warn' | 'off' | 'bad';
 
 export interface Team {
@@ -280,6 +280,9 @@ export interface Snapshot {
   esportra: EsportraView;
   mode: PcMode;
   join: JoinView;
+  /** Keys rebound on this PC (overrides only) and the moments on Live. */
+  keymap: Record<string, string>;
+  moments: string[];
   /** Player PCs in their seats, observers and PCs without a seat (Devices). */
   devices: DevicesView;
   link: LinkView;
@@ -356,6 +359,12 @@ export interface AirApi {
   updateMatch(id: string, patch: MatchPatch): Promise<Snapshot>;
   /** The game for the whole app. Refused while a show is live. */
   chooseGame(id: GameId): Promise<Snapshot>;
+  /** Rebinds a keyboard action on this PC (null resets it); `swap` trades keys with the action that has it. */
+  setKey(actionId: string, key: string | null, swap?: boolean): Promise<Snapshot>;
+  resetKeys(): Promise<Snapshot>;
+  setMoments(ids: string[]): Promise<Snapshot>;
+  /** Saves the manual as a PDF (the app asks where); resolves to where it went, or null if cancelled. */
+  saveManualPdf(): Promise<string | null>;
   chooseProfile(profile: Profile): Promise<Snapshot>;
   finishOnboarding(): Promise<Snapshot>;
   restartOnboarding(): Promise<Snapshot>;
