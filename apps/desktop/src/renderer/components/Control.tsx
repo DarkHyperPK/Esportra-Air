@@ -57,15 +57,15 @@ export function CompanionPanel({ s, run }: { s: Snapshot; run: Run }) {
         </dl>
         <div className="cols2">
           <div className="stack" style={{ gap: 4 }}>
-            <h3 className="title-sm">Air sends (triggers)</h3><span className="faint t-xs">Only what Air already reads.</span>
+            <h3 className="title-sm">Air tells Companion when</h3><span className="faint t-xs">Use these in Companion triggers.</span>
             <ul className="cmp-list">{COMPANION_EVENTS.map((e) => <li key={e}>{EVENT_LABEL[e]}</li>)}</ul>
           </div>
           <div className="stack" style={{ gap: 4 }}>
-            <h3 className="title-sm">Buttons can (actions)</h3><span className="faint t-xs">The in-game HUD runs itself and is left alone.</span>
+            <h3 className="title-sm">A Companion button can make Air</h3><span className="faint t-xs">Use these as button or trigger actions.</span>
             <ul className="cmp-list">{actions.map((a) => <li key={a}>{ACTION_LABEL[a]}</li>)}</ul>
           </div>
         </div>
-        <p className="faint t-xs">Button labels can show the score, round, map, each player and what is on air. Only this network can connect, and only with the key. Graphics follow Cued on Live, the same as Air’s keys.</p>
+        <p className="faint t-xs">Companion can’t switch the in-game HUD (scorebug, player cards, economy board, round recap, spike timer, kill callouts): Air runs those by itself. Button labels can show the score, round, map, each player and what is on air. Graphics follow Cued on Live, the same as Air’s keys. Only this network can connect, and only with the key.</p>
       </div>
     </section>
   );
