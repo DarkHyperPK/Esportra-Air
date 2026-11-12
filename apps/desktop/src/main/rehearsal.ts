@@ -11,6 +11,8 @@ import type { Clock, RunnerLog } from './autopilot/show-runner.ts';
 import type { EngineClient } from './engine-client.ts';
 import { EventLog } from './event-log.ts';
 import type { Store } from './store.ts';
+import { RuleRunner } from './autopilot/rule-runner.ts';
+import { STARTER_RULES, isMoment, ruleActions, type RecordedEvent, type RuleAction } from '../shared/rules.ts';
 
 export interface RehearsalDeps {
   client(): EngineClient;
@@ -61,11 +63,78 @@ export class Rehearsal extends EventEmitter {
   private lines: RehearsalView['log'] = [];
   private error: string | null = null;
   private readonly events: EventLog;
+  /** The moments of the last rehearsal, for the rule builder's "would have fired" count. */
+  private moments: RecordedEvent[] = [];
+  private round: number | null = null;
+  private rules: RuleRunner | null = null;
+  private ruleCued: { label: string; actions: RuleAction[] } | null = null;
 
   constructor(deps: RehearsalDeps) {
     super();
     this.deps = deps;
-    this.events = new EventLog({ nameOf: () => '', onChange: () => {}, onEvent: (e) => this.autopilot?.onGameEvent(e) });
+    this.events = new EventLog({ nameOf: () => '', onChange: () => {}, onEvent: (e) => this.onEvent(e) });
+  }
+
+  recorded(): RecordedEvent[] {
+    return this.moments;
+  }
+
+  private onEvent(e: Record<string, unknown>) {
+    this.autopilot?.onGameEvent(e);
+    const ctx = { map: 1, round: typeof e.round === 'number' ? e.round : this.round };
+    if (e.type === 'round.won' && typeof e.round === 'number') this.round = e.round + 1;
+    if (isMoment(e, ctx)) this.moments = [...this.moments, { event: e, ctx }].slice(-200);
+    this.rules?.onGameEvent(e, ctx);
+  }
+
+  /** The production's moment rules, run against the rehearsal room: "Try it in Rehearse". */
+  private startRules(room: string, speed: RehearsalSpeed, ap: Autopilot) {
+    const match = this.deps.match()!;
+    const client = this.deps.client();
+    const act = (a: RuleAction[]) => Promise.all(a.map((x) => client.post('/control/action', { match: room, name: x.name, args: x.args })));
+    const apply = async (actions: RuleAction[], label: string, via: 'cut' | 'stinger') => {
+      if (via === 'stinger') {
+        await act([{ name: 'stinger.play', args: {} }]);
+        await new Promise((r) => setTimeout(r, 450 / speed));
+      }
+      await act(actions);
+      const fs = actions.find((a) => a.name === 'fullscreen.show');
+      if (fs) this.showing = (fs.args.screen as string | null) ?? null;
+      this.add(label);
+    };
+    const runner: RuleRunner = new RuleRunner({
+      rules: () => this.deps.store.data.rules ?? STARTER_RULES,
+      active: () => this.running,
+      preset: () => ap.view().preset,
+      busy: () => this.showing !== null || ap.view().holdEndsAt !== null,
+      actionsFor: (rule, hit) => ruleActions(rule, hit, {
+        teams: match.teams.map((t) => t.name), players: match.players.map((l) => l.map((p) => p.name)),
+        graphic: (id) => `Full screen · ${this.deps.screens().find((x) => x.id === id)?.title ?? id}`,
+      }),
+      air: (actions, label, via) => apply(actions, label, via),
+      cue: async (actions, label) => {
+        this.ruleCued = { label, actions };
+        // Hands-free: a rule that waits for the producer is taken after three (scaled) seconds.
+        if (!this.options.handsFree) return;
+        const t = setTimeout(() => {
+          if (this.rules === runner && this.ruleCued?.label === label && !runner.view()) void this.takeRuleCue('cut');
+        }, 3000 / speed);
+        t.unref?.();
+      },
+      takeCue: (via) => this.takeRuleCue(via),
+      clearCue: async () => { this.ruleCued = null; },
+      log: (line) => this.add(line), changed: () => this.deps.changed(), clock: scaledClock(speed),
+    });
+    this.applyRuleCue = apply;
+    this.rules = runner;
+  }
+
+  private applyRuleCue: ((actions: RuleAction[], label: string, via: 'cut' | 'stinger') => Promise<void>) | null = null;
+
+  private async takeRuleCue(via: 'cut' | 'stinger') {
+    const cued = this.ruleCued;
+    this.ruleCued = null;
+    if (cued && this.applyRuleCue) await this.applyRuleCue(cued.actions, cued.label, via);
   }
 
   view(): RehearsalView {
@@ -94,6 +163,9 @@ export class Rehearsal extends EventEmitter {
     this.lines = [];
     this.error = null;
     this.showing = null;
+    this.moments = [];
+    this.round = 1;
+    this.ruleCued = null;
     const client = this.deps.client();
     await this.deps.seed(this.room);
     await client.patch(`/api/${this.room}`, { airRoster: rehearsalRoster(match), airFullscreen: null });
@@ -139,6 +211,7 @@ export class Rehearsal extends EventEmitter {
     ap.loadForMatch();
     ap.start();
     this.autopilot = ap;
+    this.startRules(room, speed, ap);
   }
 
   /** Takes the step autopilot is waiting on (the rehearsal's own Take). */
@@ -160,6 +233,8 @@ export class Rehearsal extends EventEmitter {
     if (this.handsFreeTimer) clearTimeout(this.handsFreeTimer);
     this.handsFreeTimer = null;
     this.autopilot?.stopAll();
+    this.rules?.reset();
+    this.rules = null;
     this.events.target(null);
     this.deps.changed();
   }

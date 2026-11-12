@@ -345,10 +345,18 @@ let failShot = async () => {};
   await page.waitForFunction(() => /Map 1 · halftime/.test(document.querySelector('.next-card')?.textContent ?? ''));
   await page.waitForTimeout(1500);
   await shot('autopilot-back-to-game');
-  // Matches › Autopilot: how it works, presets, every step as a sentence (locked while running).
+  // Moment rules (build step 8): five kills by one player is an ace; the starter rule cues the
+  // player spotlight with a 3 s hold window above Next, then takes it behind the stinger.
+  await post(Array.from({ length: 10 }, (_, i) => ({ feature: 'match_info', key: `scoreboard_${i}`, data: JSON.stringify({ player_id: `p${i}`, name: `${['JUNO', 'MIRA', 'DAX', 'RIKU', 'ECHO', 'KAIRO', 'SOL', 'VEX', 'NYX', 'ZEN'][i]} #T`, character: 'Clay', team: i < 5 ? 0 : 1, alive: true, money: 3900 }) })));
+  for (let v = 5; v < 10; v++) await post([{ events: [{ name: 'kill_feed', data: JSON.stringify({ attacker: 'JUNO #T', victim: `${['KAIRO', 'SOL', 'VEX', 'NYX', 'ZEN'][v - 5]} #T`, weapon: 'TX_Hud_Rifles_Volcano', headshot: true }) }] }]);
+  await page.getByRole('status', { name: 'Moment rule' }).getByText(/Taking in/).waitFor();
+  await shot('rule-firing');
+  await page.getByRole('status', { name: 'Moment rule' }).waitFor({ state: 'detached', timeout: 8000 });
+  await page.getByText(/Rule taken \(automatic\) · Spotlight/).first().waitFor();
+  // Matches › Autopilot: the preset, the rundown and the moment rules (locked while running).
   await rail('Matches');
   await page.getByRole('tab', { name: 'Autopilot' }).click();
-  await page.getByText('A hold window counts down').waitFor();
+  await page.getByRole('region', { name: 'Moment rules' }).getByText('When a player gets an ace').waitFor();
   await shot('autopilot-rules-running');
   await rail('Live');
   await page.getByLabel('Autopilot').getByRole('button', { name: 'Run manually' }).click();
@@ -359,6 +367,19 @@ let failShot = async () => {};
   await shot('autopilot-presets');
   await page.getByRole('radio', { name: /Standard show/ }).click();
   await page.getByRole('radio', { name: /Standard show/, checked: true }).waitFor();
+  // The rule builder: match point, a toast, wait for me. The count comes from the wizard's rehearsal.
+  await btn('Add a rule');
+  const builder = page.getByRole('dialog', { name: 'New rule' });
+  await builder.getByRole('radio', { name: 'Match point' }).click();
+  await builder.getByRole('radio', { name: 'Player spotlight' }).isDisabled();
+  await builder.getByRole('radio', { name: 'Wait for me' }).click();
+  await builder.getByText('When a team reaches match point', { exact: true }).waitFor();
+  await builder.getByText(/Would (have|not have) fired/).waitFor();
+  await shot('rule-builder');
+  await builder.getByRole('button', { name: 'Add rule', exact: true }).click();
+  await builder.waitFor({ state: 'detached' });
+  await page.getByRole('region', { name: 'Moment rules' }).getByText('When a team reaches match point').waitFor();
+  await shot('rules');
   await page.getByRole('tab', { name: 'Readiness' }).click();
 
   // Player cameras (S5): make links, copy one, 10-up; the overlay pages show the streams and report connection.

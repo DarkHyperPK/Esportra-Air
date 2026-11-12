@@ -10,7 +10,7 @@ import { air } from '../bridge.ts';
 import { sceneLabel, useMonitor } from '../components/Monitor.tsx';
 import { Composite } from '../components/Preview.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
-import { AutopilotCard } from '../components/Autopilot.tsx';
+import { AutopilotCard, RuleCard } from '../components/Autopilot.tsx';
 import type { PageProps } from '../App.tsx';
 
 const sponsorsOn = (s: Snapshot) => (s.match ? onAir(s.match, s.event).sponsors : []);
@@ -205,6 +205,11 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
       if (id === 'fix') return openFix();
       if (id === 'all') return setDrawer((v) => !v);
       const ap = snap.autopilot;
+      // A moment rule counting down comes first: it is the most urgent thing on screen.
+      if (snap.rules.pending && (id === 'take' || id === 'hold' || id === 'skip' || id === 'stinger')) {
+        if (id === 'hold' && snap.rules.pending.held) return;
+        return void run(() => (id === 'hold' ? air.ruleHold() : id === 'skip' ? air.ruleSkip() : air.ruleTake()));
+      }
       if (id === 'take') {
         if (ap.enabled && ap.next && ap.next.state !== 'taking') void run(() => air.autopilotTake());
         else if (snap.cue.pending.length) void run(() => air.cueTake('take'));
@@ -263,6 +268,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
       </div>
 
       <aside className="stack live-side">
+        {s.rules.pending && <RuleCard s={s} run={run} />}
         <AutopilotCard s={s} run={run} />
 
         <section className="zone" aria-label="Cued">

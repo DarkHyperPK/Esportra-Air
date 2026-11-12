@@ -709,3 +709,61 @@ test('rehearsal plays the match privately with its own players, and autopilot fi
     await engine.stop(true);
   }
 });
+
+test('an ace in the game fires the starter rule: the spotlight waits its hold window, then goes on air', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-rules-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'rules-test-key-0123456789abcdef', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
+  const wait = async (check: () => boolean | Promise<boolean>, label: string, ms = 6000) => {
+    const end = Date.now() + ms;
+    while (!(await check())) {
+      if (Date.now() > end) assert.fail(`timed out: ${label} · ${production.snapshot().log.map((x) => x.text).join(' | ')}`);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  };
+  try {
+    await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
+    const code = production.match!.code;
+    const ingest = (m: unknown[]) => engine.client.post(`/api/${code}/ingest/valorant`, m);
+    assert.deepEqual(production.snapshot().rules.list.map((r) => r.id), ['starter-ace']);
+    assert.throws(() => production.saveRule({ ...production.ruleList()[0]!, id: undefined, when: 'flawless' }), /one player/);
+
+    await ingest(Array.from({ length: 10 }, (_, i) => ({ feature: 'match_info', key: `scoreboard_${i}`, data: JSON.stringify({ player_id: `p${i}`, name: `P${i} #T`, character: 'Clay', team: i < 5 ? 0 : 1, alive: true, money: 3900 }) })));
+    await ingest([{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
+    production.autopilotStart();
+    // Rules sit beside the rundown: the intro waiting for Take does not stop them.
+    for (let v = 5; v < 10; v++) await ingest([{ events: [{ name: 'kill_feed', data: JSON.stringify({ attacker: 'P0 #T', victim: `P${v} #T`, weapon: 'TX_Hud_Rifles_Volcano', headshot: false }) }] }]);
+    await wait(() => production.snapshot().rules.pending !== null, 'the rule counts down');
+    const pending = production.snapshot().rules.pending!;
+    assert.equal(pending.label, 'Spotlight · P0');
+    assert.ok(production.snapshot().cue.pending.includes('Spotlight · P0'), 'the spotlight waits in Cued');
+    const lowerThird = async () => (await engine.client.get<any>(`/api/${code}`)).state.lowerThird;
+    assert.notEqual((await lowerThird())?.kind, 'player', 'not on air during the hold window');
+    await wait(async () => (await lowerThird())?.kind === 'player', 'the spotlight goes on air when the window ends');
+    assert.deepEqual([(await lowerThird()).team, (await lowerThird()).player], [0, 0]);
+    assert.equal(production.snapshot().rules.pending, null);
+    assert.ok(production.snapshot().log.some((x) => x.text === 'Rule taken (automatic) · Spotlight · P0'));
+
+    // Switched off, the same moment does nothing; Skip drops a cued rule.
+    production.setRuleEnabled('starter-ace', false);
+    assert.equal(production.snapshot().rules.list[0]!.enabled, false);
+    production.removeRule('starter-ace');
+    assert.deepEqual(production.snapshot().rules.list, []);
+    production.saveRule({ when: 'ace', map: null, team: 0, rounds: 'any', show: { kind: 'toast', text: '{player} aces it for {team}' }, forSeconds: 8, via: 'cut', hold: 'window', holdSeconds: 30 });
+    await ingest([{ feature: 'match_info', key: 'round_phase', data: 'shopping' }, { feature: 'match_info', key: 'round_number', data: '2' }, { feature: 'match_info', key: 'round_phase', data: 'combat' }]);
+    for (let v = 5; v < 10; v++) await ingest([{ events: [{ name: 'kill_feed', data: JSON.stringify({ attacker: 'P1 #T', victim: `P${v} #T`, weapon: 'TX_Hud_Rifles_Volcano', headshot: false }) }] }]);
+    await wait(() => production.snapshot().rules.pending !== null, 'the toast rule counts down');
+    assert.equal(production.snapshot().rules.pending!.label, 'Toast · P1 aces it for Team Alpha');
+    production.ruleHold();
+    assert.equal(production.snapshot().rules.pending!.held, true);
+    await production.ruleSkip();
+    assert.equal(production.snapshot().rules.pending, null);
+    assert.ok(!production.snapshot().cue.pending.some((l) => l.startsWith('Toast')), 'skipped: gone from Cued');
+  } finally {
+    await engine.stop(true);
+  }
+});

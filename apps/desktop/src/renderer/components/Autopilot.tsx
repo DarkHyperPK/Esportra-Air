@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { PRESETS, TRIGGERS, TRIGGER_LABEL, type Preset, type Segment } from '../../shared/autopilot.ts';
 import type { Snapshot } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
+import { HOLD_TEXT, ruleSentence, type Rule } from '../../shared/rules.ts';
+import { MOMENT_CHIP, RuleBuilder } from './RuleBuilder.tsx';
 import { Cap, Tally } from './ui.tsx';
 
 type Run = (fn: () => Promise<Snapshot | void>) => Promise<boolean>;
@@ -124,6 +126,27 @@ export function AutopilotCard({ s, run }: { s: Snapshot; run: Run }) {
   );
 }
 
+/** A moment rule in its hold window: what fires, the countdown, and Hold, Skip or Take. */
+export function RuleCard({ s, run }: { s: Snapshot; run: Run }) {
+  const p = s.rules.pending!;
+  const now = useClock(p.endsAt !== null);
+  const left = p.endsAt !== null ? Math.max(0, Math.ceil((p.endsAt - now) / 1000)) : null;
+  return (
+    <section className="panel rule-card" aria-label="Moment rule" role="status">
+      <div className="head"><Cap>Moment rule</Cap>{p.held ? <Tally kind="covered">Held</Tally> : <Tally kind="covered">Taking in {left} s</Tally>}</div>
+      <div className="body-pad stack" style={{ gap: 10 }}>
+        <p style={{ fontWeight: 600 }}>{p.label}</p>
+        <p className="muted t-xs">{p.held ? 'Held in Cued until you take or skip it.' : 'Goes on air when the countdown ends.'}</p>
+        <div className="triple">
+          <button className="btn hold" disabled={p.held} onClick={() => void run(() => air.ruleHold())}>Hold <span className="kbd">{keyLabel(keyOf(s.keymap, 'hold'))}</span></button>
+          <button className="btn" onClick={() => void run(() => air.ruleSkip())}>Skip <span className="kbd">{keyLabel(keyOf(s.keymap, 'skip'))}</span></button>
+          <button className="btn take" onClick={() => void run(() => air.ruleTake())}>Take now <span className="kbd">{keyLabel(keyOf(s.keymap, 'take'))}</span></button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** "What autopilot does next": the next few segments with their trigger and action (Readiness). */
 export function NextFive({ s }: { s: Snapshot }) {
   const list = s.autopilot.segments.filter((x) => x.state !== 'done').slice(0, 5);
@@ -140,101 +163,129 @@ export function NextFive({ s }: { s: Snapshot }) {
 }
 
 const PRESET_TEXT: Record<Preset, [string, string]> = {
-  standard: ['Standard show', 'Intro, back to the game when rounds go live, halftime, map result, then the series. Hold windows on every automatic step.'],
-  minimal: ['Results only', 'Only the map result and the return to the game are automatic. Everything else waits for you.'],
-  manual: ['Manual', 'Nothing happens by itself. Autopilot still lines up the next step so Space takes it.'],
+  standard: ['Standard show', 'Hold windows on every automatic step, and moment rules on.'],
+  minimal: ['Results only', 'Only the map result and the return to the game are automatic. Moment rules are off.'],
+  manual: ['Manual', 'Nothing happens by itself: each step and each rule waits in Cued for your Take.'],
 };
 
 /** A step as a sentence: "When the map ends, show Map result after a 5 s hold window." */
-function sentence(seg: Segment) {
+function sentence(seg: Segment): { when: string; rest: string } {
   const when = seg.mode === 'manual' || seg.trigger === 'manual' ? 'When you press Take' : seg.trigger === 'delay' ? `${seg.delaySeconds} s after the previous step` : `When ${TRIGGER_LABEL[seg.trigger].toLowerCase()}${seg.mapNumber ? ` on map ${seg.mapNumber}` : ''}`;
   const what = seg.show ? `show ${graphicTitle(seg.show)}${seg.forSeconds ? ` for ${seg.forSeconds} s, then back to the game` : ''}` : 'go back to the game';
-  const hold = seg.mode === 'manual' || seg.trigger === 'manual' ? '' : seg.holdMode === 'manual' ? ', after you confirm' : `, after a ${seg.holdSeconds} s hold window`;
-  return `${when}, ${what}${hold}.`;
+  return { when, rest: `, ${what}.` };
 }
 
-/** The match's autopilot: presets, how it works, and every step as an editable sentence. */
+const segHold = (seg: Segment) => (seg.mode === 'manual' || seg.trigger === 'manual' || seg.holdMode === 'manual' ? 'waits for you' : `${seg.holdSeconds} s hold`);
+const ruleHold = (r: Rule) => (r.hold === 'none' ? 'no hold' : r.hold === 'wait' ? 'waits for you' : `${r.holdSeconds} s hold`);
+
+/** One rundown step: the sentence, its hold, by itself or not, and its settings behind Edit. */
+function StepRow({ seg, s, run }: { seg: Segment; s: Snapshot; run: Run }) {
+  const [open, setOpen] = useState(false);
+  const started = seg.state !== 'queued';
+  const auto = seg.mode === 'automatic' && seg.trigger !== 'manual';
+  const edit = (patch: Parameters<typeof air.segmentUpdate>[1]) => void run(() => air.segmentUpdate(seg.id, patch));
+  const graphics = s.setup.screens.filter((x) => x.hosted && x.enabled);
+  const text = sentence(seg);
+  return (
+    <li className={`ap-row ${seg.state}`}>
+      <div className="ap-row-main">
+        <p><b>{text.when}</b>{text.rest}{started && <span className="faint"> · {seg.state === 'on_air' ? 'on air' : seg.state === 'done' ? 'done' : 'next'}</span>}</p>
+        <span className="ap-hold">{auto ? segHold(seg) : 'waits for you'}</span>
+        <button className="btn quiet small" aria-expanded={open} onClick={() => setOpen(!open)} aria-label={`Edit ${seg.name}`}>{open ? 'Done' : 'Edit'}</button>
+        <button type="button" className="switch" role="switch" aria-checked={auto} aria-label={`${seg.name} happens by itself`} disabled={started || seg.trigger === 'manual'} onClick={() => edit({ mode: auto ? 'manual' : 'automatic' })} />
+      </div>
+      {open && (
+        <div className="ap-rule-edit">
+          <label className="field"><span>Shows</span>
+            <select className="cell" disabled={started} value={seg.show ?? ''} onChange={(e) => edit({ show: e.target.value || null })}>
+              <option value="">Back to the game</option>
+              {graphics.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>When</span>
+            <select className="cell" disabled={started} value={seg.trigger} onChange={(e) => edit({ trigger: e.target.value as Segment['trigger'], ...(e.target.value === 'manual' ? { mode: 'manual' as const } : {}) })}>
+              {TRIGGERS.map((t) => <option key={t} value={t}>{TRIGGER_LABEL[t]}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Hold</span>
+            <select className="cell" disabled={started} value={seg.holdMode === 'manual' ? 'manual' : String(seg.holdSeconds)} onChange={(e) => edit(e.target.value === 'manual' ? { holdMode: 'manual' } : { holdMode: 'window', holdSeconds: Number(e.target.value) })}>
+              <option value="manual">Wait for me</option>
+              {[...new Set([1, 3, 5, 10, 15, seg.holdSeconds])].filter((n) => n > 0).sort((x, y) => x - y).map((n) => <option key={n} value={n}>{n} s</option>)}
+            </select>
+          </label>
+          <label className="field"><span>For</span>
+            <select className="cell" disabled={started || !seg.show} value={String(seg.forSeconds)} onChange={(e) => edit({ forSeconds: Number(e.target.value) })}>
+              <option value="0">Until the next step</option>
+              {[...new Set([8, 10, 15, 20, 30, seg.forSeconds])].filter((n) => n > 0).sort((x, y) => x - y).map((n) => <option key={n} value={n}>{n} s</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Via</span>
+            <select className="cell" disabled={started} value={seg.transition} onChange={(e) => edit({ transition: e.target.value as Segment['transition'] })}>
+              <option value="cut">Cut</option><option value="stinger">Stinger</option>
+            </select>
+          </label>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** The match's autopilot: the preset, the rundown in order, and moment rules (approved mock). */
 export function AutopilotRules({ s, run, rehearse }: { s: Snapshot; run: Run; rehearse?: () => void }) {
   const a = s.autopilot;
   const locked = a.enabled;
-  const edit = (seg: Segment, patch: Parameters<typeof air.segmentUpdate>[1]) => void run(() => air.segmentUpdate(seg.id, patch));
-  const graphics = s.setup.screens.filter((x) => x.hosted && x.enabled);
+  const [editing, setEditing] = useState<Rule | 'new' | null>(null);
+  const teams = s.match ? s.match.teams.map((t) => t.name) : ['Team A', 'Team B'];
+  const graphic = (id: string) => s.setup.screens.find((x) => x.id === id)?.title ?? id;
+  const rulesOff = a.preset === 'minimal';
   return (
-    <div className="stack" style={{ gap: 18 }}>
-      <section className="ap-explainer">
-        <div className="ap-steps">
-          <div><span className="ap-num">1</span><b>A step arms</b><span className="muted">The next step waits for its moment: a round going live, halftime, the map ending, or your Take.</span></div>
-          <div><span className="ap-num amber">2</span><b>A hold window counts down</b><span className="muted">An amber ring shows how long until it happens. <span className="kbd">H</span> holds it, <span className="kbd">S</span> skips it, <span className="kbd">Space</span> takes it now.</span></div>
-          <div><span className="ap-num rose">3</span><b>The graphic goes on air</b><span className="muted">Over the game, through Air’s own outputs. OBS scenes are never switched.</span></div>
-        </div>
-        {rehearse && <div><button className="btn" onClick={rehearse}>Try it in Rehearse</button> <span className="muted" style={{ fontSize: 12.5 }}>Watch these steps fire on a private run of this match.</span></div>}
-        <p className="muted" style={{ fontSize: 12.5 }}>Economy in the buy phase, the round recap, the spike timer and kill callouts are separate: they are Auto layers on Live and work whether autopilot is on or not.</p>
-      </section>
-
-      <section className="stack" style={{ gap: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h2 className="title-sm">Preset</h2>
-          {locked && <span className="muted" style={{ fontSize: 12.5 }}>Autopilot is running. Choose Run manually on Live to change it.</span>}
-        </div>
-        <div className="presets" role="radiogroup" aria-label="Autopilot preset">
+    <div className="stack" style={{ gap: 22 }}>
+      <div className="between">
+        <div className="seg" role="radiogroup" aria-label="Autopilot preset">
           {PRESETS.map((p) => (
-            <button key={p} type="button" role="radio" aria-checked={a.preset === p} disabled={locked} className="preset" onClick={() => void run(() => air.autopilotPreset(p))}>
-              <b>{PRESET_TEXT[p][0]}</b><span className="muted">{PRESET_TEXT[p][1]}</span>
-            </button>
+            <button key={p} type="button" role="radio" aria-checked={a.preset === p} aria-pressed={a.preset === p} disabled={locked} title={PRESET_TEXT[p][1]} onClick={() => void run(() => air.autopilotPreset(p))}>{PRESET_TEXT[p][0]}</button>
           ))}
         </div>
+        {rehearse && <button className="btn" onClick={rehearse}>Try it in Rehearse</button>}
+      </div>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: -12 }}>
+        {PRESET_TEXT[a.preset][1]} {locked ? 'Autopilot is running: choose Run manually on Live to change the preset or a started step.' : ''}
+      </p>
+
+      <section className="stack" style={{ gap: 6 }} aria-label="Rundown">
+        <div className="between"><h2 className="title-sm">Rundown</h2><span className="faint t-xs">The show in order. H holds a step, S skips it, Space takes it now.</span></div>
+        <ol className="ap-list">{a.segments.map((seg) => <StepRow key={seg.id} seg={seg} s={s} run={run} />)}</ol>
       </section>
 
-      <section className="stack" style={{ gap: 8 }}>
-        <h2 className="title-sm">Steps for {s.match?.title}</h2>
-        <ol className="ap-rules">
-          {a.segments.map((seg) => {
-            const started = seg.state !== 'queued';
-            const auto = seg.mode === 'automatic' && seg.trigger !== 'manual';
-            return (
-              <li key={seg.id} className={`ap-rule ${seg.state}`}>
-                <div className="ap-rule-main">
-                  <span className={`ap-dot ${auto ? 'auto' : ''}`} aria-hidden="true" />
-                  <div><b>{seg.name}</b><p>{sentence(seg)}</p></div>
-                </div>
-                <div className="ap-rule-edit">
-                  <label className="field"><span>Shows</span>
-                    <select className="cell" disabled={started} value={seg.show ?? ''} onChange={(e) => edit(seg, { show: e.target.value || null })}>
-                      <option value="">Back to the game</option>
-                      {graphics.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
-                    </select>
-                  </label>
-                  <label className="field"><span>When</span>
-                    <select className="cell" disabled={started} value={seg.trigger} onChange={(e) => edit(seg, { trigger: e.target.value as Segment['trigger'], ...(e.target.value === 'manual' ? { mode: 'manual' as const } : {}) })}>
-                      {TRIGGERS.map((t) => <option key={t} value={t}>{TRIGGER_LABEL[t]}</option>)}
-                    </select>
-                  </label>
-                  <label className="field"><span>Hold</span>
-                    <select className="cell" disabled={started} value={seg.holdMode === 'manual' ? 'manual' : String(seg.holdSeconds)} onChange={(e) => edit(seg, e.target.value === 'manual' ? { holdMode: 'manual' } : { holdMode: 'window', holdSeconds: Number(e.target.value) })}>
-                      <option value="manual">Wait for me</option>
-                      {[...new Set([1, 3, 5, 10, 15, seg.holdSeconds])].filter((n) => n > 0).sort((x, y) => x - y).map((n) => <option key={n} value={n}>{n} s</option>)}
-                    </select>
-                  </label>
-                  <label className="field"><span>For</span>
-                    <select className="cell" disabled={started || !seg.show} value={String(seg.forSeconds)} onChange={(e) => edit(seg, { forSeconds: Number(e.target.value) })}>
-                      <option value="0">Until the next step</option>
-                      {[...new Set([8, 10, 15, 20, 30, seg.forSeconds])].filter((n) => n > 0).sort((x, y) => x - y).map((n) => <option key={n} value={n}>{n} s</option>)}
-                    </select>
-                  </label>
-                  <label className="field"><span>Arrives</span>
-                    <select className="cell" disabled={started} value={seg.transition} onChange={(e) => edit(seg, { transition: e.target.value as Segment['transition'] })}>
-                      <option value="cut">Cut</option><option value="stinger">Stinger</option>
-                    </select>
-                  </label>
-                  <div className="field"><span>By itself</span>
-                    <button type="button" className="switch" role="switch" aria-checked={auto} aria-label={`${seg.name} happens by itself`} disabled={started || seg.trigger === 'manual'} onClick={() => edit(seg, { mode: auto ? 'manual' : 'automatic' })} style={{ marginTop: 8 }} />
+      <section className="stack" style={{ gap: 6 }} aria-label="Moment rules">
+        <div className="between"><h2 className="title-sm">Moment rules</h2><span className="faint t-xs">{rulesOff ? 'Off with Results only.' : 'They react to the game whenever it happens, beside the rundown.'}</span></div>
+        {s.rules.list.length ? (
+          <ol className={`ap-list ${rulesOff ? 'off' : ''}`}>
+            {s.rules.list.map((r) => {
+              const text = ruleSentence(r, { teams, graphic });
+              return (
+                <li key={r.id} className="ap-row">
+                  <div className="ap-row-main">
+                    <p><b>{text.when}</b>{text.rest.slice(0, text.rest.length - HOLD_TEXT(r).length - 1)}</p>
+                    <span className="ap-hold">{ruleHold(r)}</span>
+                    <span className="row-gap">
+                      <button className="btn quiet small" onClick={() => setEditing(r)} aria-label={`Edit rule: ${MOMENT_CHIP[r.when]}`}>Edit</button>
+                      <button className="btn quiet small danger" onClick={() => void run(() => air.removeRule(r.id))} aria-label={`Delete rule: ${MOMENT_CHIP[r.when]}`}>Delete</button>
+                    </span>
+                    <button type="button" className="switch" role="switch" aria-checked={r.enabled} aria-label={`Rule on: ${MOMENT_CHIP[r.when]}`} onClick={() => void run(() => air.setRuleEnabled(r.id, !r.enabled))} />
                   </div>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+                </li>
+              );
+            })}
+          </ol>
+        ) : <p className="muted ap-empty">No moment rules. Add one to react to aces, clutches, match point or overtime.</p>}
+        <div className="row-gap" style={{ marginTop: 8 }}>
+          <button className="btn" onClick={() => setEditing('new')}>Add a rule</button>
+          <span className="faint t-xs">Switch a rule off to do that step yourself. Autopilot never switches OBS scenes.</span>
+        </div>
       </section>
+      <p className="faint t-xs">Economy in the buy phase, the round recap, the spike timer and kill callouts are Auto layers on Live, separate from autopilot.</p>
+      {editing && <RuleBuilder s={s} run={run} rule={editing === 'new' ? null : editing} close={() => setEditing(null)} rehearse={rehearse ?? (() => {})} />}
     </div>
   );
 }

@@ -984,10 +984,18 @@ impl ValorantAdapter {
                 .map_or("", |(_, l)| l);
             Some(banner("round", t, 0, "", label, now, 4200))
         };
+        // The banner's kind is also the round's moment on round.won (autopilot rules); an ace that
+        // already took the round leaves it null.
+        let moment = next.as_ref().and_then(|b| b.get("type").cloned()).unwrap_or(Value::Null);
+        let player = if moment == json!("clutch") {
+            next.as_ref().and_then(|b| b.get("player").cloned()).unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
         if let Some(b) = next {
             set_banner(s, b);
         }
-        out.push(json!({ "type": "round.won", "team": t, "how": how, "round": rounds_len }));
+        out.push(json!({ "type": "round.won", "team": t, "how": how, "round": rounds_len, "moment": moment, "player": player }));
         Ok(())
     }
 

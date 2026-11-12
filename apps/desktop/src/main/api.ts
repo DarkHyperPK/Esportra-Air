@@ -75,6 +75,12 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'cueTake': await p.takeCue(a[0] === 'cut' || a[0] === 'stinger' ? a[0] : 'take'); break;
     case 'cueClear': p.clearCue(); break;
     case 'autopilotPreset': p.autopilotPreset(a[0]); break;
+    case 'saveRule': p.saveRule(a[0]); break;
+    case 'removeRule': p.removeRule(String(a[0])); break;
+    case 'setRuleEnabled': p.setRuleEnabled(String(a[0]), a[1] === true); break;
+    case 'ruleTake': await p.ruleTake(); break;
+    case 'ruleHold': p.ruleHold(); break;
+    case 'ruleSkip': await p.ruleSkip(); break;
     case 'useSlotSource': await p.useSlotSource(a[0], String(a[1])); break;
     case 'monitor': p.setMonitoring(a[0] === true); return;
     case 'installGraphics': await p.installGraphics(); break;

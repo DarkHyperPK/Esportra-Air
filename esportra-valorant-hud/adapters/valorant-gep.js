@@ -203,14 +203,18 @@ function createValorantAdapter(opts = {}) {
           if (ecoWon) s.teamStats[t].ecoWins++;
 
           // ── Banner priority ───────────────────────────────────────────────
+          // The banner's kind is also the round's moment on the round.won event (autopilot rules).
+          let moment = null, momentPlayer = null;
           // Overtime: both teams hit 12+ — fire once, then OT rounds get normal banners
           if (!ctx.overtimeFired && mapped[0] >= 12 && mapped[1] >= 12) {
             ctx.overtimeFired = true;
             s.banner = mkBanner('overtime', t, 0, '', '', now, 5000);
+            moment = 'overtime';
           }
           // Match point: this team hits 12, the other has not (otherwise it would be overtime)
           else if (!ctx.roundBanner && mapped[t] === 12 && mapped[l] < 12) {
             s.banner = mkBanner('matchpoint', t, 0, '', '', now, 4200);
+            moment = 'matchpoint';
           }
           // Ace or team ace already fired from kill event — don't overwrite
           else if (ctx.roundBanner === 'ace' || ctx.roundBanner === 'teamace') {
@@ -219,22 +223,27 @@ function createValorantAdapter(opts = {}) {
           // Flawless: winning team has all 5 players alive at round end
           else if (s.players[t].every(p => p.alive)) {
             s.banner = mkBanner('flawless', t, 0, '', '', now, 4200);
+            moment = 'flawless';
           }
           // Clutch: a solo player won against multiple opponents
           else if (clutchWon) {
             const cp = ctx.clutch;
             s.banner = mkBanner('clutch', cp.tp[0], cp.tp[1], String(cp.against), '', now, 4800);
+            moment = 'clutch';
+            momentPlayer = cp.tp[1];
           }
           // Thrifty: winning team had significantly less economy at combat start
           else if (ecoWon) {
             s.banner = mkBanner('thrifty', t, 0, '', '', now, 4200);
+            moment = 'thrifty';
           }
           // Default: round win
           else {
             s.banner = mkBanner('round', t, 0, '', HOW_LABEL[how], now, 4200);
+            moment = 'round';
           }
 
-          out.push({ type: 'round.won', team: t, how, round: s.rounds.length });
+          out.push({ type: 'round.won', team: t, how, round: s.rounds.length, moment, player: momentPlayer });
         } });
         ctx.lastScore = mapped; s.teams[0].score = mapped[0]; s.teams[1].score = mapped[1];
       } else if (key === 'map' && MAPS[v]) s.map.name = MAPS[v];
