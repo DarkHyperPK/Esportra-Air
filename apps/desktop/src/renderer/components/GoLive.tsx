@@ -15,6 +15,7 @@ const STREAMING = /Stop streaming and recording/;
 export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; close: () => void; done: () => void; connectObs: () => void }) {
   const ref = useEscape(close);
   const [consent, setConsent] = useState(false);
+  const usesAutopilot = s.control !== 'companion';
   const [autopilot, setAutopilot] = useState(!s.autopilotBlock);
   const [steps, setSteps] = useState<Steps>({ obs: 'waiting', data: 'waiting', autopilot: 'waiting' });
   const [notes, setNotes] = useState<Partial<Record<keyof Steps, string>>>({});
@@ -52,7 +53,8 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
         set('data', 'done', 'Waiting for the game. Graphics update as soon as it sends data.');
       } catch (e) { set('data', 'failed', (e as Error).message); setBusy(false); return; }
     }
-    // 3. Autopilot.
+    // 3. Autopilot (not with Stream Deck / Companion only).
+    if (!usesAutopilot) { setBusy(false); setFinished(true); return; }
     set('autopilot', 'working');
     try {
       if (autopilot) { await air.autopilotStart(); set('autopilot', 'done', 'Armed. It holds each step so you can stop it.'); }
@@ -74,10 +76,10 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
             {steps.data === 'waiting'
               ? <label className="consent"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I allow Air to read the match on this PC{s.setup.profile === 'player-pcs' ? ' and the player PCs' : ''}. It stays on our network.</label>
               : <span className="muted t-sm">{notes.data}</span>}</span></li>
-          <li>{tick(steps.autopilot, 3)}<span><b>Arm autopilot</b><br />
+          {usesAutopilot && <li>{tick(steps.autopilot, 3)}<span><b>Arm autopilot</b><br />
             {steps.autopilot === 'waiting'
               ? <span className="row-gap t-sm muted"><Switch on={autopilot} label="Autopilot" disabled={!!s.autopilotBlock} onChange={setAutopilot} />{s.autopilotBlock ?? (autopilot ? 'On: graphics go up by themselves, each after a hold.' : 'Off: you take every graphic yourself.')}</span>
-              : <span className="muted t-sm">{notes.autopilot}</span>}</span></li>
+              : <span className="muted t-sm">{notes.autopilot}</span>}</span></li>}
         </ol>
         {warnings.length > 0 && !finished && (
           <div className="stack" style={{ gap: 6 }}>

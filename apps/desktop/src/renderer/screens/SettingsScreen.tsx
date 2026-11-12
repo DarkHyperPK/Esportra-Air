@@ -8,12 +8,15 @@ import { Cap, Tally } from '../components/ui.tsx';
 import { JoinPanel, PcModeCard } from '../components/Join.tsx';
 import { ProfilePicker } from '../components/FirstRun.tsx';
 import { SyncScreen } from './SyncScreen.tsx';
+import { CompanionPanel, ControlSettings } from '../components/Control.tsx';
 import type { PageProps } from '../App.tsx';
 
 const SECTIONS = [
   ['setup', 'Setup'],
   ['pc', 'This PC'],
   ['obs', 'OBS connection'],
+  ['control', 'Graphics control'],
+  ['companion', 'Companion'],
   ['account', 'Esportra account'],
   ['network', 'Other PCs'],
   ['keys', 'Keyboard'],
@@ -151,7 +154,7 @@ export function SettingsScreen(props: PageProps) {
     <div className="settings">
       <nav className="settings-nav" aria-label="Settings sections">
         <Cap>Settings</Cap>
-        {SECTIONS.map(([id, label]) => <a key={id} href={`#set-${id}`} aria-current={current === id ? 'true' : undefined}>{label}</a>)}
+        {SECTIONS.filter(([id]) => id !== 'companion' || s.control !== 'air').map(([id, label]) => <a key={id} href={`#set-${id}`} aria-current={current === id ? 'true' : undefined}>{label}</a>)}
       </nav>
       <div className="stack settings-body">
         <PageHeader eyebrow="Software" title="Settings">How this copy of Air runs on this PC. Teams, players, event and graphics belong to each match.</PageHeader>
@@ -164,6 +167,8 @@ export function SettingsScreen(props: PageProps) {
         </section>
         <div id="set-pc"><PcModeCard s={s} run={run} /></div>
         <div id="set-obs"><ObsConnection s={s} run={run} /></div>
+        <div id="set-control"><ControlSettings s={s} run={run} /></div>
+        {s.control !== 'air' && <div id="set-companion"><CompanionPanel s={s} run={run} /></div>}
         <div id="set-account"><SyncScreen {...props} /></div>
         <div id="set-network"><JoinPanel s={s} run={run} /></div>
         <div id="set-keys"><KeyboardSettings s={s} run={run} /></div>

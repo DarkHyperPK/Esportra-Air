@@ -1,0 +1,17 @@
+{
+  "$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
+  "id": "esportra-air",
+  "name": "esportra-air",
+  "shortname": "air",
+  "description": "Esportra Air: Valorant broadcast graphics. Game events and values for triggers and buttons; buttons for full-screen graphics, lower thirds, toasts, pauses and Take.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": "git+https://github.com/DarkHyperPK/Esportra-Air.git",
+  "bugs": "https://github.com/DarkHyperPK/Esportra-Air/issues",
+  "maintainers": [{ "name": "Esportra" }],
+  "legacyIds": [],
+  "runtime": { "type": "node18", "api": "nodejs-ipc", "apiVersion": "0.0.0", "entrypoint": "../main.js" },
+  "manufacturer": "Esportra",
+  "products": ["Esportra Air"],
+  "keywords": ["esports", "valorant", "graphics", "overlay", "hud"]
+}

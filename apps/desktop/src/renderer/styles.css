@@ -734,3 +734,18 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .moment-picks { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .editor-body > .cell { flex: none; height: 36px; }
+
+/* Graphics control and Companion (Settings) */
+.ctl-cards { display: flex; flex-direction: column; gap: 8px; }
+.ctl-card { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; padding: 12px 14px; text-align: left; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--r-lg); background: var(--surface); color: var(--text); }
+.ctl-card:hover { border-color: var(--hair-hover); }
+.ctl-card[aria-checked='true'] { border-color: var(--white); }
+.ctl-card > span:last-child { display: flex; flex-direction: column; gap: 3px; }
+.ctl-dot { width: 14px; height: 14px; margin-top: 3px; border: 1px solid var(--text-2); border-radius: 50%; }
+.ctl-card[aria-checked='true'] .ctl-dot { background: var(--white); box-shadow: inset 0 0 0 3px #111; }
+.cmp-rows { display: grid; grid-template-columns: 120px minmax(0, 1fr); margin: 0; border-top: 1px solid var(--hair); }
+.cmp-rows dt, .cmp-rows dd { margin: 0; padding: 8px 0; border-bottom: 1px solid var(--hair); }
+.cmp-rows dt { color: var(--text-2); font-size: var(--t-sm); align-self: center; }
+.cmp-rows dd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cmp-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hair); }
+.cmp-list li { padding: 6px 0; border-bottom: 1px solid var(--hair); font-size: var(--t-sm); color: var(--text-2); }

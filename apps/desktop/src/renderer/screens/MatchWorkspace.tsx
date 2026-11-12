@@ -82,7 +82,7 @@ function Readiness({ s, run, go, act, start }: Pick<PageProps, 's' | 'run' | 'go
             </div>
           ))}
         </div>
-        <NextFive s={s} />
+        {s.control !== 'companion' && <NextFive s={s} />}
       </div>
       <aside className="stack" style={{ gap: 12 }}>
         {live ? (
@@ -286,13 +286,13 @@ export function MatchWorkspace({ s, run, go, tab, setTab, act, start, back }: Pi
       <nav className="crumb-back"><button className="btn quiet small" onClick={back}>← Matches</button></nav>
       <Hero s={s} />
       <div className="tabs" role="tablist" aria-label="Match">
-        {TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+        {TABS.filter(([id]) => id !== 'autopilot' || s.control !== 'companion').map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
       {tab === 'ready' && <Readiness s={s} run={run} go={go} act={act} start={start} />}
       {tab === 'teams' && <Teams key={m.id} s={s} run={run} />}
       {tab === 'talent' && <Talent key={m.id} s={s} run={run} go={go} />}
       {tab === 'myshow' && <MyShow s={s} run={run} />}
-      {tab === 'autopilot' && <AutopilotRules s={s} run={run} rehearse={() => setTab('rehearse')} />}
+      {tab === 'autopilot' && s.control !== 'companion' && <AutopilotRules s={s} run={run} rehearse={() => setTab('rehearse')} />}
       {tab === 'rehearse' && <RehearsePanel s={s} run={run} />}
     </div>
   );

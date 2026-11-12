@@ -148,6 +148,7 @@ async function main() {
       ingest.close();
       linkIngest.close();
       production.joinHost.stop();
+      await production.companion.stop();
       await obs.disconnect();
       await engine.stop(shutdown);
       app.exit(0);

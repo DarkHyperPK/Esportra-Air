@@ -77,6 +77,8 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'cueTake': await p.takeCue(a[0] === 'cut' || a[0] === 'stinger' ? a[0] : 'take'); break;
     case 'cueClear': p.clearCue(); break;
     case 'rundownStartFrom': p.rundownStartFrom(a[0]); break;
+    case 'setControl': await p.setControl(a[0]); break;
+    case 'companionRenewKey': p.companionRenewKey(); break;
     case 'useSlotSource': await p.useSlotSource(a[0], String(a[1])); break;
     case 'monitor': p.setMonitoring(a[0] === true); return;
     case 'installGraphics': await p.installGraphics(); break;

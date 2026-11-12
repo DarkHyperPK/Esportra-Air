@@ -29,6 +29,7 @@ Studios with their own in-house graphics teams are out of scope.
 | R3 | **Game picker.** A match starts with its game. Valorant works; other titles are shown as coming, never faked. |
 | R4 | **App fonts: Archivo** (expanded width for titles and numbers) **+ JetBrains Mono.** HUD overlays keep their own fonts. |
 | R5 | **Settings are about the software** (this PC, OBS connection, Esportra account, other PCs, keyboard, about). **The match is the centre**: teams, players, event, sponsors and graphics belong to it. Tournament is only a heading over its matches. The Layout tab is gone. |
+| R6 | **Graphics control is the producer's choice (12 Nov):** Air (Live, Cued/Take and the screen rundown), Stream Deck / Companion, or both (Settings › Graphics control, asked in first run). The rundown is optional: rows of screens from My show, each with the producer's own rule, using only signals Air already reads. With Companion, Air sends game events and values and takes button actions over a keyed local-network connection; crews build their own triggers in Companion. The in-game HUD runs itself (Auto layers) and is not controlled from Companion. Air never switches scenes; Companion may, if the crew sets it up. Module: `packages/companion-module`. |
 
 The rework plan and its stages are in `/root/.claude/plans` for this session and summarised in the status table below.
 

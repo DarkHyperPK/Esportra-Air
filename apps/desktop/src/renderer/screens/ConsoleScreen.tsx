@@ -263,7 +263,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
       </div>
 
       <aside className="stack live-side">
-        <AutopilotCard s={s} run={run} />
+        {s.control !== 'companion' && <AutopilotCard s={s} run={run} />}
 
         <section className="zone" aria-label="Cued">
           <div className="between">

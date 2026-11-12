@@ -182,6 +182,7 @@ export interface CheckItem {
 export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in' | 'download-art' | 'open-devices';
 
 import type { AutopilotView, Preset, RowInput, RundownRow } from './autopilot.ts';
+import type { CompanionView, ControlMode } from './companion.ts';
 import type { RehearsalOptions, RehearsalView } from './rehearsal.ts';
 import type { EsportraView } from './esportra.ts';
 import type { JoinView, LinkView, PcMode, PcRole } from './join.ts';
@@ -277,6 +278,9 @@ export interface Snapshot {
   autopilot: AutopilotView;
   /** The selected match's rundown rows, in show order. */
   rundown: RundownRow[];
+  /** How this PC runs graphics. */
+  control: ControlMode;
+  companion: CompanionView;
   /** Graphics waiting in the Cued column, and the sample room the Cued monitor shows. */
   cue: { mode: boolean; pending: string[]; room: string | null };
   esportra: EsportraView;
@@ -357,6 +361,10 @@ export interface AirApi {
   cueClear(): Promise<Snapshot>;
   /** Replaces the rows with a starting point. */
   rundownStartFrom(preset: Preset): Promise<Snapshot>;
+  /** Air, Stream Deck / Companion, or both: what Air shows and whether Companion can connect. */
+  setControl(mode: ControlMode): Promise<Snapshot>;
+  /** A new Companion key; Companion must be given it again. */
+  companionRenewKey(): Promise<Snapshot>;
   /** F3: saves OBS's replay buffer (no scene switching). */
   replay(): Promise<Snapshot>;
   useSlotSource(slot: SlotId, source: string): Promise<Snapshot>;

@@ -37,6 +37,10 @@ export interface Saved {
   keymap?: Record<string, string>;
   /** The moments shown on Live, in order. */
   moments?: string[];
+  /** How this PC runs graphics: Air, Stream Deck / Companion, or both (absent: Air). */
+  control?: import('../shared/companion.ts').ControlMode;
+  /** The Companion connection's port on this PC. */
+  companion?: { port: number };
   /** Producer side: allow other PCs on the network to join. The code itself is kept encrypted. */
   join?: { enabled: boolean; port: number };
   /** Capture-only side: the producer's address and this PC's role. The code is kept encrypted. */

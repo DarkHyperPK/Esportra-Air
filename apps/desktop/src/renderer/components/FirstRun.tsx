@@ -6,6 +6,7 @@ import { GAMES, PROFILES, type GameId, type Profile } from '../../shared/games.t
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { LOGO } from './ui.tsx';
+import { ControlPicker } from './Control.tsx';
 
 type Step = 'welcome' | 'account' | 'game' | 'setup' | 'obs';
 const NUMBERED: Step[] = ['account', 'game', 'setup', 'obs'];
@@ -143,6 +144,8 @@ export function FirstRun({ s, run }: { s: Snapshot; run: Run }) {
               <h1 className="fr-title">How is your production set up?</h1>
               <p className="lead">Air checks the right things for your setup. Change it any time in Settings.</p>
               <ProfilePicker s={s} value={profile} onPick={setProfile} />
+              <h2 className="title-sm" style={{ marginTop: 18 }}>How do you run graphics?</h2>
+              <ControlPicker value={s.control} onPick={(m) => void run(() => air.setControl(m))} />
               <div className="fr-actions">
                 <button className="btn primary big" disabled={!profile} onClick={async () => { if (profile && (await run(() => air.chooseProfile(profile)))) setStep('obs'); }}>Continue</button>
                 <button className="btn quiet" onClick={() => setStep('game')}>Back</button>

@@ -720,3 +720,54 @@ test('rehearsal plays the match privately with its own players, and autopilot fi
     await engine.stop(true);
   }
 });
+
+test('Stream Deck / Companion: the module connects, gets map end from the game, and puts Map result up', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const { createRequire } = await import('node:module');
+  const { AirLink } = createRequire(import.meta.url)('../../../packages/companion-module/link.js');
+  const dir = mkdtempSync(join(tmpdir(), 'air-cmp-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'companion-test-key-0123456789ab', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const companionPort = await freePort();
+  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test', companionPort });
+  production.setup.game = 'valorant';
+  const seen: { events: string[]; hello: any; values: any } = { events: [], hello: null, values: null };
+  let link: any = null;
+  const wait = async (check: () => boolean | Promise<boolean>, label: string) => {
+    const end = Date.now() + 5000;
+    while (!(await check())) { if (Date.now() > end) assert.fail(label); await new Promise((r) => setTimeout(r, 25)); }
+  };
+  try {
+    await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
+    const code = production.match!.code;
+    assert.equal(production.snapshot().control, 'air');
+    assert.equal(production.snapshot().companion.running, false, 'Air only: no connection open');
+    await production.setControl('companion');
+    const view = production.snapshot().companion;
+    assert.equal(view.running, true);
+    link = new AirLink({ host: '127.0.0.1', port: companionPort, key: view.key, onHello: (h: any) => (seen.hello = h), onValues: (v: any) => (seen.values = v), onEvent: (e: any) => seen.events.push(e.name) });
+    link.start();
+    await wait(() => !!seen.hello && !!seen.values, 'hello and values');
+    assert.ok(seen.hello.screens.some((s: any) => s.id === 'map-result'));
+    assert.equal(seen.values.team_a, 'Team Alpha');
+    await wait(() => production.snapshot().companion.connected === 1, 'Air sees Companion');
+
+    await engine.client.post(`/api/${code}/ingest/valorant`, [{ events: [{ name: 'match_end', data: '' }] }]);
+    await wait(() => seen.events.includes('map_end'), 'map end reaches Companion');
+
+    production.setCueMode(false);
+    await link.act('fullscreen', { screen: 'map-result', on: 'on' });
+    await wait(async () => (await engine.client.get<any>(`/api/${code}`)).state.airFullscreen === 'map-result', 'Map result on air');
+    await wait(() => seen.events.includes('graphic_on_air') && seen.values?.on_air === 'Map result', 'on-air event and value');
+    await assert.rejects(link.act('autopilot_take'), /set to Both/);
+    await assert.rejects(link.act('fullscreen', { screen: 'nope' }), /not in My show/);
+    await production.setControl('air');
+    assert.equal(production.snapshot().companion.running, false);
+  } finally {
+    link?.stop();
+    await production.companion.stop();
+    production.log.stop();
+    await engine.stop(true);
+  }
+});

@@ -74,6 +74,14 @@ export const MANUAL: ManualSection[] = [
   { id: 'cameras', title: 'Talent cameras', blocks: [
     { p: 'In Event, give each person a camera link (they open it in a browser; nothing to install) or one of your OBS sources. Copy the link from Devices › Cameras. Video goes to your OBS; it is never recorded or kept.' },
   ] },
+  { id: 'companion', title: 'Stream Deck and Companion', blocks: [
+    { p: 'In Settings › Graphics control, choose Stream Deck / Companion, or Both. In Bitfocus Companion, add the Esportra Air connection and enter the address and key from Settings › Companion.' },
+    { steps: [
+      'Buttons put up full-screen graphics, lower thirds, toasts and pauses, and Take or Clear what is cued.',
+      'Triggers react to the game: make a trigger on “event_count changed” with the condition “Last event is …”.',
+      'The in-game HUD runs by itself and is not controlled from Companion. Air never switches scenes; Companion can, if you add that.',
+    ] },
+  ] },
   { id: 'keyboard', title: 'Keyboard', blocks: [
     { p: 'Change any key in Settings › Keyboard. Keys are saved on this PC.' },
     { keys: ['take', 'stinger', 'hold', 'skip', 'all', 'fix', 'pause', 'timeout', 'replay', 'toast', 'talent', 'poll', 'sponsor', 'spotlight'] },

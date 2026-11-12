@@ -35,6 +35,9 @@ import { randomBytes } from 'node:crypto';
 import type { CamsView } from '../shared/api.ts';
 import type { Preset, RowInput } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
+import { CompanionHost } from './companion.ts';
+import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
+import { ROLE_NAME } from '../shared/model.ts';
 import { HEX, IMAGE, text } from './validate.ts';
 import { cameraLinkUrl, cameraViewUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
 import type { MatchPatch } from '../shared/api.ts';
@@ -63,6 +66,8 @@ export interface ProductionDeps {
   esportra?: EsportraAccount;
   version: string;
   now?: () => number;
+  /** Fixed Companion port (tests). */
+  companionPort?: number;
 }
 
 const COLORS = ['#4fd3ea', '#e0445e'];
@@ -144,6 +149,7 @@ export class Production extends EventEmitter {
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
+  readonly companion: CompanionHost;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
   private monitorBusy = false;
 
@@ -174,7 +180,10 @@ export class Production extends EventEmitter {
       void this.syncEngine().catch(() => {});
     });
     deps.obs.on('change', changed);
-    this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => this.autopilot.onGameEvent(event) });
+    this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => {
+      this.autopilot.onGameEvent(event);
+      this.companion.onEngineEvent(event);
+    } });
     this.autopilot = new Autopilot({
       store: deps.store, match: () => this.match, screens: () => this.setup.screens,
       showGraphic: async (id, transition) => {
@@ -187,6 +196,21 @@ export class Production extends EventEmitter {
       showing: () => this.room?.airFullscreen ?? null,
       log: (line) => this.log.add(line), changed,
     });
+    this.companion = new CompanionHost({
+      store: deps.store, secrets, mode: () => this.control, port: deps.companionPort, addresses: deps.lanAddresses, changed,
+      hello: () => this.companionHello(),
+      values: () => companionValues(this.room, {
+        onAir: this.room?.airFullscreen ? this.screenTitle(this.room.airFullscreen) : 'Game',
+        cued: this.pending.length, next: this.autopilot.view().next?.name ?? '',
+      }),
+      watch: () => ({
+        onAir: this.room?.airFullscreen ?? null, pause: !!this.room?.airPause,
+        dataPaused: !!this.deps.engine.status?.rooms.find((r) => r.match === this.match?.code.toUpperCase())?.feedPaused,
+      }),
+      act: (name, args) => this.companionAct(name, args),
+    });
+    this.on('change', () => this.companion.onChange());
+    void this.companion.sync();
     deps.obs.watchSlots(SCENE_KEYS.flatMap((key) => SCENES[key].slots.map((slot) => slot.scene)));
     deps.capture.on('change', changed);
     // The Capture page's sparklines move once a second while data is flowing.
@@ -1072,6 +1096,79 @@ export class Production extends EventEmitter {
     await this.pushCams();
   }
 
+  // ── graphics control: Air, Stream Deck / Companion, or both ──
+
+  get control(): ControlMode {
+    return this.deps.store.data.control ?? 'air';
+  }
+
+  async setControl(mode: ControlMode) {
+    if (!(CONTROL_MODES as readonly unknown[]).includes(mode)) throw new Error('Choose Air, Stream Deck / Companion, or Both.');
+    this.deps.store.data.control = mode;
+    this.deps.store.save();
+    // Companion only: autopilot is not shown, so it cannot keep running unseen.
+    if (mode === 'companion') this.autopilot.stop();
+    await this.companion.sync();
+    this.emit('change');
+  }
+
+  companionRenewKey() {
+    this.companion.renewKey();
+  }
+
+  private screenTitle(id: string) {
+    return this.setup.screens.find((x) => x.id === id)?.title ?? id;
+  }
+
+  /** What Companion's dropdowns offer: screens in My show, people on air, sponsors on for this match. */
+  private companionHello() {
+    const match = this.match;
+    const on = match ? onAir(match, this.eventOf(match)) : { talent: [], sponsors: [] };
+    return {
+      version: this.deps.version,
+      screens: this.setup.screens.filter((x) => x.hosted && x.enabled).map((x) => ({ id: x.id, title: x.title })),
+      talent: on.talent.map((t) => ({ id: t.id, name: t.name })),
+      sponsors: on.sponsors.map((x) => ({ id: x.id, name: x.name })),
+    };
+  }
+
+  /** A Companion button: the same Production methods as Air's keys, so Cued applies the same way. */
+  private async companionAct(name: string, args: Record<string, unknown>) {
+    switch (name) {
+      case 'fullscreen': {
+        const screen = String(args.screen ?? '');
+        if (!this.setup.screens.some((x) => x.id === screen && x.hosted && x.enabled)) throw new Error('That screen is not in My show.');
+        const on = args.on === 'toggle' ? this.room?.airFullscreen !== screen : args.on !== false && args.on !== 'off';
+        return this.setLayer(`fs:${screen}`, on ? 'on' : 'off');
+      }
+      case 'talent': {
+        if (args.talentId === null || args.talentId === undefined || args.talentId === '') return this.lowerThird(null);
+        const match = this.requireMatch();
+        const person = onAir(match, this.eventOf(match)).talent.find((t) => t.id === args.talentId);
+        if (!person) throw new Error('That person is not on air for this match.');
+        return this.lowerThird({ kind: 'person', name: person.name, role: ROLE_NAME[person.role] });
+      }
+      case 'sponsor': return this.sponsorRead(typeof args.sponsorId === 'string' && args.sponsorId ? args.sponsorId : null);
+      case 'toast': {
+        const text = typeof args.text === 'string' ? args.text.trim() : '';
+        if (!text || text.length > 120 || /[<>]/.test(text)) throw new Error('A toast is plain text, 1–120 characters.');
+        return this.toast(text);
+      }
+      case 'pause': return this.pause(args.kind === 'technical' || args.kind === 'timeout' ? args.kind : null);
+      case 'take': return this.takeCue('take');
+      case 'take_stinger': return this.takeCue('stinger');
+      case 'clear': return this.clearCue();
+      case 'autopilot_hold':
+      case 'autopilot_skip':
+      case 'autopilot_take':
+        if (this.control !== 'both') throw new Error('Autopilot buttons work when Air is set to Both.');
+        if (name === 'autopilot_hold') return this.autopilotHold();
+        if (name === 'autopilot_skip') return this.autopilotSkip();
+        return this.autopilotTake();
+      default: throw new Error(`Air does not know the action “${name}”.`);
+    }
+  }
+
   // ── autopilot ──
 
   autopilotRestart() {
@@ -1315,6 +1412,8 @@ export class Production extends EventEmitter {
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),
       rundown: this.autopilot.rows(),
+      control: this.control,
+      companion: this.companion.view(),
       cue: { mode: this.cueMode, pending: this.pending.map((c) => c.label), room: match ? `__ESA_SIM_CUE_${match.code}` : null },
       esportra: this.deps.esportra?.view() ?? signedOut(),
       mode: this.mode,
