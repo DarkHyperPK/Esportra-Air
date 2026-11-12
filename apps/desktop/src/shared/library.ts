@@ -1,6 +1,7 @@
 // The HUD library: every graphic Air ships for a game, what it is for and when it appears.
 
 import type { GameId } from './games.ts';
+import type { Setup } from './api.ts';
 
 export type LibraryGroup = 'ingame' | 'between' | 'fullscreen' | 'show';
 
@@ -60,3 +61,38 @@ export const LIBRARY: Record<GameId, LibraryItem[]> = {
   lol: [],
   dota2: [],
 };
+
+// ── My show: which graphics this production uses (one list for every match) ──
+
+/** How a library graphic joins My show. */
+export type ShowLink = { kind: 'screen'; overlay: string } | { kind: 'hud'; key: string } | { kind: 'always' };
+
+/** Graphics that are their own OBS source (matched to `Setup.screens` by overlay). */
+const SCREEN_OVERLAYS = new Set(['holding', 'ticker', 'match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'player-profile', 'standings', 'champion', 'cam-grid', 'replay', 'casters']);
+/** Elements inside the in-game HUD that can be switched off (`Setup.hud` keys). */
+const HUD_KEYS: Record<string, string> = { scorebug: 'scorebug', 'player-cards': 'players', 'win-probability': 'winProb' };
+
+export function showLink(item: Pick<LibraryItem, 'overlay'>): ShowLink {
+  if (SCREEN_OVERLAYS.has(item.overlay)) return { kind: 'screen', overlay: item.overlay };
+  const key = HUD_KEYS[item.overlay];
+  if (key) return { kind: 'hud', key };
+  // The in-game HUD itself, and what lives inside it (banners, lower third, toast, poll…).
+  return { kind: 'always' };
+}
+
+type ShowSetup = Pick<Setup, 'screens' | 'hud'>;
+
+export function inShow(setup: ShowSetup, item: Pick<LibraryItem, 'overlay'>): boolean {
+  const link = showLink(item);
+  if (link.kind === 'screen') return setup.screens.some((x) => x.overlay === link.overlay && x.enabled);
+  if (link.kind === 'hud') return setup.hud[link.key] !== false;
+  return true;
+}
+
+/** The setup change that adds or removes a graphic; null when it cannot change (always in the HUD). */
+export function showPatch(setup: ShowSetup, item: Pick<LibraryItem, 'overlay'>, on: boolean): Partial<Setup> | null {
+  const link = showLink(item);
+  if (link.kind === 'screen') return { screens: setup.screens.map((x) => (x.overlay === link.overlay ? { ...x, enabled: on } : x)) };
+  if (link.kind === 'hud') return { hud: { ...setup.hud, [link.key]: on } };
+  return null;
+}

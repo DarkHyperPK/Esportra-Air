@@ -5,12 +5,12 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { ICONS, LOGO } from './ui.tsx';
 
-type RailPage = Exclude<Page, 'setup' | 'settings' | 'outputs'>;
+type RailPage = Exclude<Page, 'settings' | 'outputs' | 'console'>;
 
+/** The order a producer works in, top to bottom: who is on air, the match, its graphics, OBS, game data. */
 const RAIL: Array<[RailPage, string]> = [
-  ['console', 'Live'],
-  ['ready', 'Matches'],
   ['event', 'Event'],
+  ['ready', 'Matches'],
   ['library', 'Library'],
   ['scenes', 'OBS'],
   ['capture', 'Capture'],
@@ -19,11 +19,14 @@ const RAIL: Array<[RailPage, string]> = [
 /** What each page is called, for the top bar and the command palette. */
 export const PAGE_NAME: Record<Page, string> = {
   console: 'Live', ready: 'Matches', event: 'Event', library: 'Library', scenes: 'OBS scenes', outputs: 'Browser sources',
-  capture: 'Capture', settings: 'Settings', setup: 'Match graphics',
+  capture: 'Capture', settings: 'Settings',
 };
 
+/** Pages in the rail's order, for the command palette. */
+export const PAGE_ORDER: Page[] = ['event', 'ready', 'library', 'scenes', 'outputs', 'capture', 'console', 'settings'];
+
 /** The rail item a page belongs to. */
-export const railOf = (page: Page): Page => (page === 'setup' ? 'ready' : page === 'outputs' ? 'scenes' : page);
+export const railOf = (page: Page): Page => (page === 'outputs' ? 'scenes' : page);
 
 export type StatusId = 'feed' | 'obs' | 'esportra' | 'graphics';
 
@@ -108,7 +111,8 @@ export function TopBar({ s, page, open, search, help, run }: { s: Snapshot | nul
   );
 }
 
-export function Rail({ page, go }: { page: Page; go: (p: Page) => void }) {
+/** Preparation from Event down to Capture; Live sits apart as where the show ends up. */
+export function Rail({ page, go, onAir }: { page: Page; go: (p: Page) => void; onAir: boolean }) {
   const current = railOf(page);
   return (
     <nav className="rail" aria-label="Main">
@@ -118,6 +122,12 @@ export function Rail({ page, go }: { page: Page; go: (p: Page) => void }) {
           {label}
         </button>
       ))}
+      <span className="rail-rule" aria-hidden="true" />
+      <button className={`rail-live ${onAir ? 'on-air' : ''}`} aria-current={current === 'console' ? 'page' : undefined} onClick={() => go('console')} aria-label={onAir ? 'Live, game data is live' : 'Live'}>
+        {ICONS.console}
+        Live
+        {onAir && <span className="air-dot" aria-hidden="true" />}
+      </button>
       <span className="spacer" />
       <button aria-current={current === 'settings' ? 'page' : undefined} onClick={() => go('settings')}>
         {ICONS.setup}

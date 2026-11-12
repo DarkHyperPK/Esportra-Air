@@ -47,6 +47,16 @@ let failShot = async () => {};
   const shot = async (name) => { await page.waitForTimeout(450); await page.screenshot({ path: path.join(OUT, `${String(++n).padStart(2, '0')}-${name}.png`) }); };
   const rail = (name) => page.locator('nav.rail').getByRole('button', { name }).click();
   const btn = (name, opts) => page.getByRole('button', { name, ...opts }).first().click();
+  // Types the way a person does, after a pause long enough for live updates to arrive, and checks the
+  // text landed in the field that was clicked (a re-render once moved focus back to the first field).
+  const typeLikeAPerson = async (scope, label, text) => {
+    const field = scope.getByLabel(label, { exact: true });
+    await field.click();
+    await page.waitForTimeout(2500);
+    await page.keyboard.type(text, { delay: 60 });
+    const value = await field.inputValue();
+    if (value !== text) throw new Error(`typing in ${label} landed elsewhere: "${value}"`);
+  };
 
   await page.goto(`${HOST}/?host=${HOST}`);
   // First run (spec 4A): welcome, guest, game (no default), setup, Connect OBS, then Matches.
@@ -54,6 +64,9 @@ let failShot = async () => {};
   await shot('first-run-welcome');
   await btn('Get started');
   await page.getByRole('button', { name: 'Continue as guest' }).waitFor();
+  await typeLikeAPerson(page, 'Email', 'producer@example.com');
+  await typeLikeAPerson(page, 'Password', 'not sent');
+  if ((await page.getByLabel('Email', { exact: true }).inputValue()) !== 'producer@example.com') throw new Error('the email changed while typing the password');
   await shot('first-run-account');
   await btn('Continue as guest');
   const cont = page.getByRole('button', { name: 'Continue', exact: true });
@@ -71,8 +84,9 @@ let failShot = async () => {};
   await page.getByText(/^Connected to OBS/).waitFor();
   await shot('first-run-obs');
   await btn('Finish');
-  await page.getByRole('heading', { name: 'Set up your first show' }).waitFor();
-  await shot('first-show');
+  // No event yet: Air opens on Event, the first thing to set up (never on Live).
+  await page.getByRole('button', { name: 'Create event' }).waitFor();
+  await shot('first-landing-event');
   // The game for the whole app: a menu beside the product name.
   await page.getByRole('button', { name: /^Valorant/ }).click();
   await page.getByRole('menu', { name: 'Game for the whole app' }).waitFor();
@@ -80,7 +94,6 @@ let failShot = async () => {};
   await page.keyboard.press('Escape');
 
   // Event first (build step 3): identity, the people on air and the sponsors every match uses.
-  await btn('Set up the event');
   await page.getByLabel('Event name').fill('Community Cup');
   await btn('Create event');
   await page.getByRole('heading', { name: 'Community Cup' }).waitFor();
@@ -115,6 +128,8 @@ let failShot = async () => {};
   await shot('event');
 
   await rail('Matches');
+  await page.getByRole('heading', { name: 'Set up your first show' }).waitFor();
+  await shot('first-show');
   await btn('New match', { exact: true });
   const wizard = page.getByRole('dialog', { name: 'New match' });
   await wizard.waitFor();
@@ -191,16 +206,24 @@ let failShot = async () => {};
 
   // HUD library: live previews with this match's teams.
   await rail('Library');
-  await page.getByRole('heading', { name: 'Esportra Broadcast' }).waitFor();
+  await page.getByRole('heading', { name: 'Graphics packs' }).waitFor();
   await page.waitForTimeout(3000);
-  await shot('library-ingame');
-  await page.getByRole('tab', { name: /Full screen/ }).click();
-  await page.waitForTimeout(3000);
-  await shot('library-fullscreen');
-  await page.getByRole('button', { name: /Map result/ }).first().click();
-  await page.getByRole('dialog', { name: 'Map result' }).waitFor();
+  await shot('library');
+  await btn('Open Esportra Broadcast pack');
+  const pack = page.getByRole('dialog', { name: 'Esportra Broadcast pack' });
+  await pack.getByRole('option', { name: /Map result/ }).click();
   await page.waitForTimeout(2500);
-  await shot('library-detail');
+  await shot('pack-window');
+  // Win probability starts out of the show: add it, see it under "In my show", remove it again.
+  await pack.getByRole('option', { name: /Win probability/ }).click();
+  await pack.getByRole('button', { name: 'Add to my show' }).click();
+  await pack.getByRole('button', { name: /In my show ✓/ }).waitFor();
+  await pack.getByRole('button', { name: 'In my show', exact: true }).click();
+  await pack.getByRole('option', { name: /Win probability/ }).waitFor();
+  if (await pack.getByRole('option', { name: /Agent select/ }).count() !== 1) throw new Error('Agent select is in the show by default');
+  await shot('pack-in-my-show');
+  await pack.getByRole('button', { name: /In my show ✓/ }).click();
+  await pack.getByRole('option', { name: /Win probability/ }).waitFor({ state: 'detached' });
   await page.keyboard.press('Escape');
 
   // Settings: connect OBS (software settings), then Scenes: add for me, fill the game-feed slot
@@ -363,8 +386,12 @@ let failShot = async () => {};
   await page.waitForTimeout(3500);
   await shot('capture');
   await rail('Matches');
-  await page.getByRole('tab', { name: 'Graphics' }).click();
-  await shot('match-graphics');
+  await page.getByRole('tab', { name: 'My show' }).click();
+  await page.getByText('Esportra · Fullscreen').waitFor();
+  await shot('my-show');
+  await btn('Add from the Library');
+  await page.getByRole('dialog', { name: 'Esportra Broadcast pack' }).waitFor();
+  await page.keyboard.press('Escape');
   await rail('Event');
   await page.getByLabel('Name', { exact: true }).fill('Community Cup Finals');
   await btn('Save', { exact: true });
@@ -379,7 +406,9 @@ let failShot = async () => {};
   await btn('Sign in');
   await page.getByRole('dialog', { name: 'Sign in to Esportra' }).waitFor();
   await page.getByRole('dialog').getByLabel('Email').fill('producer@example.com');
-  await page.getByRole('dialog').getByLabel('Password').fill('wrong password');
+  // The bug you reported: clicking Password jumped back to Email. Type the way a person does.
+  await typeLikeAPerson(page.getByRole('dialog'), 'Password', 'wrong password');
+  if ((await page.getByRole('dialog').getByLabel('Email').inputValue()) !== 'producer@example.com') throw new Error('the email changed while typing the password');
   await page.getByRole('dialog').getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByText(/Check your email and password/).waitFor();
   await page.getByRole('dialog').getByLabel('Password').fill('correct horse battery');
@@ -395,10 +424,10 @@ let failShot = async () => {};
   await shot('matches-with-esportra');
   // Switching match changes every graphic on air, so it is refused while game data or a test round runs.
   const callWith = (m, args = []) => fetch(`${HOST}/call/${m}`, { method: "POST", body: JSON.stringify(args) });
-  if ((await call('snapshot')).gameLocked) {
-    await page.locator('.mrow').filter({ hasText: 'Paper Rex' }).first().click();
-    await page.getByText('Stop game data or the test round before switching matches.').first().waitFor();
-  }
+  await callWith('testRound', ['start']);
+  for (let i = 0; i < 50 && !(await call('snapshot')).gameLocked; i++) await page.waitForTimeout(200);
+  await page.locator('.mrow').filter({ hasText: 'Paper Rex' }).first().click();
+  await page.getByText('Stop game data or the test round before switching matches.').first().waitFor();
   await callWith("testRound", ["stop"]);
   await callWith("stopCapture");
   for (let i = 0; i < 50 && (await call('snapshot')).gameLocked; i++) await page.waitForTimeout(200);

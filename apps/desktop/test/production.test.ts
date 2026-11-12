@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { LIBRARY, inShow, showPatch } from '../src/shared/library.ts';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -97,6 +98,15 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(styled.state.show.minimap, false, 'the game draws its own minimap; Air keeps it off');
     assert.equal(styled.state.show.killfeed, false);
     assert.equal(styled.state.show.observed, false);
+    // My show (one list for the production): an element inside the HUD and an OBS graphic.
+    const winProb = LIBRARY.valorant.find((i) => i.overlay === 'win-probability')!;
+    await production.updateSetup(showPatch(production.setup, winProb, true)!);
+    assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.show.winProb, true, 'adding win probability switches it on in the HUD');
+    const standings = LIBRARY.valorant.find((i) => i.overlay === 'standings')!;
+    await production.updateSetup(showPatch(production.setup, standings, false)!);
+    assert.equal(inShow(production.setup, standings), false);
+    assert.equal(production.snapshot().layers.find((l) => l.id === 'fs:standings')?.available, false, 'a graphic removed from My show cannot be put on air');
+    await production.updateSetup(showPatch(production.setup, standings, true)!);
     assert.deepEqual(styled.state.sponsors, [{ name: 'ACME', logo: '', line: 'Official partner' }, { name: 'ACME', logo: '', line: 'Official partner' }], 'sponsors reach the HUD as objects, a partner twice per rotation');
     assert.equal(styled.state.event.stage, 'Playoffs');
     await assert.rejects(production.updateSetup({ package: 'neon' as never }), /available graphics styles/);

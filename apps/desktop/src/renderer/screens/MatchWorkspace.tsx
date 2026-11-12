@@ -10,9 +10,12 @@ import { AutopilotRules, NextFive } from '../components/Autopilot.tsx';
 import { EditorDrawer, PlayerEditor, Switch, cameraText } from '../components/Editors.tsx';
 import { TeamFields, imageUrl } from '../components/MatchEditors.tsx';
 import { RehearsePanel } from '../components/Rehearse.tsx';
+import { PackWindow } from '../components/PackWindow.tsx';
+import { LIBRARY, inShow, showLink, showPatch } from '../../shared/library.ts';
+import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
 
-export type Tab = 'ready' | 'teams' | 'talent' | 'autopilot' | 'rehearse';
-const TABS: Array<[Tab, string]> = [['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and sponsors'], ['autopilot', 'Autopilot'], ['rehearse', 'Rehearse']];
+export type Tab = 'ready' | 'teams' | 'talent' | 'myshow' | 'autopilot' | 'rehearse';
+const TABS: Array<[Tab, string]> = [['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and sponsors'], ['myshow', 'My show'], ['autopilot', 'Autopilot'], ['rehearse', 'Rehearse']];
 
 const when = (iso: string | null | undefined) => {
   if (!iso) return null;
@@ -185,6 +188,53 @@ function Talent({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   );
 }
 
+/** My show: what goes into OBS for every match of this production, by the scene it lands in. */
+function MyShow({ s, run }: Pick<PageProps, 's' | 'run'>) {
+  const [pack, setPack] = useState(false);
+  const items = LIBRARY[s.game?.id ?? 'valorant'];
+  const titleOf = (overlay: string, fallback: string) => items.find((i) => i.overlay === overlay)?.title ?? fallback;
+  const hudItems = items.filter((i) => showLink(i).kind === 'hud' && inShow(s.setup, i));
+  return (
+    <div className="stack" style={{ gap: 18 }}>
+      <div className="between">
+        <p className="muted" style={{ margin: 0 }}>These go to OBS for every match of this production, under these scene names.</p>
+        <button className="btn" onClick={() => setPack(true)}>Add from the Library</button>
+      </div>
+      <div className="cols2">
+        {SCENE_KEYS.map((key) => {
+          const screens = s.setup.screens.filter((x) => x.scene === key && x.enabled);
+          const hud = key === 'gameplay' ? hudItems : [];
+          return (
+            <section key={key} className="stack" style={{ gap: 6 }}>
+              <span className="mono t-xs faint">{SCENES[key].name}</span>
+              <div className="lst">
+                {screens.length + hud.length === 0 && <span className="li muted t-sm">Nothing here.</span>}
+                {screens.map((x) => {
+                  const item = items.find((i) => i.overlay === x.overlay && showLink(i).kind === 'screen');
+                  const patch = item ? showPatch(s.setup, item, false) : null;
+                  return (
+                    <div key={x.id} className="li show-row">
+                      <span>{titleOf(x.overlay, x.title)}{!item && <span className="faint t-xs"> · always</span>}</span>
+                      {patch ? <button className="btn quiet small" onClick={() => void run(() => air.updateSetup(patch))}>Remove</button> : <span />}
+                    </div>
+                  );
+                })}
+                {hud.map((i) => (
+                  <div key={i.overlay} className="li show-row">
+                    <span>{i.title} <span className="faint t-xs">· in the HUD</span></span>
+                    <button className="btn quiet small" onClick={() => void run(() => air.updateSetup(showPatch(s.setup, i, false)!))}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      {pack && <PackWindow s={s} run={run} close={() => setPack(false)} />}
+    </div>
+  );
+}
+
 export function MatchWorkspace({ s, run, go, tab, setTab, act, start, back }: Pick<PageProps, 's' | 'run' | 'go'> & { tab: Tab; setTab: (t: Tab) => void; act: (id: ActionId) => void; start: () => void; back: () => void }) {
   const m = s.match!;
   return (
@@ -193,11 +243,11 @@ export function MatchWorkspace({ s, run, go, tab, setTab, act, start, back }: Pi
       <Hero s={s} />
       <div className="tabs" role="tablist" aria-label="Match">
         {TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
-        <button role="tab" aria-selected={false} onClick={() => go('setup')}>Graphics</button>
       </div>
       {tab === 'ready' && <Readiness s={s} run={run} act={act} start={start} />}
       {tab === 'teams' && <Teams key={m.id} s={s} run={run} />}
       {tab === 'talent' && <Talent key={m.id} s={s} run={run} go={go} />}
+      {tab === 'myshow' && <MyShow s={s} run={run} />}
       {tab === 'autopilot' && <AutopilotRules s={s} run={run} rehearse={() => setTab('rehearse')} />}
       {tab === 'rehearse' && <RehearsePanel s={s} run={run} />}
     </div>

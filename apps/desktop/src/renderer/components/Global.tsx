@@ -4,7 +4,7 @@ import type { Page, Snapshot } from '../../shared/api.ts';
 import { LAYER_DEFS, hotkeyLabel } from '../../shared/layers.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
-import { PAGE_NAME } from './Chrome.tsx';
+import { PAGE_NAME, PAGE_ORDER } from './Chrome.tsx';
 import { Cap } from './ui.tsx';
 
 // ── toasts ──
@@ -81,7 +81,7 @@ interface Command { id: string; group: string; label: string; hint?: string; key
 
 export interface PaletteActions {
   go: (page: Page) => void;
-  command: (name: 'new-match' | 'rehearse' | 'autopilot' | 'teams' | 'talent') => void;
+  command: (name: 'new-match' | 'rehearse' | 'autopilot' | 'teams' | 'talent' | 'myshow') => void;
   askCapture: () => void;
   openFix: () => void;
   openCasters: () => void;
@@ -90,13 +90,13 @@ export interface PaletteActions {
 }
 
 function commands(s: Snapshot, run: Run, a: PaletteActions): Command[] {
-  const pages: Page[] = ['console', 'ready', 'event', 'library', 'scenes', 'outputs', 'capture', 'settings', 'setup'];
-  const list: Command[] = pages.map((p) => ({ id: `go-${p}`, group: 'Go to', label: PAGE_NAME[p], run: () => a.go(p) }));
+  const list: Command[] = PAGE_ORDER.map((p) => ({ id: `go-${p}`, group: 'Go to', label: PAGE_NAME[p], run: () => a.go(p) }));
   list.push(
     { id: 'new-match', group: 'Match', label: 'New match', keywords: 'create wizard', run: () => a.command('new-match') },
     { id: 'rehearse', group: 'Match', label: 'Rehearse this match', keywords: 'preview sample practice', run: () => a.command('rehearse') },
     { id: 'autopilot-rules', group: 'Match', label: 'Autopilot steps and presets', keywords: 'rules rundown', run: () => a.command('autopilot') },
     { id: 'teams', group: 'Match', label: 'Teams and players', keywords: 'lineup roster riot photo', run: () => a.command('teams') },
+    { id: 'my-show', group: 'Match', label: 'My show: the graphics in OBS', keywords: 'graphics screens library', run: () => a.command('myshow') },
     { id: 'casters', group: 'Match', label: 'People on air', keywords: 'talent casters lower third', run: () => a.command('talent') },
   );
   for (const m of s.matches.filter((m) => m.id !== s.match?.id).slice(0, 8)) {

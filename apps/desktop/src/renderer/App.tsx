@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Page, Snapshot } from '../shared/api.ts';
 import { air } from './bridge.ts';
 import { Rail, TopBar } from './components/Chrome.tsx';
@@ -11,7 +11,6 @@ import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
 import { OutputsScreen } from './screens/OutputsScreen.tsx';
 import { ReadyScreen } from './screens/ReadyScreen.tsx';
 import { ScenesScreen } from './screens/ScenesScreen.tsx';
-import { SetupScreen, type SetupTab } from './screens/SetupScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { LibraryScreen } from './screens/LibraryScreen.tsx';
 import { EventScreen } from './screens/EventScreen.tsx';
@@ -20,12 +19,12 @@ import { FirstRun } from './components/FirstRun.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
-export type MatchCommand = { name: 'new-match' | 'rehearse' | 'autopilot' | 'teams' | 'talent'; n: number } | null;
+export type MatchCommand = { name: 'new-match' | 'rehearse' | 'autopilot' | 'teams' | 'talent' | 'myshow'; n: number } | null;
 
 export interface PageProps {
   s: Snapshot;
   run: Run;
-  go: (page: Page, tab?: SetupTab) => void;
+  go: (page: Page) => void;
   askCapture: () => void;
   openFix: () => void;
   openCasters: () => void;
@@ -37,7 +36,6 @@ export function App() {
   const [page, setPage] = useState<Page>('ready');
   // Until the producer chooses Run manually, Console opens the readiness check.
   const [started, setStarted] = useState(false);
-  const [tab, setTab] = useState<SetupTab>('graphics');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
@@ -85,11 +83,19 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [palette]);
 
-  const go = useCallback((next: Page, nextTab?: SetupTab) => {
+  const go = useCallback((next: Page) => {
     setPage(next);
-    if (nextTab) setTab(nextTab);
     setStatus(null);
   }, []);
+
+  // Where the app opens: Matches, or Event when there is no event yet (the first thing to set up).
+  // Never Live: that is where the show ends up, not where it starts.
+  const landed = useRef(false);
+  useEffect(() => {
+    if (!s?.onboarding.done || landed.current) return;
+    landed.current = true;
+    if (!s.events.length) setPage('event');
+  }, [s?.onboarding.done, s?.events.length]);
 
   const actions: PaletteActions = useMemo(() => ({
     go: (p) => go(p),
@@ -125,7 +131,7 @@ export function App() {
     <div className="win">
       <TopBar s={s} page={page} open={(id) => setStatus(id)} search={() => setPalette(true)} help={() => setHelp(true)} run={run} />
       <div className="body">
-        <Rail page={page} go={(p) => go(p)} />
+        <Rail page={page} go={(p) => go(p)} onAir={s.feed.state === 'live'} />
         <div className="main">
           {s.engine.state !== 'running' && (
             <div className={`notice ${s.engine.state === 'failed' ? 'bad' : ''}`} role="status" style={{ margin: '12px 24px 0' }}>
@@ -147,7 +153,6 @@ export function App() {
             {page === 'capture' && <CaptureScreen {...props} />}
             {page === 'outputs' && <OutputsScreen {...props} />}
             {page === 'settings' && <SettingsScreen {...props} />}
-            {page === 'setup' && <SetupScreen {...props} tab={tab} setTab={setTab} />}
           </main>
         </div>
       </div>
