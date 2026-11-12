@@ -11,7 +11,7 @@ import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from '../../../../packages/capture/src/gep.ts';
 import type { ObsLink } from './obs.ts';
 import type { BuildScene } from './scene-build.ts';
-import { SCENE_KEYS, SCENES, sourceName, type SlotId } from '../shared/scenes.ts';
+import { SCENE_KEYS, SCENES, legacySourceName, sourceName, type SlotId } from '../shared/scenes.ts';
 import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
@@ -665,18 +665,23 @@ export class Production extends EventEmitter {
   /** The scenes Air builds, with each enabled graphic in its scene (PRD picture 9). */
   buildPlan(): BuildScene[] {
     const port = this.deps.engine.port;
+    const full = { x: 0, y: 0, width: 1920, height: 1080 };
+    // Sponsor loops of the selected match's sponsors, hidden until shown (a break, or by autopilot).
+    const sponsorVideos = this.match ? onAir(this.match, this.eventOf(this.match)).sponsors.filter((x) => x.video) : [];
     return SCENE_KEYS.map((key) => {
       const def = SCENES[key];
       return {
         name: def.name,
+        formerly: def.formerly,
         exclusive: def.exclusive,
-        slots: def.slots.map((slot) => ({ id: slot.id, sceneName: slot.scene, frame: slot.frame })),
+        slots: def.slots.map((slot) => ({ id: slot.id, sceneName: slot.scene, formerly: slot.formerly, frame: slot.frame })),
         sources: [
           ...this.setup.screens
             .filter((x) => x.scene === key && x.enabled && !x.hosted)
-            .map((x) => ({ id: x.id, inputName: sourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
+            .map((x) => ({ id: x.id, inputName: sourceName(x.title), formerly: legacySourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
           // Full-screen graphics also cover the game: Take shows them without switching OBS scenes.
-          ...(key === 'gameplay' ? this.setup.screens.filter((x) => x.id === 'fullscreen' && x.enabled).map((x) => ({ id: 'fullscreen-over-game', inputName: sourceName('Full screen over game'), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })) : []),
+          ...(key === 'gameplay' ? this.setup.screens.filter((x) => x.id === 'fullscreen' && x.enabled).map((x) => ({ id: 'fullscreen-over-game', inputName: sourceName('Full screen over game'), formerly: legacySourceName('Full screen over game'), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })) : []),
+          ...(key === 'holding' ? sponsorVideos.map((x) => ({ id: `sponsor:${x.id}`, inputName: sourceName(`Sponsor video · ${x.name}`), kind: 'media' as const, url: x.video, frame: full, enabled: false })) : []),
         ],
       };
     });

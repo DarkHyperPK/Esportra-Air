@@ -7,6 +7,7 @@
 import { EventEmitter } from 'node:events';
 import type { ObsSocket } from './obs-types.ts';
 import { buildScenes, readSlots, type BuildScene, type Owned } from './scene-build.ts';
+import { isAirName } from '../shared/scenes.ts';
 
 export type { ObsSocket } from './obs-types.ts';
 
@@ -175,7 +176,7 @@ export class ObsLink extends EventEmitter {
         collection: collections?.currentSceneCollectionName ?? null,
         scenes: (scenes?.scenes ?? []).map((s: { sceneName: string }) => s.sceneName),
         videoInputs: (inputs?.inputs ?? [])
-          .filter((i: { inputName: string; inputKind: string }) => !AUDIO_OR_BROWSER.test(i.inputKind) && !i.inputName.startsWith('Esportra · '))
+          .filter((i: { inputName: string; inputKind: string }) => !AUDIO_OR_BROWSER.test(i.inputKind) && !isAirName(i.inputName))
           .map((i: { inputName: string }) => i.inputName),
         transitions: (transitions?.transitions ?? []).map((t: { transitionName: string; transitionKind: string }) => ({ name: t.transitionName, kind: KINDS[t.transitionKind] ?? 'other' })),
         currentTransition: transitions?.currentSceneTransitionName ?? null,

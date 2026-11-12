@@ -254,17 +254,25 @@ let failShot = async () => {};
   await page.getByText(/\d of \d connected/).first().waitFor();
   await shot('outputs');
 
-  // Readiness: start capture through its fix button
+  // Go live (build step 5): My show to OBS, game data only with the consent tick, autopilot off for
+  // the manual part of the journey. It never starts the stream.
   await rail('Matches');
-  await btn('Start capture');
-  await page.getByRole('dialog', { name: /Start game capture/ }).waitFor();
-  await shot('consent');
-  await btn('Allow and start capture');
-  await page.getByText(/ready/).first().waitFor();
+  await page.getByText(/ready$/).first().waitFor();
   await shot('readiness');
+  await btn('Go live', { exact: true });
+  const golive = page.getByRole('dialog', { name: 'Go live' });
+  await golive.getByText('Send ').first().waitFor();
+  await golive.getByRole('switch', { name: 'Autopilot' }).click();
+  await golive.getByRole('checkbox').check();
+  await shot('go-live');
+  await golive.getByRole('button', { name: 'Go live', exact: true }).click();
+  await golive.getByRole('button', { name: 'Open Live' }).waitFor();
+  await golive.getByText('Now start your stream in OBS.').waitFor();
+  await shot('go-live-done');
+  if (!(await call('snapshot')).obs.scenes.every((x) => x.inObs)) throw new Error('Go live did not put every scene in OBS');
 
   // Live, graphics only: changes are cued (Cued monitor), Space takes them, F7 takes behind the stinger.
-  await btn('Run manually');
+  await golive.getByRole('button', { name: 'Open Live' }).click();
   await page.getByText(/Nothing cued/).waitFor();
   await page.getByText('Waiting for game data').or(page.getByText(/R\d+/)).first().waitFor();
   await page.waitForTimeout(9000);
@@ -387,7 +395,7 @@ let failShot = async () => {};
   await shot('capture');
   await rail('Matches');
   await page.getByRole('tab', { name: 'My show' }).click();
-  await page.getByText('Esportra · Fullscreen').waitFor();
+  await page.getByRole('heading', { name: 'ESPORTRA · Full screen' }).waitFor();
   await shot('my-show');
   await btn('Add from the Library');
   await page.getByRole('dialog', { name: 'Esportra Broadcast pack' }).waitFor();

@@ -11,6 +11,11 @@ export interface BuildSource {
   /** Stable key (the screen id). */
   id: string;
   inputName: string;
+  /** The input's name before a rename; Air renames its own input in place. */
+  formerly?: string;
+  /** A graphic page (browser source, the default) or a video file on this PC (media source, looping). */
+  kind?: 'browser' | 'media';
+  /** browser: the page; media: the file path. */
   url: string;
   frame: { x: number; y: number; width: number; height: number };
   enabled: boolean;
@@ -19,11 +24,13 @@ export interface BuildSource {
 export interface BuildSlot {
   id: SlotId;
   sceneName: string;
+  formerly?: string;
   frame: { x: number; y: number; width: number; height: number };
 }
 
 export interface BuildScene {
   name: string;
+  formerly?: string;
   exclusive: boolean;
   sources: BuildSource[];
   slots: BuildSlot[];
@@ -41,6 +48,12 @@ const transform = (f: { x: number; y: number; width: number; height: number }, b
   positionX: f.x, positionY: f.y, alignment: 5, boundsAlignment: 5, boundsType: bounds, boundsWidth: f.width, boundsHeight: f.height,
 });
 
+const kindOf = (source: BuildSource) => (source.kind === 'media' ? 'ffmpeg_source' : 'browser_source');
+const settingsOf = (source: BuildSource) => (source.kind === 'media'
+  // A sponsor loop: plays from the start whenever the producer shows it, and loops until hidden.
+  ? { local_file: source.url, looping: true, restart_on_activate: true, close_when_inactive: true }
+  : { url: source.url, width: 1920, height: 1080, fps: 60, reroute_audio: false, shutdown: false });
+
 export async function buildScenes(options: { socket: ObsSocket; scenes: BuildScene[]; owned: Owned; saveOwned: (owned: Owned) => void }) {
   const { socket, saveOwned } = options;
   const call = (name: string, data?: Record<string, unknown>) => socket.call(name, data);
@@ -52,6 +65,27 @@ export async function buildScenes(options: { socket: ObsSocket; scenes: BuildSce
   const inputs = new Map<string, { inputKind: string }>((inputList.inputs ?? []).map((i: { inputName: string; inputKind: string }) => [i.inputName, i]));
   const owned: Owned = { scenes: { ...options.owned.scenes } };
 
+  // Names Air used before: rename its own scenes and inputs in place, so nothing is duplicated and
+  // anything the crew placed inside them stays. Only things Air created are touched.
+  for (const scene of options.scenes) {
+    for (const [now, before] of [[scene.name, scene.formerly], ...scene.slots.map((x) => [x.sceneName, x.formerly])] as Array<[string, string | undefined]>) {
+      if (!before || existing.has(now) || !existing.has(before) || !owned.scenes[before]) continue;
+      await call('SetSceneName', { sceneName: before, newSceneName: now });
+      existing.delete(before);
+      existing.add(now);
+      owned.scenes[now] = owned.scenes[before]!;
+      delete owned.scenes[before];
+      options.saveOwned({ scenes: { ...owned.scenes } });
+    }
+    for (const source of scene.sources) {
+      const before = source.formerly;
+      if (!before || inputs.has(source.inputName) || !inputs.has(before) || !owned.scenes[scene.name]?.items[`src:${source.id}`]) continue;
+      await call('SetInputName', { inputName: before, newInputName: source.inputName });
+      inputs.set(source.inputName, inputs.get(before)!);
+      inputs.delete(before);
+    }
+  }
+
   // Preflight every collision before creating anything.
   for (const scene of options.scenes) {
     if (existing.has(scene.name) && !owned.scenes[scene.name]) throw new Error(`OBS already has a scene called “${scene.name}” that Air did not create. Rename it in OBS.`);
@@ -60,7 +94,7 @@ export async function buildScenes(options: { socket: ObsSocket; scenes: BuildSce
     }
     for (const source of scene.sources) {
       const input = inputs.get(source.inputName);
-      if (input && (!owned.scenes[scene.name] || input.inputKind !== 'browser_source')) throw new Error(`The OBS source “${source.inputName}” already exists. Rename it in OBS.`);
+      if (input && (!owned.scenes[scene.name] || input.inputKind !== kindOf(source))) throw new Error(`The OBS source “${source.inputName}” already exists. Rename it in OBS.`);
     }
   }
 
@@ -86,15 +120,15 @@ export async function buildScenes(options: { socket: ObsSocket; scenes: BuildSce
       const fresh = !inputs.has(source.inputName) || present === undefined;
       if (!inputs.has(source.inputName)) {
         const made = await call('CreateInput', {
-          sceneName: scene.name, inputName: source.inputName, inputKind: 'browser_source',
-          inputSettings: { url: source.url, width: 1920, height: 1080, fps: 60, reroute_audio: false, shutdown: false },
+          sceneName: scene.name, inputName: source.inputName, inputKind: kindOf(source), inputSettings: settingsOf(source),
           // Exclusive scenes (full-screen graphics) start with only the first graphic visible.
           sceneItemEnabled: scene.exclusive ? source === scene.sources.find((s) => s.enabled) : source.enabled,
         });
         sceneItemId = made.sceneItemId;
       } else {
         const settings = await call('GetInputSettings', { inputName: source.inputName });
-        if (settings.inputSettings?.url !== source.url) await call('SetInputSettings', { inputName: source.inputName, inputSettings: { url: source.url }, overlay: true });
+        const field = source.kind === 'media' ? 'local_file' : 'url';
+        if (settings.inputSettings?.[field] !== source.url) await call('SetInputSettings', { inputName: source.inputName, inputSettings: { [field]: source.url }, overlay: true });
         sceneItemId = present?.sceneItemId ?? (await call('CreateSceneItem', { sceneName: scene.name, sourceName: source.inputName, sceneItemEnabled: source.enabled })).sceneItemId;
       }
       if (!Number.isInteger(sceneItemId)) throw new Error('OBS did not confirm the graphics source. Try again.');

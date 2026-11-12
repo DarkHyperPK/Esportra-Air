@@ -671,3 +671,24 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .pack-facts dt { color: var(--text-3); }
 .pack-facts dd { margin: 0; color: var(--text-2); }
 .show-row { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 0; }
+.show-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.show-card { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.show-card figcaption { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; font-size: 13px; min-width: 0; }
+.show-card figcaption > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Go live: three steps with their state, consent as an explicit tick, warnings that never block */
+.dialog.golive { max-width: 660px; }
+.steplist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.steplist li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--hair); align-items: start; }
+.steplist li:first-child { border-top: 1px solid var(--hair); }
+.tick { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--hair-strong); display: grid; place-items: center; font-size: 11px; margin-top: 1px; color: var(--text-2); }
+.tick.working { border-color: var(--warn); color: var(--warn); }
+.tick.done { border-color: var(--ok); color: var(--ok); }
+.tick.failed { border-color: var(--bad); color: var(--bad); }
+.consent { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.consent input { margin-top: 3px; }
+.alert { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; background: color-mix(in srgb, var(--warn) 9%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
+.alert .dot { margin-top: 6px; }
+.btn.live { background: var(--rose, #f43f5e); border-color: var(--rose, #f43f5e); color: #fff; }
+.btn.live:hover:not(:disabled) { filter: brightness(1.08); }
+.air-dot.inline { position: static; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--rose, #f43f5e); margin-right: 6px; vertical-align: middle; }

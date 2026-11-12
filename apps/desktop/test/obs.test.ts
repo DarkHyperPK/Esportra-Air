@@ -130,3 +130,51 @@ test('the link has no way to switch scenes', async () => {
   const { link } = await connected();
   for (const name of ['take', 'setPreview', 'setStudioMode', 'cutChoice', 'stingerChoice', 'showFullscreen']) assert.equal(name in link, false, name);
 });
+
+test('the new names replace Air’s old ones in place: nothing duplicated, the crew’s own sources kept', async () => {
+  const { obs, link } = await connected();
+  let owned: Owned = emptyOwned();
+  await link.build(plan(), owned, (o) => { owned = o; });
+  obs.addSource('Esportra · Caster cam 1', 'Desk camera (crew)');
+  const renamed = (p: BuildScene[]): BuildScene[] => p.map((scene) => ({
+    ...scene,
+    name: scene.name.replace('Esportra · ', 'ESPORTRA · ').replace('Casters', 'Desk'),
+    formerly: scene.name,
+    sources: scene.sources.map((x) => ({ ...x, inputName: x.inputName.replace('Esportra · ', 'ESPORTRA · '), formerly: x.inputName })),
+    slots: scene.slots.map((x) => ({ ...x, sceneName: x.sceneName.replace('Esportra · ', 'ESPORTRA · '), formerly: x.sceneName })),
+  }));
+  const before = { scenes: obs.scenes.size, inputs: obs.inputs.size };
+  const result = await link.build(renamed(plan()), owned, (o) => { owned = o; });
+  assert.deepEqual(result.created, [], 'renamed, not created again');
+  assert.deepEqual({ scenes: obs.scenes.size, inputs: obs.inputs.size }, before);
+  assert.ok(obs.scenes.has('ESPORTRA · Desk') && !obs.scenes.has('Esportra · Casters'));
+  assert.deepEqual(obs.scenes.get('ESPORTRA · Caster cam 1')!.map((i) => i.sourceName), ['Desk camera (crew)'], 'the crew’s camera stays in the slot');
+  assert.ok(obs.inputs.has('ESPORTRA · in-game') && !obs.inputs.has('Esportra · in-game'));
+  assert.ok(Object.keys(owned.scenes).every((name) => name.startsWith('ESPORTRA · ')), 'Air remembers its scenes by the new names');
+  assert.deepEqual(obs.requests.filter((r) => FORBIDDEN.includes(r) || r.startsWith('SetCurrent')), []);
+});
+
+test('a scene the crew made with Air’s old name is never renamed', async () => {
+  const { obs, link } = await connected((o) => o.scenes.set('Esportra · Holding', []));
+  const p: BuildScene[] = [{ name: 'ESPORTRA · Break', formerly: 'Esportra · Holding', exclusive: false, sources: [], slots: [] }];
+  await link.build(p, emptyOwned(), () => {});
+  assert.ok(obs.scenes.has('Esportra · Holding') && obs.scenes.has('ESPORTRA · Break'), 'the crew’s scene is left alone; Air makes its own');
+});
+
+test('sponsor videos are looping media sources, hidden until shown', async () => {
+  const { obs, link } = await connected();
+  const p: BuildScene[] = [{ name: 'ESPORTRA · Break', exclusive: false, slots: [], sources: [
+    { id: 'holding', inputName: 'ESPORTRA · Holding', url: 'http://127.0.0.1:5300/o/holding', frame: FULL, enabled: true },
+    { id: 'sponsor:nova', inputName: 'ESPORTRA · Sponsor video · Nova', kind: 'media', url: 'C:\\Sponsors\\nova.mp4', frame: FULL, enabled: false },
+  ] }];
+  let owned = emptyOwned();
+  await link.build(p, owned, (o) => { owned = o; });
+  const video = obs.inputs.get('ESPORTRA · Sponsor video · Nova')!;
+  assert.equal(video.inputKind, 'ffmpeg_source');
+  assert.deepEqual([video.settings.local_file, video.settings.looping], ['C:\\Sponsors\\nova.mp4', true]);
+  assert.equal(obs.scenes.get('ESPORTRA · Break')!.find((i) => i.sourceName === 'ESPORTRA · Sponsor video · Nova')!.enabled, false);
+  // A new file replaces the old one in place.
+  p[0]!.sources[1]!.url = 'C:\\Sponsors\\nova-2.mp4';
+  await link.build(p, owned, (o) => { owned = o; });
+  assert.equal(obs.inputs.get('ESPORTRA · Sponsor video · Nova')!.settings.local_file, 'C:\\Sponsors\\nova-2.mp4');
+});

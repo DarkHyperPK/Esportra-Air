@@ -1,4 +1,4 @@
-import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
+import { SCENE_KEYS, SCENES, sourceName } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
@@ -98,7 +98,7 @@ export function ScenesScreen({ s, run, go }: PageProps) {
                 ))}
                 {sources.map((x) => (
                   <div className="tree-row" key={x.id} style={{ paddingLeft: 34 }}>
-                    <span className="muted">Esportra · {x.title}</span>
+                    <span className="muted">{sourceName(x.title)}</span>
                     <span className="mono muted" style={{ fontSize: 11 }}>{x.frame.width}×{x.frame.height}</span>
                   </div>
                 ))}

@@ -117,11 +117,16 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await obs.connect('127.0.0.1', 4455, 'secret');
     checks = production.snapshot().checks;
     assert.equal(checks.find((c) => c.id === 'scenes')!.action!.id, 'install-graphics');
+    // A sponsor with a break video: Air adds it to the Break scene, hidden until shown.
+    await production.saveSponsor(ev.id, { id: production.eventOf(match)!.sponsors[0]!.id, video: 'C:\\Sponsors\\acme.mp4' });
     await production.installGraphics();
     const snap = production.snapshot();
     assert.equal(snap.obs.installed, true);
-    assert.ok(obsServer.scenes.has('Esportra · Gameplay'));
-    assert.equal(obsServer.inputs.get('Esportra · In-game HUD')!.settings.url, `http://127.0.0.1:${port}/o/${ingameOutput}`);
+    assert.ok(obsServer.scenes.has('ESPORTRA · Gameplay') && obsServer.scenes.has('ESPORTRA · Break') && obsServer.scenes.has('ESPORTRA · Desk'), 'scenes carry the ESPORTRA names');
+    assert.equal(obsServer.inputs.get('ESPORTRA · In-game HUD')!.settings.url, `http://127.0.0.1:${port}/o/${ingameOutput}`);
+    const video = obsServer.scenes.get('ESPORTRA · Break')!.find((i) => i.sourceName === 'ESPORTRA · Sponsor video · Acme');
+    assert.ok(video && video.enabled === false, 'the sponsor video waits hidden in the Break scene');
+    assert.equal(obsServer.inputs.get('ESPORTRA · Sponsor video · Acme')!.inputKind, 'ffmpeg_source');
     assert.deepEqual(snap.obs.scenes.map((x) => [x.key, x.inObs]), [['holding', true], ['gameplay', true], ['fullscreen', true], ['replay', true], ['casters', true]]);
     assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'casters')!.slots.map((x) => [x.id, x.source]), [['cam1', null], ['cam2', null]], 'slots wait for the crew’s sources');
     await production.useSlotSource('game', 'Game Capture');
@@ -264,7 +269,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(row('fs:series').mode, 'off');
     assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.airFullscreen, 'map-result');
     assert.equal(production.snapshot().obs.previewScene, previewBefore, 'no OBS scene change');
-    assert.deepEqual(obsServer.scenes.get('Esportra · Fullscreen')!.map((i) => i.sourceName), ['Esportra · Full screen'], 'one host source in the Fullscreen scene');
+    assert.deepEqual(obsServer.scenes.get('ESPORTRA · Full screen')!.map((i) => i.sourceName), ['ESPORTRA · Full screen'], 'one host source in the Full screen scene');
     await production.setLayer('fs:series', 'on');
     assert.equal(row('fs:map-result').mode, 'off', 'one at a time');
     assert.equal(row('fs:series').mode, 'on');

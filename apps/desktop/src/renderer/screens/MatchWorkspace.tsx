@@ -1,7 +1,7 @@
 // A match's workspace (approved mocks): the team-light hero, then Readiness, Teams and players,
 // Talent and sponsors, Autopilot and Rehearse. Graphics links to the current graphics page until
 // My show replaces it.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ActionId, Snapshot, Team } from '../../shared/api.ts';
 import { ROLE_NAME, TIER_NAME, onAir } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
@@ -10,9 +10,11 @@ import { AutopilotRules, NextFive } from '../components/Autopilot.tsx';
 import { EditorDrawer, PlayerEditor, Switch, cameraText } from '../components/Editors.tsx';
 import { TeamFields, imageUrl } from '../components/MatchEditors.tsx';
 import { RehearsePanel } from '../components/Rehearse.tsx';
+import { GoLiveDialog } from '../components/GoLive.tsx';
 import { PackWindow } from '../components/PackWindow.tsx';
 import { LIBRARY, inShow, showLink, showPatch } from '../../shared/library.ts';
-import { SCENE_KEYS, SCENES } from '../../shared/scenes.ts';
+import { SCENE_KEYS, SCENES, sourceName } from '../../shared/scenes.ts';
+import { Preview, overlayUrl } from '../components/Preview.tsx';
 
 export type Tab = 'ready' | 'teams' | 'talent' | 'myshow' | 'autopilot' | 'rehearse';
 const TABS: Array<[Tab, string]> = [['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and sponsors'], ['myshow', 'My show'], ['autopilot', 'Autopilot'], ['rehearse', 'Rehearse']];
@@ -61,7 +63,9 @@ function Hero({ s }: { s: Snapshot }) {
   );
 }
 
-function Readiness({ s, run, act, start }: Pick<PageProps, 's' | 'run'> & { act: (id: ActionId) => void; start: () => void }) {
+function Readiness({ s, run, go, act, start }: Pick<PageProps, 's' | 'run' | 'go'> & { act: (id: ActionId) => void; start: () => void }) {
+  const [goLive, setGoLive] = useState(false);
+  const live = s.feed.state === 'live' || s.feed.state === 'waiting';
   // Not being signed in to Esportra is information, not something to fix before a quick match.
   const counted = s.checks.filter((c) => !(c.id === 'esportra' && c.health === 'off'));
   const ready = counted.filter((c) => c.health === 'ok').length;
@@ -81,12 +85,23 @@ function Readiness({ s, run, act, start }: Pick<PageProps, 's' | 'run'> & { act:
         <NextFive s={s} />
       </div>
       <aside className="stack" style={{ gap: 12 }}>
-        <h2 className="title-sm">Run the show</h2>
-        <p className="muted t-sm">{s.autopilotBlock ?? 'Autopilot puts graphics up for you after a hold you can stop with H. Off unless you start it.'}</p>
-        <button className="btn primary big" disabled={!!s.autopilotBlock} onClick={() => void run(() => air.autopilotStart()).then((ok) => ok && start())}>Start autopilot</button>
-        <button className="btn big" onClick={() => void run(() => air.autopilotStop()).then(start)}>Run manually</button>
-        <span className="faint t-xs">Warnings never stop you. Your stream itself starts in OBS.</span>
+        {live ? (
+          <>
+            <h2 className="title-sm"><span className="air-dot inline" /> Game data is live</h2>
+            <p className="muted t-sm">Graphics follow the match. Run the show from Live.</p>
+            <button className="btn primary big" onClick={start}>Open Live</button>
+          </>
+        ) : (
+          <>
+            <h2 className="title-sm">Go live</h2>
+            <p className="muted t-sm">Sends My show to OBS, starts game data with your permission, and arms autopilot if you want it. Your stream stays in OBS.</p>
+            <button className="btn live big" onClick={() => setGoLive(true)}>Go live</button>
+            <button className="btn quiet" onClick={() => void run(() => air.autopilotStop()).then(start)}>Open Live without going live</button>
+            <span className="faint t-xs">Warnings never stop you.</span>
+          </>
+        )}
       </aside>
+      {goLive && <GoLiveDialog s={s} close={() => setGoLive(false)} done={() => { setGoLive(false); start(); }} connectObs={() => { setGoLive(false); go('settings'); }} />}
     </div>
   );
 }
@@ -188,48 +203,56 @@ function Talent({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   );
 }
 
-/** My show: what goes into OBS for every match of this production, by the scene it lands in. */
+/** My show: what goes into OBS for every match of this production, by the scene it lands in, each
+ * graphic as a live preview with the exact name it has in OBS. */
 function MyShow({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const [pack, setPack] = useState(false);
   const items = LIBRARY[s.game?.id ?? 'valorant'];
-  const titleOf = (overlay: string, fallback: string) => items.find((i) => i.overlay === overlay)?.title ?? fallback;
+  // The previews play in the library's sample room, dressed as this match.
+  useEffect(() => { void air.librarySeed().catch(() => {}); }, [s.match?.id]);
   const hudItems = items.filter((i) => showLink(i).kind === 'hud' && inShow(s.setup, i));
   return (
-    <div className="stack" style={{ gap: 18 }}>
+    <div className="stack" style={{ gap: 22 }}>
       <div className="between">
-        <p className="muted" style={{ margin: 0 }}>These go to OBS for every match of this production, under these scene names.</p>
+        <p className="muted" style={{ margin: 0 }}>These go to OBS for every match of this production, under these names.</p>
         <button className="btn" onClick={() => setPack(true)}>Add from the Library</button>
       </div>
-      <div className="cols2">
-        {SCENE_KEYS.map((key) => {
-          const screens = s.setup.screens.filter((x) => x.scene === key && x.enabled);
-          const hud = key === 'gameplay' ? hudItems : [];
-          return (
-            <section key={key} className="stack" style={{ gap: 6 }}>
-              <span className="mono t-xs faint">{SCENES[key].name}</span>
-              <div className="lst">
-                {screens.length + hud.length === 0 && <span className="li muted t-sm">Nothing here.</span>}
+      {SCENE_KEYS.map((key) => {
+        const screens = s.setup.screens.filter((x) => x.scene === key && x.enabled);
+        const hud = key === 'gameplay' ? hudItems : [];
+        return (
+          <section key={key} className="stack" style={{ gap: 10 }}>
+            <div className="between"><h3 className="mono t-sm" style={{ margin: 0 }}>{SCENES[key].name}</h3><span className="faint t-xs">{SCENES[key].note}</span></div>
+            {screens.length + hud.length === 0 ? <span className="muted t-sm">Nothing in this scene.</span> : (
+              <div className="show-grid">
                 {screens.map((x) => {
                   const item = items.find((i) => i.overlay === x.overlay && showLink(i).kind === 'screen');
                   const patch = item ? showPatch(s.setup, item, false) : null;
+                  const title = item?.title ?? x.title;
                   return (
-                    <div key={x.id} className="li show-row">
-                      <span>{titleOf(x.overlay, x.title)}{!item && <span className="faint t-xs"> · always</span>}</span>
-                      {patch ? <button className="btn quiet small" onClick={() => void run(() => air.updateSetup(patch))}>Remove</button> : <span />}
-                    </div>
+                    <figure key={x.id} className="show-card">
+                      <Preview src={overlayUrl(s, x.overlay)} label={title} />
+                      <figcaption>
+                        <span><b>{title}</b><br /><span className="mono faint t-xs">{x.hosted ? `inside ${sourceName('Full screen')}` : sourceName(x.title)}</span></span>
+                        {patch ? <button className="btn quiet small" onClick={() => void run(() => air.updateSetup(patch))}>Remove</button> : <span className="faint t-xs">Always</span>}
+                      </figcaption>
+                    </figure>
                   );
                 })}
                 {hud.map((i) => (
-                  <div key={i.overlay} className="li show-row">
-                    <span>{i.title} <span className="faint t-xs">· in the HUD</span></span>
-                    <button className="btn quiet small" onClick={() => void run(() => air.updateSetup(showPatch(s.setup, i, false)!))}>Remove</button>
-                  </div>
+                  <figure key={i.overlay} className="show-card">
+                    <Preview src={overlayUrl(s, i.overlay)} label={i.title} />
+                    <figcaption>
+                      <span><b>{i.title}</b><br /><span className="mono faint t-xs">inside {sourceName('In-game HUD')}</span></span>
+                      <button className="btn quiet small" onClick={() => void run(() => air.updateSetup(showPatch(s.setup, i, false)!))}>Remove</button>
+                    </figcaption>
+                  </figure>
                 ))}
               </div>
-            </section>
-          );
-        })}
-      </div>
+            )}
+          </section>
+        );
+      })}
       {pack && <PackWindow s={s} run={run} close={() => setPack(false)} />}
     </div>
   );
@@ -244,7 +267,7 @@ export function MatchWorkspace({ s, run, go, tab, setTab, act, start, back }: Pi
       <div className="tabs" role="tablist" aria-label="Match">
         {TABS.map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
-      {tab === 'ready' && <Readiness s={s} run={run} act={act} start={start} />}
+      {tab === 'ready' && <Readiness s={s} run={run} go={go} act={act} start={start} />}
       {tab === 'teams' && <Teams key={m.id} s={s} run={run} />}
       {tab === 'talent' && <Talent key={m.id} s={s} run={run} go={go} />}
       {tab === 'myshow' && <MyShow s={s} run={run} />}

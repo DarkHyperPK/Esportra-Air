@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { MonitorFrame } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
-import { PREFIX } from '../../shared/scenes.ts';
+import { shortName } from '../../shared/scenes.ts';
 import { Tally } from './ui.tsx';
 
 /** Latest PVW / PGM frames from OBS. Polls only while a monitor is mounted. */
@@ -19,7 +19,7 @@ export function useMonitor(active: boolean): MonitorFrame | null {
   return frame;
 }
 
-export const sceneLabel = (name: string | null) => (name ? name.replace(PREFIX, '') : '—');
+export const sceneLabel = (name: string | null) => (name ? shortName(name) : '—');
 
 export function Monitor({ kind, scene, image, note }: { kind: 'pvw' | 'pgm'; scene: string | null; image: string | null; note?: string }) {
   const onAir = kind === 'pgm';

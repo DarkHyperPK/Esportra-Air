@@ -52,6 +52,20 @@ export class FakeObs extends EventEmitter implements ObsSocket {
       case 'GetSceneCollectionList': return { currentSceneCollectionName: 'Test collection', sceneCollections: ['Test collection'] };
       case 'GetInputList': return { inputs: [...this.inputs].map(([inputName, i]) => ({ inputName, inputKind: i.inputKind })) };
       case 'CreateScene': this.scenes.set(data.sceneName, []); return {};
+      case 'SetSceneName': {
+        const items = this.scenes.get(data.sceneName)!;
+        this.scenes.delete(data.sceneName);
+        this.scenes.set(data.newSceneName, items);
+        // A nested scene is a source of its parent: its items follow the new name.
+        for (const list of this.scenes.values()) for (const i of list) if (i.sourceName === data.sceneName) i.sourceName = data.newSceneName;
+        return {};
+      }
+      case 'SetInputName': {
+        this.inputs.set(data.newInputName, this.inputs.get(data.inputName)!);
+        this.inputs.delete(data.inputName);
+        for (const list of this.scenes.values()) for (const i of list) if (i.sourceName === data.inputName) i.sourceName = data.newInputName;
+        return {};
+      }
       case 'CreateInput': {
         this.inputs.set(data.inputName, { inputKind: data.inputKind, settings: data.inputSettings });
         const sceneItemId = this.nextId++;
