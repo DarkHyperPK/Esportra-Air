@@ -21,9 +21,43 @@ export const TRIGGER_LABEL: Record<Trigger, string> = {
 /** How the graphic arrives: straight away, or behind the HUD's stinger wipe. */
 export type TransitionPick = 'cut' | 'stinger';
 
-/** Rule sets: Standard runs the whole show, Minimal only results, Manual never takes by itself. */
-export const PRESETS = ['standard', 'minimal', 'manual'] as const;
+/** Where a rundown starts: Standard runs the whole show, Minimal only results, Manual never takes by itself, Empty has nothing. */
+export const PRESETS = ['standard', 'minimal', 'manual', 'empty'] as const;
 export type Preset = (typeof PRESETS)[number];
+
+/**
+ * What a rundown row can wait for: only what Air already reads from the game, or the producer's Take.
+ * Spike, economy and round recap are not here: they are Auto layers of the in-game HUD.
+ */
+export const WHEN = ['manual', 'match_start', 'round_live', 'round_end', 'halftime', 'map_end', 'delay'] as const;
+export type When = (typeof WHEN)[number];
+
+export const WHEN_LABEL: Record<When, string> = {
+  manual: 'I press Take', match_start: 'Map starts', round_live: 'Round live', round_end: 'Round ends', halftime: 'Halftime', map_end: 'Map ends', delay: 'After previous',
+};
+
+/** Which map a row runs on: every map, one map, or once after the series is won. */
+export type RowMap = 'every' | number | 'series';
+
+/** One row of the producer's rundown: a screen (null: back to the game) and the rule for it. */
+export interface RundownRow {
+  id: string;
+  show: string | null;
+  trigger: When;
+  map: RowMap;
+  /** Back to the game after this many seconds (0 = until the next screen). */
+  forSeconds: number;
+  /** Seconds after the previous row, for `delay`. */
+  delaySeconds: number;
+  transition: TransitionPick;
+  /** `window`: a countdown of holdSeconds (0 = no hold), then take. `manual`: wait for Take. */
+  holdMode: 'window' | 'manual';
+  holdSeconds: number;
+  /** Off: not in the rundown; the producer puts that screen up from Live. */
+  enabled: boolean;
+}
+
+export type RowInput = Omit<RundownRow, 'id' | 'enabled'> & { enabled?: boolean };
 
 export interface Segment {
   id: string;
@@ -42,6 +76,8 @@ export interface Segment {
   transition: TransitionPick;
   /** Only arms for this map (1–9), when set. */
   mapNumber: number | null;
+  /** Runs once after the series is won (the champion). */
+  afterSeries?: boolean;
   state: SegmentState;
   heldBy: 'operator' | null;
 }

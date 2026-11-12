@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { Match, Screen, Setup } from '../shared/api.ts';
 import { emptyOwned, type Owned } from './scene-build.ts';
 import type { SceneKey } from '../shared/scenes.ts';
-import type { RundownEdits } from './autopilot/rundown.ts';
+import type { SavedRundown } from './autopilot/rundown.ts';
 import type { SavedEsportra } from './esportra.ts';
 import type { EventInfo } from '../shared/model.ts';
 import { DEFAULT_ACCENT, migrateToEvents } from './event-model.ts';
@@ -21,8 +21,8 @@ export interface Saved {
   selectedMatchId: string | null;
   owned: Owned;
   enginePort: number;
-  /** The producer's rundown edits, per match. Whether autopilot is on is never saved. */
-  rundown?: Record<string, RundownEdits>;
+  /** The producer's rundown rows, per match (older saves hold edits and are migrated). Whether autopilot is on is never saved. */
+  rundown?: Record<string, SavedRundown>;
   /** Where autopilot is in each match's rundown, so a restart resumes instead of starting over. */
   autopilotProgress?: Record<string, { states: Record<string, 'done' | 'on_air'>; savedAt: number }>;
   /** The signed-in Esportra account (tokens are kept separately, encrypted). */
@@ -37,8 +37,6 @@ export interface Saved {
   keymap?: Record<string, string>;
   /** The moments shown on Live, in order. */
   moments?: string[];
-  /** Autopilot's moment rules for this production (absent: the starter rules). */
-  rules?: import('../shared/rules.ts').Rule[];
   /** Producer side: allow other PCs on the network to join. The code itself is kept encrypted. */
   join?: { enabled: boolean; port: number };
   /** Capture-only side: the producer's address and this PC's role. The code is kept encrypted. */

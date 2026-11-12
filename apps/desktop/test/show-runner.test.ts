@@ -261,3 +261,23 @@ test('the match start trigger takes an automatic step when the game begins', asy
   await clock.advance(2100);
   assert.deepEqual(taken, ['intro']);
 });
+
+test('after a 2–0 in a best-of 3, the map 3 steps are skipped and the champion is next', async () => {
+  const { runner, walkTo, logs } = setup();
+  runner.start();
+  await walkTo('map2-series');
+  // The producer records the series (Fix data) before map 3 would start.
+  runner.setSeriesMaps(2, true);
+  assert.equal((await runner.take('map2-series')).ok, true);
+  assert.equal(runner.view().next!.id, 'champion');
+  assert.ok(runner.view().segments.filter((s) => s.mapNumber === 3).every((s) => s.state === 'done'));
+  assert.ok(logs.some((l) => l.kind === 'skipped' && l.message === 'series won'));
+
+  // A series still going (1–1) keeps map 3.
+  const other = setup();
+  other.runner.start();
+  await other.walkTo('map2-series');
+  other.runner.setSeriesMaps(2, false);
+  assert.equal((await other.runner.take('map2-series')).ok, true);
+  assert.equal(other.runner.view().next!.id, 'map3-live');
+});

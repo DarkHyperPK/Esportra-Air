@@ -68,6 +68,8 @@ export class ShowRunner extends EventEmitter {
   private paused: AutopilotPause = null;
   /** Maps already finished according to the score (Fix data › Series), a floor for the map counter. */
   private seriesMaps = 0;
+  /** A team has won the series: steps for maps after the last one played are skipped. */
+  private seriesDecided = false;
   private holdEndsAt: number | null = null;
   private holdTotalMs: number | null = null;
   private holdTimer: unknown = null;
@@ -160,11 +162,25 @@ export class ShowRunner extends EventEmitter {
    * Maps already won in the series, from the score. GEP does not say which map of the series is being
    * played, so the map number is the larger of this and the map results the rundown has completed.
    */
-  setSeriesMaps(played: number) {
+  setSeriesMaps(played: number, decided = false) {
     const n = Math.max(0, Math.floor(played) || 0);
-    if (n === this.seriesMaps) return;
+    if (n === this.seriesMaps && decided === this.seriesDecided) return;
     this.seriesMaps = n;
+    this.seriesDecided = decided;
+    // A step waiting on a map that will not be played (map 3 after a 2–0) is skipped.
+    const armed = this.segments.find((s) => s.state === 'armed');
+    if (armed && this.unplayed(armed)) {
+      const index = this.segments.indexOf(armed);
+      armed.state = 'done';
+      this.log({ kind: 'skipped', segment: armed, message: 'series won' });
+      if (this.enabled) this.armNext(index);
+    }
     this.change();
+  }
+
+  /** The series is won and this step belongs to a map after the last one played. */
+  private unplayed(seg: Segment) {
+    return this.seriesDecided && seg.mapNumber != null && seg.mapNumber > this.seriesMaps;
   }
 
   /** The map being played (1-based): after each map result is taken or skipped, the next map starts. */
@@ -337,7 +353,12 @@ export class ShowRunner extends EventEmitter {
   }
 
   private armNext(afterIndex: number) {
-    const next = this.segments.slice(afterIndex + 1).find((s) => s.state === 'queued');
+    let next = this.segments.slice(afterIndex + 1).find((s) => s.state === 'queued');
+    while (next && this.unplayed(next)) {
+      next.state = 'done';
+      this.log({ kind: 'skipped', segment: next, message: 'series won' });
+      next = this.segments.slice(this.segments.indexOf(next) + 1).find((s) => s.state === 'queued');
+    }
     if (!next) return;
     next.state = 'armed';
     this.log({ kind: 'armed', segment: next });

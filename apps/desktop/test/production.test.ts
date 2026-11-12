@@ -365,7 +365,8 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     assert.equal(await showing(), null);
 
     // A timed result: back to the game by itself after one second.
-    production.segmentUpdate('map1-result', { forSeconds: 1 });
+    const row = (id: string) => production.snapshot().rundown.find((r) => r.id === id)!;
+    production.rundownSave({ ...row('result'), forSeconds: 1 });
     production.autopilotStart();
     assert.equal(view().next!.id, 'intro');
     await production.autopilotTake();
@@ -390,7 +391,8 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     await production.autopilotResume();
     assert.equal(view().paused, null);
     assert.equal((await engine.client.get<any>(`/api/${code}`)).state.airPause, undefined);
-    assert.throws(() => production.autopilotPreset('minimal'), /Run manually first/);
+    assert.throws(() => production.rundownStartFrom('minimal'), /Run manually first/);
+    assert.throws(() => production.rundownSave({ ...row('half'), forSeconds: 8 }), /Run manually first/);
 
     await production.autopilotTake();
     await wait(() => view().now?.id === 'map1-live', 'back to the game');
@@ -408,7 +410,7 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     assert.equal(view().next!.state, 'armed', 'manual steps arm but never take themselves');
     assert.equal(obsServer.program, program, 'autopilot never switched an OBS scene');
     const log = production.snapshot().log.map((x) => x.text);
-    for (const line of ['Autopilot started', 'Held by operator · Map 1 · back to the game', 'Skipped · Map 1 · halftime', 'Full screen · Map result']) assert.ok(log.includes(line), `${line} in ${log.join(' | ')}`);
+    for (const line of ['Autopilot started', 'Held by operator · Back to the game', 'Skipped · Halftime', 'Full screen · Map result']) assert.ok(log.includes(line), `${line} in ${log.join(' | ')}`);
     assert.ok(log.some((l) => l.startsWith('Autopilot paused')), 'pause logged');
 
     // Run manually clears everything; autopilot is never on after a restart.
@@ -418,22 +420,24 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     production.autopilot.loadForMatch();
     assert.equal(view().enabled, false);
     // ...but it remembers where the show is: after a restart it offers to resume, and says so.
-    assert.equal(view().resumeAt, 'Winner');
+    assert.equal(view().resumeAt, 'Champion');
     production.noteRecovery();
-    assert.match(production.snapshot().recovery ?? '', /Recovered after a restart\. Graphics kept the last data; autopilot is ready to resume at Winner\./);
+    assert.match(production.snapshot().recovery ?? '', /Recovered after a restart\. Graphics kept the last data; autopilot is ready to resume at Champion\./);
     production.dismissRecovery();
     assert.equal(production.snapshot().recovery, null);
     production.autopilotRestart();
     assert.equal(view().resumeAt, null, 'starting the rundown again forgets the progress');
 
-    // Presets: Minimal keeps the result and the return to the game; Manual leaves nothing automatic.
-    production.autopilotPreset('minimal');
+    // Starting points: Results only keeps the result and the return to the game; Manual and Empty take nothing.
+    production.rundownStartFrom('minimal');
     assert.equal(view().preset, 'minimal');
     assert.deepEqual(view().segments.filter((x) => x.mode === 'automatic').map((x) => x.id), ['map1-live', 'map1-result']);
-    production.autopilotPreset('manual');
+    production.rundownStartFrom('manual');
     assert.deepEqual(view().segments.filter((x) => x.mode === 'automatic').map((x) => x.id), []);
-    assert.throws(() => production.autopilotPreset('wild' as never), /Standard, Minimal or Manual/);
-    production.autopilotPreset('standard');
+    production.rundownStartFrom('empty');
+    assert.deepEqual(production.snapshot().rundown, []);
+    assert.throws(() => production.rundownStartFrom('wild' as never), /Standard, Results only, Manual or Empty/);
+    production.rundownStartFrom('standard');
 
     // Player cameras: links are made per player, pushed to the engine, and replace-able.
     const cams0 = production.snapshot().cams;
@@ -463,14 +467,21 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     assert.equal(production.snapshot().cams.slots[2]!.id, null);
     assert.equal((await engine.client.get<any>(`/api/${code}`)).state.show.playerCams, false);
 
-    // Edits are saved for the match and rebuild with it.
-    production.segmentUpdate('map1-live', { holdSeconds: 8, transition: 'cut' });
-    production.segmentMove('intro', 1);
+    // Rows are the producer's own: saved for the match, in their order, switched off, added and removed.
+    production.rundownSave({ ...row('live'), holdSeconds: 8, transition: 'cut' });
+    production.rundownMove('intro', 1);
     production.autopilot.loadForMatch();
     const live = view().segments.find((x) => x.id === 'map1-live')!;
     assert.deepEqual([live.holdSeconds, live.transition], [8, 'cut']);
     assert.equal(view().segments[1]!.id, 'intro');
-    assert.throws(() => production.segmentUpdate('map1-live', { holdSeconds: 500 }), /valid/);
+    assert.throws(() => production.rundownSave({ ...row('live'), holdSeconds: 500 }), /0–60/);
+    production.rundownEnable('half', false);
+    assert.ok(!view().segments.some((x) => x.id === 'map1-half'), 'a switched-off row is not in the rundown');
+    production.rundownSave({ show: 'map-result', trigger: 'manual', map: 1, forSeconds: 20, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 });
+    const added = production.snapshot().rundown.at(-1)!;
+    assert.equal(view().segments.find((x) => x.id === added.id)!.name, 'Map result');
+    production.rundownRemove(added.id);
+    assert.ok(!production.snapshot().rundown.some((r) => r.id === added.id));
   } finally {
     production.autopilot.stopAll();
     production.log.stop();
@@ -706,64 +717,6 @@ test('rehearsal plays the match privately with its own players, and autopilot fi
   } finally {
     production.rehearsal.stop();
     production.log.stop();
-    await engine.stop(true);
-  }
-});
-
-test('an ace in the game fires the starter rule: the spotlight waits its hold window, then goes on air', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'air-rules-'));
-  const port = await freePort();
-  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
-  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'rules-test-key-0123456789abcdef', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
-  await engine.start();
-  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
-  production.setup.game = 'valorant';
-  const wait = async (check: () => boolean | Promise<boolean>, label: string, ms = 6000) => {
-    const end = Date.now() + ms;
-    while (!(await check())) {
-      if (Date.now() > end) assert.fail(`timed out: ${label} · ${production.snapshot().log.map((x) => x.text).join(' | ')}`);
-      await new Promise((r) => setTimeout(r, 25));
-    }
-  };
-  try {
-    await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
-    const code = production.match!.code;
-    const ingest = (m: unknown[]) => engine.client.post(`/api/${code}/ingest/valorant`, m);
-    assert.deepEqual(production.snapshot().rules.list.map((r) => r.id), ['starter-ace']);
-    assert.throws(() => production.saveRule({ ...production.ruleList()[0]!, id: undefined, when: 'flawless' }), /one player/);
-
-    await ingest(Array.from({ length: 10 }, (_, i) => ({ feature: 'match_info', key: `scoreboard_${i}`, data: JSON.stringify({ player_id: `p${i}`, name: `P${i} #T`, character: 'Clay', team: i < 5 ? 0 : 1, alive: true, money: 3900 }) })));
-    await ingest([{ feature: 'match_info', key: 'round_phase', data: 'combat' }]);
-    production.autopilotStart();
-    // Rules sit beside the rundown: the intro waiting for Take does not stop them.
-    for (let v = 5; v < 10; v++) await ingest([{ events: [{ name: 'kill_feed', data: JSON.stringify({ attacker: 'P0 #T', victim: `P${v} #T`, weapon: 'TX_Hud_Rifles_Volcano', headshot: false }) }] }]);
-    await wait(() => production.snapshot().rules.pending !== null, 'the rule counts down');
-    const pending = production.snapshot().rules.pending!;
-    assert.equal(pending.label, 'Spotlight · P0');
-    assert.ok(production.snapshot().cue.pending.includes('Spotlight · P0'), 'the spotlight waits in Cued');
-    const lowerThird = async () => (await engine.client.get<any>(`/api/${code}`)).state.lowerThird;
-    assert.notEqual((await lowerThird())?.kind, 'player', 'not on air during the hold window');
-    await wait(async () => (await lowerThird())?.kind === 'player', 'the spotlight goes on air when the window ends');
-    assert.deepEqual([(await lowerThird()).team, (await lowerThird()).player], [0, 0]);
-    assert.equal(production.snapshot().rules.pending, null);
-    assert.ok(production.snapshot().log.some((x) => x.text === 'Rule taken (automatic) · Spotlight · P0'));
-
-    // Switched off, the same moment does nothing; Skip drops a cued rule.
-    production.setRuleEnabled('starter-ace', false);
-    assert.equal(production.snapshot().rules.list[0]!.enabled, false);
-    production.removeRule('starter-ace');
-    assert.deepEqual(production.snapshot().rules.list, []);
-    production.saveRule({ when: 'ace', map: null, team: 0, rounds: 'any', show: { kind: 'toast', text: '{player} aces it for {team}' }, forSeconds: 8, via: 'cut', hold: 'window', holdSeconds: 30 });
-    await ingest([{ feature: 'match_info', key: 'round_phase', data: 'shopping' }, { feature: 'match_info', key: 'round_number', data: '2' }, { feature: 'match_info', key: 'round_phase', data: 'combat' }]);
-    for (let v = 5; v < 10; v++) await ingest([{ events: [{ name: 'kill_feed', data: JSON.stringify({ attacker: 'P1 #T', victim: `P${v} #T`, weapon: 'TX_Hud_Rifles_Volcano', headshot: false }) }] }]);
-    await wait(() => production.snapshot().rules.pending !== null, 'the toast rule counts down');
-    assert.equal(production.snapshot().rules.pending!.label, 'Toast · P1 aces it for Team Alpha');
-    production.ruleHold();
-    assert.equal(production.snapshot().rules.pending!.held, true);
-    await production.ruleSkip();
-    assert.equal(production.snapshot().rules.pending, null);
-    assert.ok(!production.snapshot().cue.pending.some((l) => l.startsWith('Toast')), 'skipped: gone from Cued');
-  } finally {
     await engine.stop(true);
   }
 });

@@ -33,10 +33,8 @@ import type { PcMode, PcRole } from '../shared/join.ts';
 import { signedOut } from '../shared/esportra.ts';
 import { randomBytes } from 'node:crypto';
 import type { CamsView } from '../shared/api.ts';
-import type { Preset, SegmentEdit } from '../shared/autopilot.ts';
+import type { Preset, RowInput } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
-import { RuleRunner } from './autopilot/rule-runner.ts';
-import { STARTER_RULES, isMoment, ruleActions, ruleScreens, validRule, type Rule, type RuleInput } from '../shared/rules.ts';
 import { HEX, IMAGE, text } from './validate.ts';
 import { cameraLinkUrl, cameraViewUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
 import type { MatchPatch } from '../shared/api.ts';
@@ -141,7 +139,6 @@ export class Production extends EventEmitter {
   private roomV = -1;
   readonly log: EventLog;
   readonly autopilot: Autopilot;
-  readonly rules: RuleRunner;
   readonly stats: CaptureStats;
   readonly art: ArtCache;
   readonly rehearsal: Rehearsal;
@@ -177,26 +174,7 @@ export class Production extends EventEmitter {
       void this.syncEngine().catch(() => {});
     });
     deps.obs.on('change', changed);
-    this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => {
-      this.autopilot.onGameEvent(event);
-      const ctx = () => ({ map: this.autopilot.view().map, round: typeof this.room?.round?.number === 'number' ? this.room.round.number : null });
-      if (!isMoment(event, ctx())) return;
-      // Read the room first, so the rule names the players and sees the full-screen graphic as they are now.
-      this.roomV = -1;
-      void this.readRoom().catch(() => {}).then(() => this.rules.onGameEvent(event, ctx()));
-    } });
-    this.rules = new RuleRunner({
-      rules: () => this.ruleList(),
-      active: () => { const v = this.autopilot.view(); return v.enabled && !v.paused; },
-      preset: () => this.autopilot.view().preset,
-      busy: () => (this.room?.airFullscreen ?? null) !== null || this.autopilot.view().holdEndsAt !== null,
-      actionsFor: (rule, hit) => ruleActions(rule, hit, this.ruleNames()),
-      air: (actions, label, via) => this.airNow(label, actions, via),
-      cue: (actions, label) => this.cueChange(label, actions),
-      takeCue: async (via) => { if (this.pending.length) await this.takeCue(via === 'stinger' ? 'stinger' : 'cut'); },
-      clearCue: async () => {},
-      log: (line) => this.log.add(line), changed,
-    });
+    this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => this.autopilot.onGameEvent(event) });
     this.autopilot = new Autopilot({
       store: deps.store, match: () => this.match, screens: () => this.setup.screens,
       showGraphic: async (id, transition) => {
@@ -779,25 +757,7 @@ export class Production extends EventEmitter {
    */
   private async graphic(label: string, actions: Array<{ name: string; args: Record<string, unknown> }>) {
     this.requireMatch();
-    if (this.cueMode) return this.cueChange(label, actions);
-    await this.airNow(label, actions, 'cut');
-  }
-
-  /** Puts a change straight on air (with the stinger first when asked). */
-  private async airNow(label: string, actions: Array<{ name: string; args: Record<string, unknown> }>, via: 'cut' | 'stinger') {
-    if (via === 'stinger') {
-      await this.act('stinger.play', {}, false);
-      await new Promise((r) => setTimeout(r, 450));
-    }
-    for (const a of actions) await this.act(a.name, a.args, false);
-    this.roomV = -1;
-    await this.readRoom();
-    this.log.add(label);
-  }
-
-  /** Queues a change in Cued (whatever the cue mode: a rule's hold always waits there). */
-  private async cueChange(label: string, actions: Array<{ name: string; args: Record<string, unknown> }>) {
-    {
+    if (this.cueMode) {
       const key = cueKey(actions);
       const replaced = this.pending.some((c) => c.key === key);
       this.pending = this.pending.filter((c) => c.key !== key);
@@ -809,7 +769,12 @@ export class Production extends EventEmitter {
       }
       await this.syncCue();
       this.emit('change');
+      return;
     }
+    for (const a of actions) await this.act(a.name, a.args, false);
+    this.roomV = -1;
+    await this.readRoom();
+    this.log.add(label);
   }
 
   /** True when applying these actions would leave the on-air graphics as they are. */
@@ -846,13 +811,6 @@ export class Production extends EventEmitter {
     this.cueMode = on === true;
     if (!this.cueMode && this.pending.length) this.pending = [];
     this.emit('change');
-  }
-
-  /** Drops one cued change by its label (a skipped rule). */
-  private uncue(label: string) {
-    const before = this.pending.length;
-    this.pending = this.pending.filter((c) => c.label !== label);
-    if (this.pending.length !== before) void this.syncCue().catch(() => {});
   }
 
   clearCue() {
@@ -1127,63 +1085,6 @@ export class Production extends EventEmitter {
   }
   autopilotStop() {
     this.autopilot.stop();
-    this.rules.reset();
-  }
-
-  // ── moment rules ──
-
-  /** The production's rules; a new production starts with the starter rules. */
-  ruleList(): Rule[] {
-    return this.deps.store.data.rules ?? STARTER_RULES;
-  }
-
-  private ruleNames() {
-    const match = this.match;
-    const roomPlayers: any[][] = Array.isArray(this.room?.players) ? this.room.players : [];
-    return {
-      teams: match ? match.teams.map((t) => t.name) : ['Team A', 'Team B'],
-      players: [0, 1].map((t) => [0, 1, 2, 3, 4].map((i) => roomPlayers[t]?.[i]?.name || match?.players[t]?.[i]?.name || '')),
-      graphic: (id: string) => `Full screen · ${this.setup.screens.find((x) => x.id === id)?.title ?? id}`,
-    };
-  }
-
-  private saveRules(rules: Rule[]) {
-    this.deps.store.data.rules = rules;
-    this.deps.store.save();
-    this.emit('change');
-  }
-
-  saveRule(input: RuleInput) {
-    const screens = ruleScreens(this.setup.screens).map((x) => x.id);
-    const id = typeof input?.id === 'string' && this.ruleList().some((r) => r.id === input.id) ? input.id : `rule-${randomUUID().slice(0, 8)}`;
-    const rule = validRule(input, id, screens);
-    const list = this.ruleList();
-    this.saveRules(list.some((r) => r.id === id) ? list.map((r) => (r.id === id ? rule : r)) : [...list, rule]);
-    this.log.add(`Rule saved · ${rule.when.replace(/_/g, ' ')}`);
-  }
-
-  removeRule(id: string) {
-    const list = this.ruleList();
-    if (!list.some((r) => r.id === id)) throw new Error('That rule is already gone.');
-    this.saveRules(list.filter((r) => r.id !== id));
-  }
-
-  setRuleEnabled(id: string, on: boolean) {
-    const list = this.ruleList();
-    if (!list.some((r) => r.id === id)) throw new Error('That rule is already gone.');
-    this.saveRules(list.map((r) => (r.id === id ? { ...r, enabled: on === true } : r)));
-  }
-
-  async ruleTake() {
-    await this.rules.take('operator');
-  }
-  ruleHold() {
-    this.rules.hold();
-  }
-  async ruleSkip() {
-    const label = this.rules.view()?.label;
-    await this.rules.skip();
-    if (label) this.uncue(label);
   }
   autopilotHold() {
     this.autopilot.hold();
@@ -1199,15 +1100,21 @@ export class Production extends EventEmitter {
     if (this.room?.airPause) await this.pause(null);
     this.autopilot.resume();
   }
-  autopilotPreset(preset: Preset) {
-    this.autopilot.setPreset(preset);
-    this.log.add(`Autopilot preset · ${preset}`);
+  rundownStartFrom(preset: Preset) {
+    this.autopilot.startFrom(preset);
+    this.log.add(`Rundown · started from ${preset}`);
   }
-  segmentUpdate(id: string, edit: SegmentEdit) {
-    this.autopilot.edit(id, edit);
+  rundownSave(input: RowInput & { id?: string }) {
+    this.autopilot.saveRow(input);
   }
-  segmentMove(id: string, direction: number) {
-    this.autopilot.move(id, direction < 0 ? -1 : 1);
+  rundownRemove(id: string) {
+    this.autopilot.removeRow(id);
+  }
+  rundownEnable(id: string, on: boolean) {
+    this.autopilot.enableRow(id, on);
+  }
+  rundownMove(id: string, direction: number) {
+    this.autopilot.moveRow(id, direction < 0 ? -1 : 1);
   }
 
   async casterStrap(on: boolean) {
@@ -1407,7 +1314,7 @@ export class Production extends EventEmitter {
       triggers: this.liveTriggers(),
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),
-      rules: { list: this.ruleList(), pending: this.rules.view(), recorded: this.rehearsal.recorded() },
+      rundown: this.autopilot.rows(),
       cue: { mode: this.cueMode, pending: this.pending.map((c) => c.label), room: match ? `__ESA_SIM_CUE_${match.code}` : null },
       esportra: this.deps.esportra?.view() ?? signedOut(),
       mode: this.mode,

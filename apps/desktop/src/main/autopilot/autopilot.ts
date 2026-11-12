@@ -3,9 +3,10 @@
 // time the app runs; it is never restored after a restart.
 
 import type { Match, Screen } from '../../shared/api.ts';
-import type { AutopilotPause, AutopilotView, Preset, Segment, SegmentEdit } from '../../shared/autopilot.ts';
+import type { AutopilotPause, AutopilotView, Preset, RowInput, RundownRow, Segment } from '../../shared/autopilot.ts';
 import type { Store } from '../store.ts';
-import { buildRundown, emptyEdits, validateEdit, validPreset, type RundownEdits } from './rundown.ts';
+import { buildRundown, migrate, presetRows, screenTitle, validPreset, validRow, type SavedRundown } from './rundown.ts';
+import { randomUUID } from 'node:crypto';
 import { realClock, ShowRunner, type Clock, type GameEvent, type RunnerLog, type TakeOutcome } from './show-runner.ts';
 
 export interface AutopilotDeps {
@@ -58,10 +59,21 @@ export class Autopilot {
     });
   }
 
-  private edits(match: Match): RundownEdits {
+  /** The match's rundown rows (older saves are turned into rows the first time). */
+  private saved(match: Match): SavedRundown {
     const all = (this.deps.store.data.rundown ??= {});
-    return (all[match.id] ??= emptyEdits());
+    const current = all[match.id];
+    if (!current || !('rows' in current)) all[match.id] = migrate(current as never, match.bestOf);
+    return all[match.id] as SavedRundown;
   }
+
+  /** The rows for the interface. */
+  rows(): RundownRow[] {
+    const match = this.deps.match();
+    return match ? this.saved(match).rows : [];
+  }
+
+  private title = (id: string | null) => (id === null ? screenTitle(null) : this.deps.screens().find((s) => s.id === id)?.title || screenTitle(id));
 
   /**
    * Builds the rundown for the selected match. Autopilot is off afterwards, whatever it was before;
@@ -71,7 +83,7 @@ export class Autopilot {
     const match = this.deps.match();
     this.loadedFor = match?.id ?? null;
     this.loading = true;
-    this.runner.load(match ? buildRundown(match.bestOf, this.edits(match)) : [], match ? this.edits(match).preset ?? 'standard' : 'standard');
+    this.runner.load(match ? buildRundown(match.bestOf, this.saved(match).rows, this.title) : [], match ? this.saved(match).startedFrom : 'standard');
     const saved = match && this.deps.persist !== false ? this.deps.store.data.autopilotProgress?.[match.id] : undefined;
     if (saved) this.runner.restore(saved.states);
     this.loading = false;
@@ -120,17 +132,67 @@ export class Autopilot {
     return this.deps.match() ? null : 'Choose a match first.';
   }
 
-  /** Switches the match to a preset. Saved edits are kept; only steps not yet started change. */
-  setPreset(input: Preset) {
+  /** Replaces the rows with a starting point (Standard, Results only, Manual or Empty). */
+  startFrom(input: Preset) {
+    const match = this.editable();
+    const preset = validPreset(input);
+    this.deps.store.data.rundown![match.id] = { rows: presetRows(preset, match.bestOf), startedFrom: preset };
+    this.saveRows();
+  }
+
+  private editable(): Match {
     const match = this.deps.match();
     if (!match) throw new Error('Choose a match first.');
-    const preset = validPreset(input);
-    if (this.runner.view().enabled) throw new Error('Run manually first, then change the preset.');
-    const saved = this.edits(match);
-    saved.preset = preset;
-    saved.edits = {};
+    if (this.runner.view().enabled) throw new Error('Run manually first, then change the rundown.');
+    this.saved(match);
+    return match;
+  }
+
+  private saveRows() {
     this.deps.store.save();
     this.loadForMatch();
+  }
+
+  private fullscreens() {
+    return this.deps.screens().filter((s) => s.enabled && s.hosted).map((s) => s.id);
+  }
+
+  /** Adds a row at the end, or saves an existing one (same id). */
+  saveRow(input: RowInput & { id?: string }) {
+    const match = this.editable();
+    const saved = this.saved(match);
+    const existing = typeof input?.id === 'string' ? saved.rows.find((r) => r.id === input.id) : undefined;
+    const id = existing?.id ?? `r${randomUUID().slice(0, 8)}`;
+    const next = validRow({ ...input, enabled: input.enabled ?? existing?.enabled ?? true }, id, match.bestOf, this.fullscreens());
+    saved.rows = existing ? saved.rows.map((r) => (r.id === id ? next : r)) : [...saved.rows, next];
+    this.saveRows();
+  }
+
+  removeRow(id: string) {
+    const match = this.editable();
+    const saved = this.saved(match);
+    if (!saved.rows.some((r) => r.id === id)) throw new Error('That row is already gone.');
+    saved.rows = saved.rows.filter((r) => r.id !== id);
+    this.saveRows();
+  }
+
+  enableRow(id: string, on: boolean) {
+    const match = this.editable();
+    const saved = this.saved(match);
+    if (!saved.rows.some((r) => r.id === id)) throw new Error('That row is already gone.');
+    saved.rows = saved.rows.map((r) => (r.id === id ? { ...r, enabled: on === true } : r));
+    this.saveRows();
+  }
+
+  moveRow(id: string, direction: -1 | 1) {
+    const match = this.editable();
+    const rows = [...this.saved(match).rows];
+    const i = rows.findIndex((r) => r.id === id);
+    const j = i + direction;
+    if (i < 0 || j < 0 || j >= rows.length) throw new Error('It cannot move further.');
+    [rows[i], rows[j]] = [rows[j]!, rows[i]!];
+    this.saved(match).rows = rows;
+    this.saveRows();
   }
 
   start() {
@@ -168,27 +230,6 @@ export class Autopilot {
     this.runner.resume('timeout');
   }
 
-  /** Saves an edit for the match and applies it to the running rundown. */
-  edit(id: string, input: SegmentEdit) {
-    const match = this.deps.match();
-    if (!match) throw new Error('Choose a match first.');
-    const edit = validateEdit(input);
-    const applied = this.runner.edit(id, edit);
-    if (!applied.ok) throw new Error(applied.error);
-    const saved = this.edits(match);
-    saved.edits[id] = { ...saved.edits[id], ...edit };
-    this.deps.store.save();
-  }
-
-  move(id: string, direction: -1 | 1) {
-    const match = this.deps.match();
-    if (!match) throw new Error('Choose a match first.');
-    const r = this.runner.move(id, direction);
-    if (!r.ok) throw new Error(r.error);
-    this.edits(match).order = this.runner.view().segments.map((s) => s.id);
-    this.deps.store.save();
-  }
-
   // ── inputs ──
 
   onGameEvent(event: GameEvent) {
@@ -198,7 +239,9 @@ export class Autopilot {
   /** The room's state decides the map number and any pause panel (including one set by another controller). */
   onRoom(room: { teams?: Array<{ series?: number }>; airPause?: { kind?: string } } | null) {
     this.ensureLoaded();
-    this.runner.setSeriesMaps((room?.teams ?? []).reduce((sum, t) => sum + (Number(t?.series) || 0), 0));
+    const wins = (room?.teams ?? []).map((t) => Number(t?.series) || 0);
+    const bestOf = this.deps.match()?.bestOf ?? 1;
+    this.runner.setSeriesMaps(wins.reduce((a, b) => a + b, 0), Math.max(0, ...wins) > bestOf / 2);
     const kind = room?.airPause?.kind;
     const wanted: AutopilotPause = kind === 'technical' ? 'tech' : kind === 'timeout' ? 'timeout' : null;
     if (wanted) this.runner.pause(wanted);

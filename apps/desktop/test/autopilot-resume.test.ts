@@ -29,7 +29,7 @@ test('after a restart autopilot resumes where it was instead of starting over', 
   b.loadForMatch();
   const v = b.view();
   assert.equal(v.enabled, false, 'never switches itself on');
-  assert.equal(v.resumeAt, 'Map 1 · halftime');
+  assert.equal(v.resumeAt, 'Halftime');
   assert.deepEqual(v.segments.map((s) => `${s.id}:${s.state}`).slice(0, 3), ['intro:done', 'map1-live:on_air', 'map1-half:queued']);
   b.start();
   assert.equal(b.view().next?.id, 'map1-half', 'resumes at the next unfinished step');

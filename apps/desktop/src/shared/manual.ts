@@ -39,7 +39,6 @@ export const MANUAL: ManualSection[] = [
       'To put something up yourself, choose it from Moments or All graphics ({key:all}). It waits in Cued.',
       'Press {key:take} to take what is cued, or {key:stinger} to take it behind the stinger.',
     ] },
-    { p: 'Moment rules react to the game whenever it happens: an ace, a clutch, match point, overtime. A rule with a hold shows above Next with its own countdown; {key:hold}, {key:skip} and {key:take} act on it first. Rules never cover a full-screen graphic: they wait until the game is back on screen, and are dropped after ten seconds. Set them up on the match’s Autopilot tab.' },
   ] },
   { id: 'between', title: 'Between rounds', blocks: [
     { p: 'The economy board and the round recap come up on their own in the buy phase and at round end. Switch either off in All graphics.' },

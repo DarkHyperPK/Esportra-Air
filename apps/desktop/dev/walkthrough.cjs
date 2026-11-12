@@ -170,10 +170,10 @@ let failShot = async () => {};
   await shot('wizard-rehearse-ready');
   await wizard.getByRole('group', { name: 'Rehearsal speed' }).getByRole('button', { name: '4×' }).click();
   await wizard.getByRole('button', { name: 'Play rehearsal' }).click();
-  await wizard.getByText('→ Map 1 · halftime').waitFor({ timeout: 90_000 });
+  await wizard.getByText('→ Map 1 · Halftime').waitFor({ timeout: 90_000 });
   await page.waitForTimeout(1200);
   await shot('wizard-rehearse-halftime');
-  await wizard.getByText('→ Map 1 · result').waitFor({ timeout: 90_000 });
+  await wizard.getByText('→ Map 1 · Map result').waitFor({ timeout: 90_000 });
   await page.waitForTimeout(1500);
   await shot('wizard-rehearse-map-result');
   await wizard.getByRole('button', { name: 'Finish · Readiness' }).click();
@@ -326,7 +326,7 @@ let failShot = async () => {};
   await page.locator('.next-card').getByText('Match intro', { exact: true }).waitFor();
   await shot('autopilot-armed');
   await page.keyboard.press(' ');           // Space takes the waiting step: the intro goes up full screen
-  await page.waitForFunction(() => /Map 1 · back to the game/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await page.waitForFunction(() => /Map 1 · Back to the game/.test(document.querySelector('.next-card')?.textContent ?? ''));
   await page.waitForTimeout(2500);
   await shot('autopilot-intro-on-air');
   await post([{ feature: 'match_info', key: 'round_phase', data: 'shopping' }]);
@@ -342,44 +342,42 @@ let failShot = async () => {};
   await btn('Resume autopilot');
   await page.getByText(/Technical pause\./).waitFor({ state: 'detached' });
   await btn('Take now');
-  await page.waitForFunction(() => /Map 1 · halftime/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await page.waitForFunction(() => /Map 1 · Halftime/.test(document.querySelector('.next-card')?.textContent ?? ''));
   await page.waitForTimeout(1500);
   await shot('autopilot-back-to-game');
-  // Moment rules (build step 8): five kills by one player is an ace; the starter rule cues the
-  // player spotlight with a 3 s hold window above Next, then takes it behind the stinger.
-  await post(Array.from({ length: 10 }, (_, i) => ({ feature: 'match_info', key: `scoreboard_${i}`, data: JSON.stringify({ player_id: `p${i}`, name: `${['JUNO', 'MIRA', 'DAX', 'RIKU', 'ECHO', 'KAIRO', 'SOL', 'VEX', 'NYX', 'ZEN'][i]} #T`, character: 'Clay', team: i < 5 ? 0 : 1, alive: true, money: 3900 }) })));
-  for (let v = 5; v < 10; v++) await post([{ events: [{ name: 'kill_feed', data: JSON.stringify({ attacker: 'JUNO #T', victim: `${['KAIRO', 'SOL', 'VEX', 'NYX', 'ZEN'][v - 5]} #T`, weapon: 'TX_Hud_Rifles_Volcano', headshot: true }) }] }]);
-  await page.getByRole('status', { name: 'Moment rule' }).getByText(/Taking in/).waitFor();
-  await shot('rule-firing');
-  await page.getByRole('status', { name: 'Moment rule' }).waitFor({ state: 'detached', timeout: 8000 });
-  await page.getByText(/Rule taken \(automatic\) · Spotlight/).first().waitFor();
-  // Matches › Autopilot: the preset, the rundown and the moment rules (locked while running).
+  // Matches › Autopilot: how it works, presets, every step as a sentence (locked while running).
   await rail('Matches');
   await page.getByRole('tab', { name: 'Autopilot' }).click();
-  await page.getByRole('region', { name: 'Moment rules' }).getByText('When a player gets an ace').waitFor();
+  await page.getByText('Autopilot is running. Choose Run manually on Live to change the rundown.').waitFor();
   await shot('autopilot-rules-running');
   await rail('Live');
   await page.getByLabel('Autopilot').getByRole('button', { name: 'Run manually' }).click();
   await rail('Matches');
   await page.getByRole('tab', { name: 'Autopilot' }).click();
+  // The rundown is the producer's: start from a preset (it asks before replacing rows), add a screen
+  // with its own rule, switch one off.
   await page.getByRole('radio', { name: /Results only/ }).click();
+  await btn('Replace');
   await page.getByRole('radio', { name: /Results only/, checked: true }).waitFor();
   await shot('autopilot-presets');
   await page.getByRole('radio', { name: /Standard show/ }).click();
+  await btn('Replace');
   await page.getByRole('radio', { name: /Standard show/, checked: true }).waitFor();
-  // The rule builder: match point, a toast, wait for me. The count comes from the wizard's rehearsal.
-  await btn('Add a rule');
-  const builder = page.getByRole('dialog', { name: 'New rule' });
-  await builder.getByRole('radio', { name: 'Match point' }).click();
-  await builder.getByRole('radio', { name: 'Player spotlight' }).isDisabled();
-  await builder.getByRole('radio', { name: 'Wait for me' }).click();
-  await builder.getByText('When a team reaches match point', { exact: true }).waitFor();
-  await builder.getByText(/Would (have|not have) fired/).waitFor();
-  await shot('rule-builder');
-  await builder.getByRole('button', { name: 'Add rule', exact: true }).click();
-  await builder.waitFor({ state: 'detached' });
-  await page.getByRole('region', { name: 'Moment rules' }).getByText('When a team reaches match point').waitFor();
-  await shot('rules');
+  await btn('Add a screen');
+  const addDrawer = page.getByRole('dialog', { name: 'Add a screen' });
+  await addDrawer.getByRole('radiogroup', { name: 'Screen' }).getByRole('radio', { name: /Map result/ }).click();
+  await addDrawer.getByRole('radiogroup', { name: 'When' }).getByRole('radio', { name: 'I press Take' }).click();
+  await addDrawer.getByRole('radiogroup', { name: 'Map' }).getByRole('radio', { name: 'Map 2' }).click();
+  await addDrawer.getByRole('radiogroup', { name: 'On screen' }).getByRole('radio', { name: '20 s' }).click();
+  await addDrawer.getByText('Map result, on map 2, when you press Take, for 20 s, via the stinger.').waitFor();
+  await shot('add-screen');
+  await addDrawer.getByRole('button', { name: 'Add to rundown' }).click();
+  await addDrawer.waitFor({ state: 'detached' });
+  await page.getByRole('switch', { name: 'Halftime in the rundown' }).click();
+  await page.getByRole('switch', { name: 'Halftime in the rundown', checked: false }).waitFor();
+  await page.locator('.rd-list .rd').last().getByText('Map 2').waitFor();
+  await shot('rundown');
+  await page.getByRole('switch', { name: 'Halftime in the rundown' }).click();
   await page.getByRole('tab', { name: 'Readiness' }).click();
 
   // Player cameras (S5): make links, copy one, 10-up; the overlay pages show the streams and report connection.

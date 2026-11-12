@@ -1,12 +1,8 @@
-import type { RecordedEvent, Rule, RuleInput } from './rules.ts';
 import type { LayerGroup, LayerMode } from './layers.ts';
 import type { GameDef, GameId, Profile } from './games.ts';
 import type { SceneKey, SlotId } from './scenes.ts';
 import type { EventInfo, EventPatch, SponsorInput, TalentInput } from './model.ts';
 import type { DevicesView } from './devices.ts';
-
-/** A moment rule counting down in its hold window (or held in Cued). */
-export interface RulePending { ruleId: string; label: string; endsAt: number | null; held: boolean }
 
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
@@ -185,7 +181,7 @@ export interface CheckItem {
 
 export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in' | 'download-art' | 'open-devices';
 
-import type { AutopilotView, SegmentEdit } from './autopilot.ts';
+import type { AutopilotView, Preset, RowInput, RundownRow } from './autopilot.ts';
 import type { RehearsalOptions, RehearsalView } from './rehearsal.ts';
 import type { EsportraView } from './esportra.ts';
 import type { JoinView, LinkView, PcMode, PcRole } from './join.ts';
@@ -279,8 +275,8 @@ export interface Snapshot {
   };
   layers: LayerRow[];
   autopilot: AutopilotView;
-  /** Moment rules, the one counting down in its hold window, and the moments of the last rehearsal. */
-  rules: { list: Rule[]; pending: RulePending | null; recorded: RecordedEvent[] };
+  /** The selected match's rundown rows, in show order. */
+  rundown: RundownRow[];
   /** Graphics waiting in the Cued column, and the sample room the Cued monitor shows. */
   cue: { mode: boolean; pending: string[]; room: string | null };
   esportra: EsportraView;
@@ -350,21 +346,17 @@ export interface AirApi {
   autopilotSkip(): Promise<Snapshot>;
   autopilotTake(): Promise<Snapshot>;
   autopilotResume(): Promise<Snapshot>;
-  segmentUpdate(id: string, edit: SegmentEdit): Promise<Snapshot>;
-  segmentMove(id: string, direction: -1 | 1): Promise<Snapshot>;
+  /** Adds a rundown row (a screen and its rule), or saves one (same id). Refused while autopilot runs. */
+  rundownSave(input: RowInput & { id?: string }): Promise<Snapshot>;
+  rundownRemove(id: string): Promise<Snapshot>;
+  rundownEnable(id: string, on: boolean): Promise<Snapshot>;
+  rundownMove(id: string, direction: -1 | 1): Promise<Snapshot>;
   /** Changes go to the Cued column (true) or straight on air (false). */
   cueMode(on: boolean): Promise<Snapshot>;
   cueTake(how: 'take' | 'cut' | 'stinger'): Promise<Snapshot>;
   cueClear(): Promise<Snapshot>;
-  autopilotPreset(preset: 'standard' | 'minimal' | 'manual'): Promise<Snapshot>;
-  /** Adds a moment rule, or saves one (same id). */
-  saveRule(input: RuleInput): Promise<Snapshot>;
-  removeRule(id: string): Promise<Snapshot>;
-  setRuleEnabled(id: string, on: boolean): Promise<Snapshot>;
-  /** The rule counting down in its hold window: take it now, hold it in Cued, or skip it. */
-  ruleTake(): Promise<Snapshot>;
-  ruleHold(): Promise<Snapshot>;
-  ruleSkip(): Promise<Snapshot>;
+  /** Replaces the rows with a starting point. */
+  rundownStartFrom(preset: Preset): Promise<Snapshot>;
   /** F3: saves OBS's replay buffer (no scene switching). */
   replay(): Promise<Snapshot>;
   useSlotSource(slot: SlotId, source: string): Promise<Snapshot>;
