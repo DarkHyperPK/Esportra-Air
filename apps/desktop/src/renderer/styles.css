@@ -727,7 +727,13 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .manual-keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 28px; margin: 0; }
 .manual-keys > div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--hair); }
 .manual-keys dd { margin: 0; }
-.key-row { grid-template-columns: minmax(0, 1fr) 130px 170px; padding: 7px 0; }
+.key-row { grid-template-columns: minmax(0, 1fr) 110px 150px 170px; padding: 7px 0; }
+.key-reach { font-size: var(--t-2xs); color: var(--text-3); }
+.key-reach.over { color: var(--ok); margin-left: 8px; }
+.key-row .key-reach.over { margin-left: 0; }
+.key-reach.taken { color: var(--warn); }
+.key-global { gap: 16px; padding: 4px 0 8px; }
+.key-global > span { display: flex; flex-direction: column; gap: 2px; }
 .key-row > .row-gap { justify-content: flex-end; }
 .key-row .kbd { justify-self: start; }
 .kbd.listening { border-color: var(--warn); color: var(--warn); }

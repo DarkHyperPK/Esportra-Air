@@ -1,5 +1,5 @@
 // Esportra Air main process (ow-electron). Kept thin: the graphics engine is a separate process.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, safeStorage, shell } from 'electron';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -86,6 +86,10 @@ async function main() {
     return target.filePath;
   };
   const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf };
+
+  // Keys over the game (F-keys and Ctrl/Alt keys): a press runs the same call as inside Air.
+  production.attachKeys(globalShortcut, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });
+  app.on('will-quit', () => production.stopKeys());
 
   ipcMain.handle(CHANNELS.call, async (event, method: ApiMethod, args: unknown[]) => {
     if (!window || event.sender !== window.webContents) throw new Error('Not allowed.');

@@ -69,6 +69,12 @@ function useSection() {
 function KeyboardSettings({ s, run }: { s: Snapshot; run: Run }) {
   const [listening, setListening] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ id: string; key: string; text: string } | null>(null);
+  // Keys over the game are released while waiting, so pressing one records it instead of firing it.
+  useEffect(() => {
+    if (!listening) return;
+    void air.holdGlobalKeys(true);
+    return () => void air.holdGlobalKeys(false);
+  }, [listening]);
   useEffect(() => {
     if (!listening) return;
     const onKey = async (e: KeyboardEvent) => {
@@ -92,10 +98,14 @@ function KeyboardSettings({ s, run }: { s: Snapshot; run: Run }) {
   }, [listening]);
   const keys = effectiveKeys(s.keymap);
   const changed = (id: string) => id in s.keymap;
+  const g = s.globalKeys;
+  // Where each key works: over the game (registered with Windows), taken by another app, or inside Air.
+  const reach = (key: string) => (g.active.includes(key) ? <span className="key-reach over">Over the game</span> : g.taken.includes(key) ? <span className="key-reach taken">Taken by another app</span> : <span className="key-reach">Inside Air only</span>);
   const row = (a: KeyAction) => (
     <div key={a.id} className="li key-row">
       <span>{a.label}</span>
       <span className={`kbd ${listening === a.id ? 'listening' : changed(a.id) ? 'changed' : ''}`}>{listening === a.id ? 'Press a key…' : keyLabel(a.key)}</span>
+      {reach(a.key)}
       <span className="row-gap">
         {listening === a.id
           ? <button className="btn quiet small" onClick={() => setListening(null)}>Cancel</button>
@@ -111,6 +121,12 @@ function KeyboardSettings({ s, run }: { s: Snapshot; run: Run }) {
     <section className="panel" aria-label="Keyboard">
       <div className="head"><Cap>Keyboard</Cap><button className="btn quiet small" onClick={() => void run(() => air.resetKeys())}>Reset to defaults</button></div>
       <div className="body-pad stack" style={{ gap: 8 }}>
+        <div className="between key-global">
+          <span><b>Keys work over the game and other apps</b><span className="muted t-sm">F-keys and Ctrl/Alt keys. Other keys, and keys that open something in Air, work only inside Air.</span></span>
+          <button type="button" role="switch" className="switch" aria-checked={g.on} aria-label="Keys work over the game and other apps" disabled={!g.available} onClick={() => void run(() => air.setGlobalKeys(!g.on))} />
+        </div>
+        {!g.available && <p className="faint t-xs">Keys over the game work in the Air app on Windows.</p>}
+        {g.taken.length > 0 && <p className="notice t-sm">{g.taken.map(keyLabel).join(', ')} {g.taken.length === 1 ? 'is' : 'are'} taken by another app on this PC, so {g.taken.length === 1 ? 'it works' : 'they work'} only inside Air. Pick another key, or close that app and switch this off and on.</p>}
         <p className="muted t-sm">Click Change, then press the new key. Saved on this PC. Live, the keyboard list and the manual show your keys.</p>
         <div className="lst">{keys.filter((a) => a.group !== 'layer').map(row)}</div>
         <details><summary className="muted t-sm">Graphic layers ({keys.filter((a) => a.group === 'layer').length})</summary><div className="lst">{keys.filter((a) => a.group === 'layer').map(row)}</div></details>

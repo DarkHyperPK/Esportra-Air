@@ -38,8 +38,8 @@ const LAYERS: KeyAction[] = LAYER_DEFS.map((d) => ({ id: `layer:${d.id}`, label:
 export const ACTIONS: KeyAction[] = [...SHOW, ...MOMENTS, ...LAYERS];
 export const MOMENT_IDS = MOMENTS.map((m) => m.id);
 export const DEFAULT_MOMENTS = ['pause', 'timeout', 'replay', 'talent', 'sponsor', 'spotlight'];
-/** Keys Air keeps for itself everywhere. */
-export const RESERVED = ['Escape', 'Ctrl+K', 'Shift+?', '?', 'Tab', 'Enter'];
+/** Keys Air keeps for itself, and keys every app on the PC needs (copy, paste, close, switch). */
+export const RESERVED = ['Escape', 'Ctrl+K', 'Shift+?', '?', 'Tab', 'Enter', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+Z', 'Ctrl+A', 'Alt+F4', 'Alt+Tab'];
 
 export type Keymap = Record<string, string>;
 
@@ -89,7 +89,7 @@ export function rebind(map: Keymap | undefined, id: string, key: string | null, 
   if (key === null) {
     delete next[id];
   } else {
-    if (!key || RESERVED.includes(key)) throw new Error(`${keyLabel(key) || 'That key'} is kept for Air itself. Pick another key.`);
+    if (!key || RESERVED.includes(key)) throw new Error(`${keyLabel(key) || 'That key'} is kept for Air or for every app on this PC. Pick another key.`);
     const other = effectiveKeys(map).find((a) => a.key === key && a.id !== id);
     if (other && !swap) throw new Error(`${keyLabel(key)} is already ${other.label}. Swap them, or pick another key.`);
     if (other) next[other.id] = keyOf(map, id);

@@ -43,7 +43,8 @@ import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/comp
 import { ROLE_NAME } from '../shared/model.ts';
 import { HEX, IMAGE, text } from './validate.ts';
 import { cameraLinkUrl, cameraViewUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
-import type { MatchPatch } from '../shared/api.ts';
+import type { ApiMethod, MatchPatch } from '../shared/api.ts';
+import { GlobalKeys, type ShortcutRegistry } from './global-keys.ts';
 import { applyEventPatch, engineConfig, newEvent, onAir, renewTalentLink, upsertSponsor, upsertTalent, validOff } from './event-model.ts';
 
 export interface ProductionDeps {
@@ -155,6 +156,8 @@ export class Production extends EventEmitter {
   readonly companion: CompanionHost;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
   private monitorBusy = false;
+  private globalKeys: GlobalKeys | null = null;
+  private keysListening = false;
 
   constructor(deps: ProductionDeps) {
     super();
@@ -299,12 +302,41 @@ export class Production extends EventEmitter {
 
   async setKey(actionId: string, key: string | null, swap = false) {
     this.deps.store.data.keymap = rebind(this.deps.store.data.keymap, String(actionId), key === null ? null : String(key), swap === true);
+    this.applyKeys();
     this.save();
   }
 
   async resetKeys() {
     this.deps.store.data.keymap = {};
+    this.applyKeys();
     this.save();
+  }
+
+  /** Keys over the game: the app gives Electron's globalShortcut, the dev host a stand-in. */
+  attachKeys(registry: ShortcutRegistry, call: (method: ApiMethod, args: unknown[]) => Promise<unknown>) {
+    this.globalKeys = new GlobalKeys(registry, () => this.snapshot(), call, (message) => this.emit('notice', message));
+    this.applyKeys();
+  }
+
+  setGlobalKeys(on: boolean) {
+    this.deps.store.data.globalKeys = on === true;
+    this.applyKeys();
+    this.save();
+  }
+
+  /** While Settings waits for a new key, nothing is held over the game, so the key reaches Air. */
+  holdGlobalKeys(listening: boolean) {
+    this.keysListening = listening === true;
+    this.applyKeys();
+  }
+
+  private applyKeys() {
+    const status = this.globalKeys?.apply(this.deps.store.data.keymap, this.deps.store.data.globalKeys !== false && !this.keysListening);
+    if (status && this.keysListening) status.on = this.deps.store.data.globalKeys !== false;
+  }
+
+  stopKeys() {
+    this.globalKeys?.stop();
   }
 
   async setMoments(ids: string[]) {
@@ -1568,6 +1600,7 @@ export class Production extends EventEmitter {
       gameLocked: this.gameLocked(),
       keymap: this.deps.store.data.keymap ?? {},
       moments: this.deps.store.data.moments ?? DEFAULT_MOMENTS,
+      globalKeys: this.globalKeys ? { ...this.globalKeys.status } : { on: this.deps.store.data.globalKeys !== false, available: false, active: [], taken: [] },
       events: this.deps.store.data.events,
       event: this.match ? this.eventOf(this.match) : null,
       match,

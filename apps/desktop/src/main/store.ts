@@ -41,6 +41,8 @@ export interface Saved {
   keymap?: Record<string, string>;
   /** The moments shown on Live, in order. */
   moments?: string[];
+  /** F-keys and Ctrl/Alt keys work over the game (absent: on). */
+  globalKeys?: boolean;
   /** How this PC runs graphics: Air, Stream Deck / Companion, or both (absent: Air). */
   control?: import('../shared/companion.ts').ControlMode;
   /** The Companion connection's port on this PC. */

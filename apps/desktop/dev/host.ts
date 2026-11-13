@@ -12,6 +12,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { dispatch } from '../src/main/api.ts';
+import { FakeShortcuts } from './fake-shortcuts.ts';
 import { EngineSupervisor } from '../src/main/engine-supervisor.ts';
 import { wsIngest } from '../src/main/ws-ingest.ts';
 import type { IngestClient } from '../../../packages/capture/src/ingest.ts';
@@ -97,6 +98,9 @@ const saveManualPdf = async () => {
   }
 };
 const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; }, saveManualPdf };
+// Keys over the game: F12 stands for a key another app holds (Windows keeps F12 for debuggers).
+const shortcuts = new FakeShortcuts(new Set(['F12']));
+production.attachKeys(shortcuts, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });
 await production.syncEngine();
 production.art.start();
 production.checkRecovery();
@@ -133,6 +137,12 @@ createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: (e as Error).message }));
     }
+    return;
+  }
+  if (url.pathname === '/dev/press' && req.method === 'POST') {
+    // Presses a key as if the game had focus (the walkthrough checks keys over the game).
+    const ok = shortcuts.press(url.searchParams.get('key') ?? '');
+    res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ pressed: ok }));
     return;
   }
   if (url.pathname === '/dev/state') {

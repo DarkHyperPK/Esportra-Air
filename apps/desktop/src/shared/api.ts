@@ -321,6 +321,8 @@ export interface Snapshot {
   /** Keys rebound on this PC (overrides only) and the moments on Live. */
   keymap: Record<string, string>;
   moments: string[];
+  /** Keys over the game: the switch, and which keys work over the game or are taken by another app. */
+  globalKeys: { on: boolean; available: boolean; active: string[]; taken: string[] };
   /** Player PCs in their seats, observers and PCs without a seat (Devices). */
   devices: DevicesView;
   link: LinkView;
@@ -413,6 +415,9 @@ export interface AirApi {
   setKey(actionId: string, key: string | null, swap?: boolean): Promise<Snapshot>;
   resetKeys(): Promise<Snapshot>;
   setMoments(ids: string[]): Promise<Snapshot>;
+  setGlobalKeys(on: boolean): Promise<Snapshot>;
+  /** Settings is waiting for a new key: release keys over the game until it has it. */
+  holdGlobalKeys(listening: boolean): Promise<Snapshot>;
   /** Saves the manual as a PDF (the app asks where); resolves to where it went, or null if cancelled. */
   saveManualPdf(): Promise<string | null>;
   chooseProfile(profile: Profile): Promise<Snapshot>;

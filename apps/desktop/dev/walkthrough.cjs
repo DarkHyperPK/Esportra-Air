@@ -666,6 +666,36 @@ let failShot = async () => {};
   await page.getByText('On screen · press again to resume').waitFor({ state: 'detached' });
   await call('resetKeys');
 
+  // Keys over the game (step 6): F-keys and Ctrl/Alt keys are registered with the PC; the others work in Air.
+  const press = async (key) => (await fetch(`${HOST}/dev/press?key=${encodeURIComponent(key)}`, { method: 'POST' })).status;
+  const keyRow = (label) => page.locator('#set-keys .key-row').filter({ hasText: label }).first();
+  await rail('Settings');
+  await page.locator('#set-keys').scrollIntoViewIfNeeded();
+  await keyRow('Tech pause').getByText('Over the game').waitFor();
+  await keyRow('Take what is waiting').getByText('Inside Air only').waitFor();
+  await page.getByRole('button', { name: 'Change the key for Player spotlight' }).click();
+  await page.keyboard.press('F12');
+  await keyRow('Player spotlight').getByText('Taken by another app').waitFor();
+  await page.getByText(/F12 is taken by another app on this PC/).waitFor();
+  await page.locator('#set-keys').scrollIntoViewIfNeeded();
+  await shot('keys-global');
+  await call('resetKeys');
+  // F1 while another app has focus (pressed through the dev host): the pause goes up on Live.
+  await rail('Teams/Players');
+  if (await press('F1') !== 200) throw new Error('F1 is not registered over the game');
+  await rail('Live');
+  await page.getByText('On screen · press again to resume').waitFor();
+  await press('F1');
+  await page.getByText('On screen · press again to resume').waitFor({ state: 'detached' });
+  // Switched off, nothing is held over the game.
+  await rail('Settings');
+  const overSwitch = page.getByRole('switch', { name: 'Keys work over the game and other apps' });
+  await overSwitch.click();
+  await keyRow('Tech pause').getByText('Inside Air only').waitFor();
+  if (await press('F1') !== 404) throw new Error('F1 still held with keys over the game switched off');
+  await overSwitch.click();
+  await keyRow('Tech pause').getByText('Over the game').waitFor();
+
   // A laptop screen: every main page at 1280x800.
   await page.setViewportSize({ width: 1280, height: 800 });
   for (const [name, label] of [['laptop-live', 'Live'], ['laptop-events', 'Events'], ['laptop-graphics', 'Graphics'], ['laptop-settings', 'Settings']]) {

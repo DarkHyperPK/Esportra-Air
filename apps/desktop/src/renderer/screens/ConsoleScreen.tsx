@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { LayerRow, Snapshot } from '../../shared/api.ts';
 import { nextMode } from '../../shared/layers.ts';
 import { ACTIONS, actionFor, isTyping, keyLabel, keyOf } from '../../shared/keymap.ts';
+import { keyCommand, nextSponsor, sponsorsOn, type KeyCommand } from '../../shared/key-actions.ts';
 import { ROLE_NAME, onAir } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
 import { sceneLabel, useMonitor } from '../components/Monitor.tsx';
@@ -13,14 +14,10 @@ import { Cap, Tally } from '../components/ui.tsx';
 import { AutopilotCard } from '../components/Autopilot.tsx';
 import type { PageProps } from '../App.tsx';
 
-const sponsorsOn = (s: Snapshot) => (s.match ? onAir(s.match, s.event).sponsors : []);
-
-function nextSponsor(s: Snapshot) {
-  const list = sponsorsOn(s);
-  if (!list.length) return null;
-  const i = s.triggers.sponsor ? list.findIndex((x) => x.id === s.triggers.sponsor) : -1;
-  return list[(i + 1) % list.length] ?? null;
-}
+/** Runs what a key or moment means (the same call the main process makes for keys over the game). */
+const runCommand = (run: PageProps['run'], cmd: KeyCommand) => {
+  if (cmd && cmd !== 'ui') void run(() => (air as unknown as Record<string, (...a: unknown[]) => Promise<Snapshot>>)[cmd.method]!(...cmd.args));
+};
 
 const clock = (ms: number) => {
   const total = Math.max(0, Math.round(ms / 1000));
@@ -204,23 +201,9 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
       e.preventDefault();
       if (id === 'fix') return openFix();
       if (id === 'all') return setDrawer((v) => !v);
-      const ap = snap.autopilot;
-      if (id === 'take') {
-        if (ap.enabled && ap.next && ap.next.state !== 'taking') void run(() => air.autopilotTake());
-        else if (snap.cue.pending.length) void run(() => air.cueTake('take'));
-        return;
-      }
-      if (id === 'stinger') return void run(() => (snap.cue.pending.length ? air.cueTake('stinger') : air.stingerPlay()));
-      if (id === 'hold' || id === 'skip') {
-        if (ap.enabled && ap.next) void run(() => (id === 'hold' ? air.autopilotHold() : air.autopilotSkip()));
-        return;
-      }
-      if (!snap.match) return;
-      if (id.startsWith('layer:')) {
-        const row = snap.layers.find((l) => l.id === id.slice(6));
-        if (row?.available) cycle(row);
-        return;
-      }
+      const cmd = keyCommand(id, snap);
+      if (cmd !== 'ui') return runCommand(run, cmd);
+      // Moments that open something in Air (the toast and poll forms, Talent with no one added).
       const m = moment(id, snap);
       if (m.built) m.fire();
     };

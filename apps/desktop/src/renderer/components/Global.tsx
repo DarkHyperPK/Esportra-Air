@@ -40,7 +40,8 @@ export function ShortcutsDialog({ s, close, manual }: { s: Snapshot; close: () =
     return () => window.removeEventListener('keydown', onKey);
   }, [close]);
   const keys = effectiveKeys(s.keymap);
-  const row = (a: { id: string; label: string; key: string }) => <div key={a.id}><span>{a.label}</span><span className="kbd">{keyLabel(a.key)}</span></div>;
+  const over = new Set(s.globalKeys.active);
+  const row = (a: { id: string; label: string; key: string }) => <div key={a.id}><span>{a.label}{over.has(a.key) && <span className="key-reach over" title="Works while the game has focus">over the game</span>}</span><span className="kbd">{keyLabel(a.key)}</span></div>;
   return (
     <div className="scrim center" onClick={(e) => e.target === e.currentTarget && close()}>
       <div className="dialog" style={{ maxWidth: 760 }} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
@@ -54,7 +55,7 @@ export function ShortcutsDialog({ s, close, manual }: { s: Snapshot; close: () =
           <Cap>Graphic layers on Live</Cap>
           <div className="shortcuts" style={{ marginTop: 6 }}>{keys.filter((a) => a.group === 'layer').map(row)}</div>
         </div>
-        <p className="faint t-xs">Change any key in Settings › Keyboard. Keys work while Air is focused and you are not typing in a field. <button className="btn quiet small" onClick={manual}>Open the manual</button></p>
+        <p className="faint t-xs">Change any key in Settings › Keyboard. Keys marked “over the game” work while the game has focus; the others while Air is focused and you are not typing in a field. <button className="btn quiet small" onClick={manual}>Open the manual</button></p>
       </div>
     </div>
   );
