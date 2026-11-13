@@ -4,7 +4,7 @@
 // at the end. In-round graphics (economy, recap, spike timer, callouts) are the engine's Auto layers
 // and are not rows here.
 
-import { PRESETS, WHEN, type Preset, type RowInput, type RundownRow, type Segment, type SegmentEdit } from '../../shared/autopilot.ts';
+import { HUD_ROW, PRESETS, defaultSection, SECTIONS, SECTION_SCREENS, WHEN, takesItself, type Preset, type RowInput, type RundownRow, type Section, type Segment, type SegmentEdit } from '../../shared/autopilot.ts';
 
 export interface SavedRundown {
   rows: RundownRow[];
@@ -25,13 +25,20 @@ const TITLE: Record<string, string> = { 'match-intro': 'Match intro', 'map-veto'
 export const screenTitle = (id: string | null) => (id === null ? 'Back to the game' : TITLE[id] ?? id);
 
 const row = (r: Partial<RundownRow> & Pick<RundownRow, 'id' | 'show' | 'trigger' | 'map'>): RundownRow => ({
-  forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'window', holdSeconds: 3, enabled: true, ...r,
+  section: defaultSection(r.show), forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'window', holdSeconds: 3, enabled: true, ...r,
 });
+
+/** The in-game HUD row every rundown has (it can be removed, like any row). */
+export const hudRow = (): RundownRow => row({ id: 'hud', show: HUD_ROW, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 });
+
+/** Rows in show order: Pre-show, Game, Between maps, Post-show; the producer's order within each. */
+export const sortRows = (rows: RundownRow[]): RundownRow[] => SECTIONS.flatMap((sec) => rows.filter((r) => r.section === sec));
 
 /** Standard show: intro, then on every map back to the game, halftime, result and series, then the champion. */
 function standard(bestOf: 1 | 3 | 5): RundownRow[] {
   return [
     row({ id: 'intro', show: 'match-intro', trigger: 'manual', map: 1, holdMode: 'manual' }),
+    hudRow(),
     row({ id: 'live', show: null, trigger: 'round_live', map: 'every', transition: 'cut' }),
     row({ id: 'half', show: 'halftime', trigger: 'halftime', map: 'every', forSeconds: 15 }),
     row({ id: 'result', show: 'map-result', trigger: 'map_end', map: 'every', holdSeconds: 5 }),
@@ -42,8 +49,9 @@ function standard(bestOf: 1 | 3 | 5): RundownRow[] {
 
 /** The rows a starting point gives. Results only keeps the map result and the return to the game automatic. */
 export function presetRows(preset: Preset, bestOf: 1 | 3 | 5): RundownRow[] {
-  if (preset === 'empty') return [];
+  if (preset === 'empty') return [hudRow()];
   return standard(bestOf).map((r) => {
+    if (!takesItself(r.show)) return r;
     if (preset === 'manual' || (preset === 'minimal' && r.id !== 'result' && r.id !== 'live')) return { ...r, trigger: 'manual', holdMode: 'manual' };
     return r;
   });
@@ -58,11 +66,15 @@ const int = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as
 
 /**
  * Checks a row from the interface; throws a plain message when it cannot be used. `screens` are the
- * full-screen graphics in My show.
+ * screens Air has (`setup.screens` ids). Scene rows and the HUD row have no trigger.
  */
 export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens: string[]): RundownRow {
   if (!input || typeof input !== 'object') throw new Error('Choose a screen and its rule.');
-  if (input.show !== null && !(typeof input.show === 'string' && FULLSCREEN_IDS.has(input.show) && screens.includes(input.show))) throw new Error('Choose a screen that is in My show.');
+  const section = input.section;
+  if (!(SECTIONS as readonly unknown[]).includes(section)) throw new Error('Choose Pre-show, Game, Between maps or Post-show.');
+  if (input.show !== null && !(typeof input.show === 'string' && screens.includes(input.show))) throw new Error('Choose one of the screens.');
+  if (!SECTION_SCREENS[section].includes(input.show)) throw new Error('That screen does not go in this part of the show.');
+  if (!takesItself(input.show)) return { ...row({ id, show: input.show, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }), section, enabled: input.enabled !== false };
   if (!(WHEN as readonly unknown[]).includes(input.trigger)) throw new Error('Choose when it comes up.');
   const map = input.map;
   if (!(map === 'every' || map === 'series' || int(map, 1, bestOf))) throw new Error(`Choose every map, map 1 to ${bestOf}, or after the series.`);
@@ -73,7 +85,7 @@ export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens
   if (input.holdMode === 'window' && !int(input.holdSeconds, 0, 60)) throw new Error('A hold is 0–60 seconds.');
   const manual = input.trigger === 'manual';
   return {
-    id, show: input.show, trigger: input.trigger, map, forSeconds: input.show === null ? 0 : input.forSeconds,
+    id, section, show: input.show, trigger: input.trigger, map, forSeconds: input.show === null ? 0 : input.forSeconds,
     delaySeconds: input.trigger === 'delay' ? input.delaySeconds : 12, transition: input.transition,
     // "I press Take" always waits for the Take.
     holdMode: manual ? 'manual' : input.holdMode, holdSeconds: manual || input.holdMode === 'manual' ? 0 : input.holdSeconds,
@@ -82,12 +94,21 @@ export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens
 }
 
 /** A save from before rows existed becomes rows: the standard rows, or the old steps one map at a time. */
-export function migrate(saved: SavedRundown | LegacyEdits | undefined, bestOf: 1 | 3 | 5): SavedRundown {
-  if (saved && 'rows' in saved && Array.isArray(saved.rows)) return saved as SavedRundown;
+export function migrate(saved: SavedRundown | LegacyEdits | undefined, bestOf: 1 | 3 | 5, myShow: string[] = []): SavedRundown {
+  if (saved && 'rows' in saved && Array.isArray(saved.rows)) {
+    const done = saved as SavedRundown;
+    if (done.rows.every((r) => r.section)) return done;
+    // Rows from before sections (12 Nov): each goes in its usual section; the HUD row and the full-screen
+    // graphics switched on in the old My show are added, so nothing that was in the show goes missing.
+    const rows = done.rows.map((r) => ({ ...r, section: r.section ?? defaultSection(r.show) }));
+    if (!rows.some((r) => r.show === HUD_ROW)) rows.push(hudRow());
+    for (const show of myShow) if (!rows.some((r) => r.show === show)) rows.push(row({ id: `add-${show}`, show, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }));
+    return { rows: sortRows(rows), startedFrom: done.startedFrom };
+  }
   const legacy = (saved ?? {}) as LegacyEdits;
   const preset = legacy.preset ?? 'standard';
   const edited = Object.keys(legacy.edits ?? {}).length > 0 || (legacy.order?.length ?? 0) > 0;
-  if (!edited) return { rows: presetRows(preset, bestOf), startedFrom: preset };
+  if (!edited) return migrate({ rows: presetRows(preset, bestOf).map(({ section: _s, ...r }) => r as RundownRow), startedFrom: preset }, bestOf, myShow);
   // Each old step becomes its own row on its map, with the producer's edits and order.
   const steps = buildRundown(bestOf, presetRows(preset, bestOf));
   const rank = new Map((legacy.order ?? []).map((id, i) => [id, i]));
@@ -101,7 +122,7 @@ export function migrate(saved: SavedRundown | LegacyEdits | undefined, bestOf: 1
       transition: e.transition ?? s.transition, holdMode: e.holdMode ?? s.holdMode, holdSeconds: e.holdSeconds ?? s.holdSeconds,
     });
   });
-  return { rows, startedFrom: preset };
+  return migrate({ rows: rows.map(({ section: _s, ...r }) => r as RundownRow), startedFrom: preset }, bestOf, myShow);
 }
 
 /**
@@ -110,7 +131,8 @@ export function migrate(saved: SavedRundown | LegacyEdits | undefined, bestOf: 1
  * restarts (an every-map row on map 2 is `map2-<id>`), so saved progress still matches.
  */
 export function buildRundown(bestOf: 1 | 3 | 5, rows: RundownRow[] = presetRows('standard', bestOf), title: (id: string | null) => string = screenTitle): Segment[] {
-  const on = rows.filter((r) => r.enabled);
+  // Only full-screen rows and back to the game are steps; the HUD and scene rows are switched in OBS.
+  const on = sortRows(rows).filter((r) => r.enabled && takesItself(r.show));
   const step = (r: RundownRow, id: string, name: string, mapNumber: number | null): Segment => ({
     id, name, show: r.show, forSeconds: r.forSeconds, trigger: r.trigger, delaySeconds: r.delaySeconds,
     mode: r.trigger === 'manual' ? 'manual' : 'automatic', holdMode: r.holdMode, holdSeconds: r.holdSeconds, transition: r.transition,
@@ -126,3 +148,14 @@ export function buildRundown(bestOf: 1 | 3 | 5, rows: RundownRow[] = presetRows(
   for (const r of on) if (r.map === 'series') out.push(step(r, r.id, title(r.show), null));
   return out;
 }
+
+/** The screens a rundown puts in OBS: its rows, plus what every show needs (HUD, stinger, the
+ *  full-screen host, the replay bug) and the ticker with Starting soon / Break. */
+export function rundownScreens(rows: RundownRow[]): Set<string> {
+  const out = new Set(['in-game', 'stinger', 'fullscreen', 'replay-bug']);
+  for (const r of rows) if (r.enabled && r.show) out.add(r.show);
+  if (out.has('holding')) out.add('ticker');
+  return out;
+}
+
+export { defaultSection };

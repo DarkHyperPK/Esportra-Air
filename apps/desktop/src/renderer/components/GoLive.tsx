@@ -1,5 +1,5 @@
 // Go live (approved mock): one press that prepares everything, with consent and warnings in view.
-// It sends My show to OBS, starts game data (only with the consent tick), and arms autopilot if
+// It sends the match's Rundown to OBS, starts game data (only with the consent tick), and arms autopilot if
 // chosen. It never starts the stream: the producer does that in OBS.
 import { useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
@@ -32,7 +32,7 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
 
   const go = async () => {
     setBusy(true);
-    // 1. My show to OBS. While OBS streams, Air cannot rebuild (a reload would show on air); if the
+    // 1. The Rundown to OBS. While OBS streams, Air cannot rebuild (a reload would show on air); if the
     //    scenes are already there, the show goes on with them.
     set('obs', 'working');
     try {
@@ -40,7 +40,7 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
       set('obs', 'done', `In OBS as ESPORTRA · ${scenes}.`);
     } catch (e) {
       const message = (e as Error).message;
-      if (STREAMING.test(message) && s.obs.installed) set('obs', 'done', 'Already in OBS. Changes to My show go in once you stop streaming.');
+      if (STREAMING.test(message) && s.obs.installed) set('obs', 'done', 'Already in OBS. Changes to the Rundown go in once you stop streaming.');
       else { set('obs', 'failed', message); setBusy(false); return; }
     }
     // 2. Game data, only with the producer's consent.

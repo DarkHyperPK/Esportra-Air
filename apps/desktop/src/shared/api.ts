@@ -346,6 +346,8 @@ export interface NewMatchInput {
   talentOff?: string[];
   sponsorsOff?: string[];
   theme?: BannerTheme;
+  /** How the Rundown starts (default Standard). */
+  template?: Preset;
 }
 
 export type MatchPatch = Partial<Pick<Match, 'title' | 'players' | 'teams' | 'bestOf' | 'theme' | 'eventId' | 'stage' | 'talentOff' | 'sponsorsOff'>>;

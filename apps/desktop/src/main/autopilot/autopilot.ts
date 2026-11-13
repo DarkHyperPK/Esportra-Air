@@ -5,7 +5,7 @@
 import type { Match, Screen } from '../../shared/api.ts';
 import type { AutopilotPause, AutopilotView, Preset, RowInput, RundownRow, Segment } from '../../shared/autopilot.ts';
 import type { Store } from '../store.ts';
-import { buildRundown, migrate, presetRows, screenTitle, validPreset, validRow, type SavedRundown } from './rundown.ts';
+import { buildRundown, migrate, presetRows, screenTitle, sortRows, validPreset, validRow, type SavedRundown } from './rundown.ts';
 import { randomUUID } from 'node:crypto';
 import { realClock, ShowRunner, type Clock, type GameEvent, type RunnerLog, type TakeOutcome } from './show-runner.ts';
 
@@ -20,6 +20,8 @@ export interface AutopilotDeps {
   /** Adds a line to the event log. */
   log(text: string): void;
   changed(): void;
+  /** The rows changed (the screens that go to OBS follow them). */
+  rowsChanged?(): void;
   clock?: Clock;
   /** Save progress for resuming after a restart (off for the private rehearsal). Default true. */
   persist?: boolean;
@@ -63,7 +65,13 @@ export class Autopilot {
   private saved(match: Match): SavedRundown {
     const all = (this.deps.store.data.rundown ??= {});
     const current = all[match.id];
-    if (!current || !('rows' in current)) all[match.id] = migrate(current as never, match.bestOf);
+    // A new match starts with only the in-game HUD row; the producer adds their screens (or a template).
+    if (!current) all[match.id] = { rows: presetRows('empty', match.bestOf), startedFrom: 'empty' };
+    else if (!('rows' in current) || (current as SavedRundown).rows.some((r) => !r.section)) {
+      // Older saves: the full-screen graphics that were switched on in My show stay in the show.
+      const myShow = this.deps.screens().filter((x) => x.enabled && x.hosted).map((x) => x.id);
+      all[match.id] = migrate(current as never, match.bestOf, myShow);
+    }
     return all[match.id] as SavedRundown;
   }
 
@@ -149,12 +157,16 @@ export class Autopilot {
   }
 
   private saveRows() {
+    const match = this.deps.match();
+    if (match) this.saved(match).rows = sortRows(this.saved(match).rows);
     this.deps.store.save();
     this.loadForMatch();
+    this.deps.rowsChanged?.();
   }
 
-  private fullscreens() {
-    return this.deps.screens().filter((s) => s.enabled && s.hosted).map((s) => s.id);
+  /** Every screen Air has (a row can add any of them; only rows go to OBS). */
+  private allScreens() {
+    return this.deps.screens().map((s) => s.id);
   }
 
   /** Adds a row at the end, or saves an existing one (same id). */
@@ -163,7 +175,7 @@ export class Autopilot {
     const saved = this.saved(match);
     const existing = typeof input?.id === 'string' ? saved.rows.find((r) => r.id === input.id) : undefined;
     const id = existing?.id ?? `r${randomUUID().slice(0, 8)}`;
-    const next = validRow({ ...input, enabled: input.enabled ?? existing?.enabled ?? true }, id, match.bestOf, this.fullscreens());
+    const next = validRow({ ...input, enabled: input.enabled ?? existing?.enabled ?? true }, id, match.bestOf, this.allScreens());
     saved.rows = existing ? saved.rows.map((r) => (r.id === id ? next : r)) : [...saved.rows, next];
     this.saveRows();
   }
@@ -189,7 +201,8 @@ export class Autopilot {
     const rows = [...this.saved(match).rows];
     const i = rows.findIndex((r) => r.id === id);
     const j = i + direction;
-    if (i < 0 || j < 0 || j >= rows.length) throw new Error('It cannot move further.');
+    // Rows move within their section.
+    if (i < 0 || j < 0 || j >= rows.length || rows[j]!.section !== rows[i]!.section) throw new Error('It cannot move further.');
     [rows[i], rows[j]] = [rows[j]!, rows[i]!];
     this.saved(match).rows = rows;
     this.saveRows();

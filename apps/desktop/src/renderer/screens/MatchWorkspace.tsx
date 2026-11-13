@@ -11,7 +11,8 @@ import { ScenesScreen } from './ScenesScreen.tsx';
 import { OutputsScreen } from './OutputsScreen.tsx';
 import { DevicesScreen } from './DevicesScreen.tsx';
 import { ObsConnection } from './SettingsScreen.tsx';
-import { AutopilotRules, NextFive, action, triggerLine } from '../components/Autopilot.tsx';
+import { NextFive } from '../components/Autopilot.tsx';
+import { Rundown } from '../components/Rundown.tsx';
 import { EditorDrawer, PlayerEditor, Switch, cameraText } from '../components/Editors.tsx';
 import { LibPlayerEditor, LibTeamEditor } from '../components/TeamEditors.tsx';
 import { TeamFields, imageUrl } from '../components/MatchEditors.tsx';
@@ -276,82 +277,7 @@ function Talent({ s, run, openEvent }: Pick<PageProps, 's' | 'run'> & { openEven
   );
 }
 
-/** My show: what goes into OBS for every match of this production, by the scene it lands in, each
- * graphic as a live preview with the exact name it has in OBS. */
-function MyShow({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const [pack, setPack] = useState(false);
-  const items = LIBRARY[s.game?.id ?? 'valorant'];
-  // The previews play in the library's sample room, dressed as this match.
-  useEffect(() => { void air.librarySeed().catch(() => {}); }, [s.match?.id]);
-  const hudItems = items.filter((i) => showLink(i).kind === 'hud' && inShow(s.setup, i));
-  return (
-    <div className="stack" style={{ gap: 22 }}>
-      <section className="stack" style={{ gap: 8 }}>
-        <div className="between">
-          <h2 className="title-sm">Rundown</h2>
-          <span className="faint t-xs">The order the show runs in. Change it on the Autopilot tab.</span>
-        </div>
-        <ol className="rundown">
-          {s.autopilot.segments.map((seg, i) => {
-            const screen = seg.show ? s.setup.screens.find((x) => x.id === seg.show) : null;
-            const overlay = screen?.overlay ?? 'ingame';
-            return (
-              <li key={seg.id} className={`rundown-row ${seg.state === 'done' ? 'done' : ''}`}>
-                <span className="mono faint t-xs">{String(i + 1).padStart(2, '0')}</span>
-                <span className="rundown-thumb"><Preview src={overlayUrl(s, overlay)} label={seg.name} /></span>
-                <span><b>{seg.name}</b><br /><span className="muted t-sm">{triggerLine(seg)}</span></span>
-                <span className="mono faint t-xs">{action(seg)}</span>
-                <span className="faint t-xs">{seg.state === 'done' ? 'Done' : seg.state === 'on_air' ? 'On air' : seg.mode === 'manual' ? 'Waits for you' : 'By itself'}</span>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-      <div className="between">
-        <h2 className="title-sm">Graphics in OBS</h2>
-        <span className="row-gap"><span className="faint t-xs">For every match of this production.</span><button className="btn" onClick={() => setPack(true)}>Add from the Library</button></span>
-      </div>
-      {SCENE_KEYS.map((key) => {
-        const screens = s.setup.screens.filter((x) => x.scene === key && x.enabled);
-        const hud = key === 'gameplay' ? hudItems : [];
-        return (
-          <section key={key} className="stack" style={{ gap: 10 }}>
-            <div className="between"><h3 className="mono t-sm" style={{ margin: 0 }}>{SCENES[key].name}</h3><span className="faint t-xs">{SCENES[key].note}</span></div>
-            {screens.length + hud.length === 0 ? <span className="muted t-sm">Nothing in this scene.</span> : (
-              <div className="show-grid">
-                {screens.map((x) => {
-                  const item = items.find((i) => i.overlay === x.overlay && showLink(i).kind === 'screen');
-                  const patch = item ? showPatch(s.setup, item, false) : null;
-                  const title = item?.title ?? x.title;
-                  return (
-                    <figure key={x.id} className="show-card">
-                      <Preview src={overlayUrl(s, x.overlay)} label={title} />
-                      <figcaption>
-                        <span><b>{title}</b><br /><span className="mono faint t-xs">{x.hosted ? `inside ${sourceName('Full screen')}` : sourceName(x.title)}</span></span>
-                        {patch ? <button className="btn quiet small" onClick={() => void run(() => air.updateSetup(patch))}>Remove</button> : <span className="faint t-xs">Always</span>}
-                      </figcaption>
-                    </figure>
-                  );
-                })}
-                {hud.map((i) => (
-                  <figure key={i.overlay} className="show-card">
-                    <Preview src={overlayUrl(s, i.overlay)} label={i.title} />
-                    <figcaption>
-                      <span><b>{i.title}</b><br /><span className="mono faint t-xs">inside {sourceName('In-game HUD')}</span></span>
-                      <button className="btn quiet small" onClick={() => void run(() => air.updateSetup(showPatch(s.setup, i, false)!))}>Remove</button>
-                    </figcaption>
-                  </figure>
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
-      {pack && <PackWindow s={s} run={run} close={() => setPack(false)} />}
-    </div>
-  );
-}
-
+/** The match: its steps, from Overview to Go live. */
 export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, openEvent }: Pick<PageProps, 's' | 'run' | 'go'> & {
   step: MatchStep; setStep: (t: MatchStep) => void; act: (id: ActionId) => void; start: () => void; back: () => void; openEvent: (tab: EventView['tab']) => void;
 }) {
@@ -383,7 +309,7 @@ export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, op
           {step === 'ready' && <Overview s={s} run={run} act={act} back={back} />}
           {step === 'teams' && <Teams key={m.id} s={s} run={run} go={go} />}
           {step === 'talent' && <Talent key={m.id} s={s} run={run} openEvent={openEvent} />}
-          {step === 'rundown' && <div className="stack" style={{ gap: 28 }}><MyShow s={s} run={run} />{s.control !== 'companion' && <AutopilotRules s={s} run={run} rehearse={() => setStep('rehearse')} />}</div>}
+          {step === 'rundown' && <Rundown s={s} run={run} />}
           {step === 'obs' && <ObsStep s={s} run={run} go={go} />}
           {step === 'devices' && <DevicesScreen {...page} embedded />}
           {step === 'rehearse' && <RehearsePanel s={s} run={run} />}

@@ -44,7 +44,7 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
       <div className="packs">
         <button className="pack-card" onClick={() => setOpen(true)} aria-label={`Open ${game?.pack ?? 'the'} pack`}>
           <Preview src={overlayUrl(s, 'ingame')} label={`${game?.pack ?? 'Graphics'} pack`} />
-          <span className="between"><span><b>{game?.pack ?? 'Graphics'}</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in my show</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
+          <span className="between"><span><b>{game?.pack ?? 'Graphics'}</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in the show</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
         </button>
         <div className="pack-card soon" aria-hidden="true">
           <div className="pv pv-bg pack-soon"><span className="muted t-sm">More packs later</span></div>

@@ -36,6 +36,7 @@ import type { CamsView } from '../shared/api.ts';
 import type { Preset, RowInput } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 import { CompanionHost } from './companion.ts';
+import { presetRows, rundownScreens } from './autopilot/rundown.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
@@ -197,6 +198,7 @@ export class Production extends EventEmitter {
       },
       showing: () => this.room?.airFullscreen ?? null,
       log: (line) => this.log.add(line), changed,
+      rowsChanged: () => void this.syncEngine().catch(() => {}),
     });
     this.companion = new CompanionHost({
       store: deps.store, secrets, mode: () => this.control, port: deps.companionPort, addresses: deps.lanAddresses, changed,
@@ -341,7 +343,17 @@ export class Production extends EventEmitter {
   }
 
   /** Outputs follow the selected match; the engine is told the match context and HUD settings. */
+  /** Only what is in the selected match's Rundown goes to OBS. */
+  private applyRundownScreens() {
+    if (!this.match) return;
+    const wanted = rundownScreens(this.autopilot.rows());
+    if (this.setup.screens.every((x) => x.enabled === wanted.has(x.id))) return;
+    this.setup.screens = this.setup.screens.map((x) => ({ ...x, enabled: wanted.has(x.id) }));
+    this.deps.store.save();
+  }
+
   async syncEngine() {
+    this.applyRundownScreens();
     const match = this.match;
     const setup = this.setup;
     const outputs = setup.screens.filter((s) => s.enabled && !s.hosted).map((s) => ({ id: s.outputId, overlay: s.overlay, matchCode: match?.code ?? 'MAIN' }));
@@ -473,6 +485,8 @@ export class Production extends EventEmitter {
     const data = this.deps.store.data;
     linkMatch(match, this.library);
     data.matches = [match, ...data.matches].slice(0, 50);
+    // The wizard is a guided setup: its match starts from the Standard rundown (quick and Esportra matches start empty).
+    (data.rundown ??= {})[id] = { rows: presetRows(input.template ?? 'standard', input.bestOf), startedFrom: input.template ?? 'standard' };
     data.selectedMatchId = id;
     this.save();
     await this.syncEngine();

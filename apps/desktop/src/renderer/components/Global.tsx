@@ -81,7 +81,7 @@ function commands(s: Snapshot, run: Run, a: PaletteActions): Command[] {
     { id: 'rehearse', group: 'Match', label: 'Rehearse this match', keywords: 'preview sample practice', run: () => a.command('rehearse') },
     { id: 'autopilot-rules', group: 'Match', label: 'Autopilot steps and presets', keywords: 'rules rundown', run: () => a.command('autopilot') },
     { id: 'teams', group: 'Match', label: 'Teams and players', keywords: 'lineup roster riot photo', run: () => a.command('teams') },
-    { id: 'my-show', group: 'Match', label: 'My show: the graphics in OBS', keywords: 'graphics screens library', run: () => a.command('myshow') },
+    { id: 'my-show', group: 'Match', label: 'Rundown: the screens of this match', keywords: 'graphics screens library my show autopilot', run: () => a.command('myshow') },
     { id: 'casters', group: 'Match', label: 'People on air', keywords: 'talent casters lower third', run: () => a.command('talent') },
   );
   for (const m of s.matches.filter((m) => m.id !== s.match?.id).slice(0, 8)) {

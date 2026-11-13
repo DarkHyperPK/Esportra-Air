@@ -73,6 +73,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await assert.rejects(production.createQuickMatch({ teamA: '<b>x</b>', teamB: 'Bravo', bestOf: 3 }), /plain text/);
 
     await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 3 });
+    production.rundownStartFrom('standard'); // quick matches start with an empty Rundown
     store.data.matches.push({ ...production.match!, id: randomUUID(), game: 'cs2' });
     assert.deepEqual(production.snapshot().matches.map((m) => m.game), ['valorant'], 'matches of another game are kept but hidden');
     store.data.matches.pop();
@@ -349,6 +350,7 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
   const view = () => production.snapshot().autopilot;
   try {
     await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
+    production.rundownStartFrom('standard'); // quick matches start with an empty Rundown
     const code = production.match!.code;
     const showing = async () => (await engine.client.get<any>(`/api/${code}`)).state.airFullscreen ?? null;
     assert.equal(view().enabled, false, 'off by default');
@@ -435,7 +437,7 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     production.rundownStartFrom('manual');
     assert.deepEqual(view().segments.filter((x) => x.mode === 'automatic').map((x) => x.id), []);
     production.rundownStartFrom('empty');
-    assert.deepEqual(production.snapshot().rundown, []);
+    assert.deepEqual(production.snapshot().rundown.map((r) => r.show), ['in-game'], 'Empty keeps only the in-game HUD row');
     assert.throws(() => production.rundownStartFrom('wild' as never), /Standard, Results only, Manual or Empty/);
     production.rundownStartFrom('standard');
 
@@ -469,19 +471,29 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
 
     // Rows are the producer's own: saved for the match, in their order, switched off, added and removed.
     production.rundownSave({ ...row('live'), holdSeconds: 8, transition: 'cut' });
-    production.rundownMove('intro', 1);
+    production.rundownMove('result', -1);
+    assert.throws(() => production.rundownMove('intro', 1), /cannot move further/, 'rows move within their section');
     production.autopilot.loadForMatch();
     const live = view().segments.find((x) => x.id === 'map1-live')!;
     assert.deepEqual([live.holdSeconds, live.transition], [8, 'cut']);
-    assert.equal(view().segments[1]!.id, 'intro');
+    assert.deepEqual(view().segments.slice(0, 4).map((x) => x.id), ['intro', 'map1-live', 'map1-result', 'map1-half']);
     assert.throws(() => production.rundownSave({ ...row('live'), holdSeconds: 500 }), /0–60/);
     production.rundownEnable('half', false);
     assert.ok(!view().segments.some((x) => x.id === 'map1-half'), 'a switched-off row is not in the rundown');
-    production.rundownSave({ show: 'map-result', trigger: 'manual', map: 1, forSeconds: 20, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 });
-    const added = production.snapshot().rundown.at(-1)!;
+    production.rundownSave({ section: 'between', show: 'map-result', trigger: 'manual', map: 1, forSeconds: 20, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 });
+    const added = production.snapshot().rundown.filter((r) => r.section === 'between').at(-1)!;
     assert.equal(view().segments.find((x) => x.id === added.id)!.name, 'Map result');
     production.rundownRemove(added.id);
     assert.ok(!production.snapshot().rundown.some((r) => r.id === added.id));
+    // Only what is in the Rundown goes to OBS.
+    const on = (id: string) => production.snapshot().setup.screens.find((x) => x.id === id)?.enabled;
+    production.rundownSave({ section: 'between', show: 'standings', trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 });
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(on('standings'), true, 'adding Standings installs it');
+    production.rundownRemove(production.snapshot().rundown.find((r) => r.show === 'standings')!.id);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(on('standings'), false, 'removing it takes it out of OBS');
+    assert.equal(on('in-game'), true);
   } finally {
     production.autopilot.stopAll();
     production.log.stop();
@@ -626,6 +638,7 @@ test('agent and map art is downloaded to this PC and served by the engine; Readi
   const row = () => production.snapshot().checks.find((c) => c.id === 'art')!;
   try {
     await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
+    production.rundownStartFrom('standard'); // quick matches start with an empty Rundown
     await production.art.download();
     assert.equal(row().health, 'warn', 'offline: graphics run without the pictures');
     assert.equal(row().action?.id, 'download-art');
@@ -740,6 +753,7 @@ test('Stream Deck / Companion: the module connects, gets map end from the game, 
   };
   try {
     await production.createQuickMatch({ teamA: 'Team Alpha', teamB: 'Team Bravo', bestOf: 1 });
+    production.rundownStartFrom('standard'); // quick matches start with an empty Rundown
     const code = production.match!.code;
     assert.equal(production.snapshot().control, 'air');
     assert.equal(production.snapshot().companion.running, false, 'Air only: no connection open');
@@ -863,7 +877,7 @@ test('a match finishes when a team wins the series, and then keeps the teams it 
   production.setup.game = 'valorant';
   try {
     await production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 1 });
-    await production.correct({ field: 'series', value: [1, 0], reason: 'Map won' });
+    await production.correct({ field: 'series', value: [1, 0], reason: 'Map won' } as never);
     for (let i = 0; i < 40 && !production.match!.finishedAt; i++) { await engine.poll(); await new Promise((r) => setTimeout(r, 50)); }
     assert.ok(production.match!.finishedAt, 'a won series finishes the match');
     const alpha = production.snapshot().library.teams[0]!;

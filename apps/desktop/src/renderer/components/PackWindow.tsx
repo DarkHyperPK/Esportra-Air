@@ -1,9 +1,10 @@
 // The pack window (approved mock): every graphic of the pack in a list with filters, a large live
 // preview with your own teams, and what it is, when it is used, where it goes in OBS, and whether it
-// is in My show. My show is one list for the whole production.
+// is in the show: screens in the selected match's Rundown, HUD parts switched for the production.
 import { useEffect, useMemo, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import { LIBRARY, LIBRARY_GROUPS, inShow, showLink, showPatch, type LibraryGroup, type LibraryItem } from '../../shared/library.ts';
+import { defaultSection } from '../../shared/autopilot.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { useEscape } from './Dialogs.tsx';
@@ -35,7 +36,7 @@ export function PackWindow({ s, run, close, start }: { s: Snapshot; run: Run; cl
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [shown, item?.overlay]);
-  const filters: Array<[Filter, string]> = [['all', 'All'], ...LIBRARY_GROUPS, ['mine', 'In my show']];
+  const filters: Array<[Filter, string]> = [['all', 'All'], ...LIBRARY_GROUPS, ['mine', 'In the show']];
   return (
     <div className="scrim center" onClick={(e) => e.target === e.currentTarget && close()}>
       <div className="pack" role="dialog" aria-modal="true" aria-label={`${s.game?.pack ?? 'Graphics'} pack`} ref={ref}>
@@ -51,7 +52,7 @@ export function PackWindow({ s, run, close, start }: { s: Snapshot; run: Run; cl
             <div role="listbox" aria-label="Graphics">
               {shown.map((i) => (
                 <button key={i.overlay} role="option" aria-selected={item?.overlay === i.overlay} onClick={() => setSelected(i.overlay)}>
-                  <span>{i.title}</span>{inShow(s.setup, i) && <span className="faint t-xs">{showLink(i).kind === 'always' ? 'Always' : 'In show'}</span>}
+                  <span>{i.title}</span>{inShow(s.setup, i) && <span className="faint t-xs">{showLink(i).kind === 'always' ? 'Always' : 'In the show'}</span>}
                 </button>
               ))}
               {shown.length === 0 && <p className="muted t-sm" style={{ padding: 10 }}>Nothing matches.</p>}
@@ -70,8 +71,17 @@ export function PackWindow({ s, run, close, start }: { s: Snapshot; run: Run; cl
 
 function Details({ s, run, item }: { s: Snapshot; run: Run; item: LibraryItem }) {
   const link = showLink(item);
-  const on = inShow(s.setup, item);
-  const patch = showPatch(s.setup, item, !on);
+  // A screen is in the show when it is in this match's Rundown (HUD parts stay switches of the HUD).
+  const screen = link.kind === 'screen' ? s.setup.screens.find((x) => x.overlay === link.overlay) ?? null : null;
+  const rows = screen ? s.rundown.filter((r) => r.show === screen.id) : [];
+  const on = screen ? rows.length > 0 : inShow(s.setup, item);
+  const patch = link.kind === 'hud' ? showPatch(s.setup, item, !on) : null;
+  const toggle = async () => {
+    if (patch) return void run(() => air.updateSetup(patch));
+    if (!screen) return;
+    if (on) return void run(async () => { for (const r of rows) await air.rundownRemove(r.id); });
+    void run(() => air.rundownSave({ section: defaultSection(screen.id), show: screen.id, trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 }));
+  };
   return (
     <aside className="pack-details">
       <b className="title-sm">{item.title}</b>
@@ -84,8 +94,10 @@ function Details({ s, run, item }: { s: Snapshot; run: Run; item: LibraryItem })
       <span className="spacer" />
       {link.kind === 'always'
         ? <span className="muted t-sm">Always in the HUD. It appears when it is needed.</span>
-        : <button className={`btn ${on ? '' : 'primary'}`} aria-pressed={on} onClick={() => patch && void run(() => air.updateSetup(patch))}>{on ? 'In my show ✓ · Remove' : 'Add to my show'}</button>}
-      <span className="faint t-xs">My show is shared by every match of this production.</span>
+        : link.kind === 'screen' && !s.match
+          ? <button className="btn" disabled>Open a match first</button>
+          : <button className={`btn ${on ? '' : 'primary'}`} aria-pressed={on} onClick={() => void toggle()}>{on ? (link.kind === 'screen' ? 'In the Rundown ✓ · Remove' : 'In the HUD ✓ · Remove') : link.kind === 'screen' ? 'Add to this match’s Rundown' : 'Add to the HUD'}</button>}
+      <span className="faint t-xs">{link.kind === 'screen' ? (s.match ? `Adds it to ${s.match.title}. Set when it comes up in the match’s Rundown.` : 'Screens go in a match’s Rundown.') : 'HUD parts are switched for the whole production.'}</span>
     </aside>
   );
 }

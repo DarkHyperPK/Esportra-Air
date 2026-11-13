@@ -1,8 +1,9 @@
-// Add a screen (approved mock): pick a screen from My show, then its rule — when it comes up, on which
+// Add a screen (approved mock): pick a screen that fits the Rundown section, then its rule — when it comes up, on which
 // map, how long it stays, cut or stinger, and the hold. Edit on a rundown row opens the same drawer.
 import { useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
-import { WHEN, WHEN_LABEL, type RowInput, type RowMap, type RundownRow, type When } from '../../shared/autopilot.ts';
+import { SECTION_LABEL, SECTION_SCREENS, WHEN, WHEN_LABEL, rowTitle, takesItself, type RowInput, type RowMap, type RundownRow, type Section, type When } from '../../shared/autopilot.ts';
+import { Preview, overlayUrl } from './Preview.tsx';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { EditorDrawer } from './Editors.tsx';
@@ -11,7 +12,7 @@ export const mapText = (m: RowMap) => (m === 'every' ? 'Every map' : m === 'seri
 export const onScreenText = (sec: number) => (sec ? `${sec} s` : 'Until next');
 export const holdText = (r: Pick<RundownRow, 'trigger' | 'holdMode' | 'holdSeconds'>) => (r.trigger === 'manual' || r.holdMode === 'manual' ? 'Wait for me' : r.holdSeconds ? `${r.holdSeconds} s hold` : 'No hold');
 
-const BLANK: RowInput = { show: null, trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 };
+const BLANK: RowInput = { section: 'game', show: null, trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 };
 
 function Chips<T extends string | number>({ label, value, options, onChange, disabled }: { label: string; value: T; options: Array<[T, string]>; onChange: (v: T) => void; disabled?: boolean }) {
   return (
@@ -30,37 +31,42 @@ function sentence(d: RowInput, title: string): string {
   return `${title}, ${where}, ${when}${time}${hold}, ${d.transition === 'stinger' ? 'via the stinger' : 'as a cut'}.`;
 }
 
-export function ScreenRule({ s, run, row, close }: { s: Snapshot; run: Run; row: RundownRow | null; close: () => void }) {
-  const screens = s.setup.screens.filter((x) => x.enabled && x.hosted);
-  const [d, setD] = useState<RowInput>(row ?? { ...BLANK, show: screens[0]?.id ?? null });
+export function ScreenRule({ s, run, row, section, close }: { s: Snapshot; run: Run; row: RundownRow | null; section?: Section; close: () => void }) {
+  const sec: Section = row?.section ?? section ?? 'between';
+  // Only the screens that go in this part of the show.
+  const allowed = SECTION_SCREENS[sec];
+  const screens = s.setup.screens.filter((x) => allowed.includes(x.id));
+  const [d, setD] = useState<RowInput>(row ?? { ...BLANK, section: sec, show: allowed[0] ?? null });
   const set = (patch: Partial<RowInput>) => setD({ ...d, ...patch });
   const bestOf = s.match?.bestOf ?? 1;
-  const title = d.show === null ? 'Back to the game' : screens.find((x) => x.id === d.show)?.title ?? d.show;
+  const title = rowTitle(d.show, sec, (id) => screens.find((x) => x.id === id)?.title ?? id);
+  const rule = takesItself(d.show);
   const manual = d.trigger === 'manual';
   const hold = manual || d.holdMode === 'manual' ? 'wait' : String(d.holdSeconds);
   const maps: Array<[string, string]> = [['every', 'Every map'], ...Array.from({ length: bestOf }, (_, i): [string, string] => [String(i + 1), `Map ${i + 1}`]), ['series', 'After the series']];
   const save = async () => {
     if (await run(() => air.rundownSave({ ...d, ...(row ? { id: row.id } : {}) }))) close();
   };
-  const tiles: Array<[string | null, string]> = [[null, 'Back to the game'], ...screens.map((x): [string, string] => [x.id, x.title])];
+  const tiles: Array<[string | null, string, string | null]> = allowed.map((id) => [id, rowTitle(id, sec, (x) => screens.find((y) => y.id === x)?.title ?? x), id === null ? null : screens.find((y) => y.id === id)?.overlay ?? null]);
   return (
     <EditorDrawer
-      title={row ? `Edit · ${title}` : 'Add a screen'} close={close}
+      title={row ? `Edit · ${title}` : `Add to ${SECTION_LABEL[sec]}`} close={close}
       footer={<><span /><span className="row-gap"><button className="btn quiet" onClick={close}>Cancel</button><button className="btn primary" onClick={() => void save()}>{row ? 'Save' : 'Add to rundown'}</button></span></>}
     >
       <div className="stack" style={{ gap: 8 }}>
         <span className="rb-k" style={{ padding: 0 }}>Screen</span>
         <div className="sr-tiles" role="radiogroup" aria-label="Screen">
-          {tiles.map(([id, name]) => (
-            <button key={id ?? 'game'} type="button" role="radio" aria-checked={d.show === id} className="sr-tile" onClick={() => set({ show: id })}>
-              <span className="sr-thumb" aria-hidden="true">{id === null ? 'GAME' : name.toUpperCase()}</span>
+          {tiles.map(([id, name, overlay]) => (
+            <button key={id ?? 'game'} type="button" role="radio" aria-checked={d.show === id} aria-label={name} className="sr-tile" onClick={() => set({ show: id })}>
+              <span className="sr-thumb" aria-hidden="true">{overlay ? <Preview src={overlayUrl(s, overlay)} label={name} /> : 'GAME'}</span>
               <span>{name}</span>
             </button>
           ))}
         </div>
-        <span className="faint t-xs">Only screens in your My show are listed. Add more in Library.</span>
+        <span className="faint t-xs">The screens that go in {SECTION_LABEL[sec]}. Preview any of them in Graphics.</span>
       </div>
-      <hr className="rule" />
+      {rule ? (<>
+<hr className="rule" />
       <div className="rb">
         <span className="rb-k">When</span>
         <div className="stack" style={{ gap: 6 }}>
@@ -89,6 +95,9 @@ export function ScreenRule({ s, run, row, close }: { s: Snapshot; run: Run; row:
         <span className="faint t-xs">Reads as</span>
         <p className="rb-sentence">{sentence(d, title)}</p>
       </div>
+      </>) : (
+        <p className="muted t-sm">{d.show === 'in-game' ? 'The in-game HUD is on over the game; switch its parts on or off in the row.' : `${title} is its own OBS scene. Switch OBS to it when you are ready; Air never switches scenes.`}</p>
+      )}
     </EditorDrawer>
   );
 }

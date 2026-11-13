@@ -39,9 +39,47 @@ export const WHEN_LABEL: Record<When, string> = {
 /** Which map a row runs on: every map, one map, or once after the series is won. */
 export type RowMap = 'every' | number | 'series';
 
+/** The Rundown's sections, in show order, by their usual broadcast names. */
+export const SECTIONS = ['pre', 'game', 'between', 'post'] as const;
+export type Section = (typeof SECTIONS)[number];
+export const SECTION_LABEL: Record<Section, string> = { pre: 'Pre-show', game: 'Game', between: 'Between maps', post: 'Post-show' };
+
+/** Which screens each section can hold (only screens Air already has). `null` is back to the game. */
+export const SECTION_SCREENS: Record<Section, Array<string | null>> = {
+  pre: ['holding', 'match-intro', 'map-veto', 'agent-select', 'casters'],
+  game: ['in-game', null],
+  between: ['halftime', 'map-result', 'series', 'standings', 'player-profile', 'cam-grid', 'holding', 'casters'],
+  post: ['champion', 'casters', 'holding'],
+};
+/** Screens in their own OBS scene: the producer switches to them in OBS, so they have no trigger. */
+export const SCENE_ROWS = new Set(['holding', 'casters']);
+/** The in-game HUD: one row, with its layers as switches. */
+export const HUD_ROW = 'in-game';
+/** A full-screen graphic or back to the game: a row autopilot can take. */
+export const takesItself = (show: string | null) => show === null || (!SCENE_ROWS.has(show) && show !== HUD_ROW);
+
+/** The section a screen usually goes in (old saves and the Graphics library). */
+export function defaultSection(show: string | null): Section {
+  if (show === null || show === HUD_ROW) return 'game';
+  if (['holding', 'match-intro', 'map-veto', 'agent-select'].includes(show)) return 'pre';
+  if (show === 'champion') return 'post';
+  return 'between';
+}
+
+/** What a row is called in its section (the Holding screen is Starting soon, Break or Ending). */
+export function rowTitle(show: string | null, section: Section, title: (id: string) => string): string {
+  if (show === null) return 'Back to the game';
+  if (show === 'holding') return section === 'pre' ? 'Starting soon' : section === 'post' ? 'Ending' : 'Break';
+  if (show === 'casters') return 'Desk';
+  if (show === HUD_ROW) return 'In-game HUD';
+  return title(show);
+}
+
 /** One row of the producer's rundown: a screen (null: back to the game) and the rule for it. */
 export interface RundownRow {
   id: string;
+  /** Pre-show, Game, Between maps or Post-show. */
+  section: Section;
   show: string | null;
   trigger: When;
   map: RowMap;

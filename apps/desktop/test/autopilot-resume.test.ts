@@ -5,11 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Autopilot } from '../src/main/autopilot/autopilot.ts';
 import { Store } from '../src/main/store.ts';
+import { presetRows } from '../src/main/autopilot/rundown.ts';
 
 const screens = ['match-intro', 'halftime', 'map-result', 'champion'].map((id) => ({ id, enabled: true })) as never;
 const settle = () => new Promise<void>((r) => setImmediate(r));
 
 function make(store: Store, persist = true) {
+  // The match runs the Standard rundown (new matches start empty).
+  store.data.rundown ??= { m1: { rows: presetRows('standard', 1), startedFrom: 'standard' } };
   return new Autopilot({ store, match: () => ({ id: 'm1', bestOf: 1 }) as never, screens: () => screens, showGraphic: async () => {}, showing: () => null, log: () => {}, changed: () => {}, persist });
 }
 

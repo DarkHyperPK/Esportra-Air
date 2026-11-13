@@ -260,16 +260,22 @@ let failShot = async () => {};
   await pack.getByRole('option', { name: /Map result/ }).click();
   await page.waitForTimeout(2500);
   await shot('pack-window');
-  // Win probability starts out of the show: add it, see it under "In my show", remove it again.
+  // Win probability starts out of the HUD: add it, see it under "In the show", remove it again.
   await pack.getByRole('option', { name: /Win probability/ }).click();
-  await pack.getByRole('button', { name: 'Add to my show' }).click();
-  await pack.getByRole('button', { name: /In my show ✓/ }).waitFor();
-  await pack.getByRole('button', { name: 'In my show', exact: true }).click();
+  await pack.getByRole('button', { name: 'Add to the HUD' }).click();
+  await pack.getByRole('button', { name: /In the HUD ✓/ }).waitFor();
+  await pack.getByRole('button', { name: 'In the show', exact: true }).click();
   await pack.getByRole('option', { name: /Win probability/ }).waitFor();
-  if (await pack.getByRole('option', { name: /Agent select/ }).count() !== 1) throw new Error('Agent select is in the show by default');
+  if (await pack.getByRole('option', { name: /Agent select/ }).count() !== 0) throw new Error('Agent select is not in a Standard rundown');
   await shot('pack-in-my-show');
-  await pack.getByRole('button', { name: /In my show ✓/ }).click();
+  await pack.getByRole('button', { name: /In the HUD ✓/ }).click();
   await pack.getByRole('option', { name: /Win probability/ }).waitFor({ state: 'detached' });
+  // A screen goes into this match's Rundown.
+  await pack.getByRole('button', { name: 'All', exact: true }).click();
+  await pack.getByRole('option', { name: /Standings/ }).click();
+  await pack.getByRole('button', { name: 'Add to this match’s Rundown' }).click();
+  await pack.getByRole('button', { name: /In the Rundown ✓/ }).click();
+  await pack.getByRole('button', { name: 'Add to this match’s Rundown' }).waitFor();
   await page.keyboard.press('Escape');
 
   // Settings: connect OBS (software settings), then Scenes: add for me, fill the game-feed slot
@@ -402,38 +408,60 @@ let failShot = async () => {};
   await page.waitForFunction(() => /Map 1 · Halftime/.test(document.querySelector('.next-card')?.textContent ?? ''));
   await page.waitForTimeout(1500);
   await shot('autopilot-back-to-game');
-  // Matches › Autopilot: how it works, presets, every step as a sentence (locked while running).
+  // The match's Rundown (step 5): locked while autopilot runs.
   await step('Rundown');
-  await page.getByText('Autopilot is running. Choose Run manually on Live to change the rundown.').waitFor();
+  await page.getByText('Autopilot is running. Choose Run manually on Live to change the Rundown.').waitFor();
   await shot('autopilot-rules-running');
   await rail('Live');
   await page.getByLabel('Autopilot').getByRole('button', { name: 'Run manually' }).click();
   await step('Rundown');
-  // The rundown is the producer's: start from a preset (it asks before replacing rows), add a screen
-  // with its own rule, switch one off.
-  await page.getByRole('radio', { name: /Results only/ }).click();
-  await btn('Replace');
-  await page.getByRole('radio', { name: /Results only/, checked: true }).waitFor();
-  await shot('autopilot-presets');
-  await page.getByRole('radio', { name: /Standard show/ }).click();
-  await btn('Replace');
-  await page.getByRole('radio', { name: /Standard show/, checked: true }).waitFor();
-  await btn('Add a screen');
-  const addDrawer = page.getByRole('dialog', { name: 'Add a screen' });
+  // Pre-show, Game, Between maps and Post-show; a starting template replaces the rows.
+  const section = (name) => page.getByRole('region', { name, exact: true });
+  await btn('Use a starting template');
+  await page.getByRole('menuitem', { name: /Results only/ }).click();
+  await section('Between maps').getByText(/^When I press Take/).first().waitFor();
+  await btn('Use a starting template');
+  await page.getByRole('menuitem', { name: /Standard show/ }).click();
+  await section('Between maps').getByText(/^By itself when the map ends/).waitFor();
+  // Add a screen to Between maps with its own rule.
+  await section('Between maps').getByRole('button', { name: 'Add screen' }).click();
+  const addDrawer = page.getByRole('dialog', { name: 'Add to Between maps' });
   await addDrawer.getByRole('radiogroup', { name: 'Screen' }).getByRole('radio', { name: /Map result/ }).click();
   await addDrawer.getByRole('radiogroup', { name: 'When' }).getByRole('radio', { name: 'I press Take' }).click();
   await addDrawer.getByRole('radiogroup', { name: 'Map' }).getByRole('radio', { name: 'Map 2' }).click();
   await addDrawer.getByRole('radiogroup', { name: 'On screen' }).getByRole('radio', { name: '20 s' }).click();
   await addDrawer.getByText('Map result, on map 2, when you press Take, for 20 s, via the stinger.').waitFor();
+  await page.waitForTimeout(2500);
   await shot('add-screen');
   await addDrawer.getByRole('button', { name: 'Add to rundown' }).click();
   await addDrawer.waitFor({ state: 'detached' });
-  await page.getByRole('switch', { name: 'Halftime in the rundown' }).click();
-  await page.getByRole('switch', { name: 'Halftime in the rundown', checked: false }).waitFor();
-  await page.locator('.rd-list .rd').last().getByText('Map 2').waitFor();
+  await section('Between maps').getByText(/map 2 · 20 s/).waitFor();
+  // Desk in Post-show is an OBS scene: no rule, Air never switches to it.
+  await section('Post-show').getByRole('button', { name: 'Add screen' }).click();
+  const postDrawer = page.getByRole('dialog', { name: 'Add to Post-show' });
+  await postDrawer.getByRole('radiogroup', { name: 'Screen' }).getByRole('radio', { name: 'Desk' }).click();
+  await postDrawer.getByText(/is its own OBS scene/).waitFor();
+  await postDrawer.getByRole('button', { name: 'Add to rundown' }).click();
+  await postDrawer.waitFor({ state: 'detached' });
+  await section('Post-show').getByText(/In OBS: switch to/).waitFor();
+  // The in-game HUD is one row; its parts are switches.
+  const parts = page.getByRole('group', { name: 'Parts of the in-game HUD' });
+  const winProb = parts.getByRole('button', { name: /Win probability/ });
+  const wasOn = (await winProb.getAttribute('aria-pressed')) === 'true';
+  await winProb.click();
+  await parts.getByRole('button', { name: /Win probability/, pressed: !wasOn }).waitFor();
   await shot('rundown');
-  await page.getByRole('switch', { name: 'Halftime in the rundown' }).click();
+  await winProb.click();
+  await parts.getByRole('button', { name: /Win probability/, pressed: wasOn }).waitFor();
+  await section('Post-show').getByRole('button', { name: 'Remove Desk' }).click();
+  await section('Post-show').getByText(/In OBS: switch to/).waitFor({ state: 'detached' });
   await step('Overview');
+  // A played match keeps the teams it was played with; Reopen makes it follow Teams/Players again.
+  await btn('Mark as finished');
+  await page.getByText(/It keeps the teams and players it was played with/).waitFor();
+  await shot('match-finished');
+  await btn('Reopen');
+  await page.getByText(/It keeps the teams and players it was played with/).waitFor({ state: 'detached' });
 
   // Player cameras (S5): make links, copy one, 10-up; the overlay pages show the streams and report connection.
   await step('Player PCs and cameras');
@@ -477,11 +505,8 @@ let failShot = async () => {};
   await page.waitForTimeout(3500);
   await shot('capture');
   await step('Rundown');
-  await page.getByRole('heading', { name: 'ESPORTRA · Full screen' }).waitFor();
+  await page.getByRole('region', { name: 'Pre-show', exact: true }).waitFor();
   await shot('my-show');
-  await btn('Add from the Library');
-  await page.getByRole('dialog', { name: 'Esportra Broadcast pack' }).waitFor();
-  await page.keyboard.press('Escape');
   await btn('← Community Cup');
   await page.getByRole('tab', { name: 'Branding' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Community Cup Finals');

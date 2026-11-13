@@ -1,9 +1,8 @@
 import { keyLabel, keyOf } from '../../shared/keymap.ts';
 import { useEffect, useState } from 'react';
-import { PRESETS, TRIGGER_LABEL, WHEN_LABEL, type Preset, type RundownRow, type Segment } from '../../shared/autopilot.ts';
+import { TRIGGER_LABEL, type Segment } from '../../shared/autopilot.ts';
 import type { Snapshot } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
-import { ScreenRule, mapText, onScreenText, holdText } from './ScreenRule.tsx';
 import { Cap, Tally } from './ui.tsx';
 
 type Run = (fn: () => Promise<Snapshot | void>) => Promise<boolean>;
@@ -137,78 +136,5 @@ export function NextFive({ s }: { s: Snapshot }) {
         {list.map((x) => <li key={x.id}><span><b>{x.name}</b></span><span className="muted">{triggerLine(x)}</span><span className="mono muted" style={{ fontSize: 11 }}>{action(x)}</span></li>)}
       </ol>
     </section>
-  );
-}
-
-const PRESET_TEXT: Record<Preset, [string, string]> = {
-  standard: ['Standard show', 'Intro, then on every map back to the game, halftime, result and series, then the champion.'],
-  minimal: ['Results only', 'Only the map result and the return to the game come up by themselves.'],
-  manual: ['Manual', 'Every screen waits for your Take.'],
-  empty: ['Empty', 'No screens. Add your own.'],
-};
-
-const whenText = (r: RundownRow) => (r.trigger === 'delay' ? `${r.delaySeconds} s after previous` : r.trigger === 'manual' ? 'When I press Take' : WHEN_LABEL[r.trigger]);
-
-/** The match's rundown: screens from My show in show order, each with the producer's own rule (approved mock). */
-export function AutopilotRules({ s, run, rehearse }: { s: Snapshot; run: Run; rehearse?: () => void }) {
-  const a = s.autopilot;
-  const locked = a.enabled;
-  const [editing, setEditing] = useState<RundownRow | 'new' | null>(null);
-  const [confirm, setConfirm] = useState<Preset | null>(null);
-  const title = (id: string | null) => (id === null ? 'Back to the game' : s.setup.screens.find((x) => x.id === id)?.title ?? graphicTitle(id));
-  const rows = s.rundown;
-  const startFrom = (p: Preset) => {
-    if (rows.length && confirm !== p) return setConfirm(p);
-    setConfirm(null);
-    void run(() => air.rundownStartFrom(p));
-  };
-  return (
-    <div className="stack" style={{ gap: 16 }}>
-      <div className="between">
-        <div className="row-gap" role="radiogroup" aria-label="Start from">
-          <span className="muted t-sm">Start from</span>
-          {PRESETS.map((p) => (
-            <button key={p} type="button" role="radio" aria-checked={a.preset === p} className="rb-chip" disabled={locked} title={PRESET_TEXT[p][1]} onClick={() => startFrom(p)}>{PRESET_TEXT[p][0]}</button>
-          ))}
-        </div>
-        {rehearse && <button className="btn" onClick={rehearse}>Try it in Rehearse</button>}
-      </div>
-      {confirm && (
-        <div className="notice" role="alert">
-          <span>Replace your {rows.length} rows with {PRESET_TEXT[confirm][0]}? {PRESET_TEXT[confirm][1]}</span>
-          <span className="row-gap"><button className="btn quiet small" onClick={() => setConfirm(null)}>Keep my rows</button><button className="btn small" onClick={() => startFrom(confirm)}>Replace</button></span>
-        </div>
-      )}
-      {locked && <p className="muted t-sm">Autopilot is running. Choose Run manually on Live to change the rundown.</p>}
-
-      <section aria-label="Rundown">
-        <div className="rd rd-head" aria-hidden="true"><span /><span>Screen</span><span>When</span><span>Map</span><span>On screen</span><span>Via</span><span>Hold</span><span /><span /></div>
-        <ol className="rd-list">
-          {rows.map((r, i) => (
-            <li key={r.id} className={`rd ${r.enabled ? '' : 'off'}`}>
-              <span className="rd-move">
-                <button className="btn quiet small" disabled={locked || i === 0} aria-label={`Move ${title(r.show)} up`} onClick={() => void run(() => air.rundownMove(r.id, -1))}>↑</button>
-                <button className="btn quiet small" disabled={locked || i === rows.length - 1} aria-label={`Move ${title(r.show)} down`} onClick={() => void run(() => air.rundownMove(r.id, 1))}>↓</button>
-              </span>
-              <b>{title(r.show)}</b>
-              <span>{whenText(r)}</span>
-              <span>{mapText(r.map)}</span>
-              <span>{r.show === null ? '—' : onScreenText(r.forSeconds)}</span>
-              <span>{r.transition === 'stinger' ? 'Stinger' : 'Cut'}</span>
-              <span>{holdText(r)}</span>
-              <button className="btn quiet small" disabled={locked} onClick={() => setEditing(r)} aria-label={`Edit ${title(r.show)}`}>Edit</button>
-              <button type="button" className="switch" role="switch" aria-checked={r.enabled} disabled={locked} aria-label={`${title(r.show)} in the rundown`} onClick={() => void run(() => air.rundownEnable(r.id, !r.enabled))} />
-            </li>
-          ))}
-        </ol>
-        {!rows.length && <p className="muted ap-empty">No screens yet. Add one, or start from Standard show.</p>}
-      </section>
-      <div className="row-gap">
-        <button className="btn" disabled={locked} onClick={() => setEditing('new')}>Add a screen</button>
-        <span className="faint t-xs">Screens come from your My show. Switch one off to put it up yourself. Autopilot never switches OBS scenes.</span>
-      </div>
-      <p className="faint t-xs">Economy in the buy phase, the round recap, the spike timer and kill callouts are part of the in-game HUD (Auto layers on Live), not rows here.</p>
-      {editing && <ScreenRule s={s} run={run} row={editing === 'new' ? null : editing} close={() => setEditing(null)} />}
-    </div>
   );
 }
