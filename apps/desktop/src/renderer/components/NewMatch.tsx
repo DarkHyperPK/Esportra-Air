@@ -70,6 +70,26 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
                 </div>
               </div>
               <p className="lead">Names, tags, colours and logos appear on every graphic.</p>
+              {s.library.teams.length > 0 && (
+                <div className="row-gap" style={{ gap: 18 }}>
+                  {([0, 1] as const).map((t) => (
+                    <label key={t} className="field" style={{ flex: 1 }}><span>Pick a saved team for side {t ? 'B' : 'A'}</span>
+                      <select aria-label={`Saved team for side ${t ? 'B' : 'A'}`} value="" onChange={(e) => {
+                        const lib = s.library.teams.find((x) => x.id === e.target.value);
+                        if (!lib) return;
+                        const team = { name: lib.name, tag: lib.tag, color: lib.color, logo: lib.logo };
+                        setTeams(t ? [teams[0], team] : [team, teams[1]]);
+                        const roster = s.library.players.filter((p) => p.teamId === lib.id).slice(0, 7).map((p) => ({ ...emptyPlayer(), name: p.name, realName: p.realName, gameId: p.gameId, photo: p.photo }));
+                        const filled = roster.length >= 5 ? roster : [...roster, ...Array.from({ length: 5 - roster.length }, emptyPlayer)];
+                        setLineups(t ? [lineups[0], filled] : [filled, lineups[1]]);
+                      }}>
+                        <option value="">Choose from Teams/Players…</option>
+                        {s.library.teams.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              )}
               <div className="teams-vs">
                 <TeamFields s={s} team={teams[0]} index={0} onChange={(t) => setTeams([t, teams[1]])} />
                 <span className="vs-mark">VS</span>

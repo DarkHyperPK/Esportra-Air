@@ -2,7 +2,7 @@
 // Teams/Players, Talent and sponsors, Rundown, OBS, Player PCs and cameras, Rehearse — and Go live.
 // Everything for this match is set up here.
 import { useEffect, useState } from 'react';
-import type { ActionId, Snapshot, Team } from '../../shared/api.ts';
+import type { ActionId, LibTeam, Snapshot, Team } from '../../shared/api.ts';
 import { ROLE_NAME, TIER_NAME, onAir } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
 import type { MatchStep, PageProps } from '../App.tsx';
@@ -13,6 +13,7 @@ import { DevicesScreen } from './DevicesScreen.tsx';
 import { ObsConnection } from './SettingsScreen.tsx';
 import { AutopilotRules, NextFive, action, triggerLine } from '../components/Autopilot.tsx';
 import { EditorDrawer, PlayerEditor, Switch, cameraText } from '../components/Editors.tsx';
+import { LibPlayerEditor, LibTeamEditor } from '../components/TeamEditors.tsx';
 import { TeamFields, imageUrl } from '../components/MatchEditors.tsx';
 import { RehearsePanel } from '../components/Rehearse.tsx';
 import { GoLiveDialog } from '../components/GoLive.tsx';
@@ -145,40 +146,69 @@ function ObsStep(props: Pick<PageProps, 's' | 'run' | 'go'>) {
   );
 }
 
-function Teams({ s, run }: Pick<PageProps, 's' | 'run'>) {
+function Teams({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   const m = s.match!;
   const [player, setPlayer] = useState<{ team: 0 | 1; index: number | null } | null>(null);
-  const [teamEdit, setTeamEdit] = useState<0 | 1 | null>(null);
-  const [draft, setDraft] = useState<Team | null>(null);
+  const [teamEdit, setTeamEdit] = useState<LibTeam | 'new' | null>(null);
+  const [newPlayer, setNewPlayer] = useState<string | null>(null);
+  const { teams, players } = s.library;
   return (
-    <div className="cols2">
-      {([0, 1] as const).map((t) => (
-        <section key={t} className="stack" style={{ gap: 8 }}>
-          <div className="between">
-            <span className="row-gap"><TeamMark s={s} team={m.teams[t]} size={30} /><h2 className="title-sm">{m.teams[t].name}</h2></span>
-            <button className="btn quiet small" onClick={() => { setTeamEdit(t); setDraft(m.teams[t]); }}>Logo and colour</button>
-          </div>
-          <div className="lst">
-            {m.players[t].map((p, i) => (
-              <button key={p.id} className="li lineup-row" onClick={() => setPlayer({ team: t, index: i })} aria-label={`Edit ${p.name}`}>
-                <Face s={s} photo={p.photo} name={p.name} size={40} />
-                <span><b>{p.name}</b><br /><span className="mono faint t-xs">{p.gameId || 'No in-game name'}</span></span>
-                {!p.gameId ? <span className="state warn"><i className="dot warn" />Not matched to game data</span> : <span />}
-              </button>
-            ))}
-            {m.players[t].length < 7 && <button className="li add-row" onClick={() => setPlayer({ team: t, index: null })}>+ Add player</button>}
-          </div>
-        </section>
-      ))}
+    <div className="stack" style={{ gap: 14 }}>
+      <div className="between"><p className="muted t-sm">Pick each side’s team, then who plays. The first five start; up to two more are substitutes.</p><button className="btn quiet small" onClick={() => go('teams')}>Open Teams/Players</button></div>
+      <div className="cols2">
+        {([0, 1] as const).map((t) => {
+          const teamId = m.teamIds?.[t] ?? null;
+          const lib = teams.find((x) => x.id === teamId) ?? null;
+          const lineup = m.players[t];
+          const inLineup = new Set(lineup.map((p) => p.libraryId).filter(Boolean));
+          const bench = lib ? players.filter((p) => p.teamId === lib.id && !inLineup.has(p.id)) : [];
+          const ids = lineup.map((p) => p.libraryId).filter((x): x is string => !!x);
+          return (
+            <section key={t} className="stack" style={{ gap: 8 }} aria-label={`Side ${t ? 'B' : 'A'}`}>
+              <div className="between">
+                <span className="row-gap"><TeamMark s={s} team={m.teams[t]} size={30} />
+                  <select className="cell" aria-label={`Team for side ${t ? 'B' : 'A'}`} value={teamId ?? ''} onChange={(e) => { if (e.target.value === '__new') setTeamEdit('new'); else if (e.target.value) void run(() => air.setMatchTeam(m.id, t, e.target.value)); }}>
+                    {!teamId && <option value="">{m.teams[t].name} (not saved)</option>}
+                    {teams.map((x) => <option key={x.id} value={x.id} disabled={x.id === m.teamIds?.[1 - t]}>{x.name}</option>)}
+                    <option value="__new">Add a new team…</option>
+                  </select>
+                </span>
+                {lib && <button className="btn quiet small" onClick={() => setTeamEdit(lib)}>Logo and colour</button>}
+              </div>
+              <div className="lst">
+                {lineup.map((p, i) => (
+                  <div key={p.id} className="li lineup-pick">
+                    <Face s={s} photo={p.photo} name={p.name} size={36} />
+                    <button className="ev-match-open" onClick={() => setPlayer({ team: t, index: i })} aria-label={`Edit ${p.name}`}><span><b>{p.name}</b><br /><span className="mono faint t-xs">{p.gameId || 'No Riot ID'}</span></span></button>
+                    <span className={`tag-pill ${i < 5 ? 'on' : ''}`}>{i < 5 ? 'Starter' : 'Sub'}</span>
+                    {lib && p.libraryId ? <button className="btn quiet small" onClick={() => void run(() => air.setStarters(m.id, t, ids.filter((x) => x !== p.libraryId)))}>Leave out</button> : <span />}
+                  </div>
+                ))}
+                {lineup.length === 0 && <p className="muted li">Nobody plays yet.</p>}
+              </div>
+              {lib && (
+                <>
+                  <h3 className="title-sm" style={{ marginTop: 6 }}>Also in {lib.name}</h3>
+                  <div className="lst">
+                    {bench.map((p) => (
+                      <div key={p.id} className="li lineup-pick">
+                        <Face s={s} photo={p.photo} name={p.name} size={36} />
+                        <span><b>{p.name}</b><br /><span className="mono faint t-xs">{p.gameId || 'No Riot ID'}</span></span>
+                        <span />
+                        <button className="btn small" disabled={ids.length >= 7} onClick={() => void run(() => air.setStarters(m.id, t, [...ids, p.id]))}>Add to lineup</button>
+                      </div>
+                    ))}
+                    <button className="li add-row" onClick={() => setNewPlayer(lib.id)}>+ New player for {lib.name}</button>
+                  </div>
+                </>
+              )}
+            </section>
+          );
+        })}
+      </div>
       {player && <PlayerEditor s={s} run={run} team={player.team} index={player.index} close={() => setPlayer(null)} />}
-      {teamEdit !== null && draft && (
-        <EditorDrawer
-          title={m.teams[teamEdit].name} close={() => setTeamEdit(null)}
-          footer={<><span /><span className="row-gap"><button className="btn quiet" onClick={() => setTeamEdit(null)}>Cancel</button><button className="btn primary" onClick={async () => { const teams = m.teams.map((x, i) => (i === teamEdit ? draft : x)) as [Team, Team]; if (await run(() => air.updateMatch(m.id, { teams }))) setTeamEdit(null); }}>Save</button></span></>}
-        >
-          <TeamFields s={s} team={draft} index={teamEdit} onChange={setDraft} />
-        </EditorDrawer>
-      )}
+      {teamEdit && <LibTeamEditor s={s} run={run} team={teamEdit === 'new' ? null : teamEdit} close={() => setTeamEdit(null)} />}
+      {newPlayer && <LibPlayerEditor s={s} run={run} player={null} teamId={newPlayer} close={() => setNewPlayer(null)} />}
     </div>
   );
 }
@@ -347,7 +377,7 @@ export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, op
         </nav>
         <div className="ws-body">
           {step === 'ready' && <Overview s={s} run={run} act={act} back={back} />}
-          {step === 'teams' && <Teams key={m.id} s={s} run={run} />}
+          {step === 'teams' && <Teams key={m.id} s={s} run={run} go={go} />}
           {step === 'talent' && <Talent key={m.id} s={s} run={run} openEvent={openEvent} />}
           {step === 'rundown' && <div className="stack" style={{ gap: 28 }}><MyShow s={s} run={run} />{s.control !== 'companion' && <AutopilotRules s={s} run={run} rehearse={() => setStep('rehearse')} />}</div>}
           {step === 'obs' && <ObsStep s={s} run={run} go={go} />}

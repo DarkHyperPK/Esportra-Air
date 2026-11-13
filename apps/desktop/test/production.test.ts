@@ -812,3 +812,43 @@ test('deleting: a match and an event go, never while live; the selection moves t
     await engine.stop(true);
   }
 });
+
+test('Teams/Players: a match follows its saved teams and players, all the way to the HUD', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-lib-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'library-test-key-0123456789abcd', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const store = new Store(join(dir, 'air.json'));
+  const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
+  const room = async () => (await engine.client.get<any>(`/api/${production.match!.code}`)).state;
+  try {
+    await production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 1 });
+    const lib = production.snapshot().library;
+    assert.deepEqual(lib.teams.map((t) => t.name), ['Alpha', 'Bravo'], 'a new match puts its teams in Teams/Players');
+    const alpha = lib.teams[0]!;
+    await production.saveTeam({ ...alpha, name: 'Alpha Esports', color: '#00ff88' });
+    assert.equal(production.match!.teams[0].name, 'Alpha Esports');
+    assert.equal(production.match!.title, 'Alpha Esports vs Bravo');
+    assert.equal((await room()).teams[0].name, 'Alpha Esports', 'the HUD shows the new name');
+
+    for (const name of ['Ace', 'Bolt', 'Cleo', 'Dune', 'Edge', 'Flux']) await production.savePlayer({ name, gameId: `${name.toUpperCase()}#EU1`, teamId: alpha.id });
+    await production.setMatchTeam(production.match!.id, 0, alpha.id);
+    assert.deepEqual(production.match!.players[0].map((p) => p.name), ['Ace', 'Bolt', 'Cleo', 'Dune', 'Edge']);
+    const flux = production.snapshot().library.players.find((p) => p.name === 'Flux')!;
+    const ace = production.snapshot().library.players.find((p) => p.name === 'Ace')!;
+    await production.setStarters(production.match!.id, 0, [flux.id, ...production.match!.players[0].slice(1).map((p) => p.libraryId!)]);
+    assert.equal(production.match!.players[0][0]!.name, 'Flux');
+    await assert.rejects(production.setStarters(production.match!.id, 1, [flux.id]), /team first|from this team/);
+    // Ace leaves for Bravo: he leaves this lineup too.
+    await production.savePlayer({ ...ace, teamId: production.snapshot().library.teams[1]!.id });
+    assert.ok(!production.match!.players[0].some((p) => p.name === 'Ace'));
+    await production.removeTeam(alpha.id);
+    assert.equal(production.match!.teams[0].name, 'Alpha Esports', 'the match keeps its copy');
+    assert.equal(production.snapshot().library.players.find((p) => p.name === 'Flux')!.teamId, null);
+  } finally {
+    production.log.stop();
+    await engine.stop(true);
+  }
+});

@@ -7,16 +7,16 @@ import { ICONS, LOGO } from './ui.tsx';
 
 /** The menu (approved 12 Nov): Events (which hold their matches), Live, then the graphics library. */
 const RAIL_TOP: Array<[Page, string]> = [['event', 'Events']];
-const RAIL_LIBRARIES: Array<[Page, string]> = [['library', 'Graphics']];
+const RAIL_LIBRARIES: Array<[Page, string]> = [['teams', 'Teams/Players'], ['library', 'Graphics']];
 
 /** What each page is called, for the top bar and the command palette. */
 export const PAGE_NAME: Record<Page, string> = {
-  console: 'Live', ready: 'Match', event: 'Events', library: 'Graphics', scenes: 'OBS', outputs: 'Browser sources',
+  console: 'Live', ready: 'Match', event: 'Events', teams: 'Teams/Players', library: 'Graphics', scenes: 'OBS', outputs: 'Browser sources',
   capture: 'Player PCs and cameras', settings: 'Settings', help: 'Help',
 };
 
 /** Pages in the rail's order, for the command palette. */
-export const PAGE_ORDER: Page[] = ['event', 'console', 'library', 'help', 'settings'];
+export const PAGE_ORDER: Page[] = ['event', 'console', 'teams', 'library', 'help', 'settings'];
 
 /** The rail item a page belongs to. */
 export const railOf = (page: Page): Page => (page === 'ready' || page === 'scenes' || page === 'outputs' || page === 'capture' ? 'event' : page);
@@ -122,9 +122,10 @@ export function Rail({ page, go, onAir }: { page: Page; go: (p: Page) => void; o
       </button>
       <span className="rail-rule" aria-hidden="true" />
       {RAIL_LIBRARIES.map(([id, label]) => (
-        <button key={id} aria-current={current === id ? 'page' : undefined} onClick={() => go(id)}>
+        <button key={id} aria-current={current === id ? 'page' : undefined} onClick={() => go(id)} aria-label={label}>
           {ICONS[id as keyof typeof ICONS]}
-          {label}
+          {/* "Teams/Players" breaks after the slash to fit the menu. */}
+          <span>{label.includes('/') ? <>{label.split('/')[0]}/<br />{label.split('/')[1]}</> : label}</span>
         </button>
       ))}
       <span className="spacer" />

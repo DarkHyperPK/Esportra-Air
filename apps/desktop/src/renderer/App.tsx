@@ -14,6 +14,7 @@ import { EventsScreen, type EventView } from './screens/EventsScreen.tsx';
 import type { Match } from '../shared/api.ts';
 import type { EsportraMatch } from '../shared/esportra.ts';
 import { HelpScreen } from './screens/HelpScreen.tsx';
+import { TeamsScreen } from './screens/TeamsScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 import { FirstRun } from './components/FirstRun.tsx';
 
@@ -164,6 +165,7 @@ export function App() {
             {page === 'event' && <EventsScreen s={s} run={run} openSignIn={() => setSignIn(true)} view={eventView} setView={setEventView} openMatch={(m) => void openMatch(m)} openRemote={(e) => void openRemote(e)} newMatch={newMatch} />}
             {page === 'help' && <HelpScreen s={s} run={run} />}
             {page === 'console' && <ConsoleScreen {...props} />}
+            {page === 'teams' && <TeamsScreen s={s} run={run} />}
             {page === 'library' && <LibraryScreen {...props} />}
             {page === 'settings' && <SettingsScreen {...props} />}
           </main>

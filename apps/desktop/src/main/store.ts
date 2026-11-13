@@ -11,6 +11,7 @@ import type { SavedRundown } from './autopilot/rundown.ts';
 import type { SavedEsportra } from './esportra.ts';
 import type { EventInfo } from '../shared/model.ts';
 import { DEFAULT_ACCENT, migrateToEvents } from './event-model.ts';
+import { linkMatch } from './team-library.ts';
 
 export interface Saved {
   version: 1;
@@ -18,6 +19,9 @@ export interface Saved {
   matches: Match[];
   /** Events own the branding, talent and sponsors their matches use. */
   events: EventInfo[];
+  /** Teams/Players: the teams and players matches pick from. */
+  teams?: import('../shared/api.ts').LibTeam[];
+  players?: import('../shared/api.ts').LibPlayer[];
   selectedMatchId: string | null;
   owned: Owned;
   enginePort: number;
@@ -161,6 +165,11 @@ export class Store {
       m.talentOff ??= [];
       m.sponsorsOff ??= [];
     }
+    // Teams/Players (12 Nov): every match's teams and players are kept in one place; a match follows them.
+    const lib = { teams: this.data.teams ?? [], players: this.data.players ?? [] };
+    for (const m of matches) if (!m.teamIds) linkMatch(m, lib);
+    this.data.teams = lib.teams;
+    this.data.players = lib.players;
   }
 
   save() {

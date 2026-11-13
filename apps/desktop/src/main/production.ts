@@ -36,6 +36,8 @@ import type { CamsView } from '../shared/api.ts';
 import type { Preset, RowInput } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 import { CompanionHost } from './companion.ts';
+import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
+import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
 import { ROLE_NAME } from '../shared/model.ts';
 import { HEX, IMAGE, text } from './validate.ts';
@@ -441,6 +443,7 @@ export class Production extends EventEmitter {
       game: this.requireGame().id, players: [[], []], ...this.carryOver(null), ...(input.eventId ? { eventId: this.requireEvent(input.eventId).id } : {}),
     };
     const data = this.deps.store.data;
+    linkMatch(match, this.library);
     data.matches = [match, ...data.matches].slice(0, 50);
     data.selectedMatchId = id;
     this.save();
@@ -467,6 +470,7 @@ export class Production extends EventEmitter {
       theme: input.theme && BANNER_THEMES.includes(input.theme) ? input.theme : carried.theme,
     };
     const data = this.deps.store.data;
+    linkMatch(match, this.library);
     data.matches = [match, ...data.matches].slice(0, 50);
     data.selectedMatchId = id;
     this.save();
@@ -553,6 +557,78 @@ export class Production extends EventEmitter {
       data.events = [...data.events, event];
     }
     return { eventId: event.id, stage: from?.stage ?? '', talentOff: [], sponsorsOff: [], theme: from?.theme ?? this.setup.package ?? 'broadcast' };
+  }
+
+  // ── Teams/Players ──
+
+  /** The teams and players matches pick from (kept in the store, edited in place). */
+  get library(): Library {
+    const data = this.deps.store.data;
+    data.teams ??= [];
+    data.players ??= [];
+    return { get teams() { return data.teams!; }, set teams(v) { data.teams = v; }, get players() { return data.players!; }, set players(v) { data.players = v; } };
+  }
+
+  /** After a library change: every match that follows it is brought up to date; the one on air is resent. */
+  private async libraryChanged() {
+    let selected = false;
+    for (const m of this.deps.store.data.matches) {
+      if (refreshMatch(m, this.library)) {
+        m.title = `${m.teams[0].name} vs ${m.teams[1].name}`;
+        if (m.id === this.deps.store.data.selectedMatchId) selected = true;
+      }
+    }
+    this.save();
+    if (selected) await this.syncEngine();
+  }
+
+  async saveTeam(input: Partial<LibTeam>) {
+    const team = validTeam(input, this.library);
+    const lib = this.library;
+    lib.teams = lib.teams.some((t) => t.id === team.id) ? lib.teams.map((t) => (t.id === team.id ? team : t)) : [...lib.teams, team];
+    await this.libraryChanged();
+    return team;
+  }
+
+  async removeTeam(id: string) {
+    deleteTeam(this.library, String(id));
+    await this.libraryChanged();
+  }
+
+  async savePlayer(input: Partial<LibPlayer>) {
+    const player = validPlayer(input, this.library);
+    const lib = this.library;
+    lib.players = lib.players.some((p) => p.id === player.id) ? lib.players.map((p) => (p.id === player.id ? player : p)) : [...lib.players, player];
+    await this.libraryChanged();
+    return player;
+  }
+
+  async removePlayer(id: string) {
+    const lib = this.library;
+    if (!lib.players.some((p) => p.id === id)) throw new Error('That player is already gone.');
+    lib.players = lib.players.filter((p) => p.id !== id);
+    await this.libraryChanged();
+  }
+
+  /** Which team plays on one side of a match; its first five players start. */
+  async setMatchTeam(matchId: string, side: number, teamId: string) {
+    const match = this.deps.store.data.matches.find((m) => m.id === matchId);
+    if (!match) throw new Error('That match is no longer available.');
+    if (side !== 0 && side !== 1) throw new Error('Choose side A or B.');
+    pickTeam(match, side, String(teamId), this.library);
+    match.title = `${match.teams[0].name} vs ${match.teams[1].name}`;
+    this.save();
+    if (match.id === this.deps.store.data.selectedMatchId) await this.syncEngine();
+  }
+
+  /** The players one side plays with, in order (the first five start). */
+  async setStarters(matchId: string, side: number, playerIds: string[]) {
+    const match = this.deps.store.data.matches.find((m) => m.id === matchId);
+    if (!match) throw new Error('That match is no longer available.');
+    if (side !== 0 && side !== 1) throw new Error('Choose side A or B.');
+    setLineup(match, side, playerIds, this.library);
+    this.save();
+    if (match.id === this.deps.store.data.selectedMatchId) await this.syncEngine();
   }
 
   // ── events ──
@@ -671,10 +747,14 @@ export class Production extends EventEmitter {
     if (patch.stage !== undefined) match.stage = patch.stage ? text(patch.stage, 40, 'Stage') : '';
     if (patch.talentOff !== undefined) match.talentOff = validOff(patch.talentOff, event?.talent ?? [], 'Talent');
     if (patch.sponsorsOff !== undefined) match.sponsorsOff = validOff(patch.sponsorsOff, event?.sponsors ?? [], 'Sponsors');
-    if (patch.players !== undefined) match.players = validPlayers(patch.players);
+    if (patch.players !== undefined) {
+      match.players = validPlayers(patch.players);
+      pushMatch(match, this.library);
+    }
     if (patch.teams !== undefined) {
       match.teams = validTeams(patch.teams);
       match.title = `${match.teams[0].name} vs ${match.teams[1].name}`;
+      pushMatch(match, this.library);
     }
     if (patch.theme !== undefined) {
       if (!BANNER_THEMES.includes(patch.theme)) throw new Error('Choose one of the banner styles.');
@@ -1075,6 +1155,7 @@ export class Production extends EventEmitter {
       const players = [0, 1].map((t) => (lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];
       const carried = this.carryOver(found.tournamentId, found.tournament);
       const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, createdAt: (this.deps.now ?? Date.now)(), source, game: 'valorant', players, ...carried };
+      linkMatch(match, this.library);
       data.matches = [match, ...data.matches].slice(0, 50);
       data.selectedMatchId = id;
     }
@@ -1459,6 +1540,7 @@ export class Production extends EventEmitter {
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),
       rundown: this.autopilot.rows(),
+      library: { teams: this.library.teams, players: this.library.players },
       control: this.control,
       companion: this.companion.view(),
       cue: { mode: this.cueMode, pending: this.pending.map((c) => c.label), room: match ? `__ESA_SIM_CUE_${match.code}` : null },

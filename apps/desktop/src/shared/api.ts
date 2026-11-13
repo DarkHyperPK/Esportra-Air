@@ -7,7 +7,7 @@ import type { DevicesView } from './devices.ts';
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
-export type Page = 'ready' | 'event' | 'help' | 'console' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings';
+export type Page = 'ready' | 'event' | 'help' | 'console' | 'teams' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings';
 export type Health = 'ok' | 'warn' | 'off' | 'bad';
 
 export interface Team {
@@ -27,6 +27,31 @@ export interface PlayerInfo {
   gameId: string;
   /** Photo URL served by the engine's asset store, or ''. */
   photo: string;
+  /** The player in Teams/Players this lineup entry follows. */
+  libraryId?: string;
+}
+
+/** A team in Teams/Players: matches pick from these. */
+export interface LibTeam extends Team {
+  id: string;
+}
+
+export const PLAYER_ROLES = ['', 'Duelist', 'Initiator', 'Controller', 'Sentinel', 'Flex', 'Substitute', 'Coach'] as const;
+
+/** A player in Teams/Players, on a team or on none. */
+export interface LibPlayer {
+  id: string;
+  name: string;
+  realName: string;
+  gameId: string;
+  photo: string;
+  role: string;
+  teamId: string | null;
+}
+
+export interface Library {
+  teams: LibTeam[];
+  players: LibPlayer[];
 }
 
 export interface Match {
@@ -41,6 +66,8 @@ export interface Match {
   game: GameId;
   /** Lineups per team (starters first). */
   players: [PlayerInfo[], PlayerInfo[]];
+  /** The Teams/Players teams this match follows, per side. */
+  teamIds?: [string | null, string | null];
   /** The event this match belongs to: its branding, talent and sponsors. */
   eventId: string;
   /** The event stage shown on air, e.g. "Playoffs" (free text). */
@@ -278,6 +305,8 @@ export interface Snapshot {
   autopilot: AutopilotView;
   /** The selected match's rundown rows, in show order. */
   rundown: RundownRow[];
+  /** Teams/Players. */
+  library: Library;
   /** How this PC runs graphics. */
   control: ControlMode;
   companion: CompanionView;
@@ -385,6 +414,14 @@ export interface AirApi {
   finishOnboarding(): Promise<Snapshot>;
   restartOnboarding(): Promise<Snapshot>;
   createEvent(name: string): Promise<Snapshot>;
+  /** Teams/Players: add or save a team (same id) or a player; delete them. Matches that follow them update. */
+  saveTeam(input: Partial<LibTeam>): Promise<Snapshot>;
+  removeTeam(id: string): Promise<Snapshot>;
+  savePlayer(input: Partial<LibPlayer>): Promise<Snapshot>;
+  removePlayer(id: string): Promise<Snapshot>;
+  /** Which saved team plays on a side of a match (its first five start), and who plays, in order. */
+  setMatchTeam(matchId: string, side: 0 | 1, teamId: string): Promise<Snapshot>;
+  setStarters(matchId: string, side: 0 | 1, playerIds: string[]): Promise<Snapshot>;
   /** Deletes an event and its matches from this PC (Esportra keeps its own). Refused while one of them is live. */
   deleteEvent(id: string): Promise<Snapshot>;
   /** Deletes a match from this PC (an Esportra match stays in Esportra). Refused while it is live. */

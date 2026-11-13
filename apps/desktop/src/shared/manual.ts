@@ -15,8 +15,9 @@ export const MANUAL: ManualSection[] = [
   { id: 'before', title: 'Before the show', blocks: [
     { p: 'Everything for a show is set up from its event and its match. Live comes last.' },
     { steps: [
+      'Teams/Players: add your teams with their logos, and the players with their photos and in-game names. Do it once; every match uses them.',
       'Events: open your event (or make one). Branding holds its logo and colour; Talent and sponsors holds the people on air and the sponsors.',
-      'Open tonight’s match from the event, or press New match. Work down its steps: Teams/Players, Talent and sponsors, Rundown, OBS, Player PCs and cameras.',
+      'Open tonight’s match from the event, or press New match. Work down its steps: Teams/Players (pick each side’s team and who plays), Talent and sponsors, Rundown, OBS, Player PCs and cameras.',
       'Overview lists anything still missing, with its fix beside it.',
       'Rehearse the match privately. Nothing reaches OBS.',
       'Press Go live at the end of the steps.',

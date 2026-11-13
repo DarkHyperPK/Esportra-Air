@@ -42,6 +42,12 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'finishOnboarding': await p.finishOnboarding(); break;
     case 'restartOnboarding': await p.restartOnboarding(); break;
     case 'createEvent': await p.createEvent(String(a[0] ?? '')); break;
+    case 'saveTeam': await p.saveTeam(a[0] ?? {}); break;
+    case 'removeTeam': await p.removeTeam(String(a[0] ?? '')); break;
+    case 'savePlayer': await p.savePlayer(a[0] ?? {}); break;
+    case 'removePlayer': await p.removePlayer(String(a[0] ?? '')); break;
+    case 'setMatchTeam': await p.setMatchTeam(String(a[0] ?? ''), Number(a[1]), String(a[2] ?? '')); break;
+    case 'setStarters': await p.setStarters(String(a[0] ?? ''), Number(a[1]), Array.isArray(a[2]) ? a[2].map(String) : []); break;
     case 'deleteEvent': await p.deleteEvent(String(a[0] ?? '')); break;
     case 'deleteMatch': await p.deleteMatch(String(a[0] ?? '')); break;
     case 'updateEvent': await p.updateEvent(String(a[0]), (a[1] ?? {}) as EventPatch); break;
