@@ -7,7 +7,7 @@ import { EventEmitter } from 'node:events';
 import type { Match, Screen } from '../shared/api.ts';
 import { BEATS, SAMPLE_GAME_NAMES, SPEEDS, type RehearsalOptions, type RehearsalSpeed, type RehearsalView } from '../shared/rehearsal.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
-import type { Clock, RunnerLog } from './autopilot/show-runner.ts';
+import { withScores, type Clock, type GameEvent, type RunnerLog } from './autopilot/show-runner.ts';
 import type { EngineClient } from './engine-client.ts';
 import { EventLog } from './event-log.ts';
 import type { Store } from './store.ts';
@@ -65,7 +65,20 @@ export class Rehearsal extends EventEmitter {
   constructor(deps: RehearsalDeps) {
     super();
     this.deps = deps;
-    this.events = new EventLog({ nameOf: () => '', onChange: () => {}, onEvent: (e) => this.autopilot?.onGameEvent(e) });
+    // Rounds won and map ends read the rehearsal room's score first, as on air (halftime, finished map).
+    let chain: Promise<void> = Promise.resolve();
+    this.events = new EventLog({ nameOf: () => '', onChange: () => {}, onEvent: (e) => {
+      chain = chain.then(() => this.onEvent(e as GameEvent)).catch(() => {});
+    } });
+  }
+
+  private async onEvent(raw: GameEvent) {
+    let event = raw;
+    if (this.room && (raw.type === 'round.won' || raw.type === 'match.end')) {
+      const state = await this.deps.client().get<{ state: { teams?: Array<{ score?: unknown }> } }>(`/api/${this.room}`).then((d) => d.state).catch(() => null);
+      event = withScores(raw, state?.teams);
+    }
+    this.autopilot?.onGameEvent(event);
   }
 
   view(): RehearsalView {

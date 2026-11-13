@@ -431,8 +431,23 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     // Skip halftime; the map ending arms the result, which clears itself after its time.
     production.autopilotSkip();
     assert.equal(view().next!.id, 'map1-result');
+    const scoreIs = (a: number, b: number) => engine.client.post(`/api/${code}/ingest/valorant`, [{ info: { match_info: { match_score: JSON.stringify({ team_0: a, team_1: b }) } }, feature: 'match_info' }]);
+    // A map stopped early (a remake) is not a map end: no result, nothing counted.
+    await scoreIs(3, 2);
+    await engine.client.post(`/api/${code}/ingest/valorant`, [{ events: [{ name: 'match_end', data: '' }] }]);
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal(view().next!.state, 'armed', 'a 3–2 map end does not open the result');
+    assert.deepEqual((await engine.client.get<any>(`/api/${code}`)).state.teams.map((t: any) => t.series ?? 0), [0, 0]);
+    // A finished map (13–7): the result step opens, and the series counts it from the game.
+    await scoreIs(13, 7);
     await engine.client.post(`/api/${code}/ingest/valorant`, [{ events: [{ name: 'match_end', data: '' }] }]);
     await wait(() => view().next?.id === 'map1-result' && view().next?.state === 'holding', 'result hold opens');
+    await wait(async () => (await engine.client.get<any>(`/api/${code}`)).state.teams[0].series === 1, 'series 1–0 from the game');
+    const counted = (await engine.client.get<any>(`/api/${code}`)).state;
+    assert.deepEqual([counted.teams[1].series ?? 0, counted.series[0].score, counted.series[0].winner], [0, [13, 7], 0], 'map 1 result on the series graphics');
+    await engine.client.post(`/api/${code}/ingest/valorant`, [{ events: [{ name: 'match_end', data: '' }] }]);
+    await new Promise((r) => setTimeout(r, 600));
+    assert.equal((await engine.client.get<any>(`/api/${code}`)).state.teams[0].series, 1, 'a second map end for the same map is not counted twice');
     await production.autopilotTake();
     await wait(async () => (await showing()) === 'map-result', 'map result on air');
     await wait(async () => (await showing()) === null, 'timed graphic clears', 3000);

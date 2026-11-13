@@ -16,7 +16,8 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
   const ref = useEscape(close);
   const [consent, setConsent] = useState(false);
   const usesAutopilot = s.control !== 'companion';
-  const [autopilot, setAutopilot] = useState(!s.autopilotBlock);
+  // Off until the producer ticks it: nothing goes up by itself unless they choose so.
+  const [autopilot, setAutopilot] = useState(false);
   const [steps, setSteps] = useState<Steps>({ obs: 'waiting', data: 'waiting', autopilot: 'waiting' });
   const [notes, setNotes] = useState<Partial<Record<keyof Steps, string>>>({});
   const [busy, setBusy] = useState(false);

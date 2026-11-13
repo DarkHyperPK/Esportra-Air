@@ -438,15 +438,42 @@ export class ShowRunner extends EventEmitter {
   }
 }
 
+/** The two teams' rounds, when Air has read them from the room alongside the event. */
+const scoresOf = (event: GameEvent): [number, number] | null => {
+  const sc = event.scores;
+  return Array.isArray(sc) && sc.length === 2 && sc.every((n) => Number.isInteger(n) && n >= 0) ? [sc[0], sc[1]] : null;
+};
+
+/**
+ * A finished map: one team has 13 or more rounds and is ahead (in overtime by two, or the tournament's
+ * own tie-break). A map stopped early (a remake, a crash, leaving the lobby) is not a result.
+ */
+export function mapComplete(scores: [number, number]): boolean {
+  const [a, b] = scores;
+  return Math.max(a, b) >= 13 && a !== b;
+}
+
+/** Adds the room's scores to a round or map event (Air reads them when the event arrives). */
+export function withScores(event: GameEvent, teams: Array<{ score?: unknown }> | undefined): GameEvent {
+  if (event.type !== 'round.won' && event.type !== 'match.end') return event;
+  const scores = (teams ?? []).slice(0, 2).map((t) => Number(t?.score));
+  if (scores.length !== 2 || !scores.every((n) => Number.isInteger(n) && n >= 0)) return event;
+  return { ...event, scores };
+}
+
 export function triggerMatches(trigger: Segment['trigger'], event: GameEvent): boolean {
+  const scores = scoresOf(event);
   switch (trigger) {
     case 'match_start': return event.type === 'match.start';
     case 'round_live': return event.type === 'round.phase' && event.phase === 'live';
-    case 'halftime': return event.type === 'round.won' && Number(event.round) === 12;
+    // Halftime is after the 12th round played: the teams' rounds add up to 12. Without scores, the
+    // round count the parser kept (it can miss rounds from before capture started).
+    case 'halftime': return event.type === 'round.won' && (scores ? scores[0] + scores[1] === 12 : Number(event.round) === 12);
     case 'round_end': return event.type === 'round.won';
     case 'spike_planted': return event.type === 'spike.planted';
     case 'spike_defused': return event.type === 'spike.defused';
-    case 'map_end': return event.type === 'match.end';
+    // A map stopped early is not a map end; without scores Air trusts the game.
+    case 'map_end': return event.type === 'match.end' && (!scores || mapComplete(scores));
     default: return false;
   }
 }

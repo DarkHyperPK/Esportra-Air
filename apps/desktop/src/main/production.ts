@@ -15,6 +15,7 @@ import { SCENE_KEYS, SCENES, legacySourceName, sourceName, type SlotId } from '.
 import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
+import { mapComplete, withScores, type GameEvent } from './autopilot/show-runner.ts';
 import { CaptureStats } from './capture-stats.ts';
 import { devicesView } from '../shared/devices.ts';
 import { DEFAULT_MOMENTS, rebind, validMoments } from '../shared/keymap.ts';
@@ -158,6 +159,9 @@ export class Production extends EventEmitter {
   private monitorBusy = false;
   private globalKeys: GlobalKeys | null = null;
   private keysListening = false;
+  private eventChain: Promise<void> = Promise.resolve();
+  /** The match whose map end was just handled; cleared when a round is won (a new map has started). */
+  private mapEndSeen: string | null = null;
 
   constructor(deps: ProductionDeps) {
     super();
@@ -187,8 +191,8 @@ export class Production extends EventEmitter {
     });
     deps.obs.on('change', changed);
     this.log = new EventLog({ nameOf: (t, i) => this.room?.players?.[t]?.[i]?.name || `P${i + 1}`, onChange: changed, onEvent: (event) => {
-      this.autopilot.onGameEvent(event);
-      this.companion.onEngineEvent(event);
+      // One at a time, in order: a round or map event first reads the room's score.
+      this.eventChain = this.eventChain.then(() => this.onEngineEvent(event)).catch(() => {});
     } });
     this.autopilot = new Autopilot({
       store: deps.store, match: () => this.match, screens: () => this.setup.screens,
@@ -604,6 +608,53 @@ export class Production extends EventEmitter {
       data.events = [...data.events, event];
     }
     return { eventId: event.id, stage: from?.stage ?? '', talentOff: [], sponsorsOff: [], theme: from?.theme ?? this.setup.package ?? 'broadcast' };
+  }
+
+  /**
+   * A game event from the engine. Rounds won and map ends carry the room's score, so halftime is the
+   * 12th round played and a map end is a finished map (13+ and ahead), not a remake or a crash.
+   */
+  private async onEngineEvent(raw: GameEvent) {
+    let event = raw;
+    const match = this.match;
+    let state: any = null;
+    if (match && (raw.type === 'round.won' || raw.type === 'match.end')) {
+      state = await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`).then((d) => d.state).catch(() => null);
+      event = withScores(raw, state?.teams);
+    }
+    if (event.type === 'round.won') this.mapEndSeen = null;
+    this.autopilot.onGameEvent(event);
+    this.companion.onEngineEvent(event);
+    if (match && event.type === 'match.end' && state && this.mapEndSeen !== match.id) await this.countMap(match, state, event).catch((e) => this.log.add(`Map result not counted · ${(e as Error).message}`));
+  }
+
+  /** A finished map counts in the series from the game: its result on the series graphics, one more win. */
+  private async countMap(match: Match, state: any, event: GameEvent) {
+    const scores = event.scores as [number, number] | undefined;
+    if (!scores) return;
+    if (this.deps.engine.status?.rooms.find((r) => r.match === match.code.toUpperCase())?.testRound?.running) return;
+    const label = `${scores[0]}–${scores[1]}`;
+    if (!mapComplete(scores)) {
+      this.log.add(`Map ended at ${label} · not counted as a result`);
+      this.emit('notice', `The map ended at ${label}, so Air did not count it as a result. If it was, set it in Fix data.`);
+      return;
+    }
+    // The game can report a map end twice; it counts once until a round of the next map is won.
+    this.mapEndSeen = match.id;
+    const wins = [0, 1].map((i) => Number(state?.teams?.[i]?.series) || 0);
+    const map = wins[0]! + wins[1]! + 1;
+    if (map > match.bestOf || Math.max(...wins) > match.bestOf / 2) return;
+    // Already counted (the game can report a map end twice). Picked maps are listed beforehand without a winner.
+    const done = state?.series?.[map - 1]?.winner;
+    if (done === 0 || done === 1) return;
+    const winner = scores[0] > scores[1] ? 0 : 1;
+    wins[winner]!++;
+    const fix = (field: string, value: unknown) => this.client.post(`/api/${encodeURIComponent(match.code)}/display-fixes`, { action: 'set', field, value, until: 'cleared', reason: `Map ${map} from the game` });
+    await fix('map_result', scores.map((score) => ({ mapIndex: map, score })));
+    await fix('series', wins);
+    this.log.add(`Map ${map} · ${match.teams[winner]?.name ?? 'Team'} win ${label} · series ${wins[0]}–${wins[1]}`);
+    this.roomV = -1;
+    await this.readRoom();
   }
 
   /** A team has won the series in the room: the match is finished and keeps its teams from now on. */

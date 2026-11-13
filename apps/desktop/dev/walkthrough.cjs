@@ -325,7 +325,7 @@ let failShot = async () => {};
   await btn('Go live', { exact: true });
   const golive = page.getByRole('dialog', { name: 'Go live' });
   await golive.getByText('Send ').first().waitFor();
-  await golive.getByRole('switch', { name: 'Autopilot' }).click();
+  await golive.getByRole('switch', { name: 'Autopilot', checked: false }).waitFor(); // off until ticked
   await golive.getByRole('checkbox').check();
   await shot('go-live');
   await golive.getByRole('button', { name: 'Go live', exact: true }).click();

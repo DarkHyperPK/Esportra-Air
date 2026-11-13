@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ShowRunner, type Clock, type RunnerPorts, type TakeOutcome, type RunnerLog } from '../src/main/autopilot/show-runner.ts';
+import { ShowRunner, mapComplete, triggerMatches, withScores, type Clock, type RunnerPorts, type TakeOutcome, type RunnerLog } from '../src/main/autopilot/show-runner.ts';
 import { buildRundown } from '../src/main/autopilot/rundown.ts';
 
 class FakeClock implements Clock {
@@ -280,4 +280,19 @@ test('after a 2–0 in a best-of 3, the map 3 steps are skipped and the champion
   other.runner.setSeriesMaps(2, false);
   assert.equal((await other.runner.take('map2-series')).ok, true);
   assert.equal(other.runner.view().next!.id, 'map3-live');
+});
+
+test('halftime is the 12th round played and a map end is a finished map, read from the score', () => {
+  const won = (round: number, a?: number, b?: number) => withScores({ type: 'round.won', round }, a === undefined ? undefined : [{ score: a }, { score: b }]);
+  assert.ok(triggerMatches('halftime', won(9, 7, 5)), 'rounds add up to 12, though the parser counted 9 (capture started late)');
+  assert.ok(!triggerMatches('halftime', won(12, 7, 6)), '13 rounds played is not halftime');
+  assert.ok(triggerMatches('halftime', won(12)), 'without scores, the round count');
+  const end = (a: number, b: number) => withScores({ type: 'match.end' }, [{ score: a }, { score: b }]);
+  assert.ok(triggerMatches('map_end', end(13, 7)));
+  assert.ok(triggerMatches('map_end', end(15, 13)), 'overtime');
+  assert.ok(!triggerMatches('map_end', end(3, 2)), 'a remake is not a map end');
+  assert.ok(!triggerMatches('map_end', end(13, 13)));
+  assert.ok(triggerMatches('map_end', { type: 'match.end' }), 'without scores Air trusts the game');
+  assert.deepEqual([mapComplete([13, 11]), mapComplete([12, 10]), mapComplete([14, 12])], [true, false, true]);
+  assert.deepEqual(withScores({ type: 'round.phase' }, [{ score: 1 }, { score: 2 }]), { type: 'round.phase' }, 'only rounds won and map ends carry scores');
 });
