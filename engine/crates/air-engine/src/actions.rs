@@ -121,7 +121,14 @@ pub fn run(room: &Arc<Room>, name: &str, args: &Value) -> Result<u64, String> {
                 Value::String(s) if FULLSCREEN.contains(&s.as_str()) => {}
                 _ => return Err("Choose one of the full-screen graphics.".into()),
             }
+            // "band" shows the over-the-game version (core/bands.js); anything else is full screen.
+            let style = match args.get("style").and_then(Value::as_str) {
+                None | Some("full") => "full",
+                Some("band") => "band",
+                Some(_) => return Err("Choose full screen or over the game.".into()),
+            };
             state["airFullscreen"] = screen;
+            state["airFullscreenStyle"] = Value::String(style.into());
             Ok(())
         }
         _ => Err("Unknown action.".into()),
@@ -129,7 +136,7 @@ pub fn run(room: &Arc<Room>, name: &str, args: &Value) -> Result<u64, String> {
 }
 
 /// The graphics the full-screen host page can show (`overlays/fullscreen.html`).
-const FULLSCREEN: [&str; 10] = ["match-intro", "map-veto", "agent-select", "map-result", "series", "halftime", "standings", "player-profile", "champion", "cam-grid"];
+const FULLSCREEN: [&str; 11] = ["match-intro", "map-veto", "agent-select", "map-result", "series", "halftime", "standings", "player-profile", "champion", "cam-grid", "schedule"];
 
 fn camera_id(v: &Value) -> Result<Value, String> {
     match v {

@@ -18,7 +18,7 @@ export const MANUAL: ManualSection[] = [
       'Teams/Players: add your teams with their logos, and the players with their photos and in-game names. Do it once; every match uses them.',
       'Events: open your event (or make one). Branding holds its logo and colour; Talent and sponsors holds the people on air and the sponsors.',
       'Open tonight’s match from the event, or press New match. Work down its steps: Teams/Players (pick each side’s team and who plays), Talent and sponsors, Rundown, OBS, Player PCs and cameras.',
-      'Rundown: add the screens of your show to Pre-show, Game, Between maps and Post-show. Each full-screen graphic comes up when you press Take, or by itself (for example when the map ends). Starting soon, Break, Desk and Ending are OBS scenes: you switch to them in OBS. The in-game HUD is one row; switch its parts there. Only what is in the Rundown goes to OBS.',
+      'Rundown: add the screens of your show to Pre-show, Game, Between maps and Post-show. Each full-screen graphic comes up when you press Take, or by itself (for example when the map ends). Starting soon, Break, Desk and Ending are OBS scenes: you switch to them in OBS. The in-game HUD is one row; switch its parts there. Only what is in the Rundown goes to OBS. A graphic can show full screen or over the game (Look); over the game it is a band over the game feed or the desk camera. Under In-game HUD › Adjust, line the scorebug up with the game\'s own timer once.',
       'Overview lists anything still missing, with its fix beside it.',
       'Rehearse the match privately. Nothing reaches OBS.',
       'Press Go live at the end of the steps.',

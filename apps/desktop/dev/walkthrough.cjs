@@ -270,6 +270,13 @@ let failShot = async () => {};
   await shot('pack-in-my-show');
   await pack.getByRole('button', { name: /In the HUD ✓/ }).click();
   await pack.getByRole('option', { name: /Win probability/ }).waitFor({ state: 'detached' });
+  // Map veto in both looks.
+  await pack.getByRole('button', { name: 'All', exact: true }).click();
+  await pack.getByRole('option', { name: /Map veto/ }).click();
+  await pack.getByRole('tab', { name: 'Over the game' }).click();
+  await page.waitForTimeout(2500);
+  await shot('pack-over-the-game');
+  await pack.getByRole('tab', { name: 'Full screen' }).click();
   // A screen goes into this match's Rundown.
   await pack.getByRole('button', { name: 'All', exact: true }).click();
   await pack.getByRole('option', { name: /Standings/ }).click();
@@ -431,11 +438,15 @@ let failShot = async () => {};
   await addDrawer.getByRole('radiogroup', { name: 'Map' }).getByRole('radio', { name: 'Map 2' }).click();
   await addDrawer.getByRole('radiogroup', { name: 'On screen' }).getByRole('radio', { name: '20 s' }).click();
   await addDrawer.getByText('Map result, on map 2, when you press Take, for 20 s, via the stinger.').waitFor();
+  // Over the game: a band over the game feed or the desk camera instead of a full screen.
+  await addDrawer.getByRole('radiogroup', { name: 'Look' }).getByRole('radio', { name: 'Over the game' }).click();
+  await addDrawer.getByText(/A band over the game feed/).waitFor();
   await page.waitForTimeout(2500);
   await shot('add-screen');
   await addDrawer.getByRole('button', { name: 'Add to rundown' }).click();
   await addDrawer.waitFor({ state: 'detached' });
   await section('Between maps').getByText(/map 2 · 20 s/).waitFor();
+  if (!(await call('snapshot')).rundown.some((r) => r.show === 'map-result' && r.style === 'band')) throw new Error('the row did not keep its look');
   // Desk in Post-show is an OBS scene: no rule, Air never switches to it.
   await section('Post-show').getByRole('button', { name: 'Add screen' }).click();
   const postDrawer = page.getByRole('dialog', { name: 'Add to Post-show' });
@@ -453,6 +464,13 @@ let failShot = async () => {};
   await shot('rundown');
   await winProb.click();
   await parts.getByRole('button', { name: /Win probability/, pressed: wasOn }).waitFor();
+  // Line the scorebug up with the game's timer, and the pause as a box at the bottom left.
+  await page.getByText('Adjust the scorebug and pause').click();
+  await page.getByRole('button', { name: 'Move the timer window right' }).click();
+  await page.getByText('+2 px · 160 px wide').waitFor();
+  await shot('scorebug-adjust');
+  await page.getByRole('button', { name: 'Reset' }).click();
+  await page.getByText('0 px · 160 px wide').waitFor();
   await section('Post-show').getByRole('button', { name: 'Remove Desk' }).click();
   await section('Post-show').getByText(/In OBS: switch to/).waitFor({ state: 'detached' });
   await step('Overview');

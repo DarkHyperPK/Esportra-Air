@@ -9,6 +9,7 @@ import { SCENES } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { Preview, overlayUrl } from './Preview.tsx';
+import { lookOf, type Look } from '../../shared/look.ts';
 import { ScreenRule, holdText, mapText, onScreenText } from './ScreenRule.tsx';
 
 /** The parts of the in-game HUD the producer can switch (the HUD's own `show` flags). */
@@ -33,6 +34,36 @@ function comesUp(r: RundownRow): string {
   const when = r.trigger === 'manual' ? 'When I press Take' : r.trigger === 'delay' ? `By itself ${r.delaySeconds} s after the previous one` : `By itself when ${WHEN_TEXT[r.trigger] ?? WHEN_LABEL[r.trigger].toLowerCase()}`;
   const parts = [when, r.map === 'every' ? '' : mapText(r.map).toLowerCase(), r.show ? onScreenText(r.forSeconds).toLowerCase() : '', r.transition === 'stinger' ? 'stinger' : 'cut', r.trigger === 'manual' ? '' : holdText(r).toLowerCase()];
   return parts.filter(Boolean).join(' · ');
+}
+
+/** Line the scorebug up with the game's own timer, match its plate, and pick the pause style. */
+function HudAdjust({ s, run }: { s: Snapshot; run: Run }) {
+  const look = lookOf(s.setup.look);
+  const set = (patch: Partial<Look>) => void run(() => air.updateSetup({ look: patch }));
+  const timer = (t: Partial<Look['timer']>) => set({ timer: { ...look.timer, ...t } });
+  return (
+    <details className="hud-adjust">
+      <summary className="muted t-sm">Adjust the scorebug and pause</summary>
+      <div className="hud-adjust-body">
+        <span className="t-sm">Timer window</span>
+        <span className="row-gap">
+          <button type="button" className="btn small" aria-label="Move the timer window left" onClick={() => timer({ dx: look.timer.dx - 2 })}>←</button>
+          <button type="button" className="btn small" aria-label="Move the timer window right" onClick={() => timer({ dx: look.timer.dx + 2 })}>→</button>
+          <button type="button" className="btn small" aria-label="Make the timer window narrower" onClick={() => timer({ width: look.timer.width - 4 })}>−</button>
+          <button type="button" className="btn small" aria-label="Make the timer window wider" onClick={() => timer({ width: look.timer.width + 4 })}>+</button>
+          <span className="faint t-xs mono">{look.timer.dx > 0 ? '+' : ''}{look.timer.dx} px · {look.timer.width} px wide</span>
+          <button type="button" className="btn quiet small" onClick={() => timer({ dx: 0, width: 160 })}>Reset</button>
+        </span>
+        <span className="t-sm">Plate colour</span>
+        <span className="row-gap"><input type="color" aria-label="Scorebug plate colour" value={look.timer.plate} onChange={(e) => timer({ plate: e.target.value })} /><span className="faint t-xs">Match the game's timer box.</span></span>
+        <span className="t-sm">Pause and timeout</span>
+        <span className="rb-chips" role="radiogroup" aria-label="Pause style">
+          {([['box', 'Box at the bottom left'], ['panel', 'Centred panel']] as const).map(([v, label]) => <button key={v} type="button" role="radio" aria-checked={look.pause === v} className="rb-chip" onClick={() => set({ pause: v })}>{label}</button>)}
+        </span>
+      </div>
+      <p className="faint t-xs">Line the window up once with the game on screen; it is saved for this production.</p>
+    </details>
+  );
 }
 
 export function Rundown({ s, run }: { s: Snapshot; run: Run }) {
@@ -89,6 +120,7 @@ export function Rundown({ s, run }: { s: Snapshot; run: Run }) {
                       })}
                     </div>
                   )}
+                  {r.show === HUD_ROW && <HudAdjust s={s} run={run} />}
                 </div>
               );
             })}

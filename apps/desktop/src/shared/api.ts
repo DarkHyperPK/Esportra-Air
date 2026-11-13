@@ -123,6 +123,8 @@ export interface Setup {
   hud: Record<string, boolean>;
   minimap: { x: number; y: number; size: number };
   obs: { host: string; port: number; /** Name of the OBS stinger transition to use for Stinger takes. */ stinger: string | null };
+  /** Scorebug fit, pause and break styles (absent: the defaults in shared/look.ts). */
+  look?: Partial<import('./look.ts').Look>;
 }
 
 export interface RoundReadout {

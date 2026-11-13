@@ -14,7 +14,7 @@ export interface AutopilotDeps {
   match(): Match | null;
   screens(): Screen[];
   /** Shows a full-screen graphic (null: back to the game), optionally behind the HUD stinger. */
-  showGraphic(screenId: string | null, transition: Segment['transition']): Promise<void>;
+  showGraphic(screenId: string | null, transition: Segment['transition'], style?: 'full' | 'band'): Promise<void>;
   /** Which full-screen graphic is showing now, so a timed step only clears its own graphic. */
   showing(): string | null;
   /** Adds a line to the event log. */
@@ -281,7 +281,7 @@ export class Autopilot {
     }
     if (!stillAllowed()) return { ok: false, error: 'Take cancelled because production changed.' };
     try {
-      await this.deps.showGraphic(segment.show, segment.transition);
+      await this.deps.showGraphic(segment.show, segment.transition, segment.style ?? 'full');
     } catch (error) {
       return { ok: false, error: (error as Error).message };
     }

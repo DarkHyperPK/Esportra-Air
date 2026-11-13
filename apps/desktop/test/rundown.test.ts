@@ -79,3 +79,14 @@ test('rows from before sections get their section, the HUD row and the screens t
   assert.deepEqual(buildRundown(3, m.rows).map((s) => s.id).filter((id) => !id.includes('standings')), buildRundown(3).map((s) => s.id), 'saved progress still matches');
   assert.equal(migrate(m, 3), m, 'a migrated save is left as it is');
 });
+
+test('a row can show its graphic over the game; only graphics that have that version keep it', () => {
+  const all = ['map-veto', 'champion', 'casters'];
+  const base: RowInput = { section: 'pre', show: 'map-veto', trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 };
+  assert.equal(validRow({ ...base, style: 'band' }, 'v', 1, all).style, 'band');
+  assert.equal(validRow(base, 'v', 1, all).style, 'full', 'full screen unless chosen');
+  assert.equal(validRow({ ...base, section: 'post', show: 'champion', style: 'band' }, 'c', 1, all).style, 'full', 'Champion has no over-the-game version');
+  assert.throws(() => validRow({ ...base, style: 'sideways' as never }, 'v', 1, all), /full screen or over the game/);
+  const steps = buildRundown(1, [validRow({ ...base, style: 'band' }, 'v', 1, all)]);
+  assert.equal(steps[0]!.style, 'band', 'autopilot takes it over the game');
+});

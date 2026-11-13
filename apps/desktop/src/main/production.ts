@@ -21,6 +21,7 @@ import { devicesView } from '../shared/devices.ts';
 import { DEFAULT_MOMENTS, rebind, validMoments } from '../shared/keymap.ts';
 import { gameName, gameOf, type GameId, type Profile } from '../shared/games.ts';
 import { LIBRARY_ROOM } from '../shared/library.ts';
+import { lookOf, validLook } from '../shared/look.ts';
 import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { Rehearsal } from './rehearsal.ts';
@@ -196,12 +197,12 @@ export class Production extends EventEmitter {
     } });
     this.autopilot = new Autopilot({
       store: deps.store, match: () => this.match, screens: () => this.setup.screens,
-      showGraphic: async (id, transition) => {
+      showGraphic: async (id, transition, style) => {
         if (transition === 'stinger') {
           await this.act('stinger.play', {}, false);
           await new Promise((r) => setTimeout(r, 450));
         }
-        await this.fullscreen(id, id !== null, true);
+        await this.fullscreen(id, id !== null, true, style);
       },
       showing: () => this.room?.airFullscreen ?? null,
       log: (line) => this.log.add(line), changed,
@@ -381,6 +382,12 @@ export class Production extends EventEmitter {
   /** Outputs follow the selected match; the engine is told the match context and HUD settings. */
   /** Only what is in the selected match's Rundown goes to OBS. */
   private applyRundownScreens() {
+    // Starting soon, Break and Ending: the classic screen or the frame with two see-through windows.
+    const breakPage = lookOf(this.setup.look).break === 'frame' ? 'break-frame' : 'holding';
+    if (this.setup.screens.some((x) => x.id === 'holding' && x.overlay !== breakPage)) {
+      this.setup.screens = this.setup.screens.map((x) => (x.id === 'holding' ? { ...x, overlay: breakPage } : x));
+      this.deps.store.save();
+    }
     if (!this.match) return;
     const wanted = rundownScreens(this.autopilot.rows());
     if (this.setup.screens.every((x) => x.enabled === wanted.has(x.id))) return;
@@ -410,12 +417,14 @@ export class Production extends EventEmitter {
       airContext: { showId: setup.id, matchId: match.id, source: match.kind },
       teams: match.teams,
       ...engineConfig(match, this.eventOf(match), setup.name),
-      layout: { bannerTheme: match.theme ?? setup.package, minimap: setup.minimap },
+      layout: { bannerTheme: match.theme ?? setup.package, minimap: setup.minimap, timerWindow: lookOf(setup.look).timer, pauseStyle: lookOf(setup.look).pause },
       show: { eventBug: setup.hud.eventBug !== false },
     });
     const managed = new Set<string>(SETUP_LAYER_KEYS);
     const plain = Object.fromEntries(Object.entries(setup.hud).filter(([k]) => !managed.has(k) && !(GAME_DRAWS as readonly string[]).includes(k)));
     if (Object.keys(plain).length) await this.client.patch(`/api/${code}`, { show: plain });
+    // Today's schedule: the event's matches on this match's day.
+    await this.client.patch(`/api/${code}`, { schedule: this.scheduleOf(match) });
     // The lineups: the engine puts display names and photos on the players the game reports.
     await this.client.patch(`/api/${code}`, { airRoster: match.players.map((team) => team.map((p) => ({ gameId: p.gameId, name: p.name, photo: p.photo }))) });
     // Setup decides where each layer starts; after that the console owns them for the match.
@@ -924,6 +933,7 @@ export class Production extends EventEmitter {
       if (![x, y, size].every(Number.isInteger) || x < 0 || y < 0 || x > 1920 || y > 1080 || size < 200 || size > 800) throw new Error('Keep the minimap frame on screen (size 200–800).');
       setup.minimap = { x, y, size };
     }
+    if (patch.look !== undefined) setup.look = validLook(patch.look, lookOf(setup.look));
     if (patch.obs !== undefined) {
       const stinger = patch.obs.stinger;
       if (stinger !== null && (typeof stinger !== 'string' || stinger.length > 200)) throw new Error('Choose a stinger transition from OBS.');
@@ -984,6 +994,8 @@ export class Production extends EventEmitter {
             .map((x) => ({ id: x.id, inputName: sourceName(x.title), formerly: legacySourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
           // Full-screen graphics also cover the game: Take shows them without switching OBS scenes.
           ...(key === 'gameplay' ? this.setup.screens.filter((x) => x.id === 'fullscreen' && x.enabled).map((x) => ({ id: 'fullscreen-over-game', inputName: sourceName('Full screen over game'), formerly: legacySourceName('Full screen over game'), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })) : []),
+          // Over-the-game graphics also sit over the desk cameras (as bands over a stage shot).
+          ...(key === 'casters' ? this.setup.screens.filter((x) => x.id === 'fullscreen' && x.enabled).map((x) => ({ id: 'fullscreen-over-desk', inputName: sourceName('Full screen over desk'), formerly: legacySourceName('Full screen over desk'), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })) : []),
           ...(key === 'holding' ? sponsorVideos.map((x) => ({ id: `sponsor:${x.id}`, inputName: sourceName(`Sponsor video · ${x.name}`), kind: 'media' as const, url: x.video, frame: full, enabled: false })) : []),
         ],
       };
@@ -1522,7 +1534,28 @@ export class Production extends EventEmitter {
    * (decision R1). From the console it is cued like any graphic; autopilot and the camera layout
    * apply it directly.
    */
-  private async fullscreen(screenId: string | null, on: boolean, direct = false) {
+  /** The event's matches on the same day as this one, for Today's schedule (time, tags, stage, result). */
+  private scheduleOf(match: Match) {
+    const day = (m: Match) => new Date(m.source?.scheduledAt ?? m.createdAt).toDateString();
+    const same = this.deps.store.data.matches.filter((m) => m.eventId && m.eventId === match.eventId && m.game === match.game && day(m) === day(match));
+    const list = (same.length ? same : [match]).sort((a, b) => (a.source?.scheduledAt ?? '').localeCompare(b.source?.scheduledAt ?? '') || a.createdAt - b.createdAt);
+    return list.slice(0, 6).map((m) => {
+      const at = m.source?.scheduledAt ? new Date(m.source.scheduledAt) : null;
+      const wins = m.id === match.id ? (this.room?.teams ?? []).map((t: { series?: number }) => Number(t?.series) || 0) : [];
+      return {
+        time: at ? at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '',
+        a: m.teams[0].tag, b: m.teams[1].tag, label: m.stage || `Bo${m.bestOf}`, done: !!m.finishedAt,
+        ...(wins.length === 2 && (wins[0] || wins[1]) ? { score: `${wins[0]}–${wins[1]}` } : {}),
+      };
+    });
+  }
+
+  /** How a screen looks when put up by hand: the style of its row in the match's Rundown. */
+  private styleOf(screenId: string): 'full' | 'band' {
+    return this.autopilot.rows().find((r) => r.show === screenId && r.enabled)?.style === 'band' ? 'band' : 'full';
+  }
+
+  private async fullscreen(screenId: string | null, on: boolean, direct = false, style?: 'full' | 'band') {
     const screen = screenId ? this.setup.screens.find((x) => x.id === screenId && x.scene === 'fullscreen') : null;
     if (screenId && !screen) throw new Error('Unknown full-screen graphic.');
     const actions: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -1536,7 +1569,7 @@ export class Production extends EventEmitter {
       this.deps.store.save();
       await this.pushCams();
     }
-    actions.push({ name: 'fullscreen.show', args: { screen: on && screen ? screen.id : null } });
+    actions.push({ name: 'fullscreen.show', args: { screen: on && screen ? screen.id : null, style: on && screen ? style ?? this.styleOf(screen.id) : 'full' } });
     const label = on && screen ? `Full screen · ${screen.title}` : 'Back to the game';
     if (!direct) return this.graphic(label, actions);
     for (const a of actions) await this.act(a.name, a.args, false);
@@ -1638,7 +1671,8 @@ export class Production extends EventEmitter {
       key: k,
       name: SCENES[k].name,
       inObs: obs.status.scenes.includes(SCENES[k].name),
-      slots: SCENES[k].slots.map((slot) => ({ id: slot.id, label: slot.label, scene: slot.scene, source: obs.status.slots[slot.scene] ?? null })),
+      // The Break windows only need a source with the frame style.
+      slots: SCENES[k].slots.filter((slot) => !slot.id.startsWith('break') || lookOf(this.setup.look).break === 'frame').map((slot) => ({ id: slot.id, label: slot.label, scene: slot.scene, source: obs.status.slots[slot.scene] ?? null })),
     }));
     const feedState = capture.state === 'live' && roomStatus?.lastFeedAt == null ? 'waiting' : capture.state;
     const snapshot: Snapshot = {

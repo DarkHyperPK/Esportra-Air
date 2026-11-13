@@ -1213,6 +1213,12 @@ async fn the_fullscreen_host_shows_one_named_graphic() {
     assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "not-a-graphic" })).await.status, 400);
     assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": null })).await.status, 200);
     assert_eq!(show(&r, "FS").await["airFullscreen"], json!(null));
+    // Over the game: the same graphic as a band over the game feed or camera.
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-veto", "style": "band" })).await.status, 200);
+    assert_eq!(show(&r, "FS").await["airFullscreenStyle"], json!("band"));
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-veto" })).await.status, 200);
+    assert_eq!(show(&r, "FS").await["airFullscreenStyle"], json!("full"), "no style is full screen");
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-veto", "style": "sideways" })).await.status, 400);
     let page = request(&r, "GET", "/overlays/fullscreen.html", None, false).await;
     assert_eq!(page.status, 200);
     assert!(page.body.contains("data-modules=\"fullscreen\""));

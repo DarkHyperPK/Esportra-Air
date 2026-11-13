@@ -75,6 +75,7 @@ export const DEFAULT_SCREENS: Screen[] = [
   hosted('series', 'series', 'Series'),
   hosted('halftime', 'halftime', 'Halftime'),
   hosted('standings', 'standings', 'Standings'),
+  hosted('schedule', 'schedule', 'Today\'s schedule'),
   hosted('player-profile', 'player-profile', 'Player profile'),
   hosted('champion', 'champion', 'Champion'),
   hosted('cam-grid', 'cam-grid', 'Player cams'),

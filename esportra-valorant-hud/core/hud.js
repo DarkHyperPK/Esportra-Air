@@ -107,7 +107,7 @@
   const artFailed = url => { const at = failedArt.get(new URL(url, location.href).href); return at !== undefined && Date.now() - at < 60000; };
   const setImg = (im, url) => { if (!url || artFailed(url)) { im.style.visibility = 'hidden'; return; } im.style.visibility = ''; if (im.dataset.u !== url) { im.dataset.u = url; im.src = url; } };
   // A player photo from the producer's lineup (served by Air's engine). Only its own asset paths are trusted.
-  const photoOk = v => typeof v === 'string' && /^\/air-assets\/[0-9a-f-]{36}$/i.test(v);
+  const photoOk = HUD.photoOk = v => typeof v === 'string' && /^\/air-assets\/[0-9a-f-]{36}$/i.test(v);
   const txt = (e, v) => { v = String(v); if (e.textContent !== v) e.textContent = v; };
   const timeLeft = HUD.timeLeft = r => r.endsAt ? Math.max(0, (r.endsAt - HUD.now()) / 1000) : (r.remaining || 0);
   // Align CSS motion once per plant; the compositor keeps it smooth between HUD ticks.
@@ -176,62 +176,101 @@
   // ───── modules ─────
   const M = HUD.modules = {};
 
+  // Scorebug (approved mock, 13 Nov): one flat charcoal plate built around the game's own round timer.
+  // The centre is an open window over the timer Valorant draws at the top; while the spike is planted the
+  // game blanks its timer and the window shows the beating spike and our countdown. Each half carries its
+  // side's colour (teal defence, crimson attack) in a slanted panel behind the score. Map wins are
+  // diamonds in small tabs. layout.timerWindow { dx, width, plate } lines the window up with the game.
+  const SB_SIDE = { DEF: [22, 150, 132], ATK: [200, 52, 82] };
+  const sbRgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const sbShade = (hex, f) => { const h = String(hex || '#17181e').replace('#', ''); const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16) || 0x17181e;
+    return '#' + [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(v * f)))).map(v => v.toString(16).padStart(2, '0')).join(''); };
+  const sbWindow = s => { const w = (s.layout && s.layout.timerWindow) || {}; const num = (v, lo, hi, d) => Number.isFinite(+v) ? Math.max(lo, Math.min(hi, +v)) : d;
+    return { dx: num(w.dx, -200, 200, 0), hw: num(w.width, 100, 240, 160) / 2, plate: /^#[0-9a-f]{6}$/i.test(w.plate || '') ? w.plate : '#17181e' }; };
+  function sbPlate(sl, sr, planted, wins, needed, win) {
+    const L = SB_SIDE[sl] || SB_SIDE.DEF, R = SB_SIDE[sr] || SB_SIDE.ATK, cx = 380, l = cx - win.hw, r = cx + win.hw, lb = l + 14, rb = r - 14;
+    const top = sbShade(win.plate, 1.1), mid = win.plate, bot = sbShade(win.plate, .86);
+    const dia = (x, on) => `<path d="M${x} 77 l5 5 l-5 5 l-5 -5 Z" fill="${on ? '#fff' : 'none'}" stroke="#fff" stroke-width="1.6"/>`;
+    const dias = (from, won) => needed > 1 ? Array.from({ length: needed }, (_, i) => dia(from + i * 18 - (needed - 2) * 9, i < won)).join('') : '';
+    return `<svg viewBox="0 0 760 112" aria-hidden="true">
+      <defs>
+        <linearGradient id="vsbGL" x1="0" x2="1"><stop offset="0" stop-color="${sbRgba(L, 0)}"/><stop offset=".45" stop-color="${sbRgba(L, .38)}"/><stop offset="1" stop-color="${sbRgba(L, .92)}"/></linearGradient>
+        <linearGradient id="vsbGR" x1="1" x2="0"><stop offset="0" stop-color="${sbRgba(R, 0)}"/><stop offset=".45" stop-color="${sbRgba(R, .38)}"/><stop offset="1" stop-color="${sbRgba(R, .92)}"/></linearGradient>
+        <linearGradient id="vsbBL" x1="0" x2="1"><stop offset="0" stop-color="${sbRgba(L, 0)}"/><stop offset="1" stop-color="${sbRgba(L, 1)}"/></linearGradient>
+        <linearGradient id="vsbBR" x1="1" x2="0"><stop offset="0" stop-color="${sbRgba(R, 0)}"/><stop offset="1" stop-color="${sbRgba(R, 1)}"/></linearGradient>
+        <linearGradient id="vsbPL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset=".5" stop-color="${mid}"/><stop offset="1" stop-color="${bot}"/></linearGradient>
+        <linearGradient id="vsbLIT" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(255,255,255,.20)"/><stop offset=".42" stop-color="rgba(255,255,255,0)"/><stop offset="1" stop-color="rgba(0,0,0,.32)"/></linearGradient>
+        <linearGradient id="vsbSPK" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8e1f35"/><stop offset="1" stop-color="#3a0b16"/></linearGradient>
+        <radialGradient id="vsbRL" cx=".5" cy=".55" r=".5"><stop offset="0" stop-color="${sbRgba(L, .85)}"/><stop offset="1" stop-color="${sbRgba(L, 0)}"/></radialGradient>
+        <radialGradient id="vsbRR" cx=".5" cy=".55" r=".5"><stop offset="0" stop-color="${sbRgba(R, .85)}"/><stop offset="1" stop-color="${sbRgba(R, 0)}"/></radialGradient>
+        <filter id="vsbDrop" x="-10%" y="-40%" width="120%" height="200%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".55"/><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#000" flood-opacity=".5"/></filter>
+        <filter id="vsbSoft" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>
+        <filter id="vsbGlint" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.4"/></filter>
+        <clipPath id="vsbCL"><path d="M0 0 H${l} L${lb} 74 H18 L0 56 Z"/></clipPath>
+        <clipPath id="vsbCR"><path d="M${r} 0 H760 V56 L742 74 H${rb} Z"/></clipPath>
+      </defs>
+      <g filter="url(#vsbDrop)">
+        <path d="M0 0 H${l} L${lb} 74 H18 L0 56 Z" fill="url(#vsbPL)"/>
+        <path d="M${r} 0 H760 V56 L742 74 H${rb} Z" fill="url(#vsbPL)"/>
+        ${needed > 1 ? `<path d="M${l - 104} 74 H${l - 32} L${l - 40} 92 H${l - 96} Z" fill="url(#vsbPL)"/><path d="M${r + 32} 74 H${r + 104} L${r + 96} 92 H${r + 40} Z" fill="url(#vsbPL)"/>` : ''}
+        <path d="M${lb + 8} 74 H${rb - 8} L${rb - 18} 96 H${lb + 18} Z" fill="url(#vsbPL)"/>
+        ${planted ? `<path d="M${l} 0 H${r} L${rb} 74 H${lb} Z" fill="url(#vsbSPK)"/>` : ''}
+      </g>
+      <g clip-path="url(#vsbCL)"><ellipse cx="${l - 68}" cy="38" rx="96" ry="44" fill="url(#vsbRL)" opacity=".7" filter="url(#vsbSoft)"/>
+        <path d="M${l - 150} 0 H${l} L${lb} 74 H${l - 136} Z" fill="url(#vsbGL)"/><path d="M${l - 150} 0 H${l} L${lb} 74 H${l - 136} Z" fill="url(#vsbLIT)"/>
+        <g stroke="rgba(255,255,255,.10)" fill="none"><path d="M${l - 94} 0 L${l - 62} 74"/><path d="M${l - 64} 74 L${l - 24} 6"/></g>
+        <g fill="rgba(255,255,255,.06)"><path d="M${l - 50} 0 H${l - 16} L${l - 32} 26 Z"/><path d="M${l - 102} 74 L${l - 78} 38 L${l - 66} 74 Z"/></g></g>
+      <g clip-path="url(#vsbCR)"><ellipse cx="${r + 68}" cy="38" rx="96" ry="44" fill="url(#vsbRR)" opacity=".7" filter="url(#vsbSoft)"/>
+        <path d="M${r + 150} 0 H${r} L${rb} 74 H${r + 136} Z" fill="url(#vsbGR)"/><path d="M${r + 150} 0 H${r} L${rb} 74 H${r + 136} Z" fill="url(#vsbLIT)"/>
+        <g stroke="rgba(255,255,255,.10)" fill="none"><path d="M${r + 94} 0 L${r + 62} 74"/><path d="M${r + 64} 74 L${r + 24} 6"/></g>
+        <g fill="rgba(255,255,255,.06)"><path d="M${r + 50} 0 H${r + 16} L${r + 32} 26 Z"/><path d="M${r + 102} 74 L${r + 78} 38 L${r + 66} 74 Z"/></g></g>
+      <g fill="none"><path d="M${l} 0 L${lb} 74" stroke="#05090e" stroke-width="4"/><path d="M${l + 3} 0 L${lb + 3} 74" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
+        <path d="M${r} 0 L${rb} 74" stroke="#05090e" stroke-width="4"/><path d="M${r - 3} 0 L${rb - 3} 74" stroke="rgba(255,255,255,.22)" stroke-width="1"/></g>
+      <g stroke="#fff" stroke-linecap="round"><path d="M${l + 1} 1 L${l + 4} 16" stroke-width="2.4" filter="url(#vsbGlint)"/><path d="M${l + 1} 1 L${l + 3} 12" stroke-width="1.2"/>
+        <path d="M${r - 1} 1 L${r - 4} 16" stroke-width="2.4" filter="url(#vsbGlint)"/><path d="M${r - 1} 1 L${r - 3} 12" stroke-width="1.2"/></g>
+      <path d="M1 .8 H${l - 1} M${r + 1} .8 H759" stroke="rgba(255,255,255,.10)"/>
+      <path d="M18 73.5 H${lb - 2} M${rb + 2} 73.5 H742" stroke="rgba(0,0,0,.6)"/>
+      <g filter="url(#vsbSoft)" opacity=".8"><path d="M${l - 190} 72 H${lb - 2}" stroke="url(#vsbBL)" stroke-width="6"/><path d="M${rb + 2} 72 H${r + 190}" stroke="url(#vsbBR)" stroke-width="6"/></g>
+      <path d="M18 72.5 H${lb - 2}" stroke="url(#vsbBL)" stroke-width="2"/><path d="M${rb + 2} 72.5 H742" stroke="url(#vsbBR)" stroke-width="2"/>
+      ${dias(l - 77, wins[0])}${dias(r + 59, wins[1])}
+    </svg>`;
+  }
+
   M.scorebug = root => {
-    const m = E('div', 'mod scorebug-layer', root), sb = E('div', 'sb fx-wipe', m), row = E('div', 'sb-row', sb);
-    const side = i => { const n = E('div', 'sb-name ' + (i ? 'r' : 'l'), row); const sd = E('div', 'sb-side mono', n); return { n, sd }; };
-    const A = side(0); const sA = E('div', 'sb-score l', row); const mid = E('div', 'sb-mid notch-b', row); const sB = E('div', 'sb-score r', row); const B = side(1);
-    const top = E('div', 'top mono', mid), tm = E('div', 'tm', mid), bot = E('div', 'bot mono', mid);
-    let timerCells = null;
-    // Rajdhani's digits have different advances even with tabular-nums enabled.
-    // Keep each urgent digit in a fixed slot and update only its text.
-    function renderTimer(label, urgent) {
-      if (!urgent) {
-        if (timerCells) { tm.textContent = label; timerCells = null; }
-        else txt(tm, label);
-        return;
-      }
-      if (!timerCells) {
-        tm.textContent = '';
-        timerCells = Array.from({length:5}, (_, i) => E('span', i === 2 ? 'tm-separator' : 'tm-digit', tm));
-      }
-      timerCells.forEach((cell, i) => txt(cell, label[i]));
-    }
-    const pips = [E('div', 'sb-pips l', sb), E('div', 'sb-pips r', sb)], heads = [E('div', 'sb-heads l', sb), E('div', 'sb-heads r', sb)];
-    const tag = E('div', 'sb-tag mono', sb); let last = [null, null], sig = '';
-    function build(s) {
-      [A, B].forEach((o, i) => { o.n.querySelectorAll('.lg,.nm,.bar').forEach(x => x.remove()); tv(o.n, s, i);
-        const nm = E('div', 'nm', null, s.teams[i].name); const lg = logo(s.teams[i], 44, null);
-        if (i) { o.n.appendChild(nm); o.n.appendChild(lg); } else { o.n.appendChild(lg); o.n.appendChild(nm); } E('div', 'bar', o.n); });
-      heads.forEach((h, i) => { h.innerHTML = ''; tv(h, s, i); s.players[i].forEach(p => { const d = E('div', '', h); const im = E('img', '', d); setImg(im, agent(p.agent) && agent(p.agent).icon); }); });
-    }
+    const m = E('div', 'mod scorebug-layer', root), sb = E('div', 'vsb fx-wipe', m);
+    const plateBox = E('div', 'vsb-plate', sb);
+    const team = i => { const t = E('div', 'vsb-team ' + (i ? 'r' : 'l'), sb); const lg = E('div', 'vsb-logo', t); const tx = E('div', 'vsb-tx', t); return { t, lg, tag: E('div', 'vsb-tag', tx), sub: E('div', 'vsb-sub', tx) }; };
+    const A = team(0), B = team(1), sA = E('div', 'vsb-score l', sb), sB = E('div', 'vsb-score r', sb);
+    const spike = E('div', 'vsb-spike', sb), spk = E('i', 'vsb-spk', spike), spkT = E('span', '', spike);
+    const round = E('div', 'vsb-round', sb), tag = E('div', 'vsb-status', sb);
+    const heads = [E('div', 'vsb-heads l', sb), E('div', 'vsb-heads r', sb)];
+    let last = [null, null], sig = '', plateSig = '', headSig = '';
+    const sideOf = (s, i) => (s.teams[i].side === 'ATK' || s.teams[i].side === 'DEF') ? s.teams[i].side : (i ? 'ATK' : 'DEF');
     return { update(s) {
       toggle(m, s.show.scorebug);
-      const k = JSON.stringify([s.teams.map(t => [t.name, t.tag, t.color, t.logo]), s.players.map(t => t.map(p => p.agent))]);
-      if (k !== sig) { sig = k; build(s); }
-      [sA, sB].forEach((e, i) => { tv(e, s, i); const v = s.teams[i].score; if (last[i] !== null && last[i] !== v) { e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop'); } last[i] = v; txt(e, v); });
-      [A, B].forEach((o, i) => txt(o.sd, s.teams[i].side || ''));
-      pips.forEach((p, i) => { tv(p, s, i); p.innerHTML = ''; for (let j = 0; j < need(s); j++) E('i', j < s.teams[i].series ? 'w' : '', p); p.style.display = s.event.bestOf > 1 ? '' : 'none'; });
-      heads.forEach((h, i) => [...h.children].forEach((d, j) => d.classList.toggle('dead', !s.players[i][j].alive)));
+      const win = sbWindow(s);
+      sb.style.setProperty('--vsb-dx', win.dx + 'px'); sb.style.setProperty('--vsb-hw', win.hw + 'px');
+      const k = JSON.stringify(s.teams.map(t => [t.name, t.tag, t.color, t.logo]));
+      if (k !== sig) { sig = k; [A, B].forEach((o, i) => { o.lg.innerHTML = ''; logo(s.teams[i], 46, o.lg); }); }
+      [A, B].forEach((o, i) => { txt(o.tag, s.teams[i].tag || s.teams[i].name); txt(o.sub, s.teams[i].name && s.teams[i].tag ? s.teams[i].name : sideOf(s, i)); });
+      [sA, sB].forEach((e, i) => { const v = s.teams[i].score; if (last[i] !== null && last[i] !== v) { e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop'); } last[i] = v; txt(e, v); });
+      const planted = s.round.phase === 'planted', wins = [0, 1].map(i => s.teams[i].series || 0);
+      const ps = JSON.stringify([sideOf(s, 0), sideOf(s, 1), planted, wins, need(s), win]);
+      if (ps !== plateSig) { plateSig = ps; plateBox.innerHTML = sbPlate(sideOf(s, 0), sideOf(s, 1), planted, wins, need(s), win); }
+      const hs = JSON.stringify(s.players.map(t => t.map(p => p.agent)));
+      if (hs !== headSig) { headSig = hs; heads.forEach((h, i) => { h.innerHTML = ''; s.players[i].forEach(p => { const d = E('div', '', h); d.style.setProperty('--c', s.teams[i].color); const im = E('img', '', d); setImg(im, agent(p.agent) && agent(p.agent).icon); }); }); }
+      heads.forEach((h, i) => [...h.children].forEach((d, j) => d.classList.toggle('dead', !(s.players[i][j] || {}).alive)));
       heads.forEach(h => h.style.display = vis.players(s) ? 'none' : '');
-      txt(bot, `MAP ${s.map.number}  /  ${s.map.name}`);
       const st = HUD.status(s); tag.classList.toggle('show', !!st);
-      if (st) { txt(tag, st.text); tag.style.background = st.team >= 0 ? s.teams[st.team].color : 'var(--red)'; tag.style.color = st.team >= 0 ? ink(s.teams[st.team].color) : '#fff'; }
+      if (st) { txt(tag, st.text); tag.style.setProperty('--c', st.team >= 0 ? s.teams[st.team].color : 'var(--red)'); }
       this.tick(s);
     }, tick(s) {
-      // The game draws its own round timer, so the scorebug shows the round number instead,
-      // and a beating spike while the spike is planted.
-      const r = s.round; let cls = 'round', label = String(r.number || '');
-      if (r.phase === 'planted') {
-        cls = 'planted'; label = '';
-        pulseSpike(tm, r);
-      } else {
-        tm.style.removeProperty('--spike-delay'); delete tm.dataset.spikeDeadline;
-        if (r.phase === 'paused') { cls = 'paused'; label = 'PAUSE'; }
-      }
-      txt(top, r.phase === 'planted' ? 'SPIKE PLANTED' : 'ROUND');
-      renderTimer(label, false);
-      const timerClass = 'tm ' + cls;
-      if (tm.className !== timerClass) tm.className = timerClass;
+      // The game draws the round timer; only the planted spike (when the game's timer is blank) is ours.
+      const r = s.round, planted = r.phase === 'planted';
+      sb.classList.toggle('planted', planted);
+      if (planted) { pulseSpike(spk, r); txt(spkT, fmt(timeLeft(r))); }
+      else { spk.style.removeProperty('--spike-delay'); delete spk.dataset.spikeDeadline; }
+      txt(round, r.phase === 'paused' ? 'PAUSED' : `ROUND ${r.number || 1}`);
     } };
   };
 
@@ -950,17 +989,19 @@
 
   // Full-screen host: one browser source that shows the graphic named in state.airFullscreen
   // (set by Esportra Air), so switching full-screen graphics never touches OBS.
-  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid' };
+  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule' };
   M.fullscreen = root => {
     const slots = {};
     let shown = null;
+    // airFullscreenStyle 'band' shows the over-the-game version (core/bands.js) where there is one.
     const slot = key => {
-      if (!slots[key]) { const el = E('div', 'fs-slot', root); el.style.display = 'none'; slots[key] = { el, part: M[FULLSCREEN[key]](el) }; }
+      if (!slots[key]) { const [id, style] = key.split('|'); const el = E('div', 'fs-slot', root); el.style.display = 'none'; slots[key] = { el, part: M[style === 'band' ? HUD.BANDS[id] : FULLSCREEN[id]](el) }; }
       return slots[key];
     };
     return {
       update(s, opts) {
-        const want = FULLSCREEN[s.airFullscreen] ? s.airFullscreen : null;
+        const band = s.airFullscreenStyle === 'band' && HUD.BANDS && HUD.BANDS[s.airFullscreen] && M[HUD.BANDS[s.airFullscreen]];
+        const want = FULLSCREEN[s.airFullscreen] ? s.airFullscreen + (band ? '|band' : '|full') : null;
         if (want !== shown) {
           if (shown) slots[shown].el.style.display = 'none';
           if (want) { const sl = slot(want); sl.el.style.display = ''; }
@@ -1059,6 +1100,8 @@
     HUD.on(updateRehearsalTag);
     const pausePanel = E('div', 'pause', root), pauseCrest = E('div', 'pause-crest', pausePanel), pauseSymbol = E('img', 'pause-symbol', pauseCrest), pauseTitle = E('div', 'a', pausePanel), pauseTime = E('div', 'b mono', pausePanel);
     E('div', 'pause-wing l', pausePanel); E('div', 'pause-wing r', pausePanel);
+    // layout.pauseStyle 'box': the VCT-style box at the bottom left with both teams and the score.
+    const pauseScore = E('div', 'pause-score', pausePanel); let pauseSig = '';
     const updateAirPause = s => {
       const panel = s.airPause, enabled = !PREVIEW && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);
       pausePanel.classList.toggle('on', !!enabled);
@@ -1069,6 +1112,10 @@
       setImg(pauseSymbol, '../core/assets/banners/' + (technical ? 'technical-pause' : 'timeout') + '.svg');
       txt(pauseTitle, technical ? 'TECHNICAL PAUSE' : 'TEAM TIMEOUT');
       txt(pauseTime, 'ELAPSED ' + fmt(Math.max(0, (HUD.now() - panel.startedAt) / 1000)));
+      const box = s.layout && s.layout.pauseStyle === 'box'; pausePanel.classList.toggle('as-box', box);
+      if (box) { const team = panel.team === 0 || panel.team === 1 ? s.teams[panel.team] : null; txt(pauseTitle, technical ? 'TECH PAUSE' : team ? 'TIMEOUT · ' + team.name : 'TIMEOUT');
+        const k = JSON.stringify(s.teams.map(t => [t.tag, t.color, t.logo, t.score]));
+        if (k !== pauseSig) { pauseSig = k; pauseScore.innerHTML = ''; [0, 1].forEach(i => { if (i) E('b', 'num', pauseScore, `${s.teams[0].score}–${s.teams[1].score}`); logo(s.teams[i], 52, pauseScore); }); } }
     };
     HUD.on(updateAirPause);
     HUD.subs.push(updateFeedTag); updateFeedTag(HUD.state);

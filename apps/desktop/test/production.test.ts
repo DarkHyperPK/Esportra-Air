@@ -139,6 +139,18 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     const video = obsServer.scenes.get('ESPORTRA · Break')!.find((i) => i.sourceName === 'ESPORTRA · Sponsor video · Acme');
     assert.ok(video && video.enabled === false, 'the sponsor video waits hidden in the Break scene');
     assert.equal(obsServer.inputs.get('ESPORTRA · Sponsor video · Acme')!.inputKind, 'ffmpeg_source');
+    // Over-the-game graphics also sit over the desk cameras; the break frame's two windows have slots.
+    assert.ok(obsServer.scenes.get('ESPORTRA · Desk')!.some((i) => i.sourceName === 'ESPORTRA · Full screen over desk'), 'the host is over the desk');
+    assert.ok(obsServer.scenes.has('ESPORTRA · Break window 1') && obsServer.scenes.has('ESPORTRA · Break window 2'));
+    assert.ok(!snap.obs.scenes.find((x) => x.key === 'holding')!.slots.length, 'classic break: the windows ask for nothing');
+    await assert.rejects(production.updateSetup({ look: { timer: { dx: 999, width: 160, plate: '#17181e' } } }), /up to 200 pixels/);
+    await assert.rejects(production.updateSetup({ look: { pause: 'sideways' as never } }), /pause panel or the box/);
+    await production.updateSetup({ look: { break: 'frame', timer: { dx: 6, width: 150, plate: '#1a1b20' } } });
+    assert.equal(production.setup.screens.find((x) => x.id === 'holding')!.overlay, 'break-frame', 'the Break screen shows the frame');
+    assert.equal(production.snapshot().obs.scenes.find((x) => x.key === 'holding')!.slots.length, 2, 'frame: both windows want a source');
+    assert.deepEqual((await engine.client.get<any>(`/api/${match.code}`)).state.layout.timerWindow, { dx: 6, width: 150, plate: '#1a1b20' }, 'the scorebug lines up with the game timer');
+    await production.updateSetup({ look: { break: 'classic', timer: { dx: 0, width: 160, plate: '#17181e' } } });
+    assert.ok(Array.isArray((await engine.client.get<any>(`/api/${match.code}`)).state.schedule), "today's schedule is in the room");
     assert.deepEqual(snap.obs.scenes.map((x) => [x.key, x.inObs]), [['holding', true], ['gameplay', true], ['fullscreen', true], ['replay', true], ['casters', true]]);
     assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'casters')!.slots.map((x) => [x.id, x.source]), [['cam1', null], ['cam2', null]], 'slots wait for the crew’s sources');
     await production.useSlotSource('game', 'Game Capture');
@@ -162,6 +174,16 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal((await cueRoom()).airFullscreen, 'map-result');
     await production.takeCue('stinger');
     assert.equal((await live()).airFullscreen, 'map-result', 'lands behind the stinger');
+    assert.equal((await live()).airFullscreenStyle, 'full');
+    // The Rundown row's look decides how a Take shows the graphic: over the game here.
+    const resultRow = production.snapshot().rundown.find((r) => r.show === 'map-result')!;
+    production.rundownSave({ ...resultRow, style: 'band' });
+    await production.setLayer('fs:series', 'on');
+    await production.takeCue('cut');
+    await production.setLayer('fs:map-result', 'on');
+    await production.takeCue('cut');
+    assert.deepEqual([(await live()).airFullscreen, (await live()).airFullscreenStyle], ['map-result', 'band'], 'Map result over the game');
+    production.rundownSave({ ...resultRow, style: 'full' });
     await production.setLayer('fs:map-result', 'off');
     production.clearCue();
     assert.deepEqual(production.snapshot().cue.pending, []);

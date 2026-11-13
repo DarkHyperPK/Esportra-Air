@@ -4,7 +4,7 @@
 export const SCENE_KEYS = ['holding', 'gameplay', 'fullscreen', 'replay', 'casters'] as const;
 export type SceneKey = (typeof SCENE_KEYS)[number];
 
-export type SlotId = 'game' | 'cam1' | 'cam2';
+export type SlotId = 'game' | 'cam1' | 'cam2' | 'break1' | 'break2';
 
 export interface SlotDef {
   id: SlotId;
@@ -35,7 +35,14 @@ export const PREFIX = 'ESPORTRA · ';
 export const LEGACY_PREFIX = 'Esportra · ';
 
 export const SCENES: Record<SceneKey, SceneDef> = {
-  holding: { key: 'holding', name: `${PREFIX}Break`, formerly: `${LEGACY_PREFIX}Holding`, label: 'Break', note: 'Starting soon, breaks, ending, sponsor videos', slots: [], exclusive: false },
+  holding: {
+    key: 'holding', name: `${PREFIX}Break`, formerly: `${LEGACY_PREFIX}Holding`, label: 'Break', note: 'Starting soon, breaks, ending, sponsor videos', exclusive: false,
+    // The break frame (Look: frame) cuts two 850×480 windows here; a sponsor video and a camera sit behind them.
+    slots: [
+      { id: 'break1', label: 'Break window 1', scene: `${PREFIX}Break window 1`, formerly: `${LEGACY_PREFIX}Break window 1`, frame: { x: 96, y: 300, width: 850, height: 480 } },
+      { id: 'break2', label: 'Break window 2', scene: `${PREFIX}Break window 2`, formerly: `${LEGACY_PREFIX}Break window 2`, frame: { x: 974, y: 300, width: 850, height: 480 } },
+    ],
+  },
   gameplay: {
     key: 'gameplay', name: `${PREFIX}Gameplay`, formerly: `${LEGACY_PREFIX}Gameplay`, label: 'Gameplay', note: 'Live rounds', exclusive: false,
     slots: [{ id: 'game', label: 'Game feed', scene: `${PREFIX}Game feed`, formerly: `${LEGACY_PREFIX}Game feed`, frame: { x: 0, y: 0, width: 1920, height: 1080 } }],

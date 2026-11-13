@@ -4,6 +4,7 @@
 // at the end. In-round graphics (economy, recap, spike timer, callouts) are the engine's Auto layers
 // and are not rows here.
 
+import { BAND_SCREENS } from '../../shared/look.ts';
 import { HUD_ROW, PRESETS, defaultSection, SECTIONS, SECTION_SCREENS, WHEN, takesItself, type Preset, type RowInput, type RundownRow, type Section, type Segment, type SegmentEdit } from '../../shared/autopilot.ts';
 
 export interface SavedRundown {
@@ -19,9 +20,9 @@ interface LegacyEdits {
   preset?: Exclude<Preset, 'empty'>;
 }
 
-const FULLSCREEN_IDS = new Set(['match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'standings', 'player-profile', 'champion', 'cam-grid']);
+const FULLSCREEN_IDS = new Set(['match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'standings', 'player-profile', 'champion', 'cam-grid', 'schedule']);
 
-const TITLE: Record<string, string> = { 'match-intro': 'Match intro', 'map-veto': 'Map veto', 'agent-select': 'Agent select', 'map-result': 'Map result', series: 'Series', halftime: 'Halftime', standings: 'Standings', 'player-profile': 'Player profile', champion: 'Champion', 'cam-grid': 'Player cams' };
+const TITLE: Record<string, string> = { 'match-intro': 'Match intro', 'map-veto': 'Map veto', 'agent-select': 'Agent select', 'map-result': 'Map result', series: 'Series', halftime: 'Halftime', standings: 'Standings', 'player-profile': 'Player profile', champion: 'Champion', 'cam-grid': 'Player cams', schedule: 'Today\'s schedule' };
 export const screenTitle = (id: string | null) => (id === null ? 'Back to the game' : TITLE[id] ?? id);
 
 const row = (r: Partial<RundownRow> & Pick<RundownRow, 'id' | 'show' | 'trigger' | 'map'>): RundownRow => ({
@@ -84,8 +85,10 @@ export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens
   if (input.holdMode !== 'window' && input.holdMode !== 'manual') throw new Error('Choose the hold.');
   if (input.holdMode === 'window' && !int(input.holdSeconds, 0, 60)) throw new Error('A hold is 0–60 seconds.');
   const manual = input.trigger === 'manual';
+  if (input.style !== undefined && input.style !== 'full' && input.style !== 'band') throw new Error('Choose full screen or over the game.');
+  const style = input.style === 'band' && input.show && BAND_SCREENS.has(input.show) ? 'band' as const : 'full' as const;
   return {
-    id, section, show: input.show, trigger: input.trigger, map, forSeconds: input.show === null ? 0 : input.forSeconds,
+    id, section, show: input.show, style, trigger: input.trigger, map, forSeconds: input.show === null ? 0 : input.forSeconds,
     delaySeconds: input.trigger === 'delay' ? input.delaySeconds : 12, transition: input.transition,
     // "I press Take" always waits for the Take.
     holdMode: manual ? 'manual' : input.holdMode, holdSeconds: manual || input.holdMode === 'manual' ? 0 : input.holdSeconds,
@@ -136,7 +139,7 @@ export function buildRundown(bestOf: 1 | 3 | 5, rows: RundownRow[] = presetRows(
   const step = (r: RundownRow, id: string, name: string, mapNumber: number | null): Segment => ({
     id, name, show: r.show, forSeconds: r.forSeconds, trigger: r.trigger, delaySeconds: r.delaySeconds,
     mode: r.trigger === 'manual' ? 'manual' : 'automatic', holdMode: r.holdMode, holdSeconds: r.holdSeconds, transition: r.transition,
-    mapNumber, afterSeries: r.map === 'series', state: 'queued', heldBy: null,
+    mapNumber, afterSeries: r.map === 'series', state: 'queued', heldBy: null, style: r.style === 'band' && r.show && BAND_SCREENS.has(r.show) ? 'band' : 'full',
   });
   const out: Segment[] = [];
   for (let n = 1; n <= bestOf; n++) {

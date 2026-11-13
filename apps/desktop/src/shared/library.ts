@@ -30,7 +30,7 @@ export const LIBRARY_ROOM = '__ESA_SIM_LIB';
 export const LIBRARY: Record<GameId, LibraryItem[]> = {
   valorant: [
     { overlay: 'ingame', title: 'In-game HUD (all-in-one)', group: 'ingame', what: 'Scorebug, player cards and every in-round graphic in one source.', when: 'During live rounds.', scene: 'Gameplay' },
-    { overlay: 'scorebug', title: 'Scorebug', group: 'ingame', what: 'Teams, logos, score, series and the round number; a beating spike when planted.', when: 'Always during play.', scene: 'Gameplay (in the HUD)' },
+    { overlay: 'scorebug', title: 'Scorebug', group: 'ingame', what: 'Teams, logos, score and map wins around the game’s own round timer; the spike countdown when planted.', when: 'Always during play.', scene: 'Gameplay (in the HUD)' },
     { overlay: 'player-cards', title: 'Player cards', group: 'ingame', what: 'Agents, credits, weapons, ultimate; health and abilities from player PCs.', when: 'Always during play.', scene: 'Gameplay (in the HUD)' },
     { overlay: 'banners', title: 'Round banners', group: 'ingame', what: 'Ace, clutch, flawless, thrifty and round-win banners in your banner style.', when: 'Automatically on the moment.', scene: 'Gameplay (in the HUD)' },
     { overlay: 'lower-third', title: 'Lower third', group: 'ingame', what: 'Caster names, a player spotlight or a sponsor read.', when: 'When you trigger it (F5, F8) or on a 3+ kill callout.', scene: 'Gameplay (in the HUD)' },
@@ -51,9 +51,10 @@ export const LIBRARY: Record<GameId, LibraryItem[]> = {
     { overlay: 'halftime', title: 'Halftime', group: 'fullscreen', what: 'The first half in numbers.', when: 'After round 12.', scene: 'Fullscreen' },
     { overlay: 'player-profile', title: 'Player profile', group: 'fullscreen', what: 'One player: photo, agent and stats.', when: 'When you spotlight a player.', scene: 'Fullscreen' },
     { overlay: 'standings', title: 'Standings', group: 'fullscreen', what: 'The table.', when: 'Between matches.', scene: 'Fullscreen' },
+    { overlay: 'schedule', title: 'Today’s schedule', group: 'fullscreen', what: 'The event’s matches today, with results.', when: 'Before and between matches.', scene: 'Fullscreen' },
     { overlay: 'champion', title: 'Champion', group: 'fullscreen', what: 'The winning team.', when: 'After the final.', scene: 'Fullscreen' },
     { overlay: 'cam-grid', title: 'Player cams', group: 'fullscreen', what: 'Five or ten player cameras.', when: 'When you show the cam wall (K).', scene: 'Fullscreen' },
-    { overlay: 'holding', title: 'Holding', group: 'show', what: 'Starting soon, break and ending, with the next match.', when: 'Before, between and after.', scene: 'Holding' },
+    { overlay: 'holding', title: 'Holding', group: 'show', what: 'Starting soon, break and ending, with the next match. Or a frame with two see-through windows (Look in the Rundown).', when: 'Before, between and after.', scene: 'Holding' },
     { overlay: 'casters', title: 'Casters', group: 'show', what: 'Two caster camera windows with names.', when: 'Desk segments.', scene: 'Casters' },
     { overlay: 'replay', title: 'Replay bug', group: 'show', what: 'A “Replay” mark over replays.', when: 'While a replay plays.', scene: 'Replay' },
   ],
@@ -68,7 +69,7 @@ export const LIBRARY: Record<GameId, LibraryItem[]> = {
 export type ShowLink = { kind: 'screen'; overlay: string } | { kind: 'hud'; key: string } | { kind: 'always' };
 
 /** Graphics that are their own OBS source (matched to `Setup.screens` by overlay). */
-const SCREEN_OVERLAYS = new Set(['holding', 'ticker', 'match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'player-profile', 'standings', 'champion', 'cam-grid', 'replay', 'casters']);
+const SCREEN_OVERLAYS = new Set(['holding', 'ticker', 'match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'player-profile', 'standings', 'schedule', 'champion', 'cam-grid', 'replay', 'casters']);
 /** Elements inside the in-game HUD that can be switched off (`Setup.hud` keys). */
 const HUD_KEYS: Record<string, string> = { scorebug: 'scorebug', 'player-cards': 'players', 'win-probability': 'winProb' };
 

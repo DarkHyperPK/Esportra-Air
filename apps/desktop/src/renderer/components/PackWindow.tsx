@@ -9,6 +9,7 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { useEscape } from './Dialogs.tsx';
 import { Preview, overlayUrl } from './Preview.tsx';
+import { BAND_SCREENS, bandOverlay } from '../../shared/look.ts';
 
 type Filter = 'all' | 'mine' | LibraryGroup;
 
@@ -36,6 +37,7 @@ export function PackWindow({ s, run, close, start }: { s: Snapshot; run: Run; cl
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [shown, item?.overlay]);
+  const [band, setBand] = useState(false);
   const filters: Array<[Filter, string]> = [['all', 'All'], ...LIBRARY_GROUPS, ['mine', 'In the show']];
   return (
     <div className="scrim center" onClick={(e) => e.target === e.currentTarget && close()}>
@@ -59,7 +61,13 @@ export function PackWindow({ s, run, close, start }: { s: Snapshot; run: Run; cl
             </div>
           </div>
           <div className="pack-stage">
-            {item && <Preview key={item.overlay} src={overlayUrl(s, item.overlay)} label={item.title} />}
+            {item && BAND_SCREENS.has(item.overlay) && (
+              <div className="seg" role="tablist" aria-label="Look">
+                <button role="tab" aria-selected={!band} aria-pressed={!band} onClick={() => setBand(false)}>Full screen</button>
+                <button role="tab" aria-selected={band} aria-pressed={band} onClick={() => setBand(true)}>Over the game</button>
+              </div>
+            )}
+            {item && <Preview key={`${item.overlay}-${band}`} src={overlayUrl(s, band && BAND_SCREENS.has(item.overlay) ? bandOverlay(item.overlay) : item.overlay)} label={item.title} />}
             <button className="btn small" onClick={() => void run(() => air.libraryPlay(!playing)).then((ok) => ok && setPlaying(!playing))}>{playing ? 'Stop the sample round' : 'Play a sample round'}</button>
           </div>
           {item && <Details s={s} run={run} item={item} />}

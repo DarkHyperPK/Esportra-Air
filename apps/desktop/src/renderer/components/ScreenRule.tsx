@@ -7,6 +7,7 @@ import { Preview, overlayUrl } from './Preview.tsx';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { EditorDrawer } from './Editors.tsx';
+import { BAND_SCREENS, bandOverlay, lookOf } from '../../shared/look.ts';
 
 export const mapText = (m: RowMap) => (m === 'every' ? 'Every map' : m === 'series' ? 'After the series' : `Map ${m}`);
 export const onScreenText = (sec: number) => (sec ? `${sec} s` : 'Until next');
@@ -83,6 +84,15 @@ export function ScreenRule({ s, run, row, section, close }: { s: Snapshot; run: 
         <span className="rb-k">Via</span>
         <Chips label="Via" value={d.transition} onChange={(transition) => set({ transition })} options={[['cut', 'Cut'], ['stinger', 'Stinger']]} />
 
+        {d.show && BAND_SCREENS.has(d.show) && (<>
+          <span className="rb-k">Look</span>
+          <div className="stack" style={{ gap: 8 }}>
+            <Chips label="Look" value={d.style ?? 'full'} onChange={(style) => set({ style })} options={[['full', 'Full screen'], ['band', 'Over the game']]} />
+            <span className="sr-look"><Preview src={overlayUrl(s, d.style === 'band' ? bandOverlay(d.show) : screens.find((x) => x.id === d.show)?.overlay ?? d.show)} label={`${title} · ${d.style === 'band' ? 'over the game' : 'full screen'}`} /></span>
+            <span className="faint t-xs">{d.style === 'band' ? 'A band over the game feed or the desk camera; the game stays on screen.' : 'Covers the whole screen.'}</span>
+          </div>
+        </>)}
+
         <span className="rb-k">Hold</span>
         <Chips<string>
           label="Hold" value={hold} disabled={manual}
@@ -96,7 +106,17 @@ export function ScreenRule({ s, run, row, section, close }: { s: Snapshot; run: 
         <p className="rb-sentence">{sentence(d, title)}</p>
       </div>
       </>) : (
-        <p className="muted t-sm">{d.show === 'in-game' ? 'The in-game HUD is on over the game; switch its parts on or off in the row.' : `${title} is its own OBS scene. Switch OBS to it when you are ready; Air never switches scenes.`}</p>
+        <div className="stack" style={{ gap: 10 }}>
+          <p className="muted t-sm">{d.show === 'in-game' ? 'The in-game HUD is on over the game; switch its parts on or off in the row.' : `${title} is its own OBS scene. Switch OBS to it when you are ready; Air never switches scenes.`}</p>
+          {d.show === 'holding' && (
+            <div className="stack" style={{ gap: 8 }}>
+              <span className="rb-k" style={{ padding: 0 }}>Look (every break)</span>
+              <Chips label="Break look" value={lookOf(s.setup.look).break} onChange={(v) => void run(() => air.updateSetup({ look: { break: v } }))} options={[['classic', 'Classic'], ['frame', 'Frame with two windows']]} />
+              <span className="sr-look"><Preview src={overlayUrl(s, lookOf(s.setup.look).break === 'frame' ? 'break-frame' : 'holding')} label="Break" /></span>
+              {lookOf(s.setup.look).break === 'frame' && <span className="faint t-xs">The two windows show what you put in ESPORTRA · Break window 1 and 2 in OBS (a sponsor video, a camera).</span>}
+            </div>
+          )}
+        </div>
       )}
     </EditorDrawer>
   );
