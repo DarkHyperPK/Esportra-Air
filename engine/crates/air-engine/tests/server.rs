@@ -1219,6 +1219,12 @@ async fn the_fullscreen_host_shows_one_named_graphic() {
     assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-veto" })).await.status, 200);
     assert_eq!(show(&r, "FS").await["airFullscreenStyle"], json!("full"), "no style is full screen");
     assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-veto", "style": "sideways" })).await.status, 400);
+    // A saved template is named by id; anything that is not a plain id is refused.
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-veto", "style": "band", "template": "tpl-gold_1" })).await.status, 200);
+    assert_eq!(show(&r, "FS").await["airFullscreenTemplate"], json!("tpl-gold_1"));
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-veto" })).await.status, 200);
+    assert_eq!(show(&r, "FS").await["airFullscreenTemplate"], Value::Null, "no template is the default look");
+    assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-veto", "template": "<b>x</b>" })).await.status, 400);
     let page = request(&r, "GET", "/overlays/fullscreen.html", None, false).await;
     assert_eq!(page.status, 200);
     assert!(page.body.contains("data-modules=\"fullscreen\""));

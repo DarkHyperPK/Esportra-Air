@@ -310,6 +310,8 @@ export interface Snapshot {
   autopilot: AutopilotView;
   /** The selected match's rundown rows, in show order. */
   rundown: RundownRow[];
+  /** Saved looks (Graphics › Templates). */
+  templates: import('./templates.ts').Template[];
   /** Teams/Players. */
   library: Library;
   /** How this PC runs graphics. */
@@ -441,6 +443,12 @@ export interface AirApi {
   /** Deletes a match from this PC (an Esportra match stays in Esportra). Refused while it is live. */
   deleteMatch(id: string): Promise<Snapshot>;
   updateEvent(id: string, patch: EventPatch): Promise<Snapshot>;
+  /** Saves an event's brand kit; Primary becomes the event colour. */
+  brandSave(eventId: string, kit: Partial<import('./templates.ts').BrandKit>): Promise<Snapshot>;
+  /** Adds or saves a template (same id). It stays with its graphic. */
+  templateSave(template: import('./templates.ts').Template): Promise<Snapshot>;
+  /** Deletes a template; Rundown rows that used it go back to the default look. */
+  templateDelete(id: string): Promise<Snapshot>;
   /** Adds (no id) or changes a person on air. A camera link gets its id here. */
   saveTalent(eventId: string, input: TalentInput): Promise<Snapshot>;
   removeTalent(eventId: string, talentId: string): Promise<Snapshot>;

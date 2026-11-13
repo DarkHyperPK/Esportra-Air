@@ -34,6 +34,7 @@ let failShot = async () => {};
   // Art not yet on this PC answers 404 at /art/ (the offline venue); any other 404 is a problem.
   const offline = async (p) => {
     await p.route(/media\.valorant-api\.com/, (r) => r.abort('internetdisconnected'));
+    await p.route(/vdo\.ninja/, (r) => r.abort('internetdisconnected'));
     p.on('response', (res) => res.status() === 404 && !new URL(res.url()).pathname.startsWith('/art/') && errors.push(`404 ${res.url()}`));
     return p;
   };
@@ -430,6 +431,37 @@ let failShot = async () => {};
   await btn('Use a starting template');
   await page.getByRole('menuitem', { name: /Standard show/ }).click();
   await section('Between maps').getByText(/^By itself when the map ends/).waitFor();
+  // Graphics › Templates: a look of our own for Map result over the game (approved mock, 13 Nov).
+  await rail('Graphics');
+  await page.getByRole('tab', { name: /Templates/ }).click();
+  await page.getByLabel('Graphic for a new template').selectOption('map-result|band');
+  await btn('+ New template');
+  const ed = page.getByRole('dialog', { name: /Template editor/ });
+  await ed.getByLabel('Template name').fill('Gold result');
+  await ed.getByRole('option', { name: 'Panel' }).click();
+  await ed.getByRole('radiogroup').filter({ hasText: 'Gradient' }).getByRole('radio', { name: 'Gradient' }).click();
+  await ed.getByLabel('Y', { exact: true }).fill('-30');
+  await ed.getByRole('radiogroup').filter({ hasText: 'Bottom' }).getByRole('radio', { name: 'Top' }).click();
+  await ed.getByRole('option', { name: 'Title' }).click();
+  await ed.getByRole('button', { name: 'Brand secondary' }).first().click();
+  await ed.getByLabel('Font', { exact: true }).selectOption('barlow');
+  await ed.getByRole('radiogroup').filter({ hasText: 'Wipe' }).getByRole('radio', { name: 'Wipe' }).click();
+  const entrance = ed.getByRole('radiogroup').filter({ hasText: 'Wipe' });
+  await page.keyboard.press('Control+z');
+  await entrance.getByRole('radio', { name: 'None', checked: true }).waitFor();
+  await page.keyboard.press('Control+y');
+  await entrance.getByRole('radio', { name: 'Wipe', checked: true }).waitFor();
+  await page.waitForTimeout(2500);
+  await shot('template-editor');
+  await page.keyboard.press('Control+s');
+  await ed.getByText('Saved', { exact: true }).first().waitFor();
+  { const t = (await call('snapshot')).templates.find((x) => x.name === 'Gold result'); if (!t || t.parts.panel?.y !== -30 || t.parts.title?.color !== 'brand.secondary' || t.parts.title?.entrance?.kind !== 'wipe') throw new Error('the template was not saved as edited: ' + JSON.stringify(t)); }
+  await ed.getByRole('button', { name: 'Esc · Close' }).click();
+  await ed.waitFor({ state: 'detached' });
+  await page.locator('.tpl-card').filter({ hasText: 'Gold result' }).waitFor();
+  await page.waitForTimeout(2000);
+  await shot('templates');
+  await step('Rundown');
   // Add a screen to Between maps with its own rule.
   await section('Between maps').getByRole('button', { name: 'Add screen' }).click();
   const addDrawer = page.getByRole('dialog', { name: 'Add to Between maps' });
@@ -438,15 +470,15 @@ let failShot = async () => {};
   await addDrawer.getByRole('radiogroup', { name: 'Map' }).getByRole('radio', { name: 'Map 2' }).click();
   await addDrawer.getByRole('radiogroup', { name: 'On screen' }).getByRole('radio', { name: '20 s' }).click();
   await addDrawer.getByText('Map result, on map 2, when you press Take, for 20 s, via the stinger.').waitFor();
-  // Over the game: a band over the game feed or the desk camera instead of a full screen.
-  await addDrawer.getByRole('radiogroup', { name: 'Look' }).getByRole('radio', { name: 'Over the game' }).click();
+  // The look: one of the built-in looks or a template (here our own, over the game).
+  await addDrawer.getByRole('radiogroup', { name: 'Look' }).getByRole('radio', { name: /Gold result/ }).click();
   await addDrawer.getByText(/A band over the game feed/).waitFor();
   await page.waitForTimeout(2500);
   await shot('add-screen');
   await addDrawer.getByRole('button', { name: 'Add to rundown' }).click();
   await addDrawer.waitFor({ state: 'detached' });
   await section('Between maps').getByText(/map 2 · 20 s/).waitFor();
-  if (!(await call('snapshot')).rundown.some((r) => r.show === 'map-result' && r.style === 'band')) throw new Error('the row did not keep its look');
+  { const snap = await call('snapshot'); const gold = snap.templates.find((x) => x.name === 'Gold result'); if (!snap.rundown.some((r) => r.show === 'map-result' && r.style === 'band' && r.template === gold.id)) throw new Error('the row did not keep its look'); }
   // Desk in Post-show is an OBS scene: no rule, Air never switches to it.
   await section('Post-show').getByRole('button', { name: 'Add screen' }).click();
   const postDrawer = page.getByRole('dialog', { name: 'Add to Post-show' });
@@ -464,13 +496,11 @@ let failShot = async () => {};
   await shot('rundown');
   await winProb.click();
   await parts.getByRole('button', { name: /Win probability/, pressed: wasOn }).waitFor();
-  // Line the scorebug up with the game's timer, and the pause as a box at the bottom left.
-  await page.getByText('Adjust the scorebug and pause').click();
-  await page.getByRole('button', { name: 'Move the timer window right' }).click();
-  await page.getByText('+2 px · 160 px wide').waitFor();
-  await shot('scorebug-adjust');
-  await page.getByRole('button', { name: 'Reset' }).click();
-  await page.getByText('0 px · 160 px wide').waitFor();
+  // The HUD's look: the built-in HUD or a HUD template, and the pause style.
+  await page.getByText('Look of the HUD and the pause').click();
+  await page.getByRole('radiogroup', { name: 'Look of the in-game HUD' }).getByRole('radio', { name: /Default HUD/, checked: true }).waitFor();
+  await page.waitForTimeout(1500);
+  await shot('hud-look');
   await section('Post-show').getByRole('button', { name: 'Remove Desk' }).click();
   await section('Post-show').getByText(/In OBS: switch to/).waitFor({ state: 'detached' });
   await step('Overview');
@@ -530,6 +560,14 @@ let failShot = async () => {};
   await page.getByLabel('Name', { exact: true }).fill('Community Cup Finals');
   await btn('Save', { exact: true });
   await page.getByRole('heading', { name: 'Community Cup Finals' }).waitFor();
+  // The brand kit: every graphic and template reads these colours.
+  await page.getByLabel('Secondary colour').fill('#ffc83d');
+  await page.getByLabel('Attack colour').fill('#e8452c');
+  await page.waitForTimeout(2000);
+  await shot('brand-kit');
+  await btn('Save kit');
+  await page.getByRole('button', { name: 'Save kit', disabled: true }).waitFor();
+  { const ev = (await call('snapshot')).events.find((e) => e.name === 'Community Cup Finals'); if (ev?.brand?.atk !== '#e8452c') throw new Error('the kit was not saved: ' + JSON.stringify(ev?.brand)); }
   await page.getByRole('tab', { name: 'Matches' }).click();
   await page.locator('.ev-match').first().getByRole('button', { name: 'Open' }).click();
   await page.locator('.crumbs').filter({ hasText: /Community Cup Finals\s*\/\s*Night Owls vs Crimson Five/ }).waitFor();

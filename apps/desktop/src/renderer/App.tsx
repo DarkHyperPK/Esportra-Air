@@ -10,6 +10,7 @@ import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
 import { ReadyScreen } from './screens/ReadyScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { LibraryScreen } from './screens/LibraryScreen.tsx';
+import { TemplateEditor, type EditorStart } from './components/TemplateEditor.tsx';
 import { EventsScreen, type EventView } from './screens/EventsScreen.tsx';
 import type { Match } from '../shared/api.ts';
 import type { EsportraMatch } from '../shared/esportra.ts';
@@ -50,6 +51,13 @@ export function App() {
   const [consent, setConsent] = useState(false);
   const [signIn, setSignIn] = useState(false);
   const [fix, setFix] = useState(false);
+  // Graphics › Templates editor, opened from Graphics or a Rundown row (openTemplateEditor).
+  const [tplEdit, setTplEdit] = useState<EditorStart | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setTplEdit((e as CustomEvent<EditorStart>).detail);
+    window.addEventListener('air:edit-template', on);
+    return () => window.removeEventListener('air:edit-template', on);
+  }, []);
 
   useEffect(() => {
     void air.snapshot().then((snap) => snap && setSnapshot(snap as Snapshot));
@@ -178,6 +186,7 @@ export function App() {
       {consent && <ConsentDialog close={() => setConsent(false)} accept={async () => { setConsent(false); await run(() => air.startCapture({ consent: true })); }} />}
       {palette && <CommandPalette s={s} run={run} actions={actions} close={() => setPalette(false)} />}
       {help && <ShortcutsDialog s={s} close={() => setHelp(false)} manual={() => { setHelp(false); go('help'); }} />}
+      {tplEdit && <TemplateEditor key={JSON.stringify(tplEdit)} s={s} run={run} start={tplEdit} close={() => setTplEdit(null)} />}
       <Toasts list={toasts} dismiss={dismiss} />
     </div>
   );

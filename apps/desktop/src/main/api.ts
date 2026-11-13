@@ -54,6 +54,9 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'markFinished': await p.markFinished(String(a[0] ?? ''), a[1] === true); break;
     case 'deleteMatch': await p.deleteMatch(String(a[0] ?? '')); break;
     case 'updateEvent': await p.updateEvent(String(a[0]), (a[1] ?? {}) as EventPatch); break;
+    case 'brandSave': await p.brandSave(String(a[0]), a[1] ?? {}); break;
+    case 'templateSave': await p.templateSave(a[0]); break;
+    case 'templateDelete': await p.templateDelete(String(a[0])); break;
     case 'saveTalent': await p.saveTalent(String(a[0]), (a[1] ?? {}) as TalentInput); break;
     case 'removeTalent': await p.removeTalent(String(a[0]), String(a[1])); break;
     case 'renewTalentLink': await p.renewTalentLink(String(a[0]), String(a[1])); break;

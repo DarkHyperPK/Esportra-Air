@@ -6,6 +6,8 @@ import { air } from '../bridge.ts';
 import type { PageProps } from '../App.tsx';
 import { PersonEditor, SponsorEditor, cameraText } from '../components/Editors.tsx';
 import { ImagePick, imageUrl } from '../components/MatchEditors.tsx';
+import { BRAND_KEYS, BRAND_NAME, DEFAULT_BRAND, type BrandKit } from '../../shared/templates.ts';
+import { TemplateThumb } from './LibraryScreen.tsx';
 
 const shareText = (x: number) => (x >= 0.5 ? 'Half the slots or more' : x >= 0.3 ? 'About a third' : x >= 0.2 ? 'About a fifth' : 'A small share');
 
@@ -19,13 +21,46 @@ export function EventBranding({ s, run, event }: Pick<PageProps, 's' | 'run'> & 
       <div className="row-gap" style={{ gap: 22, alignItems: 'flex-end' }}>
         <div className="stack center-x" style={{ gap: 6 }}><ImagePick s={s} value={event.logo} size={64} label="event logo on dark" onChange={(v) => void run(() => air.updateEvent(event.id, { logo: v }))} fallback="Logo" /><span className="faint t-xs">On dark</span></div>
         <div className="stack center-x light-swatch" style={{ gap: 6 }}><ImagePick s={s} value={event.logoLight} size={64} label="event logo on light" onChange={(v) => void run(() => air.updateEvent(event.id, { logoLight: v }))} fallback="Logo" /><span className="faint t-xs">On light</span></div>
-        <label className="stack" style={{ gap: 6 }}><span className="row-gap"><input type="color" aria-label="Accent colour" value={form.accent} onChange={(e) => setForm({ ...form, accent: e.target.value })} className="swatch" /><span className="mono t-xs">{form.accent.toUpperCase()}</span></span><span className="faint t-xs">Accent</span></label>
       </div>
       <form className="stack" style={{ gap: 12 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.updateEvent(event.id, { name: form.name, accent: form.accent, stages: form.stages.split(',').map((x) => x.trim()).filter(Boolean) })); }}>
         <label className="field"><span>Name</span><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={60} /></label>
         <label className="field"><span>Stages</span><input value={form.stages} onChange={(e) => setForm({ ...form, stages: e.target.value })} placeholder="Groups, Playoffs, Grand final" /></label>
         <div className="row-gap"><button className="btn primary" disabled={!dirty}>Save</button><span className="faint t-xs">{event.tournamentId ? 'From Esportra. Changes here only affect what goes on air.' : 'Used by every match of this event.'}</span></div>
       </form>
+      <BrandKitEditor s={s} run={run} event={event} />
+    </section>
+  );
+}
+
+/** The event's brand kit: every graphic and template reads these colours (Primary is the event colour). */
+function BrandKitEditor({ s, run, event }: Pick<PageProps, 's' | 'run'> & { event: EventInfo }) {
+  const saved: BrandKit = { ...DEFAULT_BRAND, ...(event.brand ?? {}), primary: event.accent };
+  const [kit, setKit] = useState<BrandKit>(saved);
+  useEffect(() => { setKit(saved); }, [event.id, JSON.stringify(saved)]);
+  const dirty = JSON.stringify(kit) !== JSON.stringify(saved);
+  return (
+    <section className="stack" style={{ gap: 12, marginTop: 10 }} aria-label="Brand kit">
+      <div><h3 className="title-sm">Brand kit</h3><p className="muted t-sm">Every graphic and every template reads these colours, so one template looks right at any event. Attack and Defence colour the scorebug's sides.</p></div>
+      <div className="kit-grid">
+        {BRAND_KEYS.map((k) => (
+          <label key={k} className="card kit-sw">
+            <input type="color" aria-label={`${BRAND_NAME[k]} colour`} value={kit[k]} onChange={(e) => setKit({ ...kit, [k]: e.target.value })} />
+            <span><b>{BRAND_NAME[k]}{k === 'primary' ? ' · event colour' : ''}</b><span className="mono t-xs faint">{kit[k].toUpperCase()}</span></span>
+          </label>
+        ))}
+      </div>
+      <div className="kit-pv"><TemplateThumb key={`sb-${JSON.stringify(kit)}`} s={s} brand={kit} graphic="hud" template={null} label="In-game HUD with this kit" /><TemplateThumb key={`vt-${JSON.stringify(kit)}`} s={s} brand={kit} graphic="map-veto|band" template={null} label="Map veto with this kit" /></div>
+      <div className="row-gap">
+        <button className="btn primary" disabled={!dirty} onClick={() => void run(() => air.brandSave(event.id, kit))}>Save kit</button>
+        <button className="btn quiet" disabled={!dirty} onClick={() => setKit(saved)}>Undo changes</button>
+        <button className="btn quiet" onClick={() => setKit({ ...DEFAULT_BRAND, primary: kit.primary })}>Default colours</button>
+        {s.events.filter((e) => e.id !== event.id).length > 0 && (
+          <select className="cell" aria-label="Copy the kit from another event" value="" onChange={(e) => { const from = s.events.find((x) => x.id === e.target.value); if (from) setKit({ ...DEFAULT_BRAND, ...(from.brand ?? {}), primary: from.accent }); }}>
+            <option value="">Copy from another event…</option>
+            {s.events.filter((e) => e.id !== event.id).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        )}
+      </div>
     </section>
   );
 }

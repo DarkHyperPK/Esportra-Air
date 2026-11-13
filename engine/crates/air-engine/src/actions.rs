@@ -127,8 +127,15 @@ pub fn run(room: &Arc<Room>, name: &str, args: &Value) -> Result<u64, String> {
                 Some("band") => "band",
                 Some(_) => return Err("Choose full screen or over the game.".into()),
             };
+            // A saved look from Air's Templates (its parts are in state.airTemplates); none is the default look.
+            let template = match args.get("template") {
+                None | Some(Value::Null) => Value::Null,
+                Some(Value::String(t)) if (1..=40).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') => Value::String(t.clone()),
+                Some(_) => return Err("Choose a saved template.".into()),
+            };
             state["airFullscreen"] = screen;
             state["airFullscreenStyle"] = Value::String(style.into());
+            state["airFullscreenTemplate"] = template;
             Ok(())
         }
         _ => Err("Unknown action.".into()),

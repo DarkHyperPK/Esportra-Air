@@ -95,6 +95,8 @@ export interface RundownRow {
   enabled: boolean;
   /** Full screen, or over the game (a band over the game feed or camera; screens in BAND_SCREENS). */
   style?: 'full' | 'band';
+  /** A saved look from Graphics › Templates for this screen (or, on the HUD row, for the in-game HUD). */
+  template?: string;
 }
 
 export type RowInput = Omit<RundownRow, 'id' | 'enabled'> & { enabled?: boolean };
@@ -118,8 +120,9 @@ export interface Segment {
   mapNumber: number | null;
   /** Runs once after the series is won (the champion). */
   afterSeries?: boolean;
-  /** Full screen or over the game (from the row). */
+  /** Full screen or over the game, and the saved look (from the row). */
   style?: 'full' | 'band';
+  template?: string;
   state: SegmentState;
   heldBy: 'operator' | null;
 }

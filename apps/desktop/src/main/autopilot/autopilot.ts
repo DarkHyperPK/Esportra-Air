@@ -2,6 +2,7 @@
 // bridge to Esportra graphics. It never switches OBS scenes. The producer starts it explicitly each
 // time the app runs; it is never restored after a restart.
 
+import type { Template } from '../../shared/templates.ts';
 import type { Match, Screen } from '../../shared/api.ts';
 import type { AutopilotPause, AutopilotView, Preset, RowInput, RundownRow, Segment } from '../../shared/autopilot.ts';
 import type { Store } from '../store.ts';
@@ -14,7 +15,9 @@ export interface AutopilotDeps {
   match(): Match | null;
   screens(): Screen[];
   /** Shows a full-screen graphic (null: back to the game), optionally behind the HUD stinger. */
-  showGraphic(screenId: string | null, transition: Segment['transition'], style?: 'full' | 'band'): Promise<void>;
+  showGraphic(screenId: string | null, transition: Segment['transition'], style?: 'full' | 'band', template?: string): Promise<void>;
+  /** Saved looks (Graphics › Templates) a row may pick. */
+  templates?(): Template[];
   /** Which full-screen graphic is showing now, so a timed step only clears its own graphic. */
   showing(): string | null;
   /** Adds a line to the event log. */
@@ -175,7 +178,7 @@ export class Autopilot {
     const saved = this.saved(match);
     const existing = typeof input?.id === 'string' ? saved.rows.find((r) => r.id === input.id) : undefined;
     const id = existing?.id ?? `r${randomUUID().slice(0, 8)}`;
-    const next = validRow({ ...input, enabled: input.enabled ?? existing?.enabled ?? true }, id, match.bestOf, this.allScreens());
+    const next = validRow({ ...input, enabled: input.enabled ?? existing?.enabled ?? true }, id, match.bestOf, this.allScreens(), this.deps.templates?.() ?? []);
     saved.rows = existing ? saved.rows.map((r) => (r.id === id ? next : r)) : [...saved.rows, next];
     this.saveRows();
   }
@@ -281,7 +284,7 @@ export class Autopilot {
     }
     if (!stillAllowed()) return { ok: false, error: 'Take cancelled because production changed.' };
     try {
-      await this.deps.showGraphic(segment.show, segment.transition, segment.style ?? 'full');
+      await this.deps.showGraphic(segment.show, segment.transition, segment.style ?? 'full', segment.template);
     } catch (error) {
       return { ok: false, error: (error as Error).message };
     }

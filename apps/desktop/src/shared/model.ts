@@ -58,8 +58,10 @@ export interface EventInfo {
   stages: string[];
   logo: string;
   logoLight: string;
-  /** The event's own colour for its graphics (#rrggbb). */
+  /** The event's own colour for its graphics (#rrggbb); Primary in its brand kit. */
   accent: string;
+  /** The rest of the brand kit (Graphics templates and the scorebug's side colours); absent: the defaults. */
+  brand?: Partial<Omit<import('./templates.ts').BrandKit, 'primary'>>;
   talent: Talent[];
   sponsors: Sponsor[];
   /** Set for events that come from an Esportra tournament. */

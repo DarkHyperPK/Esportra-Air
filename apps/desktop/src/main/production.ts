@@ -22,6 +22,8 @@ import { DEFAULT_MOMENTS, rebind, validMoments } from '../shared/keymap.ts';
 import { gameName, gameOf, type GameId, type Profile } from '../shared/games.ts';
 import { LIBRARY_ROOM } from '../shared/library.ts';
 import { lookOf, validLook } from '../shared/look.ts';
+import { BRAND_KEYS, graphicStyle, validBrand, validTemplate, DEFAULT_BRAND, type BrandKit, type Template } from '../shared/templates.ts';
+import { HUD_ROW } from '../shared/autopilot.ts';
 import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { Rehearsal } from './rehearsal.ts';
@@ -197,13 +199,14 @@ export class Production extends EventEmitter {
     } });
     this.autopilot = new Autopilot({
       store: deps.store, match: () => this.match, screens: () => this.setup.screens,
-      showGraphic: async (id, transition, style) => {
+      showGraphic: async (id, transition, style, template) => {
         if (transition === 'stinger') {
           await this.act('stinger.play', {}, false);
           await new Promise((r) => setTimeout(r, 450));
         }
-        await this.fullscreen(id, id !== null, true, style);
+        await this.fullscreen(id, id !== null, true, style, template);
       },
+      templates: () => this.templates,
       showing: () => this.room?.airFullscreen ?? null,
       log: (line) => this.log.add(line), changed,
       rowsChanged: () => void this.syncEngine().catch(() => {}),
@@ -417,9 +420,11 @@ export class Production extends EventEmitter {
       airContext: { showId: setup.id, matchId: match.id, source: match.kind },
       teams: match.teams,
       ...engineConfig(match, this.eventOf(match), setup.name),
-      layout: { bannerTheme: match.theme ?? setup.package, minimap: setup.minimap, timerWindow: lookOf(setup.look).timer, pauseStyle: lookOf(setup.look).pause },
+      layout: { bannerTheme: match.theme ?? setup.package, minimap: setup.minimap, timerWindow: this.hudTemplate()?.timer ?? lookOf(setup.look).timer, pauseStyle: lookOf(setup.look).pause },
       show: { eventBug: setup.hud.eventBug !== false },
     });
+    // Templates: the saved looks, the event's brand kit and the HUD's look.
+    await this.client.patch(`/api/${code}`, this.templateState(match));
     const managed = new Set<string>(SETUP_LAYER_KEYS);
     const plain = Object.fromEntries(Object.entries(setup.hud).filter(([k]) => !managed.has(k) && !(GAME_DRAWS as readonly string[]).includes(k)));
     if (Object.keys(plain).length) await this.client.patch(`/api/${code}`, { show: plain });
@@ -565,7 +570,8 @@ export class Production extends EventEmitter {
       if (air.casters.some((c) => c.name)) state.casters = air.casters;
       if (air.sponsors.length) state.sponsors = air.sponsors;
     }
-    state.layout = { ...(state.layout ?? {}), bannerTheme: m?.theme ?? this.setup.package };
+    state.layout = { ...(state.layout ?? {}), bannerTheme: m?.theme ?? this.setup.package, timerWindow: this.hudTemplate()?.timer ?? lookOf(this.setup.look).timer };
+    Object.assign(state, this.templateState(m));
     // A rehearsal is map 1 of this match's own best-of, with nothing played yet.
     if (options.firstMap && m) {
       const pool = ['LOTUS', 'HAVEN', 'SUNSET', 'ASCENT', 'BIND'];
@@ -770,6 +776,68 @@ export class Production extends EventEmitter {
 
   eventOf(match: Pick<Match, 'eventId'>): EventInfo | null {
     return this.deps.store.data.events.find((e) => e.id === match.eventId) ?? null;
+  }
+
+  /** An event's brand kit (Primary is its colour). A broken saved kit falls back to the defaults. */
+  brandOf(event: EventInfo | null): BrandKit {
+    if (!event) return { ...DEFAULT_BRAND };
+    try { return validBrand(event.brand, event.accent); } catch { return { ...DEFAULT_BRAND, primary: event.accent }; }
+  }
+
+  /** Saves an event's brand kit; Primary becomes the event colour. */
+  async brandSave(eventId: string, kit: Partial<BrandKit>) {
+    const event = this.requireEvent(eventId);
+    const next = validBrand({ ...this.brandOf(event), ...(kit ?? {}) });
+    const { primary, ...rest } = next;
+    await this.putEvent({ ...event, accent: primary, brand: rest });
+  }
+
+  // ── templates ──
+
+  /** Saved looks (Graphics › Templates). A broken entry in the saved file is skipped, never sent. */
+  get templates(): Template[] {
+    const out: Template[] = [];
+    for (const t of this.deps.store.data.templates ?? []) {
+      try { out.push(validTemplate(t, t.updatedAt)); } catch { /* skipped */ }
+    }
+    return out;
+  }
+
+  /** Adds a template, or saves one (same id). */
+  async templateSave(input: unknown) {
+    const t = validTemplate(input);
+    const data = this.deps.store.data;
+    const list = data.templates ?? [];
+    const old = list.find((x) => x.id === t.id);
+    if (!old && list.length >= 300) throw new Error('Air keeps up to 300 templates. Delete some you no longer use.');
+    if (old && old.graphic !== t.graphic) throw new Error('A template stays with its graphic. Use Save as to start one for another graphic.');
+    data.templates = old ? list.map((x) => (x.id === t.id ? { ...t, createdAt: old.createdAt } : x)) : [...list, t];
+    this.save();
+    if (this.match) await this.syncEngine();
+  }
+
+  /** Deletes a template; Rundown rows that used it go back to the default look. */
+  async templateDelete(id: string) {
+    const data = this.deps.store.data;
+    if (!(data.templates ?? []).some((t) => t.id === id)) throw new Error('That template is already gone.');
+    data.templates = (data.templates ?? []).filter((t) => t.id !== id);
+    for (const saved of Object.values(data.rundown ?? {})) {
+      if (saved && Array.isArray(saved.rows)) saved.rows = saved.rows.map((r) => (r.template === id ? (({ template: _t, ...rest }) => rest)(r) : r));
+    }
+    // Steps already built keep the id; a missing template shows the default look.
+    this.save();
+    if (this.match) await this.syncEngine();
+  }
+
+  /** The look of the in-game HUD: the template on the match's HUD row, if any. */
+  private hudTemplate(): Template | null {
+    const id = this.autopilot.rows().find((r) => r.show === HUD_ROW)?.template;
+    return id ? this.templates.find((t) => t.id === id && t.graphic === 'hud') ?? null : null;
+  }
+
+  /** What the graphics need for templates: every saved look, the brand kit and the HUD's look. */
+  private templateState(match: Match | null) {
+    return { airTemplates: this.templates, airBrand: this.brandOf(match ? this.eventOf(match) : null), airHudTemplate: this.hudTemplate()?.id ?? null };
   }
 
   private requireEvent(id: string): EventInfo {
@@ -1550,12 +1618,13 @@ export class Production extends EventEmitter {
     });
   }
 
-  /** How a screen looks when put up by hand: the style of its row in the match's Rundown. */
-  private styleOf(screenId: string): 'full' | 'band' {
-    return this.autopilot.rows().find((r) => r.show === screenId && r.enabled)?.style === 'band' ? 'band' : 'full';
+  /** How a screen looks when put up by hand: the look of its row in the match's Rundown. */
+  private lookOfRow(screenId: string): { style: 'full' | 'band'; template?: string } {
+    const row = this.autopilot.rows().find((r) => r.show === screenId && r.enabled);
+    return { style: row?.style === 'band' ? 'band' : 'full', ...(row?.template ? { template: row.template } : {}) };
   }
 
-  private async fullscreen(screenId: string | null, on: boolean, direct = false, style?: 'full' | 'band') {
+  private async fullscreen(screenId: string | null, on: boolean, direct = false, style?: 'full' | 'band', template?: string) {
     const screen = screenId ? this.setup.screens.find((x) => x.id === screenId && x.scene === 'fullscreen') : null;
     if (screenId && !screen) throw new Error('Unknown full-screen graphic.');
     const actions: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -1569,7 +1638,10 @@ export class Production extends EventEmitter {
       this.deps.store.save();
       await this.pushCams();
     }
-    actions.push({ name: 'fullscreen.show', args: { screen: on && screen ? screen.id : null, style: on && screen ? style ?? this.styleOf(screen.id) : 'full' } });
+    // A template (if it still exists) decides full screen or over the game; otherwise the row's style does.
+    const look = on && screen ? (style ? { style, template } : this.lookOfRow(screen.id)) : { style: 'full' as const };
+    const tpl = look.template ? this.templates.find((t) => t.id === look.template && t.graphic.startsWith(`${screen!.id}|`)) : undefined;
+    actions.push({ name: 'fullscreen.show', args: { screen: on && screen ? screen.id : null, style: tpl ? graphicStyle(tpl.graphic) : look.style, template: tpl?.id ?? null } });
     const label = on && screen ? `Full screen · ${screen.title}` : 'Back to the game';
     if (!direct) return this.graphic(label, actions);
     for (const a of actions) await this.act(a.name, a.args, false);
@@ -1706,6 +1778,7 @@ export class Production extends EventEmitter {
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),
       rundown: this.autopilot.rows(),
+      templates: this.templates,
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,
       companion: this.companion.view(),

@@ -183,6 +183,35 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await production.setLayer('fs:map-result', 'on');
     await production.takeCue('cut');
     assert.deepEqual([(await live()).airFullscreen, (await live()).airFullscreenStyle], ['map-result', 'band'], 'Map result over the game');
+    // Templates: a saved look goes to the room, a row picks it, a Take shows it; deleting it falls back.
+    const gold = { id: 'tpl-gold', name: 'Gold result', graphic: 'map-result|band', parts: { panel: { radius: 18, fill: { kind: 'solid', a: 'brand.secondary', alpha: 0.9 } }, title: { color: '#ffc83d' } }, createdAt: 1, updatedAt: 1 };
+    await production.templateSave(gold);
+    assert.deepEqual((await live()).airTemplates.map((t: { id: string }) => t.id), ['tpl-gold'], 'saved looks are in the room');
+    assert.equal((await live()).airBrand.secondary, '#ffc83d', 'with the event brand kit');
+    await assert.rejects(production.templateSave({ ...gold, graphic: 'series|band' }), /stays with its graphic/);
+    await assert.rejects(production.templateSave({ ...gold, id: 'tpl-bad', parts: { panel: { radius: 500 } } }), /corners must be between 0 and 80/);
+    assert.throws(() => production.rundownSave({ ...resultRow, template: 'tpl-nope' }), /different graphic/);
+    production.rundownSave({ ...resultRow, style: 'full', template: 'tpl-gold' });
+    assert.equal(production.snapshot().rundown.find((r) => r.id === resultRow.id)!.style, 'band', 'the template decides over the game');
+    await production.setLayer('fs:map-result', 'off');
+    await production.takeCue('cut');
+    await production.setLayer('fs:map-result', 'on');
+    await production.takeCue('cut');
+    assert.deepEqual([(await live()).airFullscreenStyle, (await live()).airFullscreenTemplate], ['band', 'tpl-gold'], 'a Take uses the row’s template');
+    await production.brandSave(match.eventId!, { secondary: '#00ff88', atk: '#ff5500' });
+    assert.deepEqual([(await live()).airBrand.secondary, (await live()).airBrand.atk], ['#00ff88', '#ff5500'], 'the kit follows the event');
+    await assert.rejects(production.brandSave(match.eventId!, { text: 'white' }), /Text: use a colour/);
+    // A HUD template on the HUD row restyles the HUD and lines up the timer window.
+    await production.templateSave({ id: 'tpl-hud', name: 'Event HUD', graphic: 'hud', parts: { sbround: { color: 'brand.secondary' } }, timer: { dx: 4, width: 150, plate: '#20212a' }, createdAt: 1, updatedAt: 1 });
+    const hudRow = production.snapshot().rundown.find((r) => r.show === 'in-game')!;
+    production.rundownSave({ ...hudRow, template: 'tpl-hud' });
+    await production.syncEngine();
+    assert.equal((await live()).airHudTemplate, 'tpl-hud');
+    assert.deepEqual((await live()).layout.timerWindow, { dx: 4, width: 150, plate: '#20212a' }, 'the HUD template’s timer window wins');
+    await production.templateDelete('tpl-gold');
+    assert.equal(production.snapshot().rundown.find((r) => r.id === resultRow.id)!.template, undefined, 'rows that used it go back to the default look');
+    assert.deepEqual((await live()).airTemplates.map((t: { id: string }) => t.id), ['tpl-hud']);
+    await production.templateDelete('tpl-hud');
     production.rundownSave({ ...resultRow, style: 'full' });
     await production.setLayer('fs:map-result', 'off');
     production.clearCue();

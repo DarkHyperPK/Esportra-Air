@@ -12,6 +12,8 @@
   const EMPTY_PREVIEW = PREVIEW && Q.get('empty') === '1';
   const SAMPLE_MOTION = PREVIEW && !EMPTY_PREVIEW && Q.get('sampleMotion') === '1';
   let previewPatch = {};
+  // A template being edited or previewed in Air ({ template, brand }); never on an OBS output.
+  let tplDraft = null;
   try { if(Q.has('hudSettings'))previewPatch=window.AirHudSettings.validate(JSON.parse(Q.get('hudSettings'))); } catch (_) { /* Invalid preview settings never enter the match state. */ }
   const previewSettings = state => {
     const view=merge(clone(state),previewPatch),modules=(document.body.dataset.modules||'').split(',').map(name=>name.trim()).filter(Boolean);
@@ -28,9 +30,16 @@
         if(look&&(look.pause==='box'||look.pause==='panel'))view.layout={...view.layout,pauseStyle:look.pause};}catch(_){/* ignore a malformed preview look */}
       if(Q.get('samplePause')==='1')view.airPause={kind:'technical',startedAt:Date.now()-134000};
     }
+    // A HUD template's timer window, while it is previewed.
+    const tw=tplDraft&&tplDraft.template&&tplDraft.template.timer;
+    if(!OUTPUT&&tw&&typeof tw==='object')view.layout={...view.layout,timerWindow:tw};
+    // A brand kit being previewed: its Primary is the event colour the graphics use.
+    const pb=tplDraft&&tplDraft.brand&&tplDraft.brand.primary;
+    if(!OUTPUT&&/^#[0-9a-f]{6}$/i.test(pb||''))view.event={...view.event,accent:pb};
     return view;
   };
   const OUTPUT = /^\/o\/([0-9a-f-]{36})$/i.exec(location.pathname)?.[1] || null;
+  try { if (!OUTPUT && Q.has('template')) tplDraft = { template: JSON.parse(Q.get('template')), brand: JSON.parse(Q.get('brand') || 'null') }; } catch (_) { tplDraft = null; }
   const MATCH = PREVIEW ? null : Q.get('match') || (OUTPUT ? 'MAIN' : null); // previews are isolated from live rooms and browser storage
   const previewNow = Date.now();
   const HUD = window.HUD = { subs: [], mods: [], events: [], now: PREVIEW && !SAMPLE_MOTION ? () => previewNow : () => Date.now(), preview: PREVIEW, demo: !PREVIEW && Q.has('demo'), live: !PREVIEW && !Q.has('demo') && !MATCH, match: MATCH };
@@ -193,9 +202,11 @@
   const sbShade = (hex, f) => { const h = String(hex || '#17181e').replace('#', ''); const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16) || 0x17181e;
     return '#' + [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(v * f)))).map(v => v.toString(16).padStart(2, '0')).join(''); };
   const sbWindow = s => { const w = (s.layout && s.layout.timerWindow) || {}; const num = (v, lo, hi, d) => Number.isFinite(+v) ? Math.max(lo, Math.min(hi, +v)) : d;
-    return { dx: num(w.dx, -200, 200, 0), hw: num(w.width, 100, 240, 160) / 2, plate: /^#[0-9a-f]{6}$/i.test(w.plate || '') ? w.plate : '#17181e' }; };
+    // The side colours come from the event's brand kit (state.airBrand), teal and crimson by default.
+    const rgb = v => /^#[0-9a-f]{6}$/i.test(v || '') ? [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16)) : null, kit = s.airBrand || {};
+    return { dx: num(w.dx, -200, 200, 0), hw: num(w.width, 100, 240, 160) / 2, plate: /^#[0-9a-f]{6}$/i.test(w.plate || '') ? w.plate : '#17181e', def: rgb(kit.def) || SB_SIDE.DEF, atk: rgb(kit.atk) || SB_SIDE.ATK }; };
   function sbPlate(sl, sr, planted, wins, needed, win) {
-    const L = SB_SIDE[sl] || SB_SIDE.DEF, R = SB_SIDE[sr] || SB_SIDE.ATK, cx = 380, l = cx - win.hw, r = cx + win.hw, lb = l + 14, rb = r - 14;
+    const SIDE = { DEF: win.def, ATK: win.atk }, L = SIDE[sl] || win.def, R = SIDE[sr] || win.atk, cx = 380, l = cx - win.hw, r = cx + win.hw, lb = l + 14, rb = r - 14;
     const top = sbShade(win.plate, 1.1), mid = win.plate, bot = sbShade(win.plate, .86);
     const dia = (x, on) => `<path d="M${x} 77 l5 5 l-5 5 l-5 -5 Z" fill="${on ? '#fff' : 'none'}" stroke="#fff" stroke-width="1.6"/>`;
     const dias = (from, won) => needed > 1 ? Array.from({ length: needed }, (_, i) => dia(from + i * 18 - (needed - 2) * 9, i < won)).join('') : '';
@@ -1013,6 +1024,7 @@
           if (shown) slots[shown].el.style.display = 'none';
           if (want) { const sl = slot(want); sl.el.style.display = ''; }
           shown = want;
+          HUD.fsShown = shown ? { el: slots[shown].el, key: shown, fresh: true } : null;
         }
         if (shown) slots[shown].part.update(s, opts);
       },
@@ -1129,13 +1141,60 @@
     HUD.on(updateAirPause);
     HUD.subs.push(updateFeedTag); updateFeedTag(HUD.state);
     HUD.subs.push((s, opts) => mods.forEach(m => m.update(s, opts))); mods.forEach(m => m.update(HUD.state, {snapshot:true}));
+    templates(root, list);
     let lastT = 0; (function loop(t) { if (t - lastT > 90) { lastT = t; updateAirPause(HUD.state); mods.forEach(m => m.tick && m.tick(HUD.state)); } mods.forEach(m => m.frame && m.frame(HUD.state)); requestAnimationFrame(loop); })(0);
     if (HUD.demo || SAMPLE_MOTION) demo();
     window.HUD_READY = true;
     if(window.parent!==window)window.parent.postMessage({type:'AIR_HUD_PREVIEW_READY'},'*');
   }
+  // Templates (core/templates.js): the event's brand kit as CSS variables, and the active template's
+  // styles on the parts of the graphic this page shows. Re-applied whenever a graphic redraws.
+  function templates(root, list) {
+    const T = window.AirTemplates; if (!T) return;
+    const byModule = {}; Object.entries(FULLSCREEN).forEach(([id, m]) => { byModule[m] = id + '|full'; }); Object.entries(HUD.BANDS || {}).forEach(([id, m]) => { byModule[m] = id + '|band'; });
+    const host = list.includes('fullscreen'), page = list.length === 1 && byModule[list[0]] ? byModule[list[0]] : 'hud';
+    const find = (s, id) => (Array.isArray(s.airTemplates) ? s.airTemplates : []).find(t => t && t.id === id) || null;
+    let queued = false, entered = false;
+    const run = () => {
+      queued = false; const s = HUD.state;
+      T.brand(document, tplDraft && tplDraft.brand || s.airBrand, s.teams);
+      if (host) {
+        const fs = HUD.fsShown; if (!fs) return;
+        const g = fs.key, tpl = tplDraft ? tplDraft.template : find(s, s.airFullscreenTemplate);
+        T.apply(fs.el, tpl, g);
+        if (fs.fresh) { fs.fresh = false; T.enter(fs.el, tpl, g); }
+      } else {
+        const tpl = tplDraft ? tplDraft.template : page === 'hud' ? find(s, s.airHudTemplate) : null;
+        T.apply(root, tpl, page);
+        if (!entered && tpl) { entered = true; T.enter(root, tpl, page); }
+      }
+    };
+    const queue = () => { if (!queued) { queued = true; requestAnimationFrame(run); } };
+    HUD.subs.push(queue); run();
+    new MutationObserver(queue).observe(root, { childList: true, subtree: true, characterData: true });
+    // Air's editor: the parts and where they are on the 1920×1080 canvas.
+    HUD.templateRects = () => {
+      const scope = host ? HUD.fsShown && HUD.fsShown.el : root, g = host ? HUD.fsShown && HUD.fsShown.key : page; if (!scope) return { graphic: g, parts: {} };
+      const box = root.getBoundingClientRect(), k = box.width / 1920 || 1, parts = {};
+      T.partsOf(g).forEach(([id, , sel]) => { const r = [...scope.querySelectorAll(sel)].map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0)
+        .map(r => [r.left - box.left, r.top - box.top, r.width, r.height].map(v => Math.round(v / k))); if (r.length) parts[id] = r; });
+      return { graphic: g, parts };
+    };
+    HUD.templatePlay = () => { const s = HUD.state, scope = host ? HUD.fsShown && HUD.fsShown.el : root, g = host ? HUD.fsShown && HUD.fsShown.key : page;
+      if (scope) T.enter(scope, tplDraft ? tplDraft.template : null, g); };
+    HUD.templateRefresh = () => { HUD.state = previewSettings(sourceState); HUD.subs.forEach(fn => fn(HUD.state, {snapshot:true})); run(); };
+  }
   addEventListener('message', event => {
     if (event.source !== window.parent || window.parent === window) return;
+    // Air's template editor (preview pages only): a draft to show, its entrance, and where the parts are.
+    // Air's app page is a file, so its origin is not usable: the parent and a one-off key in the URL are checked.
+    if (/^AIR_TEMPLATE_/.test(event.data?.type || '') && !OUTPUT && PREVIEW && Q.get('editorKey') && event.data.key === Q.get('editorKey')) {
+      const d = event.data;
+      if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template || null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
+      if (d.type === 'AIR_TEMPLATE_PLAY' && HUD.templatePlay) HUD.templatePlay();
+      if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS') && HUD.templateRects) requestAnimationFrame(() => requestAnimationFrame(() => window.parent.postMessage({ type: 'AIR_TEMPLATE_RECTS', id: d.id, ...HUD.templateRects() }, '*')));
+      return;
+    }
     if (event.data?.type === 'AIR_HUD_PREVIEW_PROBE' && window.HUD_READY)
       window.parent.postMessage({type:'AIR_HUD_PREVIEW_READY'}, '*');
     // Read-only editor views only. OBS outputs cannot accept draft commands.

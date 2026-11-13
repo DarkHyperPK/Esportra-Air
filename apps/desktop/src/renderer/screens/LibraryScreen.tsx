@@ -6,6 +6,62 @@ import { air } from '../bridge.ts';
 import { Preview, overlayUrl } from '../components/Preview.tsx';
 import type { PageProps } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
+import { GRAPHICS, graphicTitle, type BrandKit, type Template } from '../../shared/templates.ts';
+import { brandOfMatch, openTemplateEditor, templatePreviewUrl } from '../components/TemplateEditor.tsx';
+
+/** A live thumbnail of a graphic with a template (or its default look). */
+export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit }) {
+  const brand = kit ?? brandOfMatch(s);
+  const extra: Record<string, string> = { ...(graphic.endsWith('|full') ? {} : { bg: '1' }), ...(template ? { template: JSON.stringify(template) } : {}), ...(brand ? { brand: JSON.stringify(brand) } : {}) };
+  return <Preview src={templatePreviewUrl(s, graphic, extra)} label={label} backdrop={false} />;
+}
+
+const GROUPS: Array<[string, string, (g: string) => boolean]> = [
+  ['band', 'Over the game', (g) => g.endsWith('|band')],
+  ['full', 'Full screen', (g) => g.endsWith('|full')],
+  ['hud', 'In-game HUD', (g) => g === 'hud'],
+];
+
+/** Graphics › Templates: your saved looks by graphic, the built-in looks to start from, and New template. */
+function TemplatesTab({ s }: { s: Snapshot }) {
+  const [graphic, setGraphic] = useState('map-veto|band');
+  const used = new Set(s.rundown.map((r) => r.template).filter(Boolean));
+  return (
+    <div className="stack" style={{ gap: 22 }}>
+      <div className="between">
+        <p className="muted t-sm" style={{ maxWidth: '72ch' }}>Make your own look for any graphic: move, resize, recolour and re-font its parts, then pick the template in a match's Rundown. Colours can follow the event's brand kit (Events › Branding).</p>
+        <span className="row g-2">
+          <select className="cell" aria-label="Graphic for a new template" value={graphic} onChange={(e) => setGraphic(e.target.value)}>
+            {GROUPS.map(([k, label, fits]) => <optgroup key={k} label={label}>{Object.keys(GRAPHICS).filter(fits).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>)}
+          </select>
+          <button className="btn primary" onClick={() => openTemplateEditor({ graphic })}>+ New template</button>
+        </span>
+      </div>
+      {GROUPS.map(([k, label, fits]) => {
+        const mine = s.templates.filter((t) => fits(t.graphic));
+        return (
+          <section key={k} className="stack g-2" aria-label={label}>
+            <span className="cap">{label}</span>
+            <div className="tpl-grid">
+              {mine.map((t) => (
+                <div key={t.id} className="card tpl-card">
+                  <TemplateThumb s={s} graphic={t.graphic} template={t} label={t.name} />
+                  <div className="tpl-meta">
+                    <b>{t.name}</b>
+                    <span className="faint t-xs">{GRAPHICS[t.graphic]?.title} · {new Date(t.updatedAt).toLocaleDateString()}{used.has(t.id) ? ' · in this match' : ''}</span>
+                    <span className="row g-1"><button className="btn small" onClick={() => openTemplateEditor({ id: t.id })}>Edit</button><button className="btn quiet small" onClick={() => openTemplateEditor({ from: t })}>Duplicate</button></span>
+                  </div>
+                </div>
+              ))}
+              {mine.length === 0 && <p className="muted t-sm tpl-empty">No templates yet. Choose a graphic above and press New template{k === 'hud' ? ' (In-game HUD covers the scorebug, player cards, killfeed and the rest at once)' : ''}.</p>}
+            </div>
+          </section>
+        );
+      })}
+      <p className="faint t-xs">Built-in looks never change. A template only changes how parts look; the data still comes from the match. {graphicTitle('hud')} templates also line up the scorebug's timer window.</p>
+    </div>
+  );
+}
 
 const THEME_NOTES: Record<BannerTheme, string> = {
   broadcast: 'Full-width banners. The default.',
@@ -30,6 +86,7 @@ export function BannerStyles({ s, value, onPick }: { s: Snapshot; value: BannerT
 
 export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<'library' | 'templates'>('library');
   const game = s.game;
   const items = LIBRARY[game?.id ?? 'valorant'];
   const chosen = items.filter((i) => inShow(s.setup, i)).length;
@@ -38,9 +95,14 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id, theme, s.match?.teams.map((t) => t.name + t.logo + t.color).join()]);
   return (
     <div className="stack" style={{ gap: 26 }}>
-      <PageHeader eyebrow={`Library · ${game?.name ?? 'no game chosen'}`} title="Graphics packs">
-        Every graphic Air can put on air, live {s.match ? <>with <b>{s.match.teams[0].name}</b> and <b>{s.match.teams[1].name}</b></> : 'with sample teams'}. Open a pack to choose what is in your show.
+      <PageHeader eyebrow={`Library · ${game?.name ?? 'no game chosen'}`} title={tab === 'library' ? 'Graphics packs' : 'Templates'}>
+        {tab === 'library' ? <>Every graphic Air can put on air, live {s.match ? <>with <b>{s.match.teams[0].name}</b> and <b>{s.match.teams[1].name}</b></> : 'with sample teams'}. Open a pack to choose what is in your show.</> : 'Your own looks for the graphics, used by the Rundown.'}
       </PageHeader>
+      <div className="seg tabs-seg" role="tablist" aria-label="Graphics">
+        <button role="tab" aria-selected={tab === 'library'} aria-pressed={tab === 'library'} onClick={() => setTab('library')}>Library</button>
+        <button role="tab" aria-selected={tab === 'templates'} aria-pressed={tab === 'templates'} onClick={() => setTab('templates')}>Templates{s.templates.length ? ` · ${s.templates.length}` : ''}</button>
+      </div>
+      {tab === 'templates' ? <TemplatesTab s={s} /> : <>
       <div className="packs">
         <button className="pack-card" onClick={() => setOpen(true)} aria-label={`Open ${game?.pack ?? 'the'} pack`}>
           <Preview src={overlayUrl(s, 'ingame')} label={`${game?.pack ?? 'Graphics'} pack`} />
@@ -55,6 +117,7 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
         <div className="between"><h2 className="title-sm">Banner style</h2><span className="muted t-sm">{s.match ? `Used by ${s.match.title}` : 'Choose a match to set its style'}</span></div>
         <BannerStyles s={s} value={theme} onPick={(t) => s.match && void run(() => air.updateMatch(s.match!.id, { theme: t }))} />
       </section>
+      </>}
       {open && <PackWindow s={s} run={run} close={() => setOpen(false)} />}
     </div>
   );

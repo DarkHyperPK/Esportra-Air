@@ -5,6 +5,7 @@
 // and are not rows here.
 
 import { BAND_SCREENS } from '../../shared/look.ts';
+import { graphicScreen, graphicStyle, type Template } from '../../shared/templates.ts';
 import { HUD_ROW, PRESETS, defaultSection, SECTIONS, SECTION_SCREENS, WHEN, takesItself, type Preset, type RowInput, type RundownRow, type Section, type Segment, type SegmentEdit } from '../../shared/autopilot.ts';
 
 export interface SavedRundown {
@@ -69,13 +70,20 @@ const int = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as
  * Checks a row from the interface; throws a plain message when it cannot be used. `screens` are the
  * screens Air has (`setup.screens` ids). Scene rows and the HUD row have no trigger.
  */
-export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens: string[]): RundownRow {
+export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens: string[], templates: Template[] = []): RundownRow {
   if (!input || typeof input !== 'object') throw new Error('Choose a screen and its rule.');
   const section = input.section;
   if (!(SECTIONS as readonly unknown[]).includes(section)) throw new Error('Choose Pre-show, Game, Between maps or Post-show.');
   if (input.show !== null && !(typeof input.show === 'string' && screens.includes(input.show))) throw new Error('Choose one of the screens.');
   if (!SECTION_SCREENS[section].includes(input.show)) throw new Error('That screen does not go in this part of the show.');
-  if (!takesItself(input.show)) return { ...row({ id, show: input.show, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }), section, enabled: input.enabled !== false };
+  // A saved look: for this screen, or for the in-game HUD on the HUD row. Its graphic says full screen or over the game.
+  let template: Template | undefined;
+  if (input.template !== undefined && input.template !== null && input.template !== '') {
+    template = templates.find((t) => t.id === input.template);
+    const fits = template && (input.show === HUD_ROW ? template.graphic === 'hud' : input.show !== null && graphicScreen(template.graphic) === input.show);
+    if (!fits) throw new Error('That template is for a different graphic. Choose another look.');
+  }
+  if (!takesItself(input.show)) return { ...row({ id, show: input.show, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }), section, enabled: input.enabled !== false, ...(template && input.show === HUD_ROW ? { template: template.id } : {}) };
   if (!(WHEN as readonly unknown[]).includes(input.trigger)) throw new Error('Choose when it comes up.');
   const map = input.map;
   if (!(map === 'every' || map === 'series' || int(map, 1, bestOf))) throw new Error(`Choose every map, map 1 to ${bestOf}, or after the series.`);
@@ -86,9 +94,9 @@ export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens
   if (input.holdMode === 'window' && !int(input.holdSeconds, 0, 60)) throw new Error('A hold is 0–60 seconds.');
   const manual = input.trigger === 'manual';
   if (input.style !== undefined && input.style !== 'full' && input.style !== 'band') throw new Error('Choose full screen or over the game.');
-  const style = input.style === 'band' && input.show && BAND_SCREENS.has(input.show) ? 'band' as const : 'full' as const;
+  const style = template ? graphicStyle(template.graphic) : input.style === 'band' && input.show && BAND_SCREENS.has(input.show) ? 'band' as const : 'full' as const;
   return {
-    id, section, show: input.show, style, trigger: input.trigger, map, forSeconds: input.show === null ? 0 : input.forSeconds,
+    id, section, show: input.show, style, ...(template ? { template: template.id } : {}), trigger: input.trigger, map, forSeconds: input.show === null ? 0 : input.forSeconds,
     delaySeconds: input.trigger === 'delay' ? input.delaySeconds : 12, transition: input.transition,
     // "I press Take" always waits for the Take.
     holdMode: manual ? 'manual' : input.holdMode, holdSeconds: manual || input.holdMode === 'manual' ? 0 : input.holdSeconds,
@@ -140,6 +148,7 @@ export function buildRundown(bestOf: 1 | 3 | 5, rows: RundownRow[] = presetRows(
     id, name, show: r.show, forSeconds: r.forSeconds, trigger: r.trigger, delaySeconds: r.delaySeconds,
     mode: r.trigger === 'manual' ? 'manual' : 'automatic', holdMode: r.holdMode, holdSeconds: r.holdSeconds, transition: r.transition,
     mapNumber, afterSeries: r.map === 'series', state: 'queued', heldBy: null, style: r.style === 'band' && r.show && BAND_SCREENS.has(r.show) ? 'band' : 'full',
+    ...(r.template ? { template: r.template } : {}),
   });
   const out: Segment[] = [];
   for (let n = 1; n <= bestOf; n++) {
