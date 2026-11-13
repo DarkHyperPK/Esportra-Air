@@ -1703,7 +1703,7 @@ function artCheck(a: ArtStatus): CheckItem {
   const missing = a.total - a.have - gone;
   if (missing <= 0) return { id: 'art', title, detail: `${a.have} of ${a.total} agent, weapon and map pictures are on this PC. Graphics show them without internet.${names}`, health: gone ? 'warn' : 'ok' };
   if (a.downloading) return { id: 'art', title, detail: `Downloading pictures to this PC: ${a.have} of ${a.total}…`, health: 'off' };
-  return { id: 'art', title, detail: `${missing} of ${a.total} pictures are not on this PC yet. media.valorant-api.com could not be reached${a.lastError ? ` (${a.lastError.replace(/\.$/, '')})` : ''}; Air tries again every minute.${names}`, health: 'warn', action: { id: 'download-art', label: 'Download now' } };
+  return { id: 'art', title, detail: `${missing} of ${a.total} pictures are not on this PC yet. The picture download could not reach Riot’s picture server; Air tries again every minute.${names}`, health: 'warn', action: { id: 'download-art', label: 'Download now' } };
 }
 
 export function checks(s: Snapshot): CheckItem[] {
@@ -1735,7 +1735,7 @@ export function checks(s: Snapshot): CheckItem[] {
   );
   out.push(
     s.obs.state === 'connected'
-      ? { id: 'obs', title: 'OBS', detail: `OBS ${s.obs.version ?? ''} on this PC · obs-websocket connected`, health: 'ok' }
+      ? { id: 'obs', title: 'OBS', detail: `OBS ${s.obs.version ?? ''} on this PC · Connected`, health: 'ok' }
       : { id: 'obs', title: 'OBS', detail: s.obs.error ?? 'OBS is not connected.', health: 'warn', action: { id: 'connect-obs', label: 'Connect OBS' } },
   );
   out.push(

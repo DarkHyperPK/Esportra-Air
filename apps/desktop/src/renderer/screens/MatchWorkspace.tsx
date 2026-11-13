@@ -96,13 +96,16 @@ function Overview({ s, run, act, back }: Pick<PageProps, 's' | 'run'> & { act: (
   // Not being signed in to Esportra is information, not something to fix before a quick match.
   const counted = s.checks.filter((c) => !(c.id === 'esportra' && c.health === 'off'));
   const ready = counted.filter((c) => c.health === 'ok').length;
+  const needs = s.checks.filter((c) => c.health === 'warn' || c.health === 'bad');
+  const optional = s.checks.filter((c) => c.health === 'off');
+  const readyChecks = s.checks.filter((c) => c.health === 'ok');
   const m = s.match!;
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <div className="between">
-        <div><h2 className="title-md">{ready === counted.length ? 'Ready when you are' : 'Almost ready'}</h2><p className="muted t-sm">Go live sends your graphics to OBS, starts game data with your permission, and arms autopilot if you want it. Your stream stays in OBS. Warnings never stop you.</p></div>
+      <div className="between" style={{ flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ flex: '1 1 420px', minWidth: 0 }}><h2 className="title-md">{ready === counted.length ? 'Ready when you are' : 'Almost ready'}</h2><p className="muted t-sm">Go live sends your graphics to OBS, starts game data with your permission, and arms autopilot if you want it. Your stream stays in OBS. Warnings never stop you.</p></div>
         <span className="row-gap">
-          <span className="muted t-sm">{ready} of {counted.length} ready</span>
+          <span className={`pill ${ready === counted.length ? 'ok' : 'warn'}`}>{ready} of {counted.length} ready</span>
           {m.finishedAt
             ? <button className="btn quiet small" onClick={() => void run(() => air.markFinished(m.id, false))} title="It follows Teams/Players again">Reopen</button>
             : <button className="btn quiet small" onClick={() => void run(() => air.markFinished(m.id, true))} title="It keeps the teams and players it was played with">Mark as finished</button>}
@@ -116,17 +119,37 @@ function Overview({ s, run, act, back }: Pick<PageProps, 's' | 'run'> & { act: (
         </span>
       </div>
       {m.finishedAt && <div className="notice info" role="status">Finished {new Date(m.finishedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}. It keeps the teams and players it was played with; changes in Teams/Players no longer reach it. Reopen to follow them again.</div>}
-      <div className="lst" aria-label="Readiness checks">
-        {s.checks.map((c) => (
-          <div className="li check-row" key={c.id}>
-            <i className={`dot ${c.health}`} aria-label={c.health} />
-            <span><b>{c.title}</b><br /><span className="muted t-sm">{c.detail}</span></span>
-            {c.action ? <button className="btn small" onClick={() => act(c.action!.id)}>{c.action.label}</button> : <span />}
-          </div>
-        ))}
+      {/* Grouped by what each check needs from you: what needs you leads, what is ready shrinks to chips. */}
+      <div className="stack" style={{ gap: 12 }} aria-label="Readiness checks">
+        {needs.length > 0 && <CheckCard tone={needs.some((c) => c.health === 'bad') ? 'bad' : 'warn'} title={`Needs you · ${needs.length}`} checks={needs} act={act} />}
+        {optional.length > 0 && <CheckCard tone="" title={`Optional · ${optional.length}`} checks={optional} act={act} />}
+        {readyChecks.length > 0 && (
+          <section className="card ok" aria-label="Ready">
+            <div className="card-head"><span className="cap ok">Ready · {readyChecks.length}</span></div>
+            <div className="pill-row">{readyChecks.map((c) => <span key={c.id} className="pill ok" title={c.detail}>✓ {c.title}</span>)}</div>
+          </section>
+        )}
       </div>
       {s.control !== 'companion' && <NextFive s={s} />}
     </div>
+  );
+}
+
+/** A group of checks on one card: each with its icon, what it found and its fix. */
+function CheckCard({ tone, title, checks, act }: { tone: 'warn' | 'bad' | ''; title: string; checks: Snapshot['checks']; act: (id: ActionId) => void }) {
+  return (
+    <section className={`card ${tone}`} aria-label={title}>
+      <div className="card-head"><span className={`cap ${tone === 'warn' ? 'warn' : ''}`} style={tone === 'bad' ? { color: 'var(--rose)' } : undefined}>{title}</span></div>
+      <div className="lst">
+        {checks.map((c) => (
+          <div className="li check-row" key={c.id}>
+            <span className="check-ic" aria-label={c.health}>{c.health === 'off' ? '–' : '!'}</span>
+            <span><b>{c.title}</b><br /><span className="muted t-sm">{c.detail}</span></span>
+            {c.action ? <button className={`btn small ${tone ? 'amber' : ''}`} onClick={() => act(c.action!.id)}>{c.action.label}</button> : <span />}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

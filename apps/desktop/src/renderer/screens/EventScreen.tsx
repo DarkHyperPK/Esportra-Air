@@ -76,8 +76,13 @@ export function EventTalent({ s, run, event }: Pick<PageProps, 's' | 'run'> & { 
 }
 
 /** An event's logo, or a plain square when it has none. */
-export function EventLogo({ s, path, size }: { s: PageProps['s']; path: string; size: number }) {
-  return path
-    ? <img src={imageUrl(s, path)} alt="" style={{ width: size, height: size, objectFit: 'contain', flex: 'none' }} />
-    : <span aria-hidden="true" className="event-logo-blank" style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size / 4.5)) }}>LOGO</span>;
+/** The event's logo; without one, its initials on its colour (or an empty LOGO box when it has no name yet). */
+export function EventLogo({ s, path, size, name, accent }: { s: PageProps['s']; path: string; size: number; name?: string; accent?: string }) {
+  if (path) return <img src={imageUrl(s, path)} alt="" style={{ width: size, height: size, objectFit: 'contain', flex: 'none' }} />;
+  const initials = (name ?? '').split(/\s+/).filter((w) => /^[\p{L}\p{N}]/u.test(w)).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
+  if (initials) {
+    const c = accent || '#6d7bff';
+    return <span aria-hidden="true" className="event-initials" style={{ width: size, height: size, fontSize: Math.round(size * 0.34), background: `linear-gradient(135deg, ${c}, color-mix(in srgb, ${c} 60%, #000))` }}>{initials}</span>;
+  }
+  return <span aria-hidden="true" className="event-logo-blank" style={{ width: size, height: size, fontSize: Math.max(9, Math.round(size / 4.5)) }}>LOGO</span>;
 }

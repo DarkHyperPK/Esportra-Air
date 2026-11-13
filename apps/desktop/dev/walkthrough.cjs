@@ -52,10 +52,10 @@ let failShot = async () => {};
     const steps = page.getByRole('navigation', { name: 'Match steps' });
     if (!(await steps.count())) {
       await rail('Events');
-      await page.locator('.ev-row, .ev-match').first().waitFor();
-      if (await page.locator('.ev-row').count()) {
-        const cur = page.locator('.ev-row[aria-current="true"]');
-        await ((await cur.count()) ? cur : page.locator('.ev-row')).first().click();
+      await page.locator('.ev-card, .ev-match').first().waitFor();
+      if (await page.locator('.ev-card').count()) {
+        const cur = page.locator('.ev-card[aria-current="true"]');
+        await ((await cur.count()) ? cur : page.locator('.ev-card')).first().click();
       }
       const cur = page.locator('.ev-match[aria-current="true"]');
       await ((await cur.count()) ? cur : page.locator('.ev-match')).first().getByRole('button', { name: 'Open' }).click();
@@ -112,7 +112,7 @@ let failShot = async () => {};
   // Event first (build step 3): identity, the people on air and the sponsors every match uses.
   await page.getByLabel('New event name').fill('Community Cup');
   await btn('New event');
-  await page.locator('.ev-row').filter({ hasText: 'Community Cup' }).click();
+  await page.locator('.ev-card').filter({ hasText: 'Community Cup' }).click();
   await page.getByRole('heading', { name: 'Community Cup' }).waitFor();
   await page.getByRole('tab', { name: 'Branding' }).click();
   await page.getByLabel('Stages').fill('Groups, Playoffs, Grand final');
@@ -197,7 +197,7 @@ let failShot = async () => {};
   await shot('wizard-rehearse-map-result');
   await wizard.getByRole('button', { name: 'Finish · Readiness' }).click();
   await wizard.waitFor({ state: 'detached' });
-  await page.getByText('Sara Malik, Omar Sheikh · 1 sponsor').waitFor();
+  await page.locator('[title="Sara Malik, Omar Sheikh · 1 sponsor"]').waitFor(); // a Ready chip
   await shot('readiness-first-run');
   await step('Teams/Players');
   await shot('match-teams');
@@ -540,7 +540,7 @@ let failShot = async () => {};
   // Esportra's tournament shows in Events until one of its matches is opened.
   await rail('Events');
   await btn('← Events');
-  await page.locator('.ev-row').filter({ hasText: /in Esportra/ }).first().click();
+  await page.locator('.ev-card').filter({ hasText: 'Esportra tournament' }).first().click();
   const paper = page.locator('.ev-match').filter({ hasText: 'Paper Rex' }).first();
   await paper.waitFor();
   await shot('matches-with-esportra');
@@ -555,19 +555,19 @@ let failShot = async () => {};
   for (let i = 0; i < 50 && (await call('snapshot')).gameLocked; i++) await page.waitForTimeout(200);
   await paper.getByRole('button', { name: 'Open' }).click();
   await page.locator('.tl-name').filter({ hasText: 'Paper Rex' }).first().waitFor();
-  await page.getByText(/signed in as|Signed in as/i).first().waitFor();
+  await page.locator('[title^="Signed in as"]').first().waitFor(); // the Esportra chip in Ready
   await shot('readiness-esportra');
   // Deleting asks first; an event with no match goes at once.
   await rail('Events');
   await btn('← Events');
   await page.getByLabel('New event name').fill('Scratch event');
   await btn('New event');
-  await page.locator('.ev-row').filter({ hasText: 'Scratch event' }).click();
+  await page.locator('.ev-card').filter({ hasText: 'Scratch event' }).click();
   await btn('Delete event');
   await page.getByRole('group', { name: 'Delete Scratch event?' }).waitFor();
   await shot('delete-event-confirm');
   await page.getByRole('group', { name: 'Delete Scratch event?' }).getByRole('button', { name: 'Delete' }).click();
-  await page.locator('.ev-row').filter({ hasText: 'Scratch event' }).waitFor({ state: 'detached' });
+  await page.locator('.ev-card').filter({ hasText: 'Scratch event' }).waitFor({ state: 'detached' });
   await shot('events');
 
   // Observer and player PCs (Stage 3): allow joining, then act as the capture-only PC against ourselves.
@@ -695,6 +695,12 @@ let failShot = async () => {};
   if (await press('F1') !== 404) throw new Error('F1 still held with keys over the game switched off');
   await overSwitch.click();
   await keyRow('Tech pause').getByText('Over the game').waitFor();
+  // The Settings menu follows the page down to the last section.
+  await page.evaluate(() => { let el = document.getElementById('set-about'); while (el && el.scrollHeight <= el.clientHeight + 2) el = el.parentElement; if (el) el.scrollTop = el.scrollHeight; });
+  await page.locator('.settings-nav a[aria-current="true"]', { hasText: 'About' }).waitFor();
+  await page.locator('.settings-nav a', { hasText: 'Keyboard' }).click();
+  await page.locator('.settings-nav a[aria-current="true"]', { hasText: 'Keyboard' }).waitFor();
+  await shot('settings-nav');
 
   // A laptop screen: every main page at 1280x800.
   await page.setViewportSize({ width: 1280, height: 800 });

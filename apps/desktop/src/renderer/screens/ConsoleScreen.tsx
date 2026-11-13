@@ -35,7 +35,10 @@ function useNow(active: boolean) {
   return now;
 }
 
-interface Moment { id: string; label: string; detail: string; state: 'idle' | 'live' | 'warn'; built: boolean; fire: () => void }
+interface Moment { id: string; label: string; detail: string; state: 'idle' | 'live' | 'warn' | 'cued'; built: boolean; fire: () => void }
+
+/** Which cued change belongs to a moment (by the label Air gives the cue). */
+const CUE_MATCH: Record<string, RegExp> = { talent: /lower third/i, sponsor: / read$/i, spotlight: /^spotlight/i };
 
 function LayerList({ s, rows, fire }: { s: Snapshot; rows: LayerRow[]; fire: (row: LayerRow) => void }) {
   return (
@@ -168,8 +171,8 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   const moment = (id: string, snap: Snapshot): Moment => {
     const talent = snap.match ? onAir(snap.match, snap.event).talent : [];
     switch (id) {
-      case 'pause': return { id, label: 'Tech pause', detail: snap.triggers.pause === 'technical' ? 'On screen · press again to resume' : 'Pause panel with a clock', state: snap.triggers.pause === 'technical' ? 'warn' : 'idle', built: true, fire: () => void run(() => air.pause(snap.triggers.pause === 'technical' ? null : 'technical')) };
-      case 'timeout': return { id, label: 'Timeout', detail: snap.triggers.pause === 'timeout' ? 'On screen · press again to end' : 'Team timeout panel', state: snap.triggers.pause === 'timeout' ? 'warn' : 'idle', built: true, fire: () => void run(() => air.pause(snap.triggers.pause === 'timeout' ? null : 'timeout')) };
+      case 'pause': return { id, label: 'Tech pause', detail: snap.triggers.pause === 'technical' ? 'On screen · press again to resume' : 'Pause panel with a clock', state: snap.triggers.pause === 'technical' ? 'live' : 'idle', built: true, fire: () => void run(() => air.pause(snap.triggers.pause === 'technical' ? null : 'technical')) };
+      case 'timeout': return { id, label: 'Timeout', detail: snap.triggers.pause === 'timeout' ? 'On screen · press again to end' : 'Team timeout panel', state: snap.triggers.pause === 'timeout' ? 'live' : 'idle', built: true, fire: () => void run(() => air.pause(snap.triggers.pause === 'timeout' ? null : 'timeout')) };
       case 'replay': return { id, label: 'Replay', detail: snap.obs.replay.bufferActive === true ? 'Save the last moments in OBS' : 'Start the replay buffer in OBS first', state: 'idle', built: snap.obs.state === 'connected', fire: () => void run(() => air.replay()) };
       case 'toast': return { id, label: 'Toast', detail: 'Short on-screen update', state: form === 'toast' ? 'warn' : 'idle', built: true, fire: () => setForm(form === 'toast' ? null : 'toast') };
       case 'talent': return { id, label: 'Talent lower third', detail: talent.length ? (snap.triggers.strap ? 'On screen · press again to hide' : talent.map((c) => c.name).slice(0, 2).join(' & ')) : 'Add people in Event first', state: snap.triggers.strap ? 'live' : 'idle', built: true, fire: () => (talent.length ? void run(() => air.casterStrap(!snap.triggers.strap)) : openCasters()) };
@@ -213,7 +216,11 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
 
   const r = s.readout;
   const live = s.feed.state === 'live' || s.testRound.running;
-  const moments = s.moments.filter((id) => ACTIONS.some((a) => a.id === id)).map((id) => moment(id, s));
+  // A moment waiting in Cued reads as cued (amber) until it is taken.
+  const moments = s.moments.filter((id) => ACTIONS.some((a) => a.id === id)).map((id) => moment(id, s)).map((m): Moment => {
+    const cue = CUE_MATCH[m.id];
+    return m.state === 'idle' && cue && s.cue.pending.some((l) => cue.test(l)) ? { ...m, state: 'cued', detail: `Cued · ${keyLabel(keyOf(s.keymap, 'take'))} to take` } : m;
+  });
   const d = s.devices;
 
   return (
@@ -262,7 +269,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
                 <button className="btn quiet small" onClick={() => void run(() => air.cueClear())}>Clear</button>
               </div>
             </>
-          ) : <p className="muted t-sm">Nothing cued. Graphics, lower thirds, toasts and polls wait here until you take them.</p>)
+          ) : <div className="cue-empty"><b>Nothing cued</b><span>Pick a moment or a graphic. It waits here until you press <span className="kbd">{keyLabel(keyOf(s.keymap, 'take'))}</span></span></div>)
             : <p className="muted t-sm">Every change goes on air the moment you make it.</p>}
         </section>
 

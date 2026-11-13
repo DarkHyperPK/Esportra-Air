@@ -29,7 +29,7 @@ export function ObsConnection({ s, run }: Pick<PageProps, 's' | 'run'>) {
       <div className="head"><Cap>OBS connection</Cap>{connected ? <Tally kind="ok">Connected</Tally> : <Tally kind={s.obs.state === 'error' ? 'bad' : 'off'}>{s.obs.state === 'connecting' ? 'Connecting' : s.obs.state === 'error' ? 'Lost' : 'Not connected'}</Tally>}</div>
       <div className="body-pad stack" style={{ gap: 14 }}>
         <p className="muted" style={{ fontSize: 12.5 }}>OBS’s built-in WebSocket server (OBS › Tools › WebSocket Server Settings). Air installs its scenes and reads what is on air. It never streams or records.</p>
-        {connected && <div><h2 className="title-sm">OBS Studio {s.obs.version}</h2><p className="muted" style={{ fontSize: 12.5 }}>ws://{s.setup.obs.host}:{s.setup.obs.port} · scene collection {s.obs.collection ?? '—'}</p></div>}
+        {connected && <div><h2 className="title-sm">OBS Studio {s.obs.version}</h2><p className="muted" style={{ fontSize: 12.5 }}>{s.setup.obs.host}, port {s.setup.obs.port} · scene collection {s.obs.collection ?? '—'}</p></div>}
         <form className="stack" style={{ gap: 12, maxWidth: 520 }} onSubmit={(e) => { e.preventDefault(); void run(() => air.connectObs({ host, port: Number(port), password })); }}>
           <div className="grid3" style={{ gridTemplateColumns: '2fr 1fr' }}>
             <label className="field"><span>Address</span><input value={host} onChange={(e) => setHost(e.target.value)} required /></label>
@@ -48,21 +48,29 @@ export function ObsConnection({ s, run }: Pick<PageProps, 's' | 'run'>) {
 }
 
 
-/** Which section is in view, so the list on the left shows where you are. */
-function useSection() {
+/**
+ * Which section is in view, so the list on the left shows where you are: the last section whose top has
+ * reached the top of the page, or the last one once the page is scrolled to the bottom (the last
+ * sections are too short to reach the top). A click marks its section at once.
+ */
+function useSection(): [string, (id: string) => void] {
   const [current, setCurrent] = useState<string>(SECTIONS[0][0]);
+  const [pinned, setPinned] = useState(0);
   useEffect(() => {
-    const io = new IntersectionObserver((entries) => {
-      const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-      if (top) setCurrent(top.target.id.replace('set-', ''));
-    }, { rootMargin: '0px 0px -60% 0px' });
-    for (const [id] of SECTIONS) {
-      const el = document.getElementById(`set-${id}`);
-      if (el) io.observe(el);
-    }
-    return () => io.disconnect();
-  }, []);
-  return current;
+    const onScroll = (e: Event) => {
+      if (Date.now() < pinned) return;
+      const scroller = e.target instanceof HTMLElement ? e.target : document.scrollingElement;
+      const els = SECTIONS.map(([id]) => document.getElementById(`set-${id}`)).filter((el): el is HTMLElement => !!el);
+      if (!els.length || !scroller || !scroller.contains(els[0]!)) return;
+      const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+      const top = scroller.getBoundingClientRect().top + 120;
+      const hit = atBottom ? els.at(-1)! : [...els].reverse().find((el) => el.getBoundingClientRect().top <= top) ?? els[0]!;
+      setCurrent(hit.id.replace('set-', ''));
+    };
+    document.addEventListener('scroll', onScroll, true);
+    return () => document.removeEventListener('scroll', onScroll, true);
+  }, [pinned]);
+  return [current, (id) => { setCurrent(id); setPinned(Date.now() + 800); }];
 }
 
 /** Rebind any key: Change, then press the new key. A key in use is offered as a swap. Saved on this PC. */
@@ -160,12 +168,12 @@ function MomentSettings({ s, run }: { s: Snapshot; run: Run }) {
 
 export function SettingsScreen(props: PageProps) {
   const { s, run } = props;
-  const current = useSection();
+  const [current, pick] = useSection();
   return (
     <div className="settings">
       <nav className="settings-nav" aria-label="Settings sections">
         <Cap>Settings</Cap>
-        {SECTIONS.map(([id, label]) => <a key={id} href={`#set-${id}`} aria-current={current === id ? 'true' : undefined}>{label}</a>)}
+        {SECTIONS.map(([id, label]) => <a key={id} href={`#set-${id}`} onClick={() => pick(id)} aria-current={current === id ? 'true' : undefined}>{label}</a>)}
       </nav>
       <div className="stack settings-body">
         <PageHeader eyebrow="Software" title="Settings">How this copy of Air runs on this PC. OBS, player PCs and everything for a show are set up in its match.</PageHeader>
@@ -185,7 +193,7 @@ export function SettingsScreen(props: PageProps) {
           <div className="body-pad">
             <dl className="readout">
               <dt>Version</dt><dd>{s.version}</dd>
-              <dt>Graphics engine</dt><dd>127.0.0.1:{s.engine.port ?? '—'} · {s.engine.state}</dd>
+              <dt>Graphics</dt><dd>{s.engine.state === 'running' ? 'Running' : s.engine.state === 'starting' ? 'Starting' : 'Stopped'} on this PC · port {s.engine.port ?? '—'}</dd>
               <dt>Game data</dt><dd>Stays on your network in local mode</dd>
             </dl>
           </div>

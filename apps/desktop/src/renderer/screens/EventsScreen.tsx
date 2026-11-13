@@ -86,26 +86,38 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
         <div><h1 className="title-lg">Events</h1><p className="muted">Each event holds its matches, its branding, and the people and sponsors on air.</p></div>
         {form}
       </div>
-      <div className="lst ev-list">
+      <div className="ev-cards">
         {s.events.map((e) => {
           const matches = s.matches.filter((m) => m.eventId === e.id);
+          // The next match to play leads; the last one played follows, dimmed.
+          const upcoming = matches.filter((m) => !m.finishedAt).sort((a, b) => (a.source?.scheduledAt ?? '').localeCompare(b.source?.scheduledAt ?? '') || b.createdAt - a.createdAt)[0];
+          const played = matches.filter((m) => m.finishedAt).sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0];
+          const people = [e.talent.slice(0, 2).map((t) => t.name).join(', '), e.sponsors.length ? `${e.sponsors.length} sponsor${e.sponsors.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
           return (
-            <button key={e.id} className="li ev-row" onClick={() => open(e.id)} aria-current={s.event?.id === e.id ? 'true' : undefined}>
-              <EventLogo s={s} path={e.logo} size={40} />
-              <span className="ev-name"><b>{e.name}</b><span className="muted t-sm">{[e.stages.join(' · '), `${matches.length} match${matches.length === 1 ? '' : 'es'}`].filter(Boolean).join(' · ')}</span></span>
-              <span className="faint t-xs">{e.tournamentId ? 'Esportra' : 'On this PC'}</span>
-              <span className="faint" aria-hidden="true">›</span>
+            <button key={e.id} className="card ev-card" onClick={() => open(e.id)} aria-current={s.event?.id === e.id ? 'true' : undefined} aria-label={`Open ${e.name}`}>
+              <span className="ev-card-top">
+                <EventLogo s={s} path={e.logo} size={44} name={e.name} accent={e.accent} />
+                <span className="ev-name"><b>{e.name}</b><span className="faint t-xs">{e.tournamentId ? 'From Esportra' : 'On this PC'} · {matches.length} match{matches.length === 1 ? '' : 'es'}</span></span>
+              </span>
+              {e.stages.length > 0 && <span className="chips-row">{e.stages.map((st) => <span key={st} className={`pill ${upcoming?.stage === st ? 'ok' : ''}`}>{st}</span>)}</span>}
+              {upcoming && <MatchLine s={s} m={upcoming} label={upcoming.source?.scheduledAt ? when(upcoming.source.scheduledAt) : 'Next'} />}
+              {played && <MatchLine s={s} m={played} label="Played" done />}
+              {!upcoming && !played && <span className="faint t-sm">No matches yet. Open the event and press New match.</span>}
+              <span className="ev-card-foot"><span className="faint t-xs">{people || 'No talent or sponsors yet'}</span><span className="btn small">Open event</span></span>
             </button>
           );
         })}
         {tournaments.map(([tid, name]) => (
-          <button key={tid} className="li ev-row" onClick={() => open(`esp:${tid}`)}>
-            <EventLogo s={s} path="" size={40} />
-            <span className="ev-name"><b>{name}</b><span className="muted t-sm">{remoteCount(tid)} match{remoteCount(tid) === 1 ? '' : 'es'} in Esportra</span></span>
-            <span className="faint t-xs">Esportra</span>
-            <span className="faint" aria-hidden="true">›</span>
+          <button key={tid} className="card ev-card" onClick={() => open(`esp:${tid}`)} aria-label={`Open ${name}`}>
+            <span className="ev-card-top">
+              <EventLogo s={s} path="" size={44} name={name} accent="#f43f5e" />
+              <span className="ev-name"><b>{name}</b><span className="faint t-xs">From Esportra · {remoteCount(tid)} match{remoteCount(tid) === 1 ? '' : 'es'}</span></span>
+            </span>
+            <span className="chips-row"><span className="pill">Esportra tournament</span></span>
+            <span className="ev-card-foot"><span className="faint t-xs">Teams and best-of come from Esportra</span><span className="btn small">Open event</span></span>
           </button>
         ))}
+        <div className="ev-add"><b style={{ color: 'var(--text)' }}>Another event?</b><span className="t-sm">Name it above and press New event. Its logo, colour, talent and sponsors are set once; every match in it uses them.</span></div>
       </div>
       {s.esportra.state === 'signed-out'
         ? <button className="btn quiet" style={{ alignSelf: 'flex-start' }} onClick={openSignIn}>Sign in to load your Esportra tournaments</button>
@@ -113,6 +125,17 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
           ? <p className="faint t-xs">{s.esportra.warning ?? 'Esportra has not turned on Air for this account yet.'}</p>
           : <button className="btn quiet small" style={{ alignSelf: 'flex-start' }} onClick={() => void run(() => air.esportraRefresh())}>Refresh from Esportra</button>}
     </div>
+  );
+}
+
+/** One match on an event card: when, both teams with their marks, best-of (or the final series when played). */
+function MatchLine({ s, m, label, done }: { s: PageProps['s']; m: Match; label: string; done?: boolean }) {
+  return (
+    <span className={`ev-next ${done ? 'done' : ''}`}>
+      <span className="cap" style={{ letterSpacing: '0.08em' }}>{label}</span>
+      <span className="ev-next-teams"><TeamMark s={s} team={m.teams[0]} size={22} />{m.teams[0].name}<span className="faint t-xs">vs</span>{m.teams[1].name}<TeamMark s={s} team={m.teams[1]} size={22} /></span>
+      <span className="faint t-xs mono">{done ? 'Finished' : `Bo${m.bestOf}`}</span>
+    </span>
   );
 }
 
@@ -126,7 +149,7 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
       <nav className="crumb-back"><button className="btn quiet small" onClick={back}>← Events</button></nav>
       <header className="between ev-head" style={{ ['--accent' as string]: event.accent }}>
         <div className="row-gap" style={{ gap: 16 }}>
-          <EventLogo s={s} path={event.logo} size={52} />
+          <EventLogo s={s} path={event.logo} size={52} name={event.name} accent={event.accent} />
           <div><h1 className="title-lg">{event.name}</h1><p className="muted">{event.stages.length ? event.stages.join(' · ') : 'No stages yet'}{event.tournamentId ? ' · from Esportra' : ''}</p></div>
         </div>
         <div className="row-gap">
@@ -179,7 +202,7 @@ function EsportraTournament({ s, name, matches, back, openRemote }: { s: PagePro
   return (
     <div className="stack" style={{ gap: 18 }}>
       <nav className="crumb-back"><button className="btn quiet small" onClick={back}>← Events</button></nav>
-      <header className="row-gap" style={{ gap: 16 }}><EventLogo s={s} path="" size={52} /><div><h1 className="title-lg">{name}</h1><p className="muted">From Esportra. Open a match to set it up; the event is made on this PC then.</p></div></header>
+      <header className="row-gap" style={{ gap: 16 }}><EventLogo s={s} path="" size={52} name={name} accent="#f43f5e" /><div><h1 className="title-lg">{name}</h1><p className="muted">From Esportra. Open a match to set it up; the event is made on this PC then.</p></div></header>
       <div className="lst">
         {matches.map((e) => (
           <div key={e.id} className="li ev-match">

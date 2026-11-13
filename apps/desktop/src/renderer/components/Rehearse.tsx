@@ -79,7 +79,7 @@ export function RehearsePanel({ s, run, compact = false }: { s: Snapshot; run: R
           </div>
         </div>
         <label className="row-item" style={{ padding: 0, border: 0 }}>
-          <span>Autopilot in rehearsal<br /><span className="muted" style={{ fontSize: 12 }}>Your rundown, from the Autopilot tab</span></span>
+          <span>Autopilot in rehearsal<br /><span className="muted" style={{ fontSize: 12 }}>Your Rundown, from the Rundown step</span></span>
           <button type="button" className="switch" role="switch" aria-checked={opts.autopilot} aria-label="Autopilot in rehearsal" disabled={r.running} onClick={() => pick({ autopilot: !opts.autopilot })} />
         </label>
         <label className="row-item" style={{ padding: 0, border: 0 }}>

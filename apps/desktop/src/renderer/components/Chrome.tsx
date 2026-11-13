@@ -38,10 +38,10 @@ const zone = () => new Intl.DateTimeFormat('en', { timeZoneName: 'short' }).form
 export function statusOf(s: Snapshot): Record<StatusId, { dot: 'ok' | 'warn' | 'bad' | 'off'; label: string; value: string }> {
   const feed = s.feed.state === 'live' ? (s.feed.paused ? 'Paused' : 'Live') : s.feed.state === 'waiting' ? 'Waiting' : s.feed.state === 'unavailable' ? 'Unavailable' : 'Off';
   return {
-    feed: { label: 'Game', value: feed, dot: s.feed.state === 'live' && !s.feed.paused ? 'ok' : s.feed.state === 'off' ? 'off' : s.feed.state === 'unavailable' ? 'bad' : 'warn' },
+    feed: { label: 'Game data', value: feed, dot: s.feed.state === 'live' && !s.feed.paused ? 'ok' : s.feed.state === 'off' ? 'off' : s.feed.state === 'unavailable' ? 'bad' : 'warn' },
     obs: { label: 'OBS', value: s.obs.state === 'connected' ? 'Connected' : s.obs.state === 'error' ? 'Error' : 'Not connected', dot: s.obs.state === 'connected' ? 'ok' : s.obs.state === 'error' ? 'bad' : 'warn' },
     esportra: { label: 'Esportra', value: s.esportra.state === 'signed-out' ? 'Signed out' : s.esportra.state === 'online' ? 'Signed in' : s.esportra.state === 'offline' ? 'Offline' : 'No access', dot: s.esportra.state === 'online' ? 'ok' : s.esportra.state === 'signed-out' ? 'off' : 'warn' },
-    graphics: { label: 'Engine', value: s.engine.state === 'running' ? 'Running' : s.engine.state === 'starting' ? 'Starting' : 'Stopped', dot: s.engine.state === 'running' ? 'ok' : s.engine.state === 'starting' ? 'warn' : 'bad' },
+    graphics: { label: 'Graphics', value: s.engine.state === 'running' ? 'Running' : s.engine.state === 'starting' ? 'Starting' : 'Stopped', dot: s.engine.state === 'running' ? 'ok' : s.engine.state === 'starting' ? 'warn' : 'bad' },
   };
 }
 

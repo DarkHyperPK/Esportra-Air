@@ -73,7 +73,7 @@ export function CaptureScreen({ s, run, askCapture, go }: PageProps) {
   const c = s.capture;
   const kind = s.feed.state === 'live' ? (s.feed.paused ? 'covered' : 'live') : s.feed.state === 'waiting' ? 'covered' : s.feed.state === 'unavailable' ? 'bad' : 'off';
   const r = s.readout;
-  const source = s.testRound.running ? 'Simulation' : s.feed.state === 'off' ? 'Off' : 'Valorant GEP';
+  const source = s.testRound.running ? 'Simulation' : s.feed.state === 'off' ? 'Off' : `${s.game?.name ?? 'Game'} game data`;
   const stat = (k: string, v: string, note: string) => <div className="stat"><Cap>{k}</Cap><div className="v">{v}</div><div className="muted" style={{ fontSize: 11.5 }}>{note}</div></div>;
   return (
     <>
@@ -99,7 +99,7 @@ export function CaptureScreen({ s, run, askCapture, go }: PageProps) {
             </div>
           </div>
           <div className="body-pad">
-            <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>{s.feed.state === 'off' ? 'Capture is off. Nothing is read from the game until you start it.' : s.feed.reason ?? 'Each row is a GEP feature Air reads. The line is the last minute of messages.'} On this PC the data stays on your network.</p>
+            <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>{s.feed.state === 'off' ? 'Capture is off. Nothing is read from the game until you start it.' : s.feed.reason ?? 'Each row is one kind of game data Air reads. The line is the last minute of messages.'} On this PC the data stays on your network.</p>
             <table className="seg-table feat">
               <thead><tr><th>Feature</th><th>Status</th><th>Last</th><th>Last 60 s</th></tr></thead>
               <tbody>{c.features.map((f) => <FeatureRow key={f.id} f={f} />)}</tbody>

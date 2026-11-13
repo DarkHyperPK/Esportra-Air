@@ -63,18 +63,18 @@ const EXPLAIN: Record<StatusId, (s: Snapshot) => string> = {
   feed: (s) => s.feed.state === 'live' ? `Live data is arriving from Valorant${s.feed.ageMs !== null ? ` (last update ${(s.feed.ageMs / 1000).toFixed(1)} s ago)` : ''}. If it stops during a round, the HUD shows “Feed paused” and keeps the last data.` : s.feed.state === 'waiting' ? `${s.feed.reason ?? 'Waiting for Valorant.'} Open Valorant on this PC and join the custom game as an observer.` : s.feed.state === 'unavailable' ? s.feed.reason ?? 'Game capture is not available on this PC.' : 'Game capture is off. Nothing is read from the game until you start it.',
   obs: (s) => s.obs.state === 'connected' ? `Connected to OBS ${s.obs.version ?? ''}. Air reads which scene is on air.` : s.obs.error ?? 'Connect to OBS WebSocket (OBS › Tools › WebSocket Server Settings).',
   esportra: (s) => s.esportra.state === 'signed-out' ? 'Not signed in. Quick matches work without an account. Sign in to pick your scheduled Esportra tournament matches; Air then loads the teams, logos and best-of for you.' : `${s.esportra.email} on ${s.esportra.host}. ${s.esportra.state === 'online' ? 'Access confirmed.' : ''} ${s.esportra.warning ?? ''}`.trim(),
-  graphics: (s) => s.engine.state !== 'running' ? s.engine.error ?? 'The graphics engine is not running.' : 'Air’s graphics engine serves every output. It runs separately from this window, so graphics stay on air if Air closes or restarts.',
+  graphics: (s) => s.engine.state !== 'running' ? s.engine.error ?? 'Air’s graphics are not running.' : 'Air’s graphics run on this PC and serve every output. It runs separately from this window, so graphics stay on air if Air closes or restarts.',
 };
-const TITLE: Record<StatusId, string> = { feed: 'Game data', obs: 'OBS', esportra: 'Esportra', graphics: 'Graphics engine' };
+const TITLE: Record<StatusId, string> = { feed: 'Game data', obs: 'OBS', esportra: 'Esportra', graphics: 'Graphics' };
 
 const secs = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(1)} s ago`);
 
 /** The facts behind each status, so a producer (or support) can read the situation at a glance. */
 function details(id: StatusId, s: Snapshot): Array<[string, string]> {
   if (id === 'feed') return [['Game', 'Valorant'], ['Capture', s.feed.state === 'off' ? 'Off' : s.feed.state === 'waiting' ? 'Waiting for the game' : s.feed.state === 'live' ? (s.feed.paused ? 'Paused (quiet for 10 s)' : 'Receiving') : 'Unavailable'], ['Last data', secs(s.feed.ageMs)], ['Where data goes', 'This PC and your local network only']];
-  if (id === 'obs') return [['State', s.obs.state === 'connected' ? 'Connected' : s.obs.state === 'connecting' ? 'Connecting' : s.obs.state === 'error' ? 'Error' : 'Not connected'], ['Address', `ws://${s.setup.obs.host}:${s.setup.obs.port}`], ['Version', s.obs.version ?? '—'], ['Scene collection', s.obs.collection ?? '—'], ['On air in OBS', s.obs.programScene ?? '—'], ['Esportra scenes', s.obs.installed ? 'Installed' : 'Not installed'], ['Replay buffer', s.obs.replay.bufferActive === null ? 'Not set up' : s.obs.replay.bufferActive ? 'Active' : 'Off']];
+  if (id === 'obs') return [['State', s.obs.state === 'connected' ? 'Connected' : s.obs.state === 'connecting' ? 'Connecting' : s.obs.state === 'error' ? 'Error' : 'Not connected'], ['Address', `${s.setup.obs.host}, port ${s.setup.obs.port}`], ['Version', s.obs.version ?? '—'], ['Scene collection', s.obs.collection ?? '—'], ['On air in OBS', s.obs.programScene ?? '—'], ['Esportra scenes', s.obs.installed ? 'Installed' : 'Not installed'], ['Replay buffer', s.obs.replay.bufferActive === null ? 'Not set up' : s.obs.replay.bufferActive ? 'Active' : 'Off']];
   if (id === 'esportra') return [['Account', s.esportra.email ?? '—'], ['Server', s.esportra.host ?? '—'], ['State', statusOf(s).esportra.value]];
-  return [['State', statusOf(s).graphics.value], ['Address', s.engine.port ? `http://127.0.0.1:${s.engine.port}` : '—'], ['Outputs', `${s.outputs.length}`], ['Reattached after restart', s.engine.reattached ? 'Yes' : 'No']];
+  return [['State', statusOf(s).graphics.value], ['Address', s.engine.port ? `This PC, port ${s.engine.port}` : '—'], ['Outputs', `${s.outputs.length}`], ['Reattached after restart', s.engine.reattached ? 'Yes' : 'No']];
 }
 
 export function StatusDrawer({ id, s, close, go, run, askCapture, openSignIn }: { id: StatusId; s: Snapshot; close: () => void; go: (p: Page) => void; run: Run; askCapture: () => void; openSignIn: () => void }) {

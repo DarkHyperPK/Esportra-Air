@@ -8,8 +8,8 @@ import type { Run } from '../App.tsx';
 import { Cap, Tally } from './ui.tsx';
 
 const CHOICES: Array<[ControlMode, string, string, string]> = [
-  ['air', 'Air', 'Live in Air: Cued and Take, the rundown and autopilot. Best for a producer on their own.', 'Shows Live with Next and autopilot, and the match’s Autopilot tab.'],
-  ['companion', 'Stream Deck / Companion', 'Your Companion buttons and triggers run Air’s graphics. Air sends game events and takes button presses. Air never switches scenes; Companion can, if you set it to.', 'Shows Live without Next, and Settings › Companion. Hides the Autopilot tab.'],
+  ['air', 'Air', 'Live in Air: Cued and Take, the rundown and autopilot. Best for a producer on their own.', 'Shows Live with Next and autopilot, and the match’s Rundown.'],
+  ['companion', 'Stream Deck / Companion', 'Your Companion buttons and triggers run Air’s graphics. Air sends game events and takes button presses. Air never switches scenes; Companion can, if you set it to.', 'Shows Live without Next, and Settings › Companion. Autopilot stays off.'],
   ['both', 'Both', 'Air’s rundown and Live, and Companion buttons at the same time.', 'Shows everything.'],
 ];
 
