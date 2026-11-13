@@ -421,6 +421,7 @@ export class Production extends EventEmitter {
       this.roomV = data.v;
       this.scheduleCueSync();
       this.autopilot.onRoom(this.room);
+      this.finishIfWon(match);
     } catch {
       // Engine unavailable; the supervisor reports it.
     }
@@ -557,6 +558,34 @@ export class Production extends EventEmitter {
       data.events = [...data.events, event];
     }
     return { eventId: event.id, stage: from?.stage ?? '', talentOff: [], sponsorsOff: [], theme: from?.theme ?? this.setup.package ?? 'broadcast' };
+  }
+
+  /** A team has won the series in the room: the match is finished and keeps its teams from now on. */
+  private finishIfWon(match: Match) {
+    if (match.finishedAt) return;
+    const wins = (this.room?.teams ?? []).map((t: { series?: number }) => Number(t?.series) || 0);
+    if (Math.max(0, ...wins) > match.bestOf / 2) {
+      match.finishedAt = Date.now();
+      this.log.add(`Match finished · ${match.title}`);
+      this.save();
+    }
+  }
+
+  async markFinished(id: string, finished: boolean) {
+    const match = this.deps.store.data.matches.find((m) => m.id === id);
+    if (!match) throw new Error('That match is no longer available.');
+    if (finished) match.finishedAt ??= Date.now();
+    else {
+      delete match.finishedAt;
+      // Reopened: it follows Teams/Players again, from now.
+      if (refreshMatch(match, this.library)) match.title = `${match.teams[0].name} vs ${match.teams[1].name}`;
+      if (match.id === this.deps.store.data.selectedMatchId) {
+        this.save();
+        await this.syncEngine();
+        return;
+      }
+    }
+    this.save();
   }
 
   // ── Teams/Players ──
@@ -1120,6 +1149,11 @@ export class Production extends EventEmitter {
     // Without Air access the match list is refused anyway: say why once, instead of asking again.
     if (this.esportra.view().state === 'denied') throw new Error('Esportra has not turned on Air for this account yet, so its matches cannot load. Your own events and matches work as normal.');
     await this.esportra.refreshMatches();
+    // Matches Esportra reports as completed are finished here too.
+    const done = new Set(this.esportra.view().matches.filter((e) => e.status === 'completed').map((e) => e.id));
+    let changed = false;
+    for (const m of this.deps.store.data.matches) if (!m.finishedAt && m.source && done.has(m.source.matchId)) { m.finishedAt = Date.now(); changed = true; }
+    if (changed) this.save();
   }
 
   /** Makes an Esportra match the match on this PC: teams, tags, logos, best-of and tournament name. */

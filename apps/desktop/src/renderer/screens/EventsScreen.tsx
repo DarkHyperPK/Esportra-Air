@@ -119,7 +119,8 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
 function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, openRemote, newMatch }: Pick<PageProps, 's' | 'run'> & {
   event: EventInfo; tab: EventTab; setTab: (t: EventTab) => void; back: () => void; remote: EsportraMatch[]; openMatch: (m: Match) => void; openRemote: (e: EsportraMatch) => void; newMatch: () => void;
 }) {
-  const matches = s.matches.filter((m) => m.eventId === event.id).sort((a, b) => (a.source?.scheduledAt ?? '').localeCompare(b.source?.scheduledAt ?? '') || b.createdAt - a.createdAt);
+  // Finished matches go last; the rest by schedule, then newest first.
+  const matches = s.matches.filter((m) => m.eventId === event.id).sort((a, b) => Number(!!a.finishedAt) - Number(!!b.finishedAt) || (a.source?.scheduledAt ?? '').localeCompare(b.source?.scheduledAt ?? '') || b.createdAt - a.createdAt);
   return (
     <div className="stack" style={{ gap: 18 }}>
       <nav className="crumb-back"><button className="btn quiet small" onClick={back}>← Events</button></nav>
@@ -143,9 +144,9 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
           {!matches.length && !remote.length && <p className="muted ap-empty">No matches in this event yet. Press New match to add one.</p>}
           <div className="lst">
             {matches.map((m) => {
-              const st = prepState(m, event);
+              const st = m.finishedAt ? { health: 'off' as const, label: 'Finished' } : prepState(m, event);
               return (
-                <div key={m.id} className="li ev-match" aria-current={s.match?.id === m.id ? 'true' : undefined}>
+                <div key={m.id} className={`li ev-match ${m.finishedAt ? 'done' : ''}`} aria-current={s.match?.id === m.id ? 'true' : undefined}>
                   <span className="mono t-sm">{when(m.source?.scheduledAt ?? null, m.createdAt)}</span>
                   <button className="ev-match-open" onClick={() => openMatch(m)}><TeamMark s={s} team={m.teams[0]} size={24} /><b>{m.teams[0].name}</b><span className="faint">vs</span><b>{m.teams[1].name}</b><TeamMark s={s} team={m.teams[1]} size={24} /></button>
                   <span className="muted t-sm">{[m.stage, `Bo${m.bestOf}`].filter(Boolean).join(' · ')}</span>

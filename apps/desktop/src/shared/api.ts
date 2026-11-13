@@ -68,6 +68,9 @@ export interface Match {
   players: [PlayerInfo[], PlayerInfo[]];
   /** The Teams/Players teams this match follows, per side. */
   teamIds?: [string | null, string | null];
+  /** When the match was finished (series won, Esportra completed, or marked by hand). A finished match keeps
+   *  the teams and players it was played with; Teams/Players changes no longer reach it. */
+  finishedAt?: number;
   /** The event this match belongs to: its branding, talent and sponsors. */
   eventId: string;
   /** The event stage shown on air, e.g. "Playoffs" (free text). */
@@ -424,6 +427,8 @@ export interface AirApi {
   setStarters(matchId: string, side: 0 | 1, playerIds: string[]): Promise<Snapshot>;
   /** Deletes an event and its matches from this PC (Esportra keeps its own). Refused while one of them is live. */
   deleteEvent(id: string): Promise<Snapshot>;
+  /** Marks a match finished (it stops following Teams/Players), or reopens it. */
+  markFinished(id: string, finished: boolean): Promise<Snapshot>;
   /** Deletes a match from this PC (an Esportra match stays in Esportra). Refused while it is live. */
   deleteMatch(id: string): Promise<Snapshot>;
   updateEvent(id: string, patch: EventPatch): Promise<Snapshot>;

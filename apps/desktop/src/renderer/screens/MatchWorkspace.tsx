@@ -102,6 +102,9 @@ function Overview({ s, run, act, back }: Pick<PageProps, 's' | 'run'> & { act: (
         <div><h2 className="title-md">{ready === counted.length ? 'Ready when you are' : 'Almost ready'}</h2><p className="muted t-sm">Go live sends your graphics to OBS, starts game data with your permission, and arms autopilot if you want it. Your stream stays in OBS. Warnings never stop you.</p></div>
         <span className="row-gap">
           <span className="muted t-sm">{ready} of {counted.length} ready</span>
+          {m.finishedAt
+            ? <button className="btn quiet small" onClick={() => void run(() => air.markFinished(m.id, false))} title="It follows Teams/Players again">Reopen</button>
+            : <button className="btn quiet small" onClick={() => void run(() => air.markFinished(m.id, true))} title="It keeps the teams and players it was played with">Mark as finished</button>}
           {sure ? (
             <span className="row-gap confirm" role="group" aria-label="Delete this match?">
               <span className="t-sm">{m.source ? 'Remove from Air? (Stays in Esportra)' : 'Delete this match?'}</span>
@@ -111,6 +114,7 @@ function Overview({ s, run, act, back }: Pick<PageProps, 's' | 'run'> & { act: (
           ) : <button className="btn quiet small danger" onClick={() => setSure(true)}>Delete match</button>}
         </span>
       </div>
+      {m.finishedAt && <div className="notice info" role="status">Finished {new Date(m.finishedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}. It keeps the teams and players it was played with; changes in Teams/Players no longer reach it. Reopen to follow them again.</div>}
       <div className="lst" aria-label="Readiness checks">
         {s.checks.map((c) => (
           <div className="li check-row" key={c.id}>

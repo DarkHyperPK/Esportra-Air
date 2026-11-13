@@ -82,6 +82,8 @@ export function linkMatch(match: Match, lib: Library) {
  * player. A player who left the team leaves the lineup; one deleted from the library stays as typed.
  */
 export function refreshMatch(match: Match, lib: Library): boolean {
+  // A finished match keeps the teams and players it was played with.
+  if (match.finishedAt) return false;
   const before = JSON.stringify([match.teams, match.players]);
   for (const t of [0, 1] as const) {
     const teamId = match.teamIds?.[t];

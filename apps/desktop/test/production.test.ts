@@ -852,3 +852,27 @@ test('Teams/Players: a match follows its saved teams and players, all the way to
     await engine.stop(true);
   }
 });
+
+test('a match finishes when a team wins the series, and then keeps the teams it was played with', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-fin-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'finish-test-key-0123456789abcdef', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
+  try {
+    await production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 1 });
+    await production.correct({ field: 'series', value: [1, 0], reason: 'Map won' });
+    for (let i = 0; i < 40 && !production.match!.finishedAt; i++) { await engine.poll(); await new Promise((r) => setTimeout(r, 50)); }
+    assert.ok(production.match!.finishedAt, 'a won series finishes the match');
+    const alpha = production.snapshot().library.teams[0]!;
+    await production.saveTeam({ ...alpha, name: 'Alpha Renamed' });
+    assert.equal(production.match!.teams[0].name, 'Alpha', 'the finished match keeps its name');
+    await production.markFinished(production.match!.id, false);
+    assert.equal(production.match!.teams[0].name, 'Alpha Renamed', 'reopened: it follows again');
+  } finally {
+    production.log.stop();
+    await engine.stop(true);
+  }
+});

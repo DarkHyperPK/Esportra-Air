@@ -72,3 +72,16 @@ test('edits made inside a match reach the library', () => {
   assert.equal(lib.teams[0]!.color, '#abcdef');
   assert.equal(lib.players[0]!.gameId, 'JUNO#EU1');
 });
+
+test('a finished match keeps the teams it was played with', () => {
+  const lib = emptyLibrary();
+  const m = match('Night Owls', 'Crimson Five', [[p('Juno')], []]);
+  linkMatch(m, lib);
+  m.finishedAt = 1;
+  lib.teams[0]!.name = 'Renamed';
+  assert.equal(refreshMatch(m, lib), false);
+  assert.equal(m.teams[0].name, 'Night Owls');
+  delete m.finishedAt;
+  assert.equal(refreshMatch(m, lib), true, 'reopened: it follows again');
+  assert.equal(m.teams[0].name, 'Renamed');
+});

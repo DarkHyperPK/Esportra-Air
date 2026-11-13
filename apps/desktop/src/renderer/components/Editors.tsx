@@ -148,7 +148,7 @@ export function PlayerEditor({ s, run, team, index, close }: { s: Snapshot; run:
         {id && <label className="field" style={{ gridColumn: '1 / -1' }}><span>{id.label}</span><input className="mono" value={d.gameId} onChange={(e) => setD({ ...d, gameId: e.target.value })} placeholder={id.placeholder} spellCheck={false} /></label>}
       </div>
       {id && <span className="faint t-xs" style={{ marginTop: -8 }}>{id.help}</span>}
-      <span className="faint t-xs">Changes are saved in Teams/Players too, for every match this player plays.</span>
+      <span className="faint t-xs">Changes are saved in Teams/Players too, for every match not yet finished.</span>
       {seat && (
         <>
           <hr className="rule" />

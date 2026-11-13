@@ -26,7 +26,7 @@ export function TeamsScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   return (
     <div className="stack" style={{ gap: 18 }}>
       <div className="between">
-        <div><h1 className="title-lg">Teams/Players</h1><p className="muted">Add them once; every match that plays them follows your changes.</p></div>
+        <div><h1 className="title-lg">Teams/Players</h1><p className="muted">Add them once; every match not yet finished follows your changes.</p></div>
         <div className="row-gap">
           <div className="seg" role="tablist" aria-label="Show">
             <button role="tab" aria-selected={filter === 'teams'} aria-pressed={filter === 'teams'} onClick={() => setFilter('teams')}>Teams</button>

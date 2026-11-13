@@ -797,3 +797,4 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .tag-pill { padding: 2px 8px; border: 1px solid var(--hair-strong); border-radius: var(--r-pill); color: var(--text-3); font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .tag-pill.on { border-color: var(--ok); color: var(--ok); }
 .tp-team .ev-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ev-match.done { opacity: 0.6; }
