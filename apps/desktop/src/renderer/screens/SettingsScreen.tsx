@@ -5,7 +5,7 @@ import type { Run } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
-import { JoinPanel, PcModeCard } from '../components/Join.tsx';
+import { PcModeCard } from '../components/Join.tsx';
 import { ProfilePicker } from '../components/FirstRun.tsx';
 import { SyncScreen } from './SyncScreen.tsx';
 import type { PageProps } from '../App.tsx';
@@ -13,15 +13,13 @@ import type { PageProps } from '../App.tsx';
 const SECTIONS = [
   ['setup', 'Setup'],
   ['pc', 'This PC'],
-  ['obs', 'OBS connection'],
   ['account', 'Esportra account'],
-  ['network', 'Other PCs'],
   ['keys', 'Keyboard'],
   ['moments', 'Moments on Live'],
   ['about', 'About'],
 ] as const;
 
-function ObsConnection({ s, run }: Pick<PageProps, 's' | 'run'>) {
+export function ObsConnection({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const [host, setHost] = useState(s.setup.obs.host);
   const [port, setPort] = useState(String(s.setup.obs.port));
   const [password, setPassword] = useState('');
@@ -154,7 +152,7 @@ export function SettingsScreen(props: PageProps) {
         {SECTIONS.map(([id, label]) => <a key={id} href={`#set-${id}`} aria-current={current === id ? 'true' : undefined}>{label}</a>)}
       </nav>
       <div className="stack settings-body">
-        <PageHeader eyebrow="Software" title="Settings">How this copy of Air runs on this PC. Teams, players, event and graphics belong to each match.</PageHeader>
+        <PageHeader eyebrow="Software" title="Settings">How this copy of Air runs on this PC. OBS, player PCs and everything for a show are set up in its match.</PageHeader>
         <section className="panel" id="set-setup">
           <div className="head"><Cap>Setup · {s.game?.name ?? 'no game chosen'}</Cap><button className="btn quiet small" onClick={() => void run(() => air.restartOnboarding())}>Run first-time setup again</button></div>
           <div className="body-pad stack" style={{ gap: 10 }}>
@@ -163,9 +161,7 @@ export function SettingsScreen(props: PageProps) {
           </div>
         </section>
         <div id="set-pc"><PcModeCard s={s} run={run} /></div>
-        <div id="set-obs"><ObsConnection s={s} run={run} /></div>
         <div id="set-account"><SyncScreen {...props} /></div>
-        <div id="set-network"><JoinPanel s={s} run={run} /></div>
         <div id="set-keys"><KeyboardSettings s={s} run={run} /></div>
         <div id="set-moments"><MomentSettings s={s} run={run} /></div>
         <section className="panel" id="set-about">

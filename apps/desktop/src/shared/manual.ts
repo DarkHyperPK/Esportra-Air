@@ -13,19 +13,19 @@ export interface ManualSection {
 
 export const MANUAL: ManualSection[] = [
   { id: 'before', title: 'Before the show', blocks: [
-    { p: 'Work down the left of Air from top to bottom. Each page prepares one thing; Live comes last.' },
+    { p: 'Everything for a show is set up from its event and its match. Live comes last.' },
     { steps: [
-      'Event: the logo, the accent colour, the people on air with their photos and cameras, and the sponsors.',
-      'Matches: open tonight’s match. Check Teams and players, and Talent and sponsors.',
-      'Library: open the pack and choose what is in My show.',
-      'Devices: let PCs check in, and send each person their camera link.',
+      'Events: open your event (or make one). Branding holds its logo and colour; Talent and sponsors holds the people on air and the sponsors.',
+      'Open tonight’s match from the event, or press New match. Work down its steps: Teams/Players, Talent and sponsors, Rundown, OBS, Player PCs and cameras.',
+      'Overview lists anything still missing, with its fix beside it.',
       'Rehearse the match privately. Nothing reaches OBS.',
+      'Press Go live at the end of the steps.',
     ] },
   ] },
   { id: 'golive', title: 'Going live', blocks: [
-    { p: 'Readiness lists what is ready and what is not, with a fix beside each warning. Warnings never stop you.' },
+    { p: 'The match’s Overview lists what is ready and what is not, with a fix beside each warning. Warnings never stop you.' },
     { steps: [
-      'Press Go live on Readiness.',
+      'Press Go live at the end of the match’s steps.',
       'Tick the box to allow game data. Leave it unticked to run without it.',
       'Switch autopilot on or off, then press Go live.',
       'When all three steps are done, start your stream in OBS. Air never starts or stops it.',
@@ -58,21 +58,21 @@ export const MANUAL: ManualSection[] = [
   { id: 'breaks', title: 'When something breaks', blocks: [
     { p: 'Air keeps graphics on air through every failure below. Read the line at the top of Live and press the button it offers.' },
     { p: 'The observer PC stops sending. Graphics hold the last full data and say the data is paused. Restart Esportra Player on that PC; the match carries on without resetting.' },
-    { p: 'A player PC drops. That player’s health and abilities are hidden, never shown out of date. Their seat turns amber in Devices. Ask the player to reopen Esportra Player; it checks back in by itself.' },
+    { p: 'A player PC drops. That player’s health and abilities are hidden, never shown out of date. Their seat turns amber in the match’s Player PCs and cameras. Ask the player to reopen Esportra Player; it checks back in by itself.' },
     { p: 'Air restarts. Nothing changes on air. Air opens with “Recovered after a restart”; press Resume autopilot, or carry on by hand.' },
-    { p: 'A camera drops. The desk shows that person’s photo instead. Send their camera link again from Devices.' },
+    { p: 'A camera drops. The desk shows that person’s photo instead. Send their camera link again from the match’s Player PCs and cameras.' },
     { p: 'A score or name is wrong. Press {key:fix}, correct it, and choose how long the fix lasts.' },
   ] },
   { id: 'checkin', title: 'Player check-in', blocks: [
-    { p: 'For {game}, each player’s own PC adds what only players get. Open Devices and switch on “Allow other PCs to join”.' },
+    { p: 'For {game}, each player’s own PC adds what only players get. Open the match’s Player PCs and cameras and switch on “Allow other PCs to join”.' },
     { steps: [
-      'On each player’s PC, open Esportra Player and enter the code and address shown in Devices.',
+      'On each player’s PC, open Esportra Player and enter the code and address shown in Player PCs and cameras.',
       'Each PC takes its seat by itself once the game lists the players.',
       'A seat says how fresh that player’s data is. Amber means it stopped.',
     ] },
   ] },
   { id: 'cameras', title: 'Talent cameras', blocks: [
-    { p: 'In Event, give each person a camera link (they open it in a browser; nothing to install) or one of your OBS sources. Copy the link from Devices › Cameras. Video goes to your OBS; it is never recorded or kept.' },
+    { p: 'In the event’s Talent and sponsors, give each person a camera link (they open it in a browser; nothing to install) or one of your OBS sources. Copy the link from the match’s Player PCs and cameras › Cameras. Video goes to your OBS; it is never recorded or kept.' },
   ] },
   { id: 'companion', title: 'Stream Deck and Companion', blocks: [
     { p: 'In Settings › Graphics control, choose Stream Deck / Companion, or Both. In Bitfocus Companion, add the Esportra Air connection and enter the address and key from Settings › Companion.' },

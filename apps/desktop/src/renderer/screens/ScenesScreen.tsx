@@ -29,26 +29,26 @@ export function ObsHeader({ s, run, go, page }: Pick<PageProps, 's' | 'run' | 'g
   );
 }
 
-export function ScenesScreen({ s, run, go }: PageProps) {
+export function ScenesScreen({ s, run, go, embedded }: PageProps & { embedded?: boolean }) {
   const connected = s.obs.state === 'connected';
   const open = s.obs.scenes.flatMap((sc) => sc.slots).filter((sl) => !sl.source).length;
   return (
     <>
-    <ObsHeader s={s} run={run} go={go} page="scenes" />
-    <div className="cols">
+    {!embedded && <ObsHeader s={s} run={run} go={go} page="scenes" />}
+    <div className={embedded ? 'cols embedded' : 'cols'}>
       <div className="stack">
-        <section className="panel">
+        {!embedded && <section className="panel">
           <div className="head"><Cap>OBS</Cap>{connected ? <Tally kind="ok">Connected</Tally> : <Tally kind={s.obs.state === 'error' ? 'bad' : 'off'}>{s.obs.state === 'connecting' ? 'Connecting' : s.obs.state === 'error' ? 'Lost' : 'Not connected'}</Tally>}</div>
           <div className="body-pad stack" style={{ gap: 10 }}>
             {connected ? <div><h2 className="title-sm">OBS Studio {s.obs.version}</h2><p className="muted" style={{ fontSize: 12.5 }}>ws://{s.setup.obs.host}:{s.setup.obs.port} · {s.obs.collection ?? '—'}</p></div> : <p className="muted" style={{ fontSize: 12.5 }}>{s.obs.error ?? 'Not connected yet.'}</p>}
             <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => go('settings')}>Connection settings</button>
           </div>
-        </section>
+        </section>}
         <section className="panel">
           <div className="head"><Cap>Replay buffer</Cap>{s.obs.replay.bufferActive === null ? <Tally kind="off">Not set up</Tally> : s.obs.replay.bufferActive ? <Tally kind="ok">Active</Tally> : <Tally kind="covered">Off</Tally>}</div>
           <div className="body-pad"><p className="muted t-sm">{s.obs.replay.bufferActive === null ? 'Enable it in OBS › Settings › Output › Replay Buffer.' : s.obs.replay.bufferActive ? 'F3 on Live saves the last moments to the replay buffer. Playing it back is up to you in OBS.' : 'Start the replay buffer in OBS (Controls › Start Replay Buffer). Air never starts it for you.'}</p></div>
         </section>
-        <section className="panel">
+        {!embedded && <section className="panel">
           <div className="head"><Cap>What Air does in OBS</Cap></div>
           <div className="body-pad">
             <ul className="muted t-sm" style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
@@ -58,7 +58,7 @@ export function ScenesScreen({ s, run, go }: PageProps) {
               <li>Never switches scenes, changes transitions, streams or records, and never touches your own scenes.</li>
             </ul>
           </div>
-        </section>
+        </section>}
       </div>
 
       <section className="panel">

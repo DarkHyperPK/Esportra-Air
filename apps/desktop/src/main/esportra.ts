@@ -125,7 +125,7 @@ export class EsportraAccount {
 
   private warning(state: EsportraState): string | null {
     const saved = this.saved!;
-    if (state === 'denied') return saved.access?.denied ? 'Esportra says this account or PC has no active Air access. Quick matches still work; ask your admin or renew in Esportra.' : 'Air could not confirm access and no valid offline lease is saved. Reconnect to Esportra to renew it.';
+    if (state === 'denied') return saved.access?.denied ? 'Esportra has not turned on Air for this account yet. Your own events and matches work as normal.' : 'Air could not confirm access and no valid offline lease is saved. Reconnect to Esportra to renew it.';
     const expires = leaseExpiry(saved.access?.lease);
     if (state === 'offline') return `Working offline on a verified lease${expires ? ` (valid until ${new Date(expires).toLocaleString()})` : ''}. Reconnect before it expires.`;
     if (expires && expires - this.now() < 86_400_000) return 'Offline access expires within 24 hours. Stay connected before your next broadcast.';

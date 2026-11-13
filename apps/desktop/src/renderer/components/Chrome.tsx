@@ -5,28 +5,21 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { ICONS, LOGO } from './ui.tsx';
 
-type RailPage = Exclude<Page, 'settings' | 'outputs' | 'console' | 'help'>;
-
-/** The order a producer works in, top to bottom: who is on air, the match, its graphics, OBS, game data. */
-const RAIL: Array<[RailPage, string]> = [
-  ['event', 'Event'],
-  ['ready', 'Matches'],
-  ['library', 'Library'],
-  ['scenes', 'OBS'],
-  ['capture', 'Devices'],
-];
+/** The menu (approved 12 Nov): Events (which hold their matches), Live, then the graphics library. */
+const RAIL_TOP: Array<[Page, string]> = [['event', 'Events']];
+const RAIL_LIBRARIES: Array<[Page, string]> = [['library', 'Graphics']];
 
 /** What each page is called, for the top bar and the command palette. */
 export const PAGE_NAME: Record<Page, string> = {
-  console: 'Live', ready: 'Matches', event: 'Event', library: 'Library', scenes: 'OBS scenes', outputs: 'Browser sources',
-  capture: 'Devices', settings: 'Settings', help: 'Help',
+  console: 'Live', ready: 'Match', event: 'Events', library: 'Graphics', scenes: 'OBS', outputs: 'Browser sources',
+  capture: 'Player PCs and cameras', settings: 'Settings', help: 'Help',
 };
 
 /** Pages in the rail's order, for the command palette. */
-export const PAGE_ORDER: Page[] = ['event', 'ready', 'library', 'scenes', 'outputs', 'capture', 'console', 'help', 'settings'];
+export const PAGE_ORDER: Page[] = ['event', 'console', 'library', 'help', 'settings'];
 
 /** The rail item a page belongs to. */
-export const railOf = (page: Page): Page => (page === 'outputs' ? 'scenes' : page);
+export const railOf = (page: Page): Page => (page === 'ready' || page === 'scenes' || page === 'outputs' || page === 'capture' ? 'event' : page);
 
 export type StatusId = 'feed' | 'obs' | 'esportra' | 'graphics';
 
@@ -90,8 +83,8 @@ export function TopBar({ s, page, open, search, help, run }: { s: Snapshot | nul
       {page && (
         <nav className="crumbs" aria-label="You are here">
           <span className="sep">/</span>
-          <span>{PAGE_NAME[page]}</span>
-          {s?.match && <><span className="sep">/</span><b title={s.match.title}>{s.match.title}</b>{s.event?.name && <span className="event">· {s.event.name}</span>}</>}
+          <span>{PAGE_NAME[railOf(page)]}</span>
+          {page === 'ready' && s?.match && <>{s.event?.name && <><span className="sep">/</span><span>{s.event.name}</span></>}<span className="sep">/</span><b title={s.match.title}>{s.match.title}</b></>}
         </nav>
       )}
       {!page && <span className="spacer" />}
@@ -116,18 +109,24 @@ export function Rail({ page, go, onAir }: { page: Page; go: (p: Page) => void; o
   const current = railOf(page);
   return (
     <nav className="rail" aria-label="Main">
-      {RAIL.map(([id, label]) => (
+      {RAIL_TOP.map(([id, label]) => (
         <button key={id} aria-current={current === id ? 'page' : undefined} onClick={() => go(id)}>
-          {ICONS[id]}
+          {ICONS[id as keyof typeof ICONS]}
           {label}
         </button>
       ))}
-      <span className="rail-rule" aria-hidden="true" />
       <button className={`rail-live ${onAir ? 'on-air' : ''}`} aria-current={current === 'console' ? 'page' : undefined} onClick={() => go('console')} aria-label={onAir ? 'Live, game data is live' : 'Live'}>
         {ICONS.console}
         Live
         {onAir && <span className="air-dot" aria-hidden="true" />}
       </button>
+      <span className="rail-rule" aria-hidden="true" />
+      {RAIL_LIBRARIES.map(([id, label]) => (
+        <button key={id} aria-current={current === id ? 'page' : undefined} onClick={() => go(id)}>
+          {ICONS[id as keyof typeof ICONS]}
+          {label}
+        </button>
+      ))}
       <span className="spacer" />
       <button aria-current={current === 'help' ? 'page' : undefined} onClick={() => go('help')}>
         {ICONS.help}

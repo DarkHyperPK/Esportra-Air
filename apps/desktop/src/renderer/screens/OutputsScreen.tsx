@@ -29,11 +29,11 @@ function Preview({ src, onAir, pvw }: { src: string | null; onAir: boolean; pvw:
   );
 }
 
-export function OutputsScreen({ s, run, go }: PageProps) {
+export function OutputsScreen({ s, run, go, embedded }: PageProps & { embedded?: boolean }) {
   const connected = s.obs.state === 'connected';
   return (
     <div className="stack" style={{ gap: 18 }}>
-      <div><ObsHeader s={s} run={run} go={go} page="outputs" /></div>
+      {!embedded && <div><ObsHeader s={s} run={run} go={go} page="outputs" /></div>}
       <div className="out-grid">
         {SCENE_KEYS.map((key) => {
           const def = SCENES[key];

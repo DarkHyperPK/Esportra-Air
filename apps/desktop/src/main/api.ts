@@ -42,6 +42,8 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'finishOnboarding': await p.finishOnboarding(); break;
     case 'restartOnboarding': await p.restartOnboarding(); break;
     case 'createEvent': await p.createEvent(String(a[0] ?? '')); break;
+    case 'deleteEvent': await p.deleteEvent(String(a[0] ?? '')); break;
+    case 'deleteMatch': await p.deleteMatch(String(a[0] ?? '')); break;
     case 'updateEvent': await p.updateEvent(String(a[0]), (a[1] ?? {}) as EventPatch); break;
     case 'saveTalent': await p.saveTalent(String(a[0]), (a[1] ?? {}) as TalentInput); break;
     case 'removeTalent': await p.removeTalent(String(a[0]), String(a[1])); break;

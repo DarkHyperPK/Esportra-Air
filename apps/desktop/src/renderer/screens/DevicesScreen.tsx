@@ -95,11 +95,11 @@ function Cameras({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   );
 }
 
-export function DevicesScreen(props: PageProps) {
+export function DevicesScreen(props: PageProps & { embedded?: boolean }) {
   const [tab, setTab] = useState<Tab>('checkin');
   return (
     <div className="stack" style={{ gap: 18 }}>
-      <PageHeader eyebrow="Devices" title="Devices">Every PC and camera this show depends on.</PageHeader>
+      {!props.embedded && <PageHeader eyebrow="Devices" title="Devices">Every PC and camera this show depends on.</PageHeader>}
       <div className="tabs" role="tablist" aria-label="Devices">
         {([['checkin', 'Check-in'], ['cameras', 'Cameras'], ['data', 'Game data']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>

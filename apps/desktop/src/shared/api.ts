@@ -322,6 +322,8 @@ export interface QuickMatchInput {
   teamA: string;
   teamB: string;
   bestOf: 1 | 3 | 5;
+  /** The event the match belongs to (a new match is made inside an event). */
+  eventId?: string;
 }
 
 export interface CorrectionInput {
@@ -383,6 +385,10 @@ export interface AirApi {
   finishOnboarding(): Promise<Snapshot>;
   restartOnboarding(): Promise<Snapshot>;
   createEvent(name: string): Promise<Snapshot>;
+  /** Deletes an event and its matches from this PC (Esportra keeps its own). Refused while one of them is live. */
+  deleteEvent(id: string): Promise<Snapshot>;
+  /** Deletes a match from this PC (an Esportra match stays in Esportra). Refused while it is live. */
+  deleteMatch(id: string): Promise<Snapshot>;
   updateEvent(id: string, patch: EventPatch): Promise<Snapshot>;
   /** Adds (no id) or changes a person on air. A camera link gets its id here. */
   saveTalent(eventId: string, input: TalentInput): Promise<Snapshot>;

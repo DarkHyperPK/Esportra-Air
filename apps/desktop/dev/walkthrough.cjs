@@ -46,6 +46,22 @@ let failShot = async () => {};
   let n = 0;
   const shot = async (name) => { await page.waitForTimeout(450); await page.screenshot({ path: path.join(OUT, `${String(++n).padStart(2, '0')}-${name}.png`) }); };
   const rail = (name) => page.locator('nav.rail').getByRole('button', { name }).click();
+  // A step of the open match (approved 12 Nov: the match is the hub). From anywhere: Events, the
+  // selected match's event, then the match.
+  const step = async (name) => {
+    const steps = page.getByRole('navigation', { name: 'Match steps' });
+    if (!(await steps.count())) {
+      await rail('Events');
+      await page.locator('.ev-row, .ev-match').first().waitFor();
+      if (await page.locator('.ev-row').count()) {
+        const cur = page.locator('.ev-row[aria-current="true"]');
+        await ((await cur.count()) ? cur : page.locator('.ev-row')).first().click();
+      }
+      const cur = page.locator('.ev-match[aria-current="true"]');
+      await ((await cur.count()) ? cur : page.locator('.ev-match')).first().getByRole('button', { name: 'Open' }).click();
+    }
+    await steps.getByRole('button', { name, exact: true }).click();
+  };
   const btn = (name, opts) => page.getByRole('button', { name, ...opts }).first().click();
   // Types the way a person does, after a pause long enough for live updates to arrive, and checks the
   // text landed in the field that was clicked (a re-render once moved focus back to the first field).
@@ -84,8 +100,8 @@ let failShot = async () => {};
   await page.getByText(/^Connected to OBS/).waitFor();
   await shot('first-run-obs');
   await btn('Finish');
-  // No event yet: Air opens on Event, the first thing to set up (never on Live).
-  await page.getByRole('button', { name: 'Create event' }).waitFor();
+  // No event yet: Air opens on Events, the top of the tree (never on Live).
+  await page.getByRole('heading', { name: 'Set up your first event' }).waitFor();
   await shot('first-landing-event');
   // The game for the whole app: a menu beside the product name.
   await page.getByRole('button', { name: /^Valorant/ }).click();
@@ -94,13 +110,16 @@ let failShot = async () => {};
   await page.keyboard.press('Escape');
 
   // Event first (build step 3): identity, the people on air and the sponsors every match uses.
-  await page.getByLabel('Event name').fill('Community Cup');
-  await btn('Create event');
+  await page.getByLabel('New event name').fill('Community Cup');
+  await btn('New event');
+  await page.locator('.ev-row').filter({ hasText: 'Community Cup' }).click();
   await page.getByRole('heading', { name: 'Community Cup' }).waitFor();
+  await page.getByRole('tab', { name: 'Branding' }).click();
   await page.getByLabel('Stages').fill('Groups, Playoffs, Grand final');
   await btn('Save', { exact: true });
   await page.getByText('Groups · Playoffs · Grand final').waitFor();
   const editor = (name) => page.getByRole('dialog', { name });
+  await page.getByRole('tab', { name: 'Talent and sponsors' }).click();
   await btn('Add person');
   await editor('Add a person').getByLabel('Name on air').fill('Sara Malik');
   await editor('Add a person').getByLabel('Handle').fill('@saram');
@@ -127,8 +146,8 @@ let failShot = async () => {};
   await page.getByText('Half the slots or more').waitFor();
   await shot('event');
 
-  await rail('Matches');
-  await page.getByRole('heading', { name: 'Set up your first show' }).waitFor();
+  await page.getByRole('tab', { name: 'Matches' }).click();
+  await page.getByText('No matches in this event yet.').waitFor();
   await shot('first-show');
   await btn('New match', { exact: true });
   const wizard = page.getByRole('dialog', { name: 'New match' });
@@ -180,32 +199,32 @@ let failShot = async () => {};
   await wizard.waitFor({ state: 'detached' });
   await page.getByText('Sara Malik, Omar Sheikh · 1 sponsor').waitFor();
   await shot('readiness-first-run');
-  await page.getByRole('tab', { name: 'Teams and players' }).click();
+  await step('Teams/Players');
   await shot('match-teams');
   await page.locator('.lineup-row').first().click();
   await page.getByRole('dialog').getByRole('button', { name: 'Make a camera link' }).waitFor();
   await shot('player-editor');
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
-  await page.getByRole('tab', { name: 'Talent and sponsors' }).click();
+  await step('Talent and sponsors');
   await page.getByRole('switch', { name: 'Omar Sheikh on air for this match' }).click();
   await page.getByRole('switch', { name: 'Omar Sheikh on air for this match', checked: false }).waitFor();
   await shot('match-talent');
   await page.getByRole('switch', { name: 'Omar Sheikh on air for this match' }).click();
   await page.getByRole('switch', { name: 'Omar Sheikh on air for this match', checked: true }).waitFor();
-  await btn('← Matches');
-  await page.locator('.mrow').first().waitFor();
+  await btn('← Community Cup');
+  await page.locator('.ev-match').first().waitFor();
   await shot('matches');
-  await page.locator('.mrow').first().click();
-  await page.getByRole('tab', { name: 'Rehearse' }).click();
+  await page.locator('.ev-match').first().getByRole('button', { name: 'Open' }).click();
+  await step('Rehearse');
   await page.getByRole('region', { name: 'Rehearse' }).waitFor();
   await page.waitForTimeout(1500);
   await shot('match-rehearse');
-  await page.getByRole('tab', { name: 'Readiness' }).click();
+  await step('Overview');
   // Art: this sandbox cannot reach media.valorant-api.com, so Readiness offers to download again.
   await page.getByText(/pictures are not on this PC yet/).waitFor({ timeout: 30_000 });
 
   // HUD library: live previews with this match's teams.
-  await rail('Library');
+  await rail('Graphics');
   await page.getByRole('heading', { name: 'Graphics packs' }).waitFor();
   await page.waitForTimeout(3000);
   await shot('library');
@@ -229,10 +248,10 @@ let failShot = async () => {};
   // Settings: connect OBS (software settings), then Scenes: add for me, fill the game-feed slot
   // OBS was connected in first run; Settings shows the connection.
   await rail('Settings');
-  await page.getByText('Connected', { exact: true }).first().waitFor();
+  await page.getByRole('heading', { name: 'Settings' }).waitFor();
   await shot('settings');
-  await rail('OBS');
-  await btn('Add for me');
+  await step('OBS');
+  await btn('Add all to OBS');
   await page.getByRole('button', { name: 'Rebuild scenes', exact: true }).waitFor();
   await page.getByLabel('Use an existing OBS source for Game feed').selectOption('Game Capture');
   await page.getByText('Game Capture').first().waitFor();
@@ -249,14 +268,14 @@ let failShot = async () => {};
   }
   await page.waitForTimeout(2500);
 
-  await rail('OBS');
-  await page.getByRole('tab', { name: 'Browser sources' }).click();
+  await step('OBS');
+  await page.getByRole('heading', { name: 'Browser sources' }).scrollIntoViewIfNeeded();
   await page.getByText(/\d of \d connected/).first().waitFor();
   await shot('outputs');
 
   // Go live (build step 5): My show to OBS, game data only with the consent tick, autopilot off for
   // the manual part of the journey. It never starts the stream.
-  await rail('Matches');
+  await step('Overview');
   await page.getByText(/ready$/).first().waitFor();
   await shot('readiness');
   // Full HD: the page stays compact and centred, and the Go live label sits inside its button.
@@ -357,14 +376,12 @@ let failShot = async () => {};
   await page.waitForTimeout(1500);
   await shot('autopilot-back-to-game');
   // Matches › Autopilot: how it works, presets, every step as a sentence (locked while running).
-  await rail('Matches');
-  await page.getByRole('tab', { name: 'Autopilot' }).click();
+  await step('Rundown');
   await page.getByText('Autopilot is running. Choose Run manually on Live to change the rundown.').waitFor();
   await shot('autopilot-rules-running');
   await rail('Live');
   await page.getByLabel('Autopilot').getByRole('button', { name: 'Run manually' }).click();
-  await rail('Matches');
-  await page.getByRole('tab', { name: 'Autopilot' }).click();
+  await step('Rundown');
   // The rundown is the producer's: start from a preset (it asks before replacing rows), add a screen
   // with its own rule, switch one off.
   await page.getByRole('radio', { name: /Results only/ }).click();
@@ -389,10 +406,10 @@ let failShot = async () => {};
   await page.locator('.rd-list .rd').last().getByText('Map 2').waitFor();
   await shot('rundown');
   await page.getByRole('switch', { name: 'Halftime in the rundown' }).click();
-  await page.getByRole('tab', { name: 'Readiness' }).click();
+  await step('Overview');
 
   // Player cameras (S5): make links, copy one, 10-up; the overlay pages show the streams and report connection.
-  await rail('Devices');
+  await step('Player PCs and cameras');
   await page.getByRole('tab', { name: 'Cameras' }).click();
   await page.getByLabel('Player cameras').getByRole('button', { name: 'Make link' }).first().click();
   await page.getByLabel('Player cameras').getByRole('button', { name: 'Copy link' }).first().waitFor();
@@ -424,25 +441,28 @@ let failShot = async () => {};
   }
   await page.getByLabel('Player cameras').getByRole('button', { name: 'In-game cams' }).click();
 
-  await rail('Devices');
+  await step('Player PCs and cameras');
   await page.getByRole('tab', { name: 'Game data' }).click();
   await btn('Stop capture');
   await page.getByRole('button', { name: '4×' }).click();
-  await btn('Play');
+  await btn('Play', { exact: true });
   await page.getByText(/^\d+:\d\d \/ /).waitFor();
   await page.waitForTimeout(3500);
   await shot('capture');
-  await rail('Matches');
-  await page.getByRole('tab', { name: 'My show' }).click();
+  await step('Rundown');
   await page.getByRole('heading', { name: 'ESPORTRA · Full screen' }).waitFor();
   await shot('my-show');
   await btn('Add from the Library');
   await page.getByRole('dialog', { name: 'Esportra Broadcast pack' }).waitFor();
   await page.keyboard.press('Escape');
-  await rail('Event');
+  await btn('← Community Cup');
+  await page.getByRole('tab', { name: 'Branding' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Community Cup Finals');
   await btn('Save', { exact: true });
-  await page.locator('.crumbs').filter({ hasText: /Night Owls vs Crimson Five\s*· Community Cup Finals/ }).waitFor();
+  await page.getByRole('heading', { name: 'Community Cup Finals' }).waitFor();
+  await page.getByRole('tab', { name: 'Matches' }).click();
+  await page.locator('.ev-match').first().getByRole('button', { name: 'Open' }).click();
+  await page.locator('.crumbs').filter({ hasText: /Community Cup Finals\s*\/\s*Night Owls vs Crimson Five/ }).waitFor();
   await shot('match-event');
 
   // Esportra (Stage 2): sign in against the stand-in backend, pick a scheduled match.
@@ -465,26 +485,41 @@ let failShot = async () => {};
   await page.getByText('Your scheduled matches').waitFor();
   await page.getByText('Community Cup').first().waitFor();
   await shot('sync-signed-in');
-  await rail('Matches');
-  await btn('← Matches');
-  await page.locator('.mrow').filter({ hasText: 'Paper Rex' }).first().waitFor();
+  // Esportra's tournament shows in Events until one of its matches is opened.
+  await rail('Events');
+  await btn('← Events');
+  await page.locator('.ev-row').filter({ hasText: /in Esportra/ }).first().click();
+  const paper = page.locator('.ev-match').filter({ hasText: 'Paper Rex' }).first();
+  await paper.waitFor();
   await shot('matches-with-esportra');
   // Switching match changes every graphic on air, so it is refused while game data or a test round runs.
   const callWith = (m, args = []) => fetch(`${HOST}/call/${m}`, { method: "POST", body: JSON.stringify(args) });
   await callWith('testRound', ['start']);
   for (let i = 0; i < 50 && !(await call('snapshot')).gameLocked; i++) await page.waitForTimeout(200);
-  await page.locator('.mrow').filter({ hasText: 'Paper Rex' }).first().click();
+  await paper.getByRole('button', { name: 'Open' }).click();
   await page.getByText('Stop game data or the test round before switching matches.').first().waitFor();
   await callWith("testRound", ["stop"]);
   await callWith("stopCapture");
   for (let i = 0; i < 50 && (await call('snapshot')).gameLocked; i++) await page.waitForTimeout(200);
-  await page.locator('.mrow').filter({ hasText: 'Paper Rex' }).first().click();
+  await paper.getByRole('button', { name: 'Open' }).click();
   await page.locator('.tl-name').filter({ hasText: 'Paper Rex' }).first().waitFor();
   await page.getByText(/signed in as|Signed in as/i).first().waitFor();
   await shot('readiness-esportra');
+  // Deleting asks first; an event with no match goes at once.
+  await rail('Events');
+  await btn('← Events');
+  await page.getByLabel('New event name').fill('Scratch event');
+  await btn('New event');
+  await page.locator('.ev-row').filter({ hasText: 'Scratch event' }).click();
+  await btn('Delete event');
+  await page.getByRole('group', { name: 'Delete Scratch event?' }).waitFor();
+  await shot('delete-event-confirm');
+  await page.getByRole('group', { name: 'Delete Scratch event?' }).getByRole('button', { name: 'Delete' }).click();
+  await page.locator('.ev-row').filter({ hasText: 'Scratch event' }).waitFor({ state: 'detached' });
+  await shot('events');
 
   // Observer and player PCs (Stage 3): allow joining, then act as the capture-only PC against ourselves.
-  await rail('Devices');
+  await step('Player PCs and cameras');
   await page.getByRole('switch', { name: 'Allow other PCs to join' }).click();
   await page.locator('.joincode strong').waitFor();
   const joinCode = (await page.locator('.joincode strong').innerText()).replace('-', '');
@@ -530,7 +565,7 @@ let failShot = async () => {};
   await btn('Disconnect');
   await btn('Switch this PC back to Production');
   await page.getByRole('button', { name: 'Capture-only' }).waitFor();
-  await rail('Devices');
+  await step('Player PCs and cameras');
   await page.getByRole('switch', { name: 'Allow other PCs to join' }).click();
   await page.getByText('Joined PCs').waitFor({ state: 'detached' });
   await page.locator('.topbar').getByRole('button', { name: /^OBS:/ }).click();
@@ -581,8 +616,13 @@ let failShot = async () => {};
 
   // A laptop screen: every main page at 1280x800.
   await page.setViewportSize({ width: 1280, height: 800 });
-  for (const [name, label] of [['laptop-live', 'Live'], ['laptop-matches', 'Matches'], ['laptop-library', 'Library'], ['laptop-obs', 'OBS'], ['laptop-devices', 'Devices'], ['laptop-settings', 'Settings']]) {
+  for (const [name, label] of [['laptop-live', 'Live'], ['laptop-events', 'Events'], ['laptop-graphics', 'Graphics'], ['laptop-settings', 'Settings']]) {
     await rail(label);
+    await page.waitForTimeout(900);
+    await shot(name);
+  }
+  for (const [name, label] of [['laptop-match-overview', 'Overview'], ['laptop-match-obs', 'OBS'], ['laptop-match-devices', 'Player PCs and cameras']]) {
+    await step(label);
     await page.waitForTimeout(900);
     await shot(name);
   }

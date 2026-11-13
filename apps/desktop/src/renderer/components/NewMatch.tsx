@@ -10,7 +10,7 @@ import { RehearsePanel } from './Rehearse.tsx';
 const STEPS = ['Teams', 'Players', 'Event', 'Graphics', 'Rehearse'] as const;
 const REHEARSE = 4;
 
-export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close: () => void }) {
+export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapshot; run: Run; close: () => void; eventId?: string | null }) {
   const last = s.matches[0];
   const [step, setStep] = useState(0);
   // Matches are for the game chosen for the whole app (top bar).
@@ -22,7 +22,7 @@ export function NewMatchWizard({ s, run, close }: { s: Snapshot; run: Run; close
   ]);
   const [lineups, setLineups] = useState<Lineups>([Array.from({ length: 5 }, emptyPlayer), Array.from({ length: 5 }, emptyPlayer)]);
   // The new match joins the selected match's event (or the first one); talent and sponsors come from it.
-  const [eventId, setEventId] = useState<string | null>((s.event ?? s.events[0])?.id ?? null);
+  const [eventId, setEventId] = useState<string | null>(forEvent ?? (s.event ?? s.events[0])?.id ?? null);
   // '__last' is an event just created: it is added last.
   const event = (eventId === '__last' ? s.events.at(-1) : s.events.find((e) => e.id === eventId)) ?? null;
   const [newEvent, setNewEvent] = useState('');

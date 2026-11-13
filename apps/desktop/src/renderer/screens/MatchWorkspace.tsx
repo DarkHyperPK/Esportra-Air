@@ -1,11 +1,16 @@
-// A match's workspace (approved mocks): the team-light hero, then Readiness, Teams and players,
-// Talent and sponsors, Autopilot and Rehearse. Graphics links to the current graphics page until
-// My show replaces it.
+// A match (approved 12 Nov): the team-light hero, then its steps in working order — Overview,
+// Teams/Players, Talent and sponsors, Rundown, OBS, Player PCs and cameras, Rehearse — and Go live.
+// Everything for this match is set up here.
 import { useEffect, useState } from 'react';
 import type { ActionId, Snapshot, Team } from '../../shared/api.ts';
 import { ROLE_NAME, TIER_NAME, onAir } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
-import type { PageProps } from '../App.tsx';
+import type { MatchStep, PageProps } from '../App.tsx';
+import type { EventView } from './EventsScreen.tsx';
+import { ScenesScreen } from './ScenesScreen.tsx';
+import { OutputsScreen } from './OutputsScreen.tsx';
+import { DevicesScreen } from './DevicesScreen.tsx';
+import { ObsConnection } from './SettingsScreen.tsx';
 import { AutopilotRules, NextFive, action, triggerLine } from '../components/Autopilot.tsx';
 import { EditorDrawer, PlayerEditor, Switch, cameraText } from '../components/Editors.tsx';
 import { TeamFields, imageUrl } from '../components/MatchEditors.tsx';
@@ -16,8 +21,29 @@ import { LIBRARY, inShow, showLink, showPatch } from '../../shared/library.ts';
 import { SCENE_KEYS, SCENES, sourceName } from '../../shared/scenes.ts';
 import { Preview, overlayUrl } from '../components/Preview.tsx';
 
-export type Tab = 'ready' | 'teams' | 'talent' | 'myshow' | 'autopilot' | 'rehearse';
-const TABS: Array<[Tab, string]> = [['ready', 'Readiness'], ['teams', 'Teams and players'], ['talent', 'Talent and sponsors'], ['myshow', 'My show'], ['autopilot', 'Autopilot'], ['rehearse', 'Rehearse']];
+const STEPS: Array<[MatchStep, string]> = [['ready', 'Overview'], ['teams', 'Teams/Players'], ['talent', 'Talent and sponsors'], ['rundown', 'Rundown'], ['obs', 'OBS'], ['devices', 'Player PCs and cameras'], ['rehearse', 'Rehearse']];
+type StepHealth = 'ok' | 'warn' | 'bad' | null;
+
+/** How far each step is: ✓ done, ! needs a look, or just its number. */
+function stepHealth(s: Snapshot, step: MatchStep): StepHealth {
+  const m = s.match!;
+  const check = (...ids: string[]) => {
+    const list = s.checks.filter((c) => ids.includes(c.id));
+    if (!list.length) return null;
+    if (list.some((c) => c.health === 'bad')) return 'bad';
+    if (list.some((c) => c.health === 'warn')) return 'warn';
+    return list.every((c) => c.health === 'ok') ? 'ok' : null;
+  };
+  switch (step) {
+    case 'ready': { const counted = s.checks.filter((c) => !(c.id === 'esportra' && c.health === 'off')); return counted.every((c) => c.health === 'ok') ? 'ok' : null; }
+    case 'teams': return m.players.every((l) => l.length >= 5 && l.slice(0, 5).every((p) => p.gameId)) ? 'ok' : 'warn';
+    case 'talent': return check('talent');
+    case 'rundown': return s.setup.screens.some((x) => x.enabled) ? 'ok' : 'warn';
+    case 'obs': return check('obs', 'scenes', 'sources');
+    case 'devices': return check('player-pcs');
+    default: return null;
+  }
+}
 
 const when = (iso: string | null | undefined) => {
   if (!iso) return null;
@@ -63,45 +89,58 @@ function Hero({ s }: { s: Snapshot }) {
   );
 }
 
-function Readiness({ s, run, go, act, start }: Pick<PageProps, 's' | 'run' | 'go'> & { act: (id: ActionId) => void; start: () => void }) {
-  const [goLive, setGoLive] = useState(false);
-  const live = s.feed.state === 'live' || s.feed.state === 'waiting';
+function Overview({ s, run, act, back }: Pick<PageProps, 's' | 'run'> & { act: (id: ActionId) => void; back: () => void }) {
+  const [sure, setSure] = useState(false);
   // Not being signed in to Esportra is information, not something to fix before a quick match.
   const counted = s.checks.filter((c) => !(c.id === 'esportra' && c.health === 'off'));
   const ready = counted.filter((c) => c.health === 'ok').length;
+  const m = s.match!;
   return (
-    <div className="side-grid">
-      <div className="stack" style={{ gap: 18 }}>
-        <div className="between"><h2 className="title-md">{ready === counted.length ? 'Ready when you are' : 'Almost ready'}</h2><span className="muted t-sm">{ready} of {counted.length} ready</span></div>
-        <div className="lst" aria-label="Readiness checks">
-          {s.checks.map((c) => (
-            <div className="li check-row" key={c.id}>
-              <i className={`dot ${c.health}`} aria-label={c.health} />
-              <span><b>{c.title}</b><br /><span className="muted t-sm">{c.detail}</span></span>
-              {c.action ? <button className="btn small" onClick={() => act(c.action!.id)}>{c.action.label}</button> : <span />}
-            </div>
-          ))}
-        </div>
-        {s.control !== 'companion' && <NextFive s={s} />}
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="between">
+        <div><h2 className="title-md">{ready === counted.length ? 'Ready when you are' : 'Almost ready'}</h2><p className="muted t-sm">Go live sends your graphics to OBS, starts game data with your permission, and arms autopilot if you want it. Your stream stays in OBS. Warnings never stop you.</p></div>
+        <span className="row-gap">
+          <span className="muted t-sm">{ready} of {counted.length} ready</span>
+          {sure ? (
+            <span className="row-gap confirm" role="group" aria-label="Delete this match?">
+              <span className="t-sm">{m.source ? 'Remove from Air? (Stays in Esportra)' : 'Delete this match?'}</span>
+              <button className="btn small danger-solid" onClick={() => void run(async () => { await air.deleteMatch(m.id); back(); })}>Delete</button>
+              <button className="btn quiet small" onClick={() => setSure(false)}>Keep</button>
+            </span>
+          ) : <button className="btn quiet small danger" onClick={() => setSure(true)}>Delete match</button>}
+        </span>
       </div>
-      <aside className="stack" style={{ gap: 12 }}>
-        {live ? (
-          <>
-            <h2 className="title-sm"><span className="air-dot inline" /> Game data is live</h2>
-            <p className="muted t-sm">Graphics follow the match. Run the show from Live.</p>
-            <button className="btn primary big" onClick={start}>Open Live</button>
-          </>
-        ) : (
-          <>
-            <h2 className="title-sm">Go live</h2>
-            <p className="muted t-sm">Sends My show to OBS, starts game data with your permission, and arms autopilot if you want it. Your stream stays in OBS.</p>
-            <button className="btn live big" onClick={() => setGoLive(true)}>Go live</button>
-            <button className="btn quiet" onClick={() => void run(() => air.autopilotStop()).then(start)}>Open Live without going live</button>
-            <span className="faint t-xs">Warnings never stop you.</span>
-          </>
-        )}
-      </aside>
-      {goLive && <GoLiveDialog s={s} close={() => setGoLive(false)} done={() => { setGoLive(false); start(); }} connectObs={() => { setGoLive(false); go('settings'); }} />}
+      <div className="lst" aria-label="Readiness checks">
+        {s.checks.map((c) => (
+          <div className="li check-row" key={c.id}>
+            <i className={`dot ${c.health}`} aria-label={c.health} />
+            <span><b>{c.title}</b><br /><span className="muted t-sm">{c.detail}</span></span>
+            {c.action ? <button className="btn small" onClick={() => act(c.action!.id)}>{c.action.label}</button> : <span />}
+          </div>
+        ))}
+      </div>
+      {s.control !== 'companion' && <NextFive s={s} />}
+    </div>
+  );
+}
+
+/** OBS for this match: the connection, the scenes Air adds, and the browser sources it serves. */
+function ObsStep(props: Pick<PageProps, 's' | 'run' | 'go'>) {
+  const { s, run } = props;
+  const page = { ...props, askCapture: () => {}, openFix: () => {}, openCasters: () => {}, openSignIn: () => {} } as PageProps;
+  const connected = s.obs.state === 'connected';
+  const [changing, setChanging] = useState(false);
+  return (
+    <div className="stack" style={{ gap: 18 }}>
+      <div className="between">
+        <div><h2 className="title-md">OBS</h2><p className="muted t-sm">Air adds its own scenes to OBS and reads which one is on air. You switch scenes yourself; Air never does.</p></div>
+        <button className={`btn ${s.obs.installed ? '' : 'primary'}`} disabled={!connected} onClick={() => void run(() => air.installGraphics())}>{s.obs.installed ? 'Rebuild scenes' : 'Add all to OBS'}</button>
+      </div>
+      {connected && !changing
+        ? <div className="li check-row"><i className="dot ok" aria-label="ok" /><span><b>Connected to OBS Studio {s.obs.version}</b><br /><span className="muted t-sm">{s.setup.obs.host}:{s.setup.obs.port} · scene collection {s.obs.collection ?? '—'}</span></span><button className="btn quiet small" onClick={() => setChanging(true)}>Change</button></div>
+        : <ObsConnection s={s} run={run} />}
+      {connected && <ScenesScreen {...page} embedded />}
+      {connected && <><h3 className="title-sm">Browser sources</h3><OutputsScreen {...page} embedded /></>}
     </div>
   );
 }
@@ -144,7 +183,7 @@ function Teams({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-function Talent({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
+function Talent({ s, run, openEvent }: Pick<PageProps, 's' | 'run'> & { openEvent: (tab: EventView['tab']) => void }) {
   const m = s.match!;
   const event = s.event;
   const [stage, setStage] = useState(m.stage);
@@ -160,7 +199,7 @@ function Talent({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
       </form>
       <div className="cols2">
         <section className="stack" style={{ gap: 8 }}>
-          <div className="between"><h2 className="title-sm">On air for this match</h2><button className="btn quiet small" onClick={() => go('event')}>Edit in Event</button></div>
+          <div className="between"><h2 className="title-sm">On air for this match</h2><button className="btn quiet small" onClick={() => openEvent('talent')}>Edit in the event</button></div>
           <div className="lst">
             {event.talent.length === 0 && <p className="muted li">Nobody in {event.name} yet.</p>}
             {event.talent.map((t) => {
@@ -183,7 +222,7 @@ function Talent({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
           )}
         </section>
         <section className="stack" style={{ gap: 8 }}>
-          <div className="between"><h2 className="title-sm">Sponsors for this match</h2><button className="btn quiet small" onClick={() => go('event')}>Edit in Event</button></div>
+          <div className="between"><h2 className="title-sm">Sponsors for this match</h2><button className="btn quiet small" onClick={() => openEvent('talent')}>Edit in the event</button></div>
           <div className="lst">
             {event.sponsors.length === 0 && <p className="muted li">No sponsors in {event.name} yet.</p>}
             {event.sponsors.map((x) => {
@@ -279,21 +318,44 @@ function MyShow({ s, run }: Pick<PageProps, 's' | 'run'>) {
   );
 }
 
-export function MatchWorkspace({ s, run, go, tab, setTab, act, start, back }: Pick<PageProps, 's' | 'run' | 'go'> & { tab: Tab; setTab: (t: Tab) => void; act: (id: ActionId) => void; start: () => void; back: () => void }) {
+export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, openEvent }: Pick<PageProps, 's' | 'run' | 'go'> & {
+  step: MatchStep; setStep: (t: MatchStep) => void; act: (id: ActionId) => void; start: () => void; back: () => void; openEvent: (tab: EventView['tab']) => void;
+}) {
   const m = s.match!;
+  const [goLive, setGoLive] = useState(false);
+  const live = s.feed.state === 'live' || s.feed.state === 'waiting';
+  const page = { s, run, go, askCapture: () => act('start-capture'), openFix: () => {}, openCasters: () => setStep('talent'), openSignIn: () => act('sign-in') } as PageProps;
   return (
-    <div className="stack workspace" style={{ gap: 18 }}>
-      <nav className="crumb-back"><button className="btn quiet small" onClick={back}>← Matches</button></nav>
+    <div className="stack workspace" style={{ gap: 16 }}>
+      <nav className="crumb-back"><button className="btn quiet small" onClick={back}>← {s.event?.name ?? 'Events'}</button></nav>
       <Hero s={s} />
-      <div className="tabs" role="tablist" aria-label="Match">
-        {TABS.filter(([id]) => id !== 'autopilot' || s.control !== 'companion').map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+      <div className="ws">
+        <nav className="stepnav" aria-label="Match steps">
+          {STEPS.map(([id, label], i) => {
+            const h = stepHealth(s, id);
+            return (
+              <button key={id} aria-current={step === id ? 'step' : undefined} onClick={() => setStep(id)}>
+                <span className={`n ${h ?? ''}`} aria-hidden="true">{h === 'ok' ? '✓' : h === 'warn' || h === 'bad' ? '!' : i}</span>
+                <span>{label}</span>
+              </button>
+            );
+          })}
+          {live
+            ? <button className="btn primary golive" onClick={start}>Open Live</button>
+            : <button className="btn live golive" onClick={() => setGoLive(true)}>Go live</button>}
+          {!live && <button className="btn quiet small" onClick={() => void run(() => air.autopilotStop()).then(start)}>Open Live without going live</button>}
+        </nav>
+        <div className="ws-body">
+          {step === 'ready' && <Overview s={s} run={run} act={act} back={back} />}
+          {step === 'teams' && <Teams key={m.id} s={s} run={run} />}
+          {step === 'talent' && <Talent key={m.id} s={s} run={run} openEvent={openEvent} />}
+          {step === 'rundown' && <div className="stack" style={{ gap: 28 }}><MyShow s={s} run={run} />{s.control !== 'companion' && <AutopilotRules s={s} run={run} rehearse={() => setStep('rehearse')} />}</div>}
+          {step === 'obs' && <ObsStep s={s} run={run} go={go} />}
+          {step === 'devices' && <DevicesScreen {...page} embedded />}
+          {step === 'rehearse' && <RehearsePanel s={s} run={run} />}
+        </div>
       </div>
-      {tab === 'ready' && <Readiness s={s} run={run} go={go} act={act} start={start} />}
-      {tab === 'teams' && <Teams key={m.id} s={s} run={run} />}
-      {tab === 'talent' && <Talent key={m.id} s={s} run={run} go={go} />}
-      {tab === 'myshow' && <MyShow s={s} run={run} />}
-      {tab === 'autopilot' && s.control !== 'companion' && <AutopilotRules s={s} run={run} rehearse={() => setTab('rehearse')} />}
-      {tab === 'rehearse' && <RehearsePanel s={s} run={run} />}
+      {goLive && <GoLiveDialog s={s} close={() => setGoLive(false)} done={() => { setGoLive(false); start(); }} connectObs={() => { setGoLive(false); setStep('obs'); }} />}
     </div>
   );
 }

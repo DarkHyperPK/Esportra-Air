@@ -438,7 +438,7 @@ export class Production extends EventEmitter {
     const match: Match = {
       id, code: `Q${id.replace(/-/g, '').slice(0, 7).toUpperCase()}`, kind: 'quick', title: `${names[0]} vs ${names[1]}`,
       bestOf: input.bestOf, teams, createdAt: (this.deps.now ?? Date.now)(),
-      game: this.requireGame().id, players: [[], []], ...this.carryOver(null),
+      game: this.requireGame().id, players: [[], []], ...this.carryOver(null), ...(input.eventId ? { eventId: this.requireEvent(input.eventId).id } : {}),
     };
     const data = this.deps.store.data;
     data.matches = [match, ...data.matches].slice(0, 50);
@@ -585,6 +585,49 @@ export class Production extends EventEmitter {
     this.deps.store.data.events = [...this.deps.store.data.events, event];
     this.save();
     return event;
+  }
+
+  /** Deletes a match from this PC. The match on air cannot be deleted while game data or a test round runs. */
+  async deleteMatch(id: string) {
+    const data = this.deps.store.data;
+    if (!data.matches.some((m) => m.id === id)) throw new Error('That match is already gone.');
+    if (data.selectedMatchId === id && this.gameLocked()) throw new Error('This match is live. Stop game data or the test round before deleting it.');
+    const event = data.matches.find((m) => m.id === id)!.eventId;
+    data.matches = data.matches.filter((m) => m.id !== id);
+    if (data.rundown) delete data.rundown[id];
+    if (data.autopilotProgress) delete data.autopilotProgress[id];
+    if (data.selectedMatchId === id) {
+      this.rehearsal.stop();
+      data.selectedMatchId = data.matches.find((m) => m.eventId === event)?.id ?? null;
+      this.save();
+      if (data.selectedMatchId) await this.syncEngine();
+      else this.emit('change');
+      return;
+    }
+    this.save();
+  }
+
+  /** Deletes an event and every match in it from this PC. */
+  async deleteEvent(id: string) {
+    const data = this.deps.store.data;
+    if (!data.events.some((e) => e.id === id)) throw new Error('That event is already gone.');
+    const selected = data.matches.find((m) => m.id === data.selectedMatchId);
+    if (selected?.eventId === id && this.gameLocked()) throw new Error('A match of this event is live. Stop game data or the test round first.');
+    for (const m of data.matches.filter((x) => x.eventId === id)) {
+      if (data.rundown) delete data.rundown[m.id];
+      if (data.autopilotProgress) delete data.autopilotProgress[m.id];
+    }
+    data.matches = data.matches.filter((m) => m.eventId !== id);
+    data.events = data.events.filter((e) => e.id !== id);
+    if (selected?.eventId === id) {
+      this.rehearsal.stop();
+      data.selectedMatchId = data.matches[0]?.id ?? null;
+      this.save();
+      if (data.selectedMatchId) await this.syncEngine();
+      else this.emit('change');
+      return;
+    }
+    this.save();
   }
 
   async updateEvent(id: string, patch: EventPatch) {
@@ -994,6 +1037,8 @@ export class Production extends EventEmitter {
 
   async esportraRefresh() {
     await this.esportra.checkAccess().catch(() => {});
+    // Without Air access the match list is refused anyway: say why once, instead of asking again.
+    if (this.esportra.view().state === 'denied') throw new Error('Esportra has not turned on Air for this account yet, so its matches cannot load. Your own events and matches work as normal.');
     await this.esportra.refreshMatches();
   }
 

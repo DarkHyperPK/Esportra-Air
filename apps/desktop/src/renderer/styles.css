@@ -751,3 +751,34 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .cmp-rows dd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .cmp-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--hair); }
 .cmp-list li { padding: 6px 0; border-bottom: 1px solid var(--hair); font-size: var(--t-sm); color: var(--text-2); }
+
+.event-logo-blank { display: grid; place-items: center; flex: none; border: 1px dashed var(--hair-strong); border-radius: var(--r-md); color: var(--text-3); font-weight: 700; letter-spacing: 0.06em; }
+
+/* Events and the match steps (approved 12 Nov) */
+.rail button { text-align: center; line-height: 1.15; }
+.ev-list .ev-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto 14px; gap: 14px; align-items: center; width: 100%; padding: 12px 6px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--hair); color: var(--text); border-radius: 0; }
+.ev-list .ev-row:hover { background: var(--raised); }
+.ev-row .ev-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ev-head { padding: 14px 16px; border: 1px solid var(--hair); border-radius: var(--r-lg); background: linear-gradient(90deg, color-mix(in srgb, var(--accent, #8b7cf6) 16%, transparent), transparent 60%), var(--surface); }
+.ev-match { display: grid; grid-template-columns: 120px minmax(0, 1fr) 120px 170px auto; gap: 14px; align-items: center; padding: 10px 6px; }
+.ev-match[aria-current='true'] { background: var(--raised); }
+.ev-match-open { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; font-size: var(--t-md); }
+.ev-match-open:hover b { text-decoration: underline; }
+.confirm { padding: 4px 6px 4px 10px; border: 1px solid rgba(244, 63, 94, 0.45); border-radius: var(--r-md); background: rgba(244, 63, 94, 0.08); }
+.btn.danger-solid { background: var(--rose, #f43f5e); border-color: var(--rose, #f43f5e); color: #fff; }
+.btn.danger { color: var(--rose, #f43f5e); }
+.ws { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 28px; align-items: start; }
+.stepnav { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; }
+.stepnav > button:not(.btn) { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 10px; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--text-2); font-size: var(--t-sm); font-weight: 600; text-align: left; }
+.stepnav > button:not(.btn):hover { background: var(--raised); color: var(--text); }
+.stepnav > button[aria-current='step'] { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--text); }
+.stepnav .n { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--hair-strong); border-radius: 50%; font-family: var(--mono); font-size: 10.5px; }
+.stepnav .n.ok { background: var(--ok); border-color: var(--ok); color: #052e1c; }
+.stepnav .n.warn { border-color: var(--amber); color: var(--amber); }
+.stepnav .n.bad { border-color: var(--bad); color: var(--bad); }
+.stepnav .golive { margin-top: 12px; height: 42px; }
+.ws-body { min-width: 0; }
+@media (max-width: 1100px) { .ws { grid-template-columns: 1fr; } .stepnav { position: static; flex-direction: row; flex-wrap: wrap; } }
+
+.cols.embedded { grid-template-columns: minmax(0, 1fr); }
+.cols.embedded > .stack:first-child { order: 2; }

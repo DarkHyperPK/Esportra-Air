@@ -771,3 +771,44 @@ test('Stream Deck / Companion: the module connects, gets map end from the game, 
     await engine.stop(true);
   }
 });
+
+test('deleting: a match and an event go, never while live; the selection moves to what is left', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-del-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'delete-test-key-0123456789abcdef', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const store = new Store(join(dir, 'air.json'));
+  const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
+  try {
+    await production.createEvent('Cup A');
+    await production.createEvent('Cup B');
+    const [a, b] = store.data.events;
+    await production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 1, eventId: a!.id });
+    const first = production.match!.id;
+    await production.createQuickMatch({ teamA: 'Charlie', teamB: 'Delta', bestOf: 1, eventId: a!.id });
+    await production.createQuickMatch({ teamA: 'Echo', teamB: 'Foxtrot', bestOf: 1, eventId: b!.id });
+    assert.deepEqual(store.data.matches.map((m) => m.eventId), [b!.id, a!.id, a!.id], 'each match is in the event it was made in');
+
+    // The selected match cannot go while a test round is on air.
+    await production.testRound('start');
+    await new Promise((r) => setTimeout(r, 400));
+    await engine.poll();
+    await assert.rejects(production.deleteMatch(production.match!.id), /live/);
+    await assert.rejects(production.deleteEvent(b!.id), /live/);
+    await production.testRound('stop');
+    await engine.poll();
+
+    await production.deleteMatch(first);
+    assert.ok(!store.data.matches.some((m) => m.id === first));
+    await production.deleteEvent(b!.id);
+    assert.deepEqual(store.data.events.map((e) => e.id), [a!.id]);
+    assert.deepEqual(store.data.matches.map((m) => m.teams[0].name), ['Charlie'], 'its matches went with it');
+    assert.equal(production.match?.teams[0].name, 'Charlie', 'the selection moved to what is left');
+    await assert.rejects(production.deleteMatch('nope'), /already gone/);
+  } finally {
+    production.log.stop();
+    await engine.stop(true);
+  }
+});

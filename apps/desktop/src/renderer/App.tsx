@@ -6,21 +6,21 @@ import { CommandPalette, ShortcutsDialog, Toasts, type PaletteActions, type Toas
 import { LOGO } from './components/ui.tsx';
 import { ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
 import { FixData } from './components/FixData.tsx';
-import { DevicesScreen } from './screens/DevicesScreen.tsx';
 import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
-import { OutputsScreen } from './screens/OutputsScreen.tsx';
 import { ReadyScreen } from './screens/ReadyScreen.tsx';
-import { ScenesScreen } from './screens/ScenesScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { LibraryScreen } from './screens/LibraryScreen.tsx';
-import { EventScreen } from './screens/EventScreen.tsx';
+import { EventsScreen, type EventView } from './screens/EventsScreen.tsx';
+import type { Match } from '../shared/api.ts';
+import type { EsportraMatch } from '../shared/esportra.ts';
 import { HelpScreen } from './screens/HelpScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 import { FirstRun } from './components/FirstRun.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
-export type MatchCommand = { name: 'new-match' | 'rehearse' | 'autopilot' | 'teams' | 'talent' | 'myshow'; n: number } | null;
+export type MatchStep = 'ready' | 'teams' | 'talent' | 'rundown' | 'obs' | 'devices' | 'rehearse';
+export type MatchCommand = { name: 'new-match' | MatchStep | 'autopilot' | 'myshow'; n: number; eventId?: string | null } | null;
 
 export interface PageProps {
   s: Snapshot;
@@ -34,7 +34,9 @@ export interface PageProps {
 
 export function App() {
   const [s, setSnapshot] = useState<Snapshot | null>(null);
-  const [page, setPage] = useState<Page>('ready');
+  const [page, setPage] = useState<Page>('event');
+  // Which event is open on Events (none: the list of events).
+  const [eventView, setEventView] = useState<EventView>({ id: null, tab: 'matches' });
   // Until the producer chooses Run manually, Console opens the readiness check.
   const [started, setStarted] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -84,25 +86,32 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [palette]);
 
+  // OBS and devices are steps of the match now; old links open that step.
   const go = useCallback((next: Page) => {
-    setPage(next);
     setStatus(null);
+    if (next === 'scenes' || next === 'outputs' || next === 'capture') {
+      setPage('ready');
+      setMatchOpen(true);
+      setCommand({ name: next === 'capture' ? 'devices' : 'obs', n: Date.now() });
+      return;
+    }
+    setPage(next);
   }, []);
 
-  // Where the app opens: Matches, or Event when there is no event yet (the first thing to set up).
-  // Never Live: that is where the show ends up, not where it starts.
+  // Air opens on Events, with the selected match's event open when there is one. Never Live: that is
+  // where the show ends up, not where it starts.
   const landed = useRef(false);
   useEffect(() => {
     if (!s?.onboarding.done || landed.current) return;
     landed.current = true;
-    if (!s.events.length) setPage('event');
-  }, [s?.onboarding.done, s?.events.length]);
+    if (s.event) setEventView({ id: s.event.id, tab: 'matches' });
+  }, [s?.onboarding.done, s?.event?.id]);
 
   const actions: PaletteActions = useMemo(() => ({
     go: (p) => go(p),
-    command: (name) => { go('ready'); setCommand({ name, n: Date.now() }); },
-    askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => { go('ready'); setCommand({ name: 'talent', n: Date.now() }); }, openSignIn: () => setSignIn(true), help: () => setHelp(true),
-  }), [go]);
+    command: (name) => { go('ready'); if (name !== 'new-match') setMatchOpen(true); setCommand({ name, n: Date.now(), eventId: eventView.id }); },
+    askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => { go('ready'); setMatchOpen(true); setCommand({ name: 'talent', n: Date.now() }); }, openSignIn: () => setSignIn(true), help: () => setHelp(true),
+  }), [go, eventView.id]);
 
   if (!s) return <div className="win"><TopBar s={null} /><div className="splash" role="status"><div>{LOGO}<span>Starting Esportra Air…</span></div></div></div>;
 
@@ -126,7 +135,12 @@ export function App() {
     );
   }
 
-  const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => { go('ready'); setCommand({ name: 'talent', n: Date.now() }); }, openSignIn: () => setSignIn(true) };
+  const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => { go('ready'); setMatchOpen(true); setCommand({ name: 'talent', n: Date.now() }); }, openSignIn: () => setSignIn(true) };
+  const openMatch = async (m: Match) => { if (await run(() => air.selectMatch(m.id))) { setMatchOpen(true); setCommand({ name: 'ready', n: Date.now() }); setPage('ready'); } };
+  const openRemote = async (e: EsportraMatch) => { if (await run(() => air.useEsportraMatch(e.id))) { setMatchOpen(true); setCommand({ name: 'ready', n: Date.now() }); setPage('ready'); } };
+  const newMatch = (eventId: string) => { setPage('ready'); setCommand({ name: 'new-match', n: Date.now(), eventId }); };
+  // From a match, the event it belongs to (its Talent and sponsors tab, or its matches).
+  const openEvent = (tab: EventView['tab']) => { setEventView({ id: s.event?.id ?? null, tab }); setPage('event'); };
 
   return (
     <div className="win">
@@ -146,14 +160,11 @@ export function App() {
             </div>
           )}
           <main className="page">
-            {page === 'ready' && <ReadyScreen {...props} command={command} open={matchOpen} setOpen={setMatchOpen} start={() => { setStarted(true); setPage('console'); }} />}
-            {page === 'event' && <EventScreen s={s} run={run} />}
+            {page === 'ready' && <ReadyScreen {...props} command={command} open={matchOpen} setOpen={setMatchOpen} openEvent={openEvent} start={() => { setStarted(true); setPage('console'); }} />}
+            {page === 'event' && <EventsScreen s={s} run={run} openSignIn={() => setSignIn(true)} view={eventView} setView={setEventView} openMatch={(m) => void openMatch(m)} openRemote={(e) => void openRemote(e)} newMatch={newMatch} />}
             {page === 'help' && <HelpScreen s={s} run={run} />}
             {page === 'console' && <ConsoleScreen {...props} />}
             {page === 'library' && <LibraryScreen {...props} />}
-            {page === 'scenes' && <ScenesScreen {...props} />}
-            {page === 'capture' && <DevicesScreen {...props} />}
-            {page === 'outputs' && <OutputsScreen {...props} />}
             {page === 'settings' && <SettingsScreen {...props} />}
           </main>
         </div>

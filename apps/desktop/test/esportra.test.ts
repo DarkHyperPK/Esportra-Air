@@ -103,7 +103,7 @@ test('a refusal from Esportra means denied, and removes any lease', async () => 
     await assert.rejects(account.checkAccess(), /expired or was suspended/);
     const view = account.view();
     assert.equal(view.state, 'denied');
-    assert.match(view.warning!, /no active Air access/);
+    assert.match(view.warning!, /not turned on Air for this account/);
     assert.equal(store.data.esportra!.access!.lease, null);
     backend.down = true;
     await assert.rejects(account.checkAccess());
