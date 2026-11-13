@@ -21,6 +21,13 @@
       const gate=gates[modules[0]];
       if(gate){view.show={...view.show,scoreboard:false,teamCompare:false,duel:false,roundRecap:false,economy:false,[gate]:true};}
     }
+    // Air's Adjust preview (never an OBS output): the scorebug and pause looks being edited, and a sample pause.
+    if(!OUTPUT&&Q.get('screen')==='1'){
+      try{const look=JSON.parse(Q.get('look')||'null');const t=look&&look.timer;const n=(v,lo,hi)=>Number.isFinite(+v)?Math.max(lo,Math.min(hi,+v)):undefined;
+        if(t)view.layout={...view.layout,timerWindow:{dx:n(t.dx,-200,200)??0,width:n(t.width,100,240)??160,plate:/^#[0-9a-f]{6}$/i.test(t.plate||'')?t.plate:'#17181e'}};
+        if(look&&(look.pause==='box'||look.pause==='panel'))view.layout={...view.layout,pauseStyle:look.pause};}catch(_){/* ignore a malformed preview look */}
+      if(Q.get('samplePause')==='1')view.airPause={kind:'technical',startedAt:Date.now()-134000};
+    }
     return view;
   };
   const OUTPUT = /^\/o\/([0-9a-f-]{36})$/i.exec(location.pathname)?.[1] || null;
@@ -1090,6 +1097,8 @@
       E('strong', '', empty, 'Game data hidden');
       E('span', '', empty, 'Choose Sample data or Received match data to preview this screen.');
     }
+    // A stand-in for the game's own round timer behind the scorebug (Air's Adjust preview only).
+    if (!OUTPUT && Q.get('gameTimer') === '1') { const gt = E('div', 'game-timer-standin', root); E('span', '', gt, '1:34'); }
     const mods = hideEmpty ? [] : list.map(k => M[k](root)); HUD.mods = mods;
     const feedTag = E('div', 'feed-paused-tag mono', root, 'FEED PAUSED · LAST RECEIVED DATA');
     feedTag.style.cssText = 'position:absolute;top:16px;left:50%;transform:translateX(-50%);padding:6px 12px;background:#1b1410;color:#fbbf24;font-size:12px;z-index:99;display:none';
@@ -1100,7 +1109,7 @@
     HUD.on(updateRehearsalTag);
     const pausePanel = E('div', 'pause', root), pauseCrest = E('div', 'pause-crest', pausePanel), pauseSymbol = E('img', 'pause-symbol', pauseCrest), pauseTitle = E('div', 'a', pausePanel), pauseTime = E('div', 'b mono', pausePanel);
     E('div', 'pause-wing l', pausePanel); E('div', 'pause-wing r', pausePanel);
-    // layout.pauseStyle 'box': the VCT-style box at the bottom left with both teams and the score.
+    // layout.pauseStyle 'box': a VCT-style box (top left, clear of the player cards) with both teams and the score.
     const pauseScore = E('div', 'pause-score', pausePanel); let pauseSig = '';
     const updateAirPause = s => {
       const panel = s.airPause, enabled = !PREVIEW && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);

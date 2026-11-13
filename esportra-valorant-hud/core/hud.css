@@ -741,7 +741,7 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 .vsb-heads .dead{border-bottom-color:#3a3a3e}.vsb-heads .dead img{filter:grayscale(1) brightness(.35)}
 @media (prefers-reduced-motion:reduce){.vsb-spk{animation-name:spike-heartbeat-reduced}}
 
-/* pause and timeout as a box at the bottom left (layout.pauseStyle 'box'; approved mock 13 Nov) */
+/* pause and timeout as a box at the top left (clear of the player cards) (layout.pauseStyle 'box'; approved mock 13 Nov) */
 .pause-score{display:none}
 .pause.as-box{left:24px;top:76px;bottom:auto;width:560px;padding:14px 18px 18px;text-align:center;border-bottom:0;border-radius:6px;font-family:BarlowC,PSB,sans-serif;
   background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,0) 38%),linear-gradient(180deg,rgba(27,37,48,.96),rgba(11,17,24,.95));
@@ -753,3 +753,7 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 .pause.as-box .pause-score{display:flex;align-items:center;justify-content:center;gap:24px;margin-top:12px;height:92px;border:1px solid rgba(255,255,255,.09);border-radius:4px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.015))}
 .pause.as-box .pause-score b{font-family:BarlowC,PSB,sans-serif;font-weight:800;font-size:64px;line-height:1}
 .pause.as-box .pause-score .lg{object-fit:contain}
+
+/* Air's Adjust preview: where Valorant draws its round timer (1920×1080) */
+.game-timer-standin{position:absolute;left:886px;top:0;width:148px;height:74px;background:rgb(23,24,30);display:grid;place-items:center;z-index:0}
+.game-timer-standin span{font-family:BarlowC,sans-serif;font-weight:700;font-size:42px;color:rgba(236,236,238,.92)}

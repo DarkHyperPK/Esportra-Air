@@ -12,7 +12,7 @@ export interface TimerWindow {
 
 export interface Look {
   timer: TimerWindow;
-  /** Tech pause and timeout: the centred panel, or a box at the bottom left. */
+  /** Tech pause and timeout: the centred panel, or a box at the top left. */
   pause: 'panel' | 'box';
   /** Starting soon, Break and Ending: the classic screen, or a frame with two see-through windows. */
   break: 'classic' | 'frame';

@@ -58,10 +58,12 @@ function HudAdjust({ s, run }: { s: Snapshot; run: Run }) {
         <span className="row-gap"><input type="color" aria-label="Scorebug plate colour" value={look.timer.plate} onChange={(e) => timer({ plate: e.target.value })} /><span className="faint t-xs">Match the game's timer box.</span></span>
         <span className="t-sm">Pause and timeout</span>
         <span className="rb-chips" role="radiogroup" aria-label="Pause style">
-          {([['box', 'Box at the bottom left'], ['panel', 'Centred panel']] as const).map(([v, label]) => <button key={v} type="button" role="radio" aria-checked={look.pause === v} className="rb-chip" onClick={() => set({ pause: v })}>{label}</button>)}
+          {([['box', 'Box at the top left'], ['panel', 'Centred panel']] as const).map(([v, label]) => <button key={v} type="button" role="radio" aria-checked={look.pause === v} className="rb-chip" onClick={() => set({ pause: v })}>{label}</button>)}
         </span>
       </div>
-      <p className="faint t-xs">Line the window up once with the game on screen; it is saved for this production.</p>
+      {/* The scorebug over a stand-in for the game's timer, and a sample tech pause, with the settings above. */}
+      <div className="hud-adjust-pv"><Preview key={JSON.stringify(look)} src={overlayUrl(s, 'scorebug', { look: JSON.stringify(look), gameTimer: '1', samplePause: '1' })} label="Scorebug and pause with these settings" /></div>
+      <p className="faint t-xs">The dark box in the middle stands in for the game's own timer. Line the window up once more with the real game on screen; it is saved for this production.</p>
     </details>
   );
 }

@@ -821,6 +821,8 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .sr-look { display: block; max-width: 420px; }
 .hud-adjust { grid-column: 3 / -1; margin-top: 4px; }
 .hud-adjust summary { cursor: pointer; }
+.hud-adjust-pv { margin: 6px 0 8px; max-width: 760px; }
+.hud-adjust-pv .pv { aspect-ratio: 1920 / 300; }
 .hud-adjust-body { display: grid; grid-template-columns: 150px 1fr; gap: 10px 14px; align-items: center; padding: 10px 0 6px; }
 .hud-adjust input[type='color'] { width: 44px; height: 30px; padding: 2px; border: 1px solid var(--hair-strong); background: var(--field); }
 .rd-name { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
