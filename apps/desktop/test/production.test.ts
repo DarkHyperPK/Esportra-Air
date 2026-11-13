@@ -208,6 +208,22 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await production.syncEngine();
     assert.equal((await live()).airHudTemplate, 'tpl-hud');
     assert.deepEqual((await live()).layout.timerWindow, { dx: 4, width: 150, plate: '#20212a' }, 'the HUD template’s timer window wins');
+    // Scene screens: the Break row's look decides the Break page; scene templates reach the room by graphic.
+    await production.templateSave({ id: 'tpl-frame', name: 'Cup frame', graphic: 'holding|band', parts: { clock: { color: 'brand.secondary' } }, createdAt: 1, updatedAt: 1 });
+    const breakRow = production.snapshot().rundown.find((r) => r.show === 'holding') ?? null;
+    if (breakRow) production.rundownSave({ ...breakRow, template: 'tpl-frame' });
+    else production.rundownSave({ section: 'pre', show: 'holding', trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0, template: 'tpl-frame' });
+    await production.syncEngine();
+    assert.equal(production.setup.screens.find((x) => x.id === 'holding')!.overlay, 'break-frame', 'a frame template makes Break the frame');
+    assert.deepEqual((await live()).airPageTemplates, { 'holding|band': 'tpl-frame' });
+    assert.equal(production.snapshot().templateUse['tpl-frame'], 1, 'used in one match');
+    assert.equal(production.snapshot().templateUse['tpl-gold'], 1);
+    const br = production.snapshot().rundown.find((r) => r.show === 'holding')!;
+    production.rundownSave({ ...br, style: 'full', template: undefined });
+    await production.syncEngine();
+    assert.equal(production.setup.screens.find((x) => x.id === 'holding')!.overlay, 'holding', 'back to the classic Break');
+    assert.equal((await live()).airPageTemplates?.['holding|band'], undefined, 'a removed look is cleared in the room');
+    await production.templateDelete('tpl-frame');
     await production.templateDelete('tpl-gold');
     assert.equal(production.snapshot().rundown.find((r) => r.id === resultRow.id)!.template, undefined, 'rows that used it go back to the default look');
     assert.deepEqual((await live()).airTemplates.map((t: { id: string }) => t.id), ['tpl-hud']);

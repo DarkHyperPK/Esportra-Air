@@ -16,21 +16,27 @@ export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: 
   return <Preview src={templatePreviewUrl(s, graphic, extra)} label={label} backdrop={false} />;
 }
 
+const SCENE = (g: string) => g.startsWith('holding|') || g.startsWith('casters|');
 const GROUPS: Array<[string, string, (g: string) => boolean]> = [
-  ['band', 'Over the game', (g) => g.endsWith('|band')],
-  ['full', 'Full screen', (g) => g.endsWith('|full')],
+  ['band', 'Over the game', (g) => g.endsWith('|band') && !SCENE(g)],
+  ['full', 'Full screen', (g) => g.endsWith('|full') && !SCENE(g)],
+  ['scene', 'Scene screens', SCENE],
   ['hud', 'In-game HUD', (g) => g === 'hud'],
 ];
 
 /** Graphics › Templates: your saved looks by graphic, the built-in looks to start from, and New template. */
 function TemplatesTab({ s }: { s: Snapshot }) {
   const [graphic, setGraphic] = useState('map-veto|band');
-  const used = new Set(s.rundown.map((r) => r.template).filter(Boolean));
+  const [show, setShow] = useState<'all' | 'builtin' | 'yours'>('all');
+  const uses = (id: string) => s.templateUse?.[id] ?? 0;
   return (
     <div className="stack" style={{ gap: 22 }}>
       <div className="between">
         <p className="muted t-sm" style={{ maxWidth: '72ch' }}>Make your own look for any graphic: move, resize, recolour and re-font its parts, then pick the template in a match's Rundown. Colours can follow the event's brand kit (Events › Branding).</p>
         <span className="row g-2">
+          <div className="seg" role="group" aria-label="Show templates">
+            {([['all', 'All'], ['builtin', 'Built in'], ['yours', 'Yours']] as const).map(([v, l]) => <button key={v} aria-pressed={show === v} onClick={() => setShow(v)}>{l}</button>)}
+          </div>
           <select className="cell" aria-label="Graphic for a new template" value={graphic} onChange={(e) => setGraphic(e.target.value)}>
             {GROUPS.map(([k, label, fits]) => <optgroup key={k} label={label}>{Object.keys(GRAPHICS).filter(fits).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>)}
           </select>
@@ -38,7 +44,8 @@ function TemplatesTab({ s }: { s: Snapshot }) {
         </span>
       </div>
       {GROUPS.map(([k, label, fits]) => {
-        const mine = s.templates.filter((t) => fits(t.graphic));
+        const mine = show === 'builtin' ? [] : s.templates.filter((t) => fits(t.graphic));
+        const builtin = show === 'yours' ? [] : Object.keys(GRAPHICS).filter(fits);
         return (
           <section key={k} className="stack g-2" aria-label={label}>
             <span className="cap">{label}</span>
@@ -47,18 +54,28 @@ function TemplatesTab({ s }: { s: Snapshot }) {
                 <div key={t.id} className="card tpl-card">
                   <TemplateThumb s={s} graphic={t.graphic} template={t} label={t.name} />
                   <div className="tpl-meta">
-                    <b>{t.name}</b>
-                    <span className="faint t-xs">{GRAPHICS[t.graphic]?.title} · {new Date(t.updatedAt).toLocaleDateString()}{used.has(t.id) ? ' · in this match' : ''}</span>
+                    <span className="between"><b>{t.name}</b>{uses(t.id) > 0 && <span className="tally ready">Used in {uses(t.id)} {uses(t.id) === 1 ? 'match' : 'matches'}</span>}</span>
+                    <span className="faint t-xs">{GRAPHICS[t.graphic]?.title} · {new Date(t.updatedAt).toLocaleDateString()}</span>
                     <span className="row g-1"><button className="btn small" onClick={() => openTemplateEditor({ id: t.id })}>Edit</button><button className="btn quiet small" onClick={() => openTemplateEditor({ from: t })}>Duplicate</button></span>
                   </div>
                 </div>
               ))}
-              {mine.length === 0 && <p className="muted t-sm tpl-empty">No templates yet. Choose a graphic above and press New template{k === 'hud' ? ' (In-game HUD covers the scorebug, player cards, killfeed and the rest at once)' : ''}.</p>}
+              {builtin.map((g) => (
+                <div key={g} className="card tpl-card builtin">
+                  <TemplateThumb s={s} graphic={g} template={null} label={`${GRAPHICS[g]!.title}, built in`} />
+                  <div className="tpl-meta">
+                    <span className="between"><b>{GRAPHICS[g]!.title}</b><span className="tally off">Built in</span></span>
+                    <span className="faint t-xs">{k === 'hud' ? 'Every in-game part' : label}</span>
+                    <span className="row g-1"><button className="btn small" aria-label={`Start from this: ${graphicTitle(g)}`} onClick={() => openTemplateEditor({ graphic: g })}>Start from this</button></span>
+                  </div>
+                </div>
+              ))}
+              {mine.length + builtin.length === 0 && <p className="muted t-sm tpl-empty">No templates yet. Choose a graphic above and press New template, or start from a built-in look.</p>}
             </div>
           </section>
         );
       })}
-      <p className="faint t-xs">Built-in looks never change. A template only changes how parts look; the data still comes from the match. {graphicTitle('hud')} templates also line up the scorebug's timer window.</p>
+      <p className="faint t-xs">Built-in looks never change. A template only changes how parts look; the data still comes from the match.</p>
     </div>
   );
 }

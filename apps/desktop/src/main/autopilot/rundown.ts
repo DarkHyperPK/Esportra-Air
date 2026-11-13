@@ -83,7 +83,11 @@ export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens
     const fits = template && (input.show === HUD_ROW ? template.graphic === 'hud' : input.show !== null && graphicScreen(template.graphic) === input.show);
     if (!fits) throw new Error('That template is for a different graphic. Choose another look.');
   }
-  if (!takesItself(input.show)) return { ...row({ id, show: input.show, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }), section, enabled: input.enabled !== false, ...(template && input.show === HUD_ROW ? { template: template.id } : {}) };
+  // The HUD row and scene rows (Break, Desk) have no rule, only a look. For Break, over the game is the frame.
+  if (!takesItself(input.show)) {
+    const frame = input.show === 'holding' && (template ? graphicStyle(template.graphic) === 'band' : input.style === 'band');
+    return { ...row({ id, show: input.show, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }), section, enabled: input.enabled !== false, ...(input.show === 'holding' ? { style: frame ? 'band' as const : 'full' as const } : {}), ...(template ? { template: template.id } : {}) };
+  }
   if (!(WHEN as readonly unknown[]).includes(input.trigger)) throw new Error('Choose when it comes up.');
   const map = input.map;
   if (!(map === 'every' || map === 'series' || int(map, 1, bestOf))) throw new Error(`Choose every map, map 1 to ${bestOf}, or after the series.`);

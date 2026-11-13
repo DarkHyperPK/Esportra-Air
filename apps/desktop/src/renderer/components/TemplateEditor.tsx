@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import {
-  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicTitle, newTemplateId, partsOf, validTemplate,
+  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicTitle, newTemplateId, partsOf, validTemplate,
   type BrandKit, type ColorRef, type PartStyle, type Template,
 } from '../../shared/templates.ts';
 import { air } from '../bridge.ts';
@@ -58,7 +58,13 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const [sel, setSel] = useState<string>(partsOf(initial.graphic)[0]?.[0] ?? '');
   const [rects, setRects] = useState<Rects>({});
   const [compare, setCompare] = useState<'mine' | 'default'>('mine');
-  const [backdrop, setBackdrop] = useState<'game' | 'clear'>('game');
+  const [backdrop, setBackdrop] = useState<'game' | 'desk' | 'picture' | 'clear'>('game');
+  // Your picture: a screenshot of your game or desk, kept in this PC's editor storage only.
+  const [picture, setPicture] = useState<string | null>(() => { try { return localStorage.getItem('air-template-backdrop'); } catch { return null; } });
+  const [sample, setSample] = useState<string>('');
+  const [menu, setMenu] = useState<null | 'sample' | 'backdrop'>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: string; after: boolean } | null>(null);
   const [snap, setSnap] = useState(true);
   const [clip, setClip] = useState<PartStyle | null>(null);
   const [confirm, setConfirm] = useState<null | 'close' | 'delete'>(null);
@@ -105,12 +111,28 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   useEffect(() => {
     const on = (e: MessageEvent) => {
       if (e.source !== frame.current?.contentWindow) return;
-      if (e.data?.type === 'AIR_HUD_PREVIEW_READY') send();
+      if (e.data?.type === 'AIR_HUD_PREVIEW_READY') { send(); if (sample) post({ type: 'AIR_TEMPLATE_SAMPLE', sample }); }
       if (e.data?.type === 'AIR_TEMPLATE_RECTS' && e.data.graphic === draft.graphic) setRects(e.data.parts ?? {});
     };
     window.addEventListener('message', on);
     return () => window.removeEventListener('message', on);
-  }, [send, draft.graphic]);
+  }, [send, draft.graphic, sample]);
+  useEffect(() => { post({ type: 'AIR_TEMPLATE_SAMPLE', sample: sample || null }); }, [sample, post]);
+  const pickPicture = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 4_000_000) { setNotice('Choose a picture under 4 MB.'); return; }
+    const url = await new Promise<string>((done) => { const r = new FileReader(); r.onload = () => done(String(r.result)); r.readAsDataURL(file); });
+    setPicture(url); setBackdrop('picture'); setMenu(null);
+    try { localStorage.setItem('air-template-backdrop', url); } catch { setNotice('The picture is shown but too large to keep for next time.'); }
+  };
+  /** Dropping a part above another puts it in front of that part; below, behind it. */
+  const dropPart = (id: string, target: string, after: boolean) => {
+    if (id === target) return;
+    const tz = draft.parts[target]?.z ?? 0;
+    const z = Math.max(-9, Math.min(9, after ? tz - 1 : tz + 1));
+    setPart(id, { z: z || undefined });
+    setNotice(`${parts.find((p) => p[0] === id)?.[1]} is now ${after ? 'behind' : 'in front of'} ${parts.find((p) => p[0] === target)?.[1]?.toLowerCase()}.`);
+  };
   useEffect(() => {
     const el = canvas.current; if (!el) return;
     const ro = new ResizeObserver(([e]) => setScale((e?.contentRect.width ?? 960) / W));
@@ -153,7 +175,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
       const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName);
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); return; }
-      if (e.key === 'Escape') { e.preventDefault(); tryClose(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); if (menu) setMenu(null); else tryClose(); return; }
       if (typing) return;
       if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
@@ -254,15 +276,16 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
           <div className="tpl-confirm" role="alertdialog" aria-label="Confirm">
             {confirm === 'close'
               ? <><span>This template has changes that are not saved.</span><button className="btn small" onClick={() => setConfirm(null)}>Keep editing</button><button className="btn small" onClick={close}>Close without saving</button><button className="btn primary small" onClick={async () => { await save(); close(); }}>Save and close</button></>
-              : <><span>{isNew ? 'Discard this new template?' : `Delete “${draft.name}”? Rundown rows that use it go back to the default look.`}</span><button className="btn small" onClick={() => setConfirm(null)}>Cancel</button><button className="btn danger small" onClick={() => void remove()}>{isNew ? 'Discard' : 'Delete'}</button></>}
+              : <><span>{isNew ? 'Discard this new template?' : `Delete “${draft.name}”?${(s.templateUse?.[draft.id] ?? 0) > 0 ? ` It is used in ${s.templateUse[draft.id]} ${s.templateUse[draft.id] === 1 ? 'match' : 'matches'};` : ''} Rundown rows that use it go back to the default look.`}</span><button className="btn small" onClick={() => setConfirm(null)}>Cancel</button><button className="btn danger small" onClick={() => void remove()}>{isNew ? 'Discard' : 'Delete'}</button></>}
           </div>
         )}
         <div className="tpl-body">
           <aside className="tpl-left">
             <label className="stack g-1"><span className="cap">Graphic</span>
-              <select className="cell" value={draft.graphic} disabled={!isNew} onChange={(e) => { const g = e.target.value; change((t) => ({ ...t, graphic: g, parts: {}, timer: undefined })); setSel(partsOf(g)[0]?.[0] ?? ''); setRects({}); }}>
-                <optgroup label="Over the game">{graphicsList.filter((g) => g.endsWith('|band')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
-                <optgroup label="Full screen">{graphicsList.filter((g) => g.endsWith('|full')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
+              <select className="cell" value={draft.graphic} disabled={!isNew} onChange={(e) => { const g = e.target.value; change((t) => ({ ...t, graphic: g, parts: {}, timer: undefined })); setSel(partsOf(g)[0]?.[0] ?? ''); setRects({}); setSample(''); }}>
+                <optgroup label="Over the game">{graphicsList.filter((g) => g.endsWith('|band') && !g.startsWith('holding|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
+                <optgroup label="Full screen">{graphicsList.filter((g) => g.endsWith('|full') && !g.startsWith('holding|') && !g.startsWith('casters|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
+                <optgroup label="Scene screens">{graphicsList.filter((g) => g.startsWith('holding|') || g.startsWith('casters|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
                 <optgroup label="In-game HUD"><option value="hud">In-game HUD</option></optgroup>
               </select>
             </label>
@@ -272,18 +295,22 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 {parts.map(([id, label]) => {
                   const p = draft.parts[id]; const present = !!rects[id];
                   return (
-                    <div key={id} className={`tpl-node ${id === sel ? 'on' : ''} ${present ? '' : 'absent'}`}>
+                    <div key={id} className={`tpl-node ${id === sel ? 'on' : ''} ${present ? '' : 'absent'} ${dragging === id ? 'dragging' : ''} ${dropAt?.id === id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
+                      draggable onDragStart={(e) => { setDragging(id); e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { setDragging(null); setDropAt(null); }}
+                      onDragOver={(e) => { if (!dragging || dragging === id) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDropAt({ id, after: e.clientY > r.top + r.height / 2 }); }}
+                      onDrop={(e) => { e.preventDefault(); if (dragging && dropAt) dropPart(dragging, dropAt.id, dropAt.after); setDragging(null); setDropAt(null); }}>
                       <button role="option" aria-selected={id === sel} onClick={() => setSel(id)} title={present ? label : `${label} (not in this sample)`}>
                         <span>{label}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
                         <i className={`chg ${p ? 'on' : ''}`} aria-label={p ? 'changed' : undefined} />
                       </button>
+                      {!present && SHOWS_IN[id] && SAMPLES[draft.graphic]?.some((x) => x.id === SHOWS_IN[id]) && <button className="tpl-shows" onClick={() => { setSample(SHOWS_IN[id]!); setSel(id); }}>Shows in: {SAMPLES[draft.graphic]!.find((x) => x.id === SHOWS_IN[id])!.name} ›</button>}
                       <button className={`eye ${p?.hidden ? 'off' : ''}`} aria-label={p?.hidden ? `Show ${label}` : `Hide ${label}`} title={p?.hidden ? 'Show' : 'Hide'} onClick={() => setPart(id, { hidden: p?.hidden ? undefined : true })}>{p?.hidden ? '◌' : '●'}</button>
                     </div>
                   );
                 })}
               </div>
             </div>
-            <p className="faint t-xs">The blue dot means you changed that part. Click a part on the picture to select it; click again to reach the part behind.</p>
+            <p className="faint t-xs">The blue dot means you changed that part. Click a part on the picture to select it; click again to reach the part behind. Drag a part above or below another to put it in front or behind; layers only matter where parts overlap.</p>
           </aside>
           <section className="tpl-mid">
             <div className="tpl-cvbar">
@@ -291,20 +318,42 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 <button aria-pressed={compare === 'default'} onClick={() => setCompare('default')}>Default</button>
                 <button aria-pressed={compare === 'mine'} onClick={() => setCompare('mine')}>Your template</button>
               </div>
-              {draft.graphic.endsWith('|full') ? null : (
-                <div className="seg" role="group" aria-label="Backdrop">
-                  <button aria-pressed={backdrop === 'game'} onClick={() => setBackdrop('game')}>Game</button>
-                  <button aria-pressed={backdrop === 'clear'} onClick={() => setBackdrop('clear')}>Clear</button>
-                </div>
+              {SAMPLES[draft.graphic] && (
+                <span className="tpl-anchor">
+                  <button className="btn small" aria-haspopup="menu" aria-expanded={menu === 'sample'} onClick={() => setMenu(menu === 'sample' ? null : 'sample')}>Sample: {SAMPLES[draft.graphic]!.find((x) => x.id === sample)?.name ?? (draft.graphic === 'hud' ? 'Round live' : 'Starting soon')} ▾</button>
+                  {menu === 'sample' && (
+                    <div className="tpl-menu" role="menu" aria-label="Sample">
+                      <span className="cap">{draft.graphic === 'hud' ? 'In-game HUD' : 'Screen'}</span>
+                      {SAMPLES[draft.graphic]!.map((x) => <button key={x.id} role="menuitemradio" aria-checked={(sample || SAMPLES[draft.graphic]![0]!.id) === x.id} onClick={() => { setSample(x.id); setMenu(null); }}>{x.name}</button>)}
+                    </div>
+                  )}
+                </span>
+              )}
+              {draft.graphic.endsWith('|full') && draft.graphic !== 'holding|full' && draft.graphic !== 'casters|full' ? null : (
+                <span className="tpl-anchor">
+                  <button className="btn quiet small" aria-haspopup="menu" aria-expanded={menu === 'backdrop'} onClick={() => setMenu(menu === 'backdrop' ? null : 'backdrop')}>Backdrop: {({ game: 'Game', desk: 'Desk', picture: 'Your picture', clear: 'Clear' } as const)[backdrop]} ▾</button>
+                  {menu === 'backdrop' && (
+                    <div className="tpl-menu wide" role="menu" aria-label="Backdrop">
+                      <span className="cap">Behind the graphic</span>
+                      <div className="tpl-bd">
+                        {(['game', 'desk', 'picture', 'clear'] as const).map((b) => (
+                          <button key={b} role="menuitemradio" aria-checked={backdrop === b} disabled={b === 'picture' && !picture} className={`bd-${b}`} style={b === 'picture' && picture ? { backgroundImage: `url(${picture})` } : undefined} onClick={() => { setBackdrop(b); setMenu(null); }}><i>{({ game: 'Game', desk: 'Desk', picture: 'Your picture', clear: 'Clear' } as const)[b]}</i></button>
+                        ))}
+                      </div>
+                      <label className="tpl-menu-item">Choose a picture…<input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { void pickPicture(e.target.files?.[0]); e.target.value = ''; }} /></label>
+                      <span className="faint t-2xs" style={{ padding: '0 8px 6px' }}>Stays on this PC. Never sent anywhere.</span>
+                    </div>
+                  )}
+                </span>
               )}
               <span className="spacer" />
-              {!hud && <button className="btn small" onClick={() => post({ type: 'AIR_TEMPLATE_PLAY' })}>▶ Play entrance</button>}
+              <button className="btn small" onClick={() => post({ type: 'AIR_TEMPLATE_PLAY' })}>▶ Play entrance</button>
               <button className="btn quiet small" aria-pressed={snap} onClick={() => setSnap(!snap)}>Snap {snap ? 'on' : 'off'}</button>
             </div>
             <div className="tpl-cvwrap">
-              <div className={`tpl-canvas ${backdrop === 'clear' || draft.graphic.endsWith('|full') ? 'clear' : ''}`} ref={canvas}>
+              <div className={`tpl-canvas bd-${backdrop}`} ref={canvas} style={backdrop === 'picture' && picture ? { backgroundImage: `url(${picture})` } : undefined}>
                 <iframe ref={frame} title={`Preview of ${graphicTitle(draft.graphic)}`} tabIndex={-1} key={`${draft.graphic}-${backdrop}`}
-                  src={templatePreviewUrl(s, draft.graphic, { editorKey: key, canvas: '1', ...(backdrop === 'game' && !draft.graphic.endsWith('|full') ? { bg: '1' } : {}) })}
+                  src={templatePreviewUrl(s, draft.graphic, { editorKey: key, canvas: '1', ...(backdrop === 'game' ? { bg: '1' } : { clear: '1' }) })}
                   style={{ transform: `scale(${scale})` }} />
                 <div className="tpl-safe" aria-hidden="true"><span>TITLE SAFE</span></div>
                 <div className="tpl-hits" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
@@ -346,8 +395,8 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 </Group>
                 <Group title="Text">
                   <ColorPick s={s} brand={brand} label="Colour" value={ps.color} own onPick={(c) => set({ color: c }, 'color')} reset={changed('color') ? () => set({ color: undefined }) : undefined} />
-                  <Row label="Font"><select className="cell" aria-label="Font" value={ps.font ?? ''} onChange={(e) => set({ font: (e.target.value || undefined) as PartStyle['font'] })}><option value="">Own</option>{FONTS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select><Reset k="font" /></Row>
-                  <Row label="Weight"><select className="cell" aria-label="Weight" value={ps.weight ?? ''} onChange={(e) => set({ weight: e.target.value ? Number(e.target.value) : undefined })}><option value="">Own</option>{[500, 600, 700, 800, 900].map((w) => <option key={w} value={w}>{({ 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold', 900: 'Black' } as Record<number, string>)[w]}</option>)}</select><Reset k="weight" /></Row>
+                  <Row label="Font"><select className="cell" aria-label="Font" value={ps.font ?? ''} onChange={(e) => { const font = (e.target.value || undefined) as PartStyle['font']; set({ font, ...(ps.weight && font ? { weight: snapWeight(font, ps.weight) } : {}) }); }}><option value="">Own</option>{FONTS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select><Reset k="font" /></Row>
+                  <Row label="Weight"><select className="cell" aria-label="Weight" value={ps.weight ?? ''} onChange={(e) => set({ weight: e.target.value ? Number(e.target.value) : undefined })}><option value="">Own</option>{(ps.font ? WEIGHTS[ps.font] : [500, 600, 700, 800, 900]).map((w) => <option key={w} value={w}>{({ 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold', 900: 'Black' } as Record<number, string>)[w]}</option>)}</select><Reset k="weight" /></Row>
                   <Row label="Size"><Num label="px" value={ps.size ?? 0} lo={0} hi={240} placeholder="Own" onChange={(v) => set({ size: v >= 6 ? v : undefined }, 'size')} /><Reset k="size" /></Row>
                   <Row label="Spacing"><Num label="em" step={0.01} value={ps.spacing ?? 0} lo={-0.1} hi={0.6} onChange={(v) => set({ spacing: v === 0 ? undefined : v }, 'spacing')} /><Reset k="spacing" /></Row>
                   <Row label="Capitals"><Chips value={ps.caps ?? 'own'} options={[['own', 'Own'], ['upper', 'ALL CAPS'], ['none', 'As typed']]} onPick={(v) => set({ caps: v === 'own' ? undefined : v as 'upper' | 'none' })} /><Reset k="caps" /></Row>
@@ -366,7 +415,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 <Group title="Depth">
                   <Row label="Shadow"><Chips value={ps.depth ?? 'own'} options={[['own', 'Own'], ['none', 'None'], ['soft', 'Soft'], ['strong', 'Strong']]} onPick={(v) => set({ depth: v === 'own' ? undefined : v as 'none' })} /><Reset k="depth" /></Row>
                 </Group>
-                {!hud && (
+                {(
                   <Group title="Entrance">
                     <Row label="Animation"><Chips value={ps.entrance?.kind ?? 'none'} options={ENTRANCES.map((x) => [x.id, x.name])} onPick={(v) => set({ entrance: v === 'none' ? undefined : { kind: v as 'rise', ms: ps.entrance?.ms ?? 600, delay: ps.entrance?.delay ?? 0, ...(ps.entrance?.stagger ? { stagger: true } : {}) } })} /><Reset k="entrance" /></Row>
                     {ps.entrance && (

@@ -14,6 +14,26 @@
   let previewPatch = {};
   // A template being edited or previewed in Air ({ template, brand }); never on an OBS output.
   let tplDraft = null;
+  // A moment the template editor asks to see (a banner, the scoreboard, Break…); preview pages only.
+  let tplSample = null;
+  const SAMPLES = {
+    live: v => { v.round = { ...v.round, phase: 'live' }; },
+    spike: v => { v.round = { ...v.round, phase: 'planted', endsAt: Date.now() + 26000 }; v.show = { ...v.show, spikeTimer: true }; },
+    pause: v => { v.airPause = { kind: 'technical', startedAt: Date.now() - 134000 }; },
+    timeout: v => { v.airPause = { kind: 'timeout', team: 0, startedAt: Date.now() - 21000 }; },
+    banner: v => { v.banner = { ...v.banner, type: 'ace', team: 1, player: 0, ts: Date.now() - 100, hold: 3600000 }; },
+    poll: v => { v.show = { ...v.show, poll: true }; },
+    scoreboard: v => { v.show = { ...v.show, scoreboard: true }; },
+    economy: v => { v.show = { ...v.show, economy: true }; v.round = { ...v.round, phase: 'buy' }; },
+    recap: v => { v.show = { ...v.show, roundRecap: true }; v.round = { ...v.round, phase: 'end' }; },
+    duel: v => { v.show = { ...v.show, duel: true }; },
+    compare: v => { v.show = { ...v.show, teamCompare: true }; },
+    lowerthird: v => { v.show = { ...v.show, lowerThird: true }; v.lowerThird = { ...v.lowerThird, kind: 'caster' }; },
+    sponsor: v => { v.show = { ...v.show, lowerThird: true }; v.lowerThird = { kind: 'generic', title: (v.sponsors && v.sponsors[0] && v.sponsors[0].name) || 'SPONSOR', sub: 'Presented by', team: -1, player: 0 }; },
+    starting: v => { v.holding = { ...v.holding, mode: 'starting' }; },
+    brb: v => { v.holding = { ...v.holding, mode: 'brb' }; },
+    ending: v => { v.holding = { ...v.holding, mode: 'ending' }; },
+  };
   try { if(Q.has('hudSettings'))previewPatch=window.AirHudSettings.validate(JSON.parse(Q.get('hudSettings'))); } catch (_) { /* Invalid preview settings never enter the match state. */ }
   const previewSettings = state => {
     const view=merge(clone(state),previewPatch),modules=(document.body.dataset.modules||'').split(',').map(name=>name.trim()).filter(Boolean);
@@ -30,6 +50,7 @@
         if(look&&(look.pause==='box'||look.pause==='panel'))view.layout={...view.layout,pauseStyle:look.pause};}catch(_){/* ignore a malformed preview look */}
       if(Q.get('samplePause')==='1')view.airPause={kind:'technical',startedAt:Date.now()-134000};
     }
+    if(!OUTPUT&&PREVIEW&&tplSample&&SAMPLES[tplSample])SAMPLES[tplSample](view);
     // A HUD template's timer window, while it is previewed.
     const tw=tplDraft&&tplDraft.template&&tplDraft.template.timer;
     if(!OUTPUT&&tw&&typeof tw==='object')view.layout={...view.layout,timerWindow:tw};
@@ -39,6 +60,7 @@
     return view;
   };
   const OUTPUT = /^\/o\/([0-9a-f-]{36})$/i.exec(location.pathname)?.[1] || null;
+  if (!OUTPUT && SAMPLES[Q.get('sample')]) tplSample = Q.get('sample');
   try { if (!OUTPUT && Q.has('template')) tplDraft = { template: JSON.parse(Q.get('template')), brand: JSON.parse(Q.get('brand') || 'null') }; } catch (_) { tplDraft = null; }
   const MATCH = PREVIEW ? null : Q.get('match') || (OUTPUT ? 'MAIN' : null); // previews are isolated from live rooms and browser storage
   const previewNow = Date.now();
@@ -1082,7 +1104,12 @@
   function fit(el) { const k = Math.min(innerWidth / 1920, innerHeight / 1080); el.style.transform = `scale(${k})`; }
   function boot() {
     const root = document.getElementById('hud'); if(MATCH&&root&&!receivedMatch){root.style.visibility='hidden';const waiting=document.createElement('p');waiting.id='waiting-match-data';waiting.textContent='Waiting for match data';Object.assign(waiting.style,{color:'#afbdd0',font:'24px Arial',padding:'48px'});document.body.appendChild(waiting);} if (!root) { window.HUD_READY = true; return; } fit(root); addEventListener('resize', () => fit(root));
-    if (Q.has('bg')) { const u = Q.get('bg'); document.body.style.background = `#1a1a1d url(${u && u !== '1' ? u : (mapA(HUD.state.map.name) || {}).splash}) center/cover`; }
+    // ?bg=1 shows the map behind a preview; until (or unless) its picture loads, a studio-like backdrop.
+    const DESK = 'radial-gradient(60% 70% at 50% 30%, #3a3448, #15131c 70%), #15131c';
+    if (Q.has('bg')) { const u = Q.get('bg'), url = u && u !== '1' ? u : (mapA(HUD.state.map.name) || {}).splash; document.body.style.background = DESK;
+      if (url) { const im = new Image(); im.onload = () => { document.body.style.background = `#1a1a1d url(${url}) center/cover`; }; im.src = url; } }
+    // ?clear=1: no backdrop of its own (Air's editor draws the desk, your picture or a checkerboard behind it).
+    if (!OUTPUT && Q.get('clear') === '1') document.body.classList.add('hud-clear');
     if(Q.get('canvas')==='1')document.body.classList.add('hud-editor-canvas');
     const list = (document.body.dataset.modules || '').split(',').map(x => x.trim()).filter(Boolean);
     const missing = list.filter(k => typeof M[k] !== 'function');
@@ -1124,7 +1151,7 @@
     // layout.pauseStyle 'box': a VCT-style box (top left, clear of the player cards) with both teams and the score.
     const pauseScore = E('div', 'pause-score', pausePanel); let pauseSig = '';
     const updateAirPause = s => {
-      const panel = s.airPause, enabled = !PREVIEW && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);
+      const panel = s.airPause, enabled = (!PREVIEW || tplSample === 'pause' || tplSample === 'timeout') && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);
       pausePanel.classList.toggle('on', !!enabled);
       pausePanel.style.visibility = enabled ? 'visible' : 'hidden';
       pausePanel.setAttribute('aria-hidden', enabled ? 'false' : 'true');
@@ -1152,9 +1179,10 @@
   function templates(root, list) {
     const T = window.AirTemplates; if (!T) return;
     const byModule = {}; Object.entries(FULLSCREEN).forEach(([id, m]) => { byModule[m] = id + '|full'; }); Object.entries(HUD.BANDS || {}).forEach(([id, m]) => { byModule[m] = id + '|band'; });
+    byModule.holding = 'holding|full'; byModule.casters = 'casters|full';
     const host = list.includes('fullscreen'), page = list.length === 1 && byModule[list[0]] ? byModule[list[0]] : 'hud';
     const find = (s, id) => (Array.isArray(s.airTemplates) ? s.airTemplates : []).find(t => t && t.id === id) || null;
-    let queued = false, entered = false;
+    let queued = false, entered = false, first = true;
     const run = () => {
       queued = false; const s = HUD.state;
       T.brand(document, tplDraft && tplDraft.brand || s.airBrand, s.teams);
@@ -1164,14 +1192,17 @@
         T.apply(fs.el, tpl, g);
         if (fs.fresh) { fs.fresh = false; T.enter(fs.el, tpl, g); }
       } else {
-        const tpl = tplDraft ? tplDraft.template : page === 'hud' ? find(s, s.airHudTemplate) : null;
+        // The HUD's look, or the look the Rundown gave this page (Break, Desk…).
+        const tpl = tplDraft ? tplDraft.template : find(s, page === 'hud' ? s.airHudTemplate : (s.airPageTemplates || {})[page]);
         T.apply(root, tpl, page);
-        if (!entered && tpl) { entered = true; T.enter(root, tpl, page); }
+        if (page !== 'hud' && !entered && tpl) { entered = true; T.enter(root, tpl, page); }
+        // Parts that come and go (banners, the pause box, the scoreboard) play their entrance each time they appear.
+        if (page === 'hud') { T.appear(root, tpl, page, first); first = false; }
       }
     };
     const queue = () => { if (!queued) { queued = true; requestAnimationFrame(run); } };
     HUD.subs.push(queue); run();
-    new MutationObserver(queue).observe(root, { childList: true, subtree: true, characterData: true });
+    new MutationObserver(queue).observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
     // Air's editor: the parts and where they are on the 1920×1080 canvas.
     HUD.templateRects = () => {
       const scope = host ? HUD.fsShown && HUD.fsShown.el : root, g = host ? HUD.fsShown && HUD.fsShown.key : page; if (!scope) return { graphic: g, parts: {} };
@@ -1192,7 +1223,8 @@
       const d = event.data;
       if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template || null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
       if (d.type === 'AIR_TEMPLATE_PLAY' && HUD.templatePlay) HUD.templatePlay();
-      if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS') && HUD.templateRects) requestAnimationFrame(() => requestAnimationFrame(() => window.parent.postMessage({ type: 'AIR_TEMPLATE_RECTS', id: d.id, ...HUD.templateRects() }, '*')));
+      if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); }
+      if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS' || d.type === 'AIR_TEMPLATE_SAMPLE') && HUD.templateRects) requestAnimationFrame(() => requestAnimationFrame(() => window.parent.postMessage({ type: 'AIR_TEMPLATE_RECTS', id: d.id, ...HUD.templateRects() }, '*')));
       return;
     }
     if (event.data?.type === 'AIR_HUD_PREVIEW_PROBE' && window.HUD_READY)

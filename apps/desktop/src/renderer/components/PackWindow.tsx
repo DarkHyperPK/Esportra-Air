@@ -10,6 +10,7 @@ import type { Run } from '../App.tsx';
 import { useEscape } from './Dialogs.tsx';
 import { Preview, overlayUrl } from './Preview.tsx';
 import { BAND_SCREENS, bandOverlay } from '../../shared/look.ts';
+import { LooksStrip } from './LookPicker.tsx';
 
 type Filter = 'all' | 'mine' | LibraryGroup;
 
@@ -69,12 +70,21 @@ export function PackWindow({ s, run, close, start }: { s: Snapshot; run: Run; cl
             )}
             {item && <Preview key={`${item.overlay}-${band}`} src={overlayUrl(s, band && BAND_SCREENS.has(item.overlay) ? bandOverlay(item.overlay) : item.overlay)} label={item.title} />}
             <button className="btn small" onClick={() => void run(() => air.libraryPlay(!playing)).then((ok) => ok && setPlaying(!playing))}>{playing ? 'Stop the sample round' : 'Play a sample round'}</button>
+            {item && <LooksStrip key={item.overlay} s={s} screen={lookScreen(s, item)} />}
           </div>
           {item && <Details s={s} run={run} item={item} />}
         </div>
       </div>
     </div>
   );
+}
+
+/** Which screen's looks a library item has: its Rundown screen, Break for the holding pages, else the HUD. */
+function lookScreen(s: Snapshot, item: LibraryItem): string {
+  if (['holding', 'starting-soon', 'brb', 'ending', 'break-frame'].includes(item.overlay)) return 'holding';
+  const link = showLink(item);
+  const screen = link.kind === 'screen' ? s.setup.screens.find((x) => x.overlay === link.overlay) : null;
+  return screen ? screen.id : 'in-game';
 }
 
 function Details({ s, run, item }: { s: Snapshot; run: Run; item: LibraryItem }) {

@@ -21,6 +21,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:transparent}
 body.bg{background:#222 url() center/cover}
 body.hud-editor-canvas{background:repeating-conic-gradient(#18202b 0% 25%,#1e2733 0% 50%) 0 0/32px 32px;color-scheme:dark}
 body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 50%) 0 0/32px 32px}
+.hud-preview.hud-clear,.hud-editor-canvas.hud-clear{background:transparent!important}
 .preview-label{position:fixed;left:50%;bottom:8px;transform:translateX(-50%);padding:5px 9px;background:#101014;color:#aeb8c5;border:1px solid #3b4553;font:10px JB,monospace;letter-spacing:.12em;z-index:100;pointer-events:none}
 #hud{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;color:#fff;font-family:PSB,sans-serif}
 .abs{position:absolute}
@@ -92,6 +93,9 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 /* ───────── PLAYER CARDS — Esportra / VCT structure ───────── */
 @font-face{font-family:EsportraRajdhani;src:url(fonts/rajdhani-700.ttf);font-weight:700;font-style:normal;font-display:block}
 @font-face{font-family:EsportraMontserrat;src:url(fonts/montserrat-600.ttf);font-weight:600;font-style:normal;font-display:block}
+@font-face{font-family:EsportraMontserrat;src:url(fonts/Montserrat-Variable-latin.woff2) format('woff2');font-weight:700 800;font-style:normal;font-display:block}
+@font-face{font-family:EsportraRajdhani;src:url(fonts/Rajdhani-Medium.woff2) format('woff2');font-weight:500;font-style:normal;font-display:block}
+@font-face{font-family:EsportraRajdhani;src:url(fonts/Rajdhani-SemiBold.woff2) format('woff2');font-weight:600;font-style:normal;font-display:block}
 /* All dimensions are authored on the existing 1920 x 1080 canvas. */
 .pl{--rose:#e0445e;--card-width:320px;--card-height:92px;position:absolute;bottom:24px;width:var(--card-width);display:flex;flex-direction:column;gap:12px}
 .pl.l{left:12px}.pl.r{right:12px}

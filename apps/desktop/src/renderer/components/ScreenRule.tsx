@@ -108,12 +108,10 @@ export function ScreenRule({ s, run, row, section, close }: { s: Snapshot; run: 
       </>) : (
         <div className="stack" style={{ gap: 10 }}>
           <p className="muted t-sm">{d.show === 'in-game' ? 'The in-game HUD is on over the game; switch its parts on or off in the row.' : `${title} is its own OBS scene. Switch OBS to it when you are ready; Air never switches scenes.`}</p>
-          {d.show === 'holding' && (
+          {(d.show === 'holding' || d.show === 'casters') && (
             <div className="stack" style={{ gap: 8 }}>
-              <span className="rb-k" style={{ padding: 0 }}>Look (every break)</span>
-              <Chips label="Break look" value={lookOf(s.setup.look).break} onChange={(v) => void run(() => air.updateSetup({ look: { break: v } }))} options={[['classic', 'Classic'], ['frame', 'Frame with two windows']]} />
-              <span className="sr-look"><Preview src={overlayUrl(s, lookOf(s.setup.look).break === 'frame' ? 'break-frame' : 'holding')} label="Break" /></span>
-              {lookOf(s.setup.look).break === 'frame' && <span className="faint t-xs">The two windows show what you put in ESPORTRA · Break window 1 and 2 in OBS (a sponsor video, a camera).</span>}
+              <span className="rb-k" style={{ padding: 0 }}>Look</span>
+              <LookPicker s={s} screen={d.show} value={{ style: d.style ?? (d.show === 'holding' && lookOf(s.setup.look).break === 'frame' ? 'band' : 'full'), ...(d.template ? { template: d.template } : {}) }} onPick={(look) => set({ style: look.style, template: look.template })} />
             </div>
           )}
         </div>

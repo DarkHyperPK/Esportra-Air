@@ -40,6 +40,9 @@
     'schedule|full': { title: "Today's schedule", parts: [...FULL, ['list', 'List', '.list'], ['rows', 'Rows', '.list .r'], ['times', 'Times', '.list .tm'], ['labels', 'Labels', '.list .l']] },
     'champion|full': { title: 'Champion', parts: [...FULL, ['kicker', 'Event line', '.k'], ['team', 'Team name', '.t'], ['line', 'Result line', '.s'], ['roster', 'Roster', '.roster']] },
     'cam-grid|full': { title: 'Camera grid', parts: [['wall', 'Camera wall', '.camwall'], ['title', 'Title', '.camwall-title', 1], ['rows', 'Rows', '.camrow'], ['cams', 'Cameras', '.camrow .cam'], ['observed', 'Observed camera', '.cam.observed']] },
+    'holding|full': { title: 'Starting soon · Break · Ending', parts: [...FULL.filter(p => p[0] !== 'title' && p[0] !== 'subtitle' && p[0] !== 'toplabel'), ['mark', 'Logo', '.left .mark'], ['headline', 'Headline', '.left .big'], ['message', 'Message', '.left .sub'], ['countdown', 'Countdown', '.left .cd'], ['countlabel', 'Countdown label', '.left .cdl'], ['next', 'Up next panel', '.next'], ['nextteams', 'Up next teams', '.next .m'], ['schedule', 'Schedule', '.sch'], ['schedrows', 'Schedule rows', '.sch .r'], ['social', 'Social line', '.soc']] },
+    'holding|band': { title: 'Break frame', parts: [['frame', 'Frame', '.bd-frame'], ['windows', 'Windows', '.bd-fwin'], ['clock', 'Clock', '.bd-clock'], ['title', 'Event line', '.bd-ftop .bd-title'], ['eventmark', 'Event logo', '.bd-fmark'], ['bottom', 'Score row', '.bd-fbot'], ['marks', 'Logos', '.bd-fbot .bd-mark'], ['teamnames', 'Team names', '.bd-tname'], ['scores', 'Scores', '.bd-big'], ['vs', 'VS', '.bd-vs'], ['next', 'Next line', '.bd-fnext']] },
+    'casters|full': { title: 'Desk', parts: [['corners', 'Corner marks', '.chrome .br'], ['crest', 'Crest', '.chrome .clg'], ['topline', 'Top line', '.chrome .l1'], ['toplabel', 'Top label', '.chrome .r1', 1], ['clock', 'Clock', '.chrome .clk'], ['heading', 'Heading', '.hd'], ['subheading', 'Match line', '.hd2'], ['frames', 'Camera frames', '.frame'], ['plates', 'Name plates', '.plate'], ['names', 'Names', '.plate .n'], ['handles', 'Handles', '.plate .h']] },
     'map-veto|band': { title: 'Map veto', parts: withParts(BAND, [['title', 'Title', '.bd-title', 1], ['labels', 'Action labels', '.bd-vlab'], ['decider', 'Decider label', '.bd-vlab.dec'], ['pickcaps', 'Pick captions', '.bd-cap.top']]) },
     'agent-select|band': { title: 'Agent select', parts: [...BAND, ['teams', 'Team names', '.bd-team'], ['sides', 'Side tags', '.bd-side'], ['agents', 'Agent cards', '.bd-ag'], ['agentnames', 'Player names', '.bd-ag .who'], ['series', 'Series box', '.bd-lser']] },
     'match-intro|band': { title: 'Match intro', parts: [...BAND, ['teamnames', 'Team names', '.bd-tname b'], ['lineup', 'Lineup row', '.bd-lineup'], ['faces', 'Faces', '.bd-face'], ['players', 'Player names', '.bd-lp b']] },
@@ -58,11 +61,14 @@
       ['roundhistory', 'Round history', '.rh'], ['ticker', 'Ticker', '.ts'], ['poll', 'Poll', '.pq'], ['observed', 'Observed player', '.ob'],
       ['sponsor', 'Sponsor', '.spn'], ['recap', 'Round recap', '.rr'], ['economy', 'Economy', '.ec'], ['duel', 'Duel', '.du'],
       ['compare', 'Team compare', '.tc'], ['scoreboard', 'Scoreboard', '.st'], ['banner', 'Banners', '.bn'], ['bannerband', 'Banner band', '.bn .band'],
-      ['pause', 'Pause box', '.pause'], ['replay', 'Replay tag', '.rp'], ['lowerthird', 'Lower third', '.lt'], ['ltbox', 'Lower third box', '.lt .box'],
+      ['pause', 'Pause box', ':scope > .pause'], ['replay', 'Replay tag', '.rp'], ['lowerthird', 'Lower third', '.lt'], ['ltbox', 'Lower third box', '.lt .box'],
     ] },
   };
   const FONTS = { barlow: 'BarlowC', mono: 'JB', montserrat: 'EsportraMontserrat', rajdhani: 'EsportraRajdhani' };
-  const POPPINS = { 400: 'PMd', 500: 'PMd', 600: 'PSB', 700: 'PBd', 800: 'PXB', 900: 'PBk' };
+  const POPPINS = { 500: 'PMd', 600: 'PSB', 700: 'PBd', 800: 'PXB', 900: 'PBk' };
+  // The weights each font really has (core/fonts); a chosen weight snaps to the nearest, so nothing is faked bold.
+  const WEIGHTS = { barlow: [600, 700, 800], poppins: [500, 600, 700, 800, 900], mono: [400, 500, 600, 700, 800], montserrat: [600, 700, 800], rajdhani: [500, 600, 700] };
+  const snap = (font, w) => { const list = WEIGHTS[font]; if (!list || w == null) return w; return list.reduce((a, b) => (Math.abs(b - w) < Math.abs(a - w) ? b : a)); };
   const BRAND = ['primary', 'secondary', 'panel', 'text', 'atk', 'def'];
   const HEX = /^#[0-9a-f]{6}$/i;
   // Entrances animate transform/opacity/clip (not translate), so a part moved by the template keeps its place.
@@ -105,8 +111,8 @@
       else if (f.kind === 'gradient' && a && b) out.background = `linear-gradient(${num(f.angle, 0, 360) ?? 180}deg, ${withAlpha(a, al)}, ${withAlpha(b, al)})`;
     }
     const c = color(p.color); if (c) { out.color = c; out['-webkit-text-fill-color'] = c; }
-    const w = num(p.weight, 400, 900);
-    if (p.font === 'poppins') out['font-family'] = POPPINS[w ? Math.round(w / 100) * 100 : 600] + ', sans-serif';
+    const w = snap(p.font, num(p.weight, 400, 900));
+    if (p.font === 'poppins') out['font-family'] = POPPINS[w ? Math.max(500, Math.round(w / 100) * 100) : 600] + ', sans-serif';
     else if (FONTS[p.font]) out['font-family'] = FONTS[p.font] + ', sans-serif';
     if (w != null) out['font-weight'] = String(Math.round(w / 100) * 100);
     if (size != null) out['font-size'] = size + 'px';
@@ -168,6 +174,26 @@
     }
   }
 
+  /** Whether a part is on screen: its module is switched on and it takes up room. */
+  // Read from the HUD's own on/off classes only, so checking never forces the browser to lay out the page.
+  const shown = el => { if (el.hidden) return false; if (el.classList.contains('pause')) return el.classList.contains('on'); const m = el.closest && el.closest('.mod'); return !m || m.classList.contains('on') || el.classList.contains('on'); };
+  const SEEN = typeof WeakMap === 'function' ? new WeakMap() : null;
+  /** Plays a part's entrance each time it appears (a banner, the pause box). The first pass only records
+   *  what is on screen, so a page refresh replays nothing. */
+  function appear(rootEl, template, graphic, first) {
+    if (!rootEl || !SEEN || !template || template.graphic !== graphic || typeof Element === 'undefined' || !Element.prototype.animate) return;
+    for (const [id, , sel] of partsOf(graphic)) {
+      const e = template.parts && template.parts[id] && template.parts[id].entrance;
+      if (!e || !ENTER[e.kind]) continue;
+      rootEl.querySelectorAll(sel).forEach((el, i) => {
+        const now = shown(el), before = SEEN.get(el);
+        SEEN.set(el, now);
+        if (first || !now || before === true) return;
+        el.animate(ENTER[e.kind], { duration: num(e.ms, 0, 3000) ?? 600, delay: (num(e.delay, 0, 3000) ?? 0) + (e.stagger ? i * 60 : 0), easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' });
+      });
+    }
+  }
+
   /** The brand kit and team colours as CSS variables on the page. */
   function brand(doc, kit, teams) {
     if (!doc || !doc.documentElement) return;
@@ -180,5 +206,5 @@
   /** The graphic a page shows: the full-screen host's current one, or the HUD. */
   const graphicOf = (screen, style) => (screen ? `${screen}|${style === 'band' ? 'band' : 'full'}` : 'hud');
 
-  return { GRAPHICS, FONTS: [...Object.keys(FONTS), 'poppins'], BRAND, ENTRANCES: Object.keys(ENTER), styles, apply, enter, brand, graphicOf, partsOf };
+  return { GRAPHICS, FONTS: [...Object.keys(FONTS), 'poppins'], WEIGHTS, BRAND, ENTRANCES: Object.keys(ENTER), styles, apply, enter, appear, brand, graphicOf, partsOf };
 });

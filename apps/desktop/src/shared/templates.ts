@@ -52,6 +52,25 @@ export const FONTS = [
   { id: 'montserrat', name: 'Montserrat' }, { id: 'mono', name: 'JetBrains Mono' },
 ] as const;
 export type FontId = (typeof FONTS)[number]['id'];
+/** The weights each font really has (core/fonts); others snap to the nearest so nothing is faked bold. */
+export const WEIGHTS: Record<FontId, number[]> = { barlow: [600, 700, 800], poppins: [500, 600, 700, 800, 900], mono: [400, 500, 600, 700, 800], montserrat: [600, 700, 800], rajdhani: [500, 600, 700] };
+export const snapWeight = (font: FontId | undefined, w: number) => (font ? WEIGHTS[font].reduce((a, b) => (Math.abs(b - w) < Math.abs(a - w) ? b : a)) : w);
+
+/** Moments the editor can show, so parts that only appear then can be styled (core/hud.js SAMPLES). */
+export const SAMPLES: Record<string, Array<{ id: string; name: string }>> = {
+  hud: [
+    { id: 'live', name: 'Round live' }, { id: 'spike', name: 'Spike planted' }, { id: 'pause', name: 'Tech pause' }, { id: 'timeout', name: 'Timeout' },
+    { id: 'banner', name: 'Kill banner' }, { id: 'poll', name: 'Poll' }, { id: 'scoreboard', name: 'Scoreboard' }, { id: 'economy', name: 'Economy' },
+    { id: 'recap', name: 'Round recap' }, { id: 'duel', name: 'Duel' }, { id: 'compare', name: 'Team compare' }, { id: 'lowerthird', name: 'Lower third' }, { id: 'sponsor', name: 'Sponsor read' },
+  ],
+  'holding|full': [{ id: 'starting', name: 'Starting soon' }, { id: 'brb', name: 'Break' }, { id: 'ending', name: 'Ending' }],
+};
+/** The sample a HUD part shows in, for parts that are not on screen all the time. */
+export const SHOWS_IN: Record<string, string> = {
+  poll: 'poll', banner: 'banner', bannerband: 'banner', pause: 'pause', scoreboard: 'scoreboard', economy: 'economy', recap: 'recap',
+  duel: 'duel', compare: 'compare', lowerthird: 'lowerthird', ltbox: 'lowerthird',
+};
+
 export const ENTRANCES: Array<{ id: Entrance['kind'] | 'none'; name: string }> = [
   { id: 'rise', name: 'Rise' }, { id: 'fade', name: 'Fade' }, { id: 'slide', name: 'Slide' }, { id: 'wipe', name: 'Wipe' }, { id: 'none', name: 'None' },
 ];
@@ -76,6 +95,9 @@ export const GRAPHICS: Record<string, { title: string; parts: Part[] }> = {
   'schedule|full': { title: "Today's schedule", parts: [...FULL, ['list', 'List'], ['rows', 'Rows'], ['times', 'Times'], ['labels', 'Labels']] },
   'champion|full': { title: 'Champion', parts: [...FULL, ['kicker', 'Event line'], ['team', 'Team name'], ['line', 'Result line'], ['roster', 'Roster']] },
   'cam-grid|full': { title: 'Camera grid', parts: [['wall', 'Camera wall'], ['title', 'Title', 1], ['rows', 'Rows'], ['cams', 'Cameras'], ['observed', 'Observed camera']] },
+  'holding|full': { title: 'Starting soon · Break · Ending', parts: [...FULL.filter((p) => !['title', 'subtitle', 'toplabel'].includes(p[0])), ['mark', 'Logo'], ['headline', 'Headline'], ['message', 'Message'], ['countdown', 'Countdown'], ['countlabel', 'Countdown label'], ['next', 'Up next panel'], ['nextteams', 'Up next teams'], ['schedule', 'Schedule'], ['schedrows', 'Schedule rows'], ['social', 'Social line']] },
+  'holding|band': { title: 'Break frame', parts: [['frame', 'Frame'], ['windows', 'Windows'], ['clock', 'Clock'], ['title', 'Event line'], ['eventmark', 'Event logo'], ['bottom', 'Score row'], ['marks', 'Logos'], ['teamnames', 'Team names'], ['scores', 'Scores'], ['vs', 'VS'], ['next', 'Next line']] },
+  'casters|full': { title: 'Desk', parts: [['corners', 'Corner marks'], ['crest', 'Crest'], ['topline', 'Top line'], ['toplabel', 'Top label', 1], ['clock', 'Clock'], ['heading', 'Heading'], ['subheading', 'Match line'], ['frames', 'Camera frames'], ['plates', 'Name plates'], ['names', 'Names'], ['handles', 'Handles']] },
   'map-veto|band': { title: 'Map veto', parts: withParts(BAND, [['title', 'Title', 1], ['labels', 'Action labels'], ['decider', 'Decider label'], ['pickcaps', 'Pick captions']]) },
   'agent-select|band': { title: 'Agent select', parts: [...BAND, ['teams', 'Team names'], ['sides', 'Side tags'], ['agents', 'Agent cards'], ['agentnames', 'Player names'], ['series', 'Series box']] },
   'match-intro|band': { title: 'Match intro', parts: [...BAND, ['teamnames', 'Team names'], ['lineup', 'Lineup row'], ['faces', 'Faces'], ['players', 'Player names']] },
@@ -107,7 +129,7 @@ export const graphicStyle = (graphic: string): 'full' | 'band' => (graphic.endsW
 export const graphicTitle = (graphic: string) => {
   const g = GRAPHICS[graphic];
   if (!g) return 'Unknown graphic';
-  return graphic === 'hud' ? g.title : `${g.title} · ${graphicStyle(graphic) === 'band' ? 'Over the game' : 'Full screen'}`;
+  return graphic === 'hud' || graphic.startsWith('holding|') || graphic.startsWith('casters|') ? g.title : `${g.title} · ${graphicStyle(graphic) === 'band' ? 'Over the game' : 'Full screen'}`;
 };
 export const partsOf = (graphic: string) => GRAPHICS[graphic]?.parts ?? [];
 
@@ -143,6 +165,7 @@ export function validPart(input: unknown, label: string, words: boolean): PartSt
   };
   if (p.hidden !== undefined) { if (typeof p.hidden !== 'boolean') throw new Error(`${label}: shown or hidden.`); if (p.hidden) out.hidden = true; }
   if (p.font !== undefined) { if (!FONTS.some((f) => f.id === p.font)) throw new Error(`${label}: choose one of the fonts Air has.`); out.font = p.font as FontId; }
+  if (out.weight !== undefined) out.weight = snapWeight(out.font, Math.round(out.weight / 100) * 100);
   if (p.caps !== undefined) { if (p.caps !== 'upper' && p.caps !== 'none') throw new Error(`${label}: capitals or as typed.`); out.caps = p.caps; }
   if (p.depth !== undefined) { if (!['none', 'soft', 'strong'].includes(p.depth as string)) throw new Error(`${label}: depth is none, soft or strong.`); out.depth = p.depth as PartStyle['depth']; }
   if (p.fill !== undefined) {

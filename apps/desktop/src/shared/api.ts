@@ -312,6 +312,8 @@ export interface Snapshot {
   rundown: RundownRow[];
   /** Saved looks (Graphics › Templates). */
   templates: import('./templates.ts').Template[];
+  /** How many saved match rundowns use each template. */
+  templateUse: Record<string, number>;
   /** Teams/Players. */
   library: Library;
   /** How this PC runs graphics. */

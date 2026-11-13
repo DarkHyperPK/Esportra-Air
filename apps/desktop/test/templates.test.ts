@@ -77,3 +77,23 @@ test('a Rundown row picks a template for its own screen; the template decides th
   assert.equal(validRow({ ...row, template: undefined }, 'r1', 3, ['map-veto'], [tpl]).template, undefined);
   assert.deepEqual(templatesFor([tpl, hudTpl], 'map-veto').map((t) => t.id), ['tpl-1']);
 });
+
+test('font weights snap to the weights Air has, in Air and in the HUD', () => {
+  const t = validTemplate({ id: 'w', name: 'W', graphic: 'map-veto|band', parts: { title: { font: 'montserrat', weight: 900 }, captions: { font: 'barlow', weight: 400 }, panel: { weight: 650 } } });
+  assert.deepEqual([t.parts.title!.weight, t.parts.captions!.weight, t.parts.panel!.weight], [800, 600, 700]);
+  assert.equal(hud.styles({ font: 'rajdhani', weight: 900 })['font-weight'], '700');
+  assert.equal(hud.styles({ font: 'poppins', weight: 400 })['font-family'], 'PMd, sans-serif');
+});
+
+test('Break and Desk rows keep a look; for Break, over the game is the frame', () => {
+  const frame = validTemplate({ id: 'tpl-f', name: 'Frame', graphic: 'holding|band', parts: {} });
+  const desk = validTemplate({ id: 'tpl-d', name: 'Desk', graphic: 'casters|full', parts: { toplabel: { label: 'LIVE DESK' } } });
+  const base: RowInput = { section: 'pre', show: 'holding', trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 };
+  const b = validRow({ ...base, template: 'tpl-f' }, 'b', 3, ['holding', 'casters'], [frame, desk]);
+  assert.deepEqual([b.style, b.template], ['band', 'tpl-f']);
+  assert.equal(validRow({ ...base, style: 'band' }, 'b', 3, ['holding'], []).style, 'band', 'the built-in frame');
+  assert.equal(validRow(base, 'b', 3, ['holding'], []).style, 'full');
+  const d = validRow({ ...base, section: 'post', show: 'casters', template: 'tpl-d' }, 'd', 3, ['casters'], [frame, desk]);
+  assert.equal(d.template, 'tpl-d');
+  assert.throws(() => validRow({ ...base, template: 'tpl-d' }, 'b', 3, ['holding'], [frame, desk]), /different graphic/);
+});

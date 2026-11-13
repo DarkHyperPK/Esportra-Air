@@ -276,6 +276,8 @@ let failShot = async () => {};
   await pack.getByRole('option', { name: /Map veto/ }).click();
   await pack.getByRole('tab', { name: 'Over the game' }).click();
   await page.waitForTimeout(2500);
+  // Each graphic lists its looks: the built-in ones to start from.
+  await pack.getByRole('region', { name: 'Looks' }).getByRole('button', { name: 'Start from this' }).first().waitFor();
   await shot('pack-over-the-game');
   await pack.getByRole('tab', { name: 'Full screen' }).click();
   // A screen goes into this match's Rundown.
@@ -461,6 +463,22 @@ let failShot = async () => {};
   await page.locator('.tpl-card').filter({ hasText: 'Gold result' }).waitFor();
   await page.waitForTimeout(2000);
   await shot('templates');
+  // A HUD template from the built-in HUD: the Scoreboard sample shows the scoreboard so it can be styled.
+  await page.getByRole('button', { name: 'Start from this: In-game HUD' }).click();
+  const hudEd = page.getByRole('dialog', { name: /Template editor/ });
+  await hudEd.getByLabel('Template name').fill('Cup HUD');
+  await hudEd.getByRole('button', { name: /^Sample:/ }).click();
+  await hudEd.getByRole('menuitemradio', { name: 'Scoreboard' }).click();
+  await hudEd.getByRole('option', { name: 'Scoreboard' }).click();
+  await hudEd.getByLabel('px', { exact: true }).last().fill('14');
+  await hudEd.getByRole('radiogroup').filter({ hasText: 'Wipe' }).getByRole('radio', { name: 'Fade' }).click();
+  await page.waitForTimeout(2500);
+  await shot('template-hud-sample');
+  await page.keyboard.press('Control+s');
+  await hudEd.getByText('Saved', { exact: true }).first().waitFor();
+  { const t = (await call('snapshot')).templates.find((x) => x.name === 'Cup HUD'); if (!t || t.graphic !== 'hud' || t.parts.scoreboard?.radius !== 14 || t.parts.scoreboard?.entrance?.kind !== 'fade') throw new Error('the HUD template was not saved as edited: ' + JSON.stringify(t)); }
+  await hudEd.getByRole('button', { name: 'Esc · Close' }).click();
+  await hudEd.waitFor({ state: 'detached' });
   await step('Rundown');
   // Add a screen to Between maps with its own rule.
   await section('Between maps').getByRole('button', { name: 'Add screen' }).click();
@@ -501,6 +519,23 @@ let failShot = async () => {};
   await page.getByRole('radiogroup', { name: 'Look of the in-game HUD' }).getByRole('radio', { name: /Default HUD/, checked: true }).waitFor();
   await page.waitForTimeout(1500);
   await shot('hud-look');
+  // Break's look: add Starting soon with the frame look, then switch it back to the classic screen on its row.
+  await section('Pre-show').getByRole('button', { name: 'Add screen' }).click();
+  const preDrawer = page.getByRole('dialog', { name: 'Add to Pre-show' });
+  await preDrawer.getByRole('radiogroup', { name: 'Screen' }).getByRole('radio', { name: /Starting soon/ }).click();
+  await preDrawer.getByRole('radiogroup', { name: 'Look' }).getByRole('radio', { name: /Default frame/ }).click();
+  await page.waitForTimeout(1500);
+  await shot('break-look');
+  await preDrawer.getByRole('button', { name: 'Add to rundown' }).click();
+  await preDrawer.waitFor({ state: 'detached' });
+  if ((await call('snapshot')).rundown.find((r) => r.show === 'holding')?.style !== 'band') throw new Error('Break did not take the frame');
+  await page.getByText('Look of Starting soon, Break and Ending').click();
+  await page.getByText(/The two windows show what you put in ESPORTRA · Break window 1 and 2/).waitFor();
+  await page.getByRole('radiogroup', { name: /Look of Starting soon/ }).getByRole('radio', { name: /Default classic/ }).click();
+  await page.getByText(/The two windows show what you put/).waitFor({ state: 'detached' });
+  if ((await call('snapshot')).rundown.find((r) => r.show === 'holding')?.style !== 'full') throw new Error('Break did not go back to classic');
+  await section('Pre-show').getByRole('button', { name: /^Remove Starting soon/ }).click();
+  await section('Pre-show').getByText('Look of Starting soon, Break and Ending').waitFor({ state: 'detached' });
   await section('Post-show').getByRole('button', { name: 'Remove Desk' }).click();
   await section('Post-show').getByText(/In OBS: switch to/).waitFor({ state: 'detached' });
   await step('Overview');

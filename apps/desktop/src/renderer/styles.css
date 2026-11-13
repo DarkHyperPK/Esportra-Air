@@ -994,3 +994,29 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .kit-sw input[type='color'] { width: 40px; height: 40px; padding: 0; border: 1px solid var(--hair-strong); border-radius: 9px; background: none; cursor: pointer; }
 .kit-sw span { display: grid; gap: 2px; font-size: var(--t-sm); }
 .kit-pv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; max-width: 840px; }
+/* templates part 2 (approved mock, 13 Nov): samples, backdrops, dragging parts */
+.tpl-anchor { position: relative; display: inline-flex; }
+.tpl-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 6; min-width: 210px; max-height: 420px; overflow: auto; padding: 6px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); background: #16161b; box-shadow: var(--pop); display: grid; gap: 1px; }
+.tpl-menu.wide { min-width: 320px; }
+.tpl-menu .cap { padding: 6px 8px 4px; }
+.tpl-menu > button, .tpl-menu-item { display: flex; justify-content: space-between; align-items: center; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: var(--t-sm); text-align: left; cursor: pointer; }
+.tpl-menu > button:hover, .tpl-menu-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.tpl-menu > button[aria-checked='true'] { background: var(--sel-soft); color: var(--text); }
+.tpl-menu > button[aria-checked='true']::after { content: '✓'; color: var(--sel); }
+.tpl-bd { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 4px 6px 8px; }
+.tpl-bd button { position: relative; aspect-ratio: 16 / 9; border: 1px solid var(--hair-strong); border-radius: 6px; background: #111 center / cover; padding: 0; }
+.tpl-bd button[aria-checked='true'] { box-shadow: 0 0 0 2px var(--sel); }
+.tpl-bd button:disabled { opacity: 0.35; }
+.tpl-bd button i { position: absolute; left: 4px; bottom: 3px; font-style: normal; font-size: 9.5px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px #000; }
+.bd-game { background-image: linear-gradient(160deg, #6e8fa8, #2c3a2e 60%, #1a2016) !important; }
+.bd-desk, .tpl-canvas.bd-desk { background: radial-gradient(60% 70% at 50% 30%, #3a3448, #15131c 70%), #15131c !important; }
+.bd-clear, .tpl-canvas.bd-clear { background: repeating-conic-gradient(#1b1b20 0 25%, #141418 0 50%) 0 0 / 24px 24px !important; }
+.tpl-canvas.bd-picture { background: #000 center / cover no-repeat; }
+.tpl-node { position: relative; }
+.tpl-node.dragging { opacity: 0.5; }
+.tpl-node.drop-before::before, .tpl-node.drop-after::after { content: ''; position: absolute; left: 8px; right: 8px; height: 2px; border-radius: 2px; background: var(--sel); }
+.tpl-node.drop-before::before { top: -1px; } .tpl-node.drop-after::after { bottom: -1px; }
+.tpl-shows { grid-column: 1 / -1; justify-self: start; margin: -4px 0 4px 8px; padding: 0; border: 0; background: none; color: var(--sel); font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.look-pick.strip { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.look-pick.strip .look-meta .btn { justify-self: start; margin-top: 4px; }
+.tpl-card.builtin { opacity: 0.92; }

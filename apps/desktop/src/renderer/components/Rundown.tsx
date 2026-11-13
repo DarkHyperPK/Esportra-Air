@@ -114,6 +114,15 @@ export function Rundown({ s, run }: { s: Snapshot; run: Run }) {
                     </div>
                   )}
                   {r.show === HUD_ROW && <HudLook s={s} run={run} row={r} />}
+                  {(r.show === 'holding' || r.show === 'casters') && (
+                    <details className="hud-adjust">
+                      <summary className="muted t-sm">Look of {r.show === 'holding' ? 'Starting soon, Break and Ending' : 'the Desk'}</summary>
+                      <div className="stack" style={{ gap: 8, marginTop: 10 }}>
+                        <LookPicker s={s} screen={r.show} label={`Look of ${name}`} value={{ style: r.style ?? 'full', ...(r.template ? { template: r.template } : {}) }} onPick={(l) => void run(() => air.rundownSave({ ...r, style: l.style, template: l.template }))} />
+                        {r.show === 'holding' && r.style === 'band' && <span className="faint t-xs">The two windows show what you put in ESPORTRA · Break window 1 and 2 in OBS (a sponsor video, a camera).</span>}
+                      </div>
+                    </details>
+                  )}
                 </div>
               );
             })}

@@ -386,7 +386,7 @@ export class Production extends EventEmitter {
   /** Only what is in the selected match's Rundown goes to OBS. */
   private applyRundownScreens() {
     // Starting soon, Break and Ending: the classic screen or the frame with two see-through windows.
-    const breakPage = lookOf(this.setup.look).break === 'frame' ? 'break-frame' : 'holding';
+    const breakPage = this.breakLook() === 'frame' ? 'break-frame' : 'holding';
     if (this.setup.screens.some((x) => x.id === 'holding' && x.overlay !== breakPage)) {
       this.setup.screens = this.setup.screens.map((x) => (x.id === 'holding' ? { ...x, overlay: breakPage } : x));
       this.deps.store.save();
@@ -829,6 +829,23 @@ export class Production extends EventEmitter {
     if (this.match) await this.syncEngine();
   }
 
+  /** The Break screen's look: the Break row's (frame = over the game), else the production's older setting. */
+  private breakLook(): 'classic' | 'frame' {
+    const row = this.autopilot.rows().find((r) => r.show === 'holding');
+    if (row?.style) return row.style === 'band' ? 'frame' : 'classic';
+    return lookOf(this.setup.look).break;
+  }
+
+  /** How many saved match rundowns use each template. */
+  private templateUse(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const saved of Object.values(this.deps.store.data.rundown ?? {})) {
+      const ids = new Set((saved?.rows ?? []).map((r) => r.template).filter((x): x is string => !!x));
+      for (const id of ids) out[id] = (out[id] ?? 0) + 1;
+    }
+    return out;
+  }
+
   /** The look of the in-game HUD: the template on the match's HUD row, if any. */
   private hudTemplate(): Template | null {
     const id = this.autopilot.rows().find((r) => r.show === HUD_ROW)?.template;
@@ -837,7 +854,14 @@ export class Production extends EventEmitter {
 
   /** What the graphics need for templates: every saved look, the brand kit and the HUD's look. */
   private templateState(match: Match | null) {
-    return { airTemplates: this.templates, airBrand: this.brandOf(match ? this.eventOf(match) : null), airHudTemplate: this.hudTemplate()?.id ?? null };
+    // Scene pages (Break, Desk) find their own look by graphic: holding|full, holding|band or casters|full.
+    // Every key is sent, null when unused: the room merges, so a removed look must be cleared explicitly.
+    const pages: Record<string, string | null> = { 'holding|full': null, 'holding|band': null, 'casters|full': null };
+    for (const r of this.autopilot.rows()) {
+      const t = r.template && (r.show === 'holding' || r.show === 'casters') ? this.templates.find((x) => x.id === r.template && x.graphic.startsWith(`${r.show}|`)) : undefined;
+      if (t) pages[t.graphic] = t.id;
+    }
+    return { airTemplates: this.templates, airBrand: this.brandOf(match ? this.eventOf(match) : null), airHudTemplate: this.hudTemplate()?.id ?? null, airPageTemplates: pages };
   }
 
   private requireEvent(id: string): EventInfo {
@@ -1744,7 +1768,7 @@ export class Production extends EventEmitter {
       name: SCENES[k].name,
       inObs: obs.status.scenes.includes(SCENES[k].name),
       // The Break windows only need a source with the frame style.
-      slots: SCENES[k].slots.filter((slot) => !slot.id.startsWith('break') || lookOf(this.setup.look).break === 'frame').map((slot) => ({ id: slot.id, label: slot.label, scene: slot.scene, source: obs.status.slots[slot.scene] ?? null })),
+      slots: SCENES[k].slots.filter((slot) => !slot.id.startsWith('break') || this.breakLook() === 'frame').map((slot) => ({ id: slot.id, label: slot.label, scene: slot.scene, source: obs.status.slots[slot.scene] ?? null })),
     }));
     const feedState = capture.state === 'live' && roomStatus?.lastFeedAt == null ? 'waiting' : capture.state;
     const snapshot: Snapshot = {
@@ -1779,6 +1803,7 @@ export class Production extends EventEmitter {
       autopilot: this.autopilot.view(),
       rundown: this.autopilot.rows(),
       templates: this.templates,
+      templateUse: this.templateUse(),
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,
       companion: this.companion.view(),
