@@ -42,6 +42,8 @@ import type { Preset, RowInput } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 import { CompanionHost } from './companion.ts';
 import { presetRows, rowsForScreens, ruleOf, rundownScreens } from './autopilot/rundown.ts';
+import { COLORS, tagFor, tagsFor } from './team-tags.ts';
+import { EsportraMatches } from './esportra-matches.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
@@ -52,6 +54,9 @@ import { CueDeck, type GraphicAction } from './cue-deck.ts';
 import { OwnGraphics } from './own-graphics-service.ts';
 import { Looks } from './looks.ts';
 import { planScenes, sourcesMissing } from './scene-plan.ts';
+import { PlayerCams } from './player-cams.ts';
+import { companionAct, companionHello, type CompanionTarget } from './companion-bridge.ts';
+import { obsSceneView, roomReadout } from './snapshot-parts.ts';
 import { cameraLinkUrl, cameraViewUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
 import type { ApiMethod, MatchPatch } from '../shared/api.ts';
 import { GlobalKeys, type ShortcutRegistry } from './global-keys.ts';
@@ -84,30 +89,7 @@ export interface ProductionDeps {
   companionPort?: number;
 }
 
-const COLORS = ['#4fd3ea', '#e0445e'];
-
-const GENERIC = new Set(['TEAM', 'THE', 'ESPORTS', 'GAMING', 'CLUB', 'GG']);
-
-/** A short scorebug tag: "Team Alpha" → ALP, "Paper Rex" → PR, "Fnatic" → FNA. */
-export function tagFor(name: string) {
-  const words = name.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
-  const meaningful = words.filter((w) => !GENERIC.has(w));
-  const use = meaningful.length ? meaningful : words;
-  const tag = use.length > 1 ? use.map((w) => w[0]).join('').slice(0, 3) : (use[0] ?? '').slice(0, 3);
-  return tag.length >= 2 ? tag : (tag + 'TM').slice(0, 2);
-}
-
-/** Tags for both teams, made distinct if they would collide. */
-export function tagsFor(a: string, b: string): [string, string] {
-  const first = tagFor(a);
-  let second = tagFor(b);
-  if (second === first) {
-    const letters = b.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    second = letters.length >= 3 ? letters[0]! + letters[letters.length - 2]! + letters[letters.length - 1]! : `${second.slice(0, 2)}2`;
-    if (second === first) second = `${first.slice(0, 2)}2`;
-  }
-  return [first, second];
-}
+export { tagFor, tagsFor } from './team-tags.ts';
 
 const RIOT_ID = /^[^#<>\x00-\x1f]{3,16}#[A-Za-z0-9]{2,5}$/;
 
@@ -197,6 +179,22 @@ export class Production extends EventEmitter {
       // One at a time, in order: a round or map event first reads the room's score.
       this.eventChain = this.eventChain.then(() => this.onEngineEvent(event)).catch(() => {});
     } });
+    this.cams = new PlayerCams({
+      store: deps.store, hasMatch: () => !!this.match,
+      playerName: (team, slot) => this.room?.players?.[team]?.[slot]?.name || null,
+      teamTag: (team) => this.match?.teams[team]?.tag ?? null,
+      act: (name, args) => this.act(name, args, false),
+      onAir: () => this.room?.airFullscreen ?? null,
+      showGrid: (on) => this.fullscreen('cam-grid', on, true),
+      log: (text) => this.log.add(text),
+    });
+    this.esportraMatches = new EsportraMatches({
+      account: () => deps.esportra, store: deps.store, game: () => this.setup.game ?? null,
+      selectedSource: () => this.match?.source?.matchId ?? null, assertCanSwitch: () => this.assertCanSwitch(),
+      carryOver: (id, name) => this.carryOver(id, name), library: () => this.library,
+      save: () => this.save(), syncEngine: () => this.syncEngine(), log: (text) => this.log.add(text),
+      now: () => (deps.now ?? Date.now)(),
+    });
     this.looks = new Looks({
       store: deps.store, setup: () => this.setup, rows: () => this.autopilot.rows(), save: () => this.save(),
       publish: async () => { if (this.match) await this.syncEngine(); },
@@ -237,7 +235,7 @@ export class Production extends EventEmitter {
     });
     this.companion = new CompanionHost({
       store: deps.store, secrets, mode: () => this.control, port: deps.companionPort, addresses: deps.lanAddresses, changed,
-      hello: () => this.companionHello(),
+      hello: () => companionHello(this.companionTarget()),
       values: () => companionValues(this.room, {
         onAir: this.room?.airFullscreen ? this.screenTitle(this.room.airFullscreen) : 'Game',
         cued: this.pending.length, next: this.autopilot.view().next?.name ?? '',
@@ -246,7 +244,7 @@ export class Production extends EventEmitter {
         onAir: this.room?.airFullscreen ?? null, pause: !!this.room?.airPause,
         dataPaused: !!this.deps.engine.status?.rooms.find((r) => r.match === this.match?.code.toUpperCase())?.feedPaused,
       }),
-      act: (name, args) => this.companionAct(name, args),
+      act: async (name, args) => { await companionAct(this.companionTarget(), name, args); },
     });
     this.on('change', () => this.companion.onChange());
     // Companion is parked (12 Nov): the choice is not offered, so an earlier choice goes back to Air.
@@ -459,7 +457,7 @@ export class Production extends EventEmitter {
     await this.client.patch(`/api/${code}`, { airRoster: match.players.map((team) => team.map((p) => ({ gameId: p.gameId, name: p.name, photo: p.photo }))) });
     // Setup decides where each layer starts; after that the console owns them for the match.
     await this.act('layers.init', { modes: this.initialModes() }, false);
-    await this.pushCams();
+    await this.cams.push();
     await this.joinHost.sync();
     this.log.target(this.client.observeUrl(match.code));
     this.roomV = -1;
@@ -1235,137 +1233,20 @@ export class Production extends EventEmitter {
     this.link.retry();
   }
 
-  // ── Esportra ──
+  // ── Esportra: src/main/esportra-matches.ts ──
 
-  private get esportra() {
-    const account = this.deps.esportra;
-    if (!account) throw new Error('Esportra sign-in is not available in this build.');
-    return account;
-  }
+  readonly esportraMatches: EsportraMatches;
+  esportraSignIn(email: string, password: string) { return this.esportraMatches.signIn(email, password); }
+  async esportraSignOut() { this.esportraMatches.signOut(); }
+  esportraRefresh() { return this.esportraMatches.refresh(); }
+  useEsportraMatch(matchId: string) { return this.esportraMatches.use(matchId); }
 
-  async esportraSignIn(email: string, password: string) {
-    await this.esportra.login(email, password);
-    this.log.add('Signed in to Esportra');
-  }
+  // ── player cameras: src/main/player-cams.ts ──
 
-  async esportraSignOut() {
-    this.esportra.logout();
-    this.log.add('Signed out of Esportra');
-  }
-
-  async esportraRefresh() {
-    await this.esportra.checkAccess().catch(() => {});
-    // Without Air access the match list is refused anyway: say why once, instead of asking again.
-    if (this.esportra.view().state === 'denied') throw new Error('Esportra has not turned on Air for this account yet, so its matches cannot load. Your own events and matches work as normal.');
-    await this.esportra.refreshMatches();
-    // Matches Esportra reports as completed are finished here too.
-    const done = new Set(this.esportra.view().matches.filter((e) => e.status === 'completed').map((e) => e.id));
-    let changed = false;
-    for (const m of this.deps.store.data.matches) if (!m.finishedAt && m.source && done.has(m.source.matchId)) { m.finishedAt = Date.now(); changed = true; }
-    if (changed) this.save();
-  }
-
-  /** Makes an Esportra match the match on this PC: teams, tags, logos, best-of and tournament name. */
-  async useEsportraMatch(matchId: string) {
-    const account = this.esportra;
-    const found = account.view().matches.find((m) => m.id === matchId);
-    if (!found) throw new Error('That match is no longer in your Esportra schedule. Refresh the list.');
-    if (this.match?.source?.matchId !== matchId) this.assertCanSwitch();
-    if (!found.supported) throw new Error('Air cannot produce this match’s game yet.');
-    if (this.setup.game !== 'valorant') throw new Error(`This is a Valorant match and Air is set to ${this.setup.game ? gameName(this.setup.game) : 'no game'}. Switch game from the top bar first.`);
-    if (account.view().state === 'denied') throw new Error(account.view().warning ?? 'Esportra has not confirmed Air access for this PC.');
-    let lineups: [string[], string[]] | null = null;
-    try {
-      const roster = await account.roster(matchId);
-      lineups = [roster.team1.players.map((p) => p.displayName), roster.team2.players.map((p) => p.displayName)];
-    } catch {
-      // The lineup is a convenience; the match works without it.
-    }
-    const data = this.deps.store.data;
-    const code = `E${matchId.replace(/-/g, '').slice(0, 7).toUpperCase()}`;
-    const teams = [
-      { name: found.teamA, tag: found.tagA || tagFor(found.teamA), color: COLORS[0]!, logo: found.logoA ?? '' },
-      { name: found.teamB, tag: found.tagB || tagFor(found.teamB), color: COLORS[1]!, logo: found.logoB ?? '' },
-    ] as [Team, Team];
-    const source = { matchId, tournamentId: found.tournamentId, tournament: found.tournament, scheduledAt: found.scheduledAt, lineups };
-    const existing = data.matches.find((m) => m.source?.matchId === matchId);
-    if (existing) {
-      // The tournament may have changed names, logos or best-of; the producer's talent and sponsors are kept.
-      Object.assign(existing, { title: `${found.teamA} vs ${found.teamB}`, teams, bestOf: found.bestOf as 1 | 3 | 5, source });
-      data.selectedMatchId = existing.id;
-    } else {
-      const id = randomUUID();
-      const players = [0, 1].map((t) => (lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];
-      const carried = this.carryOver(found.tournamentId, found.tournament);
-      const match: Match = { id, code, kind: 'esportra', title: `${found.teamA} vs ${found.teamB}`, bestOf: found.bestOf as 1 | 3 | 5, teams, createdAt: (this.deps.now ?? Date.now)(), source, game: 'valorant', players, ...carried };
-      linkMatch(match, this.library);
-      data.matches = [match, ...data.matches].slice(0, 50);
-      data.selectedMatchId = id;
-    }
-    this.save();
-    await this.syncEngine();
-    this.log.add(`Match from Esportra · ${found.teamA} vs ${found.teamB}`);
-  }
-
-  // ── player cameras ──
-
-  private get cams() {
-    return (this.deps.store.data.cams ??= { layout: 'ingame', delayMs: 0, ids: [[null, null, null, null, null], [null, null, null, null, null]] });
-  }
-
-  private camsView(connected?: boolean[][]): CamsView {
-    const cams = this.cams;
-    const slots = [0, 1].flatMap((team) => [0, 1, 2, 3, 4].map((slot) => {
-      const id = cams.ids[team]?.[slot] ?? null;
-      const name = this.room?.players?.[team]?.[slot]?.name || `${this.match?.teams[team]?.tag ?? (team ? 'B' : 'A')} · Player ${slot + 1}`;
-      return { team, slot, name, id, pushUrl: id ? cameraLinkUrl(id, name) : null, connected: !!id && !!connected?.[team]?.[slot] };
-    }));
-    return { layout: cams.layout, delayMs: cams.delayMs, slots };
-  }
-
-  /** Sends the camera setup to the engine (the HUD pages show the streams from it). */
-  private async pushCams() {
-    if (!this.match) return;
-    const cams = this.cams;
-    await this.act('cams.set', { layout: cams.layout, delayMs: cams.delayMs, slots: cams.ids });
-  }
-
-  async camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }) {
-    const cams = this.cams;
-    if (patch.layout !== undefined) {
-      if (!['ingame', 'grid5', 'grid10'].includes(patch.layout)) throw new Error('Choose In-game, 5-up or 10-up.');
-      cams.layout = patch.layout;
-    }
-    if (patch.delayMs !== undefined) {
-      if (!Number.isInteger(patch.delayMs) || patch.delayMs < 0 || patch.delayMs > 10_000) throw new Error('Camera delay is 0–10,000 ms.');
-      cams.delayMs = patch.delayMs;
-    }
-    this.deps.store.save();
-    await this.pushCams();
-    // A grid layout is a full-screen graphic: line it up in Preview like the other full-screen layers.
-    if (patch.layout && patch.layout !== 'ingame') await this.fullscreen('cam-grid', true, true).catch(() => {});
-    else if (patch.layout === 'ingame' && this.room?.airFullscreen === 'cam-grid') await this.fullscreen('cam-grid', false, true).catch(() => {});
-  }
-
-  private slot(team: number, slot: number) {
-    if (![0, 1].includes(team) || !Number.isInteger(slot) || slot < 0 || slot > 4) throw new Error('Choose a team and player slot.');
-  }
-
-  /** Makes (or replaces) the camera link for a player. The old link stops working. */
-  async camCreate(team: number, slot: number) {
-    this.slot(team, slot);
-    this.cams.ids[team]![slot] = randomBytes(9).toString('base64url');
-    this.deps.store.save();
-    await this.pushCams();
-    this.log.add(`Camera link made · ${this.camsView().slots[team * 5 + slot]!.name}`);
-  }
-
-  async camRemove(team: number, slot: number) {
-    this.slot(team, slot);
-    this.cams.ids[team]![slot] = null;
-    this.deps.store.save();
-    await this.pushCams();
-  }
+  readonly cams: PlayerCams;
+  camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }) { return this.cams.set(patch); }
+  camCreate(team: number, slot: number) { return this.cams.create(team, slot); }
+  camRemove(team: number, slot: number) { return this.cams.remove(team, slot); }
 
   // ── graphics control: Air, Stream Deck / Companion, or both ──
 
@@ -1391,53 +1272,16 @@ export class Production extends EventEmitter {
     return this.setup.screens.find((x) => x.id === id)?.title ?? id;
   }
 
-  /** What Companion's dropdowns offer: screens in My show, people on air, sponsors on for this match. */
-  private companionHello() {
-    const match = this.match;
-    const on = match ? onAir(match, this.eventOf(match)) : { talent: [], sponsors: [] };
+  /** Companion sees and does only what src/main/companion-bridge.ts allows (the same methods as keys). */
+  private companionTarget(): CompanionTarget {
     return {
-      version: this.deps.version,
-      screens: this.setup.screens.filter((x) => x.hosted && x.enabled).map((x) => ({ id: x.id, title: x.title })),
-      talent: on.talent.map((t) => ({ id: t.id, name: t.name })),
-      sponsors: on.sponsors.map((x) => ({ id: x.id, name: x.name })),
+      control: this.control, version: () => this.deps.version, screens: () => this.setup.screens,
+      people: () => (this.match ? onAir(this.match, this.eventOf(this.match)) : { talent: [], sponsors: [] }),
+      onAirScreen: () => this.room?.airFullscreen ?? null,
+      setLayer: (id, mode) => this.setLayer(id, mode), lowerThird: (x) => this.lowerThird(x), sponsorRead: (id) => this.sponsorRead(id),
+      toast: (text) => this.toast(text), pause: (kind) => this.pause(kind), takeCue: (how) => this.takeCue(how), clearCue: () => this.clearCue(),
+      autopilotHold: () => this.autopilotHold(), autopilotSkip: () => this.autopilotSkip(), autopilotTake: () => this.autopilotTake(),
     };
-  }
-
-  /** A Companion button: the same Production methods as Air's keys, so Cued applies the same way. */
-  private async companionAct(name: string, args: Record<string, unknown>) {
-    switch (name) {
-      case 'fullscreen': {
-        const screen = String(args.screen ?? '');
-        if (!this.setup.screens.some((x) => x.id === screen && x.hosted && x.enabled)) throw new Error('That screen is not in My show.');
-        const on = args.on === 'toggle' ? this.room?.airFullscreen !== screen : args.on !== false && args.on !== 'off';
-        return this.setLayer(`fs:${screen}`, on ? 'on' : 'off');
-      }
-      case 'talent': {
-        if (args.talentId === null || args.talentId === undefined || args.talentId === '') return this.lowerThird(null);
-        const match = this.requireMatch();
-        const person = onAir(match, this.eventOf(match)).talent.find((t) => t.id === args.talentId);
-        if (!person) throw new Error('That person is not on air for this match.');
-        return this.lowerThird({ kind: 'person', name: person.name, role: ROLE_NAME[person.role] });
-      }
-      case 'sponsor': return this.sponsorRead(typeof args.sponsorId === 'string' && args.sponsorId ? args.sponsorId : null);
-      case 'toast': {
-        const text = typeof args.text === 'string' ? args.text.trim() : '';
-        if (!text || text.length > 120 || /[<>]/.test(text)) throw new Error('A toast is plain text, 1–120 characters.');
-        return this.toast(text);
-      }
-      case 'pause': return this.pause(args.kind === 'technical' || args.kind === 'timeout' ? args.kind : null);
-      case 'take': return this.takeCue('take');
-      case 'take_stinger': return this.takeCue('stinger');
-      case 'clear': return this.clearCue();
-      case 'autopilot_hold':
-      case 'autopilot_skip':
-      case 'autopilot_take':
-        if (this.control !== 'both') throw new Error('Autopilot buttons work when Air is set to Both.');
-        if (name === 'autopilot_hold') return this.autopilotHold();
-        if (name === 'autopilot_skip') return this.autopilotSkip();
-        return this.autopilotTake();
-      default: throw new Error(`Air does not know the action “${name}”.`);
-    }
   }
 
   // ── autopilot ──
@@ -1568,7 +1412,7 @@ export class Production extends EventEmitter {
     if (on && screenId === 'cam-grid' && this.cams.layout === 'ingame') {
       this.cams.layout = 'grid10';
       this.deps.store.save();
-      await this.pushCams();
+      await this.cams.push();
     }
     // A template (if it still exists) decides full screen or over the game; otherwise the row's style does.
     const look = on && screen ? (style ? { style, template } : this.lookOfRow(screen.id)) : { style: 'full' as const };
@@ -1648,40 +1492,13 @@ export class Production extends EventEmitter {
     const match = this.match;
     const roomStatus = match ? status?.rooms.find((r) => r.match === match.code.toUpperCase()) : undefined;
     const room = match ? this.room : null;
-    const named = (t: number) => (room?.players?.[t] ?? []).filter((p: { name?: string }) => p?.name).length;
-    const readout = room
-      ? {
-          map: room.map?.name ?? null,
-          round: Number.isFinite(room.round?.number) ? room.round.number : null,
-          phase: room.round?.phase ?? null,
-          score: [room.teams?.[0]?.score ?? null, room.teams?.[1]?.score ?? null] as [number | null, number | null],
-          playersFound: [named(0), named(1)] as [number, number],
-          sides: [room.teams?.[0]?.side ?? null, room.teams?.[1]?.side ?? null] as [string | null, string | null],
-          alive: [0, 1].map((t) => (room.players?.[t] ?? []).filter((p: { alive?: boolean }) => p?.alive).length) as [number, number],
-          bank: [0, 1].map((t) => (room.players?.[t] ?? []).reduce((sum: number, p: { credits?: number }) => sum + (Number(p?.credits) || 0), 0)) as [number, number],
-          clockEndsAt: Number(room.round?.endsAt) > 0 ? Number(room.round.endsAt) : null,
-          spikePlanted: room.round?.phase === 'planted',
-          observed: this.observedPlayer(),
-          roster: [0, 1].map((t) => (room.players?.[t] ?? []).map((p: { name?: string; inGameName?: string }) => ({ name: p?.name ?? '', inGameName: p?.inGameName ?? '' }))),
-        }
-      : null;
+    const readout = room ? roomReadout(room, this.observedPlayer()) : null;
     const enabled = this.setup.screens.filter((s) => s.enabled && !s.hosted);
     const outputs = enabled.map((s) => {
       const o = status?.outputs.find((x) => x.id === s.outputId);
       return { screenId: s.id, title: s.title, overlay: s.overlay, url: `http://127.0.0.1:${engine.port}/o/${s.outputId}`, connections: o?.connections ?? 0, lastFrameAt: o?.lastFrameAt ?? null };
     });
-    const wanted = SCENE_KEYS.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.filter((slot) => this.slotWanted(slot.id)).map((slot) => slot.scene)]);
-    const missingScenes = wanted.filter((n) => !obs.status.scenes.includes(n));
-    // Drift: a source Air put in one of its scenes that is no longer there (deleted or renamed in OBS).
-    const missingSources = obs.status.state === 'connected' ? sourcesMissing(this.buildPlan(), obs.status.items ?? {}) : [];
-    const installed = obs.status.state === 'connected' && missingScenes.length === 0 && missingSources.length === 0;
-    const sceneStatus: SceneStatus[] = SCENE_KEYS.map((k) => ({
-      key: k,
-      name: SCENES[k].name,
-      inObs: obs.status.scenes.includes(SCENES[k].name),
-      // The Break windows only need a source with the frame style.
-      slots: SCENES[k].slots.filter((slot) => this.slotWanted(slot.id)).map((slot) => ({ id: slot.id, label: slot.label, scene: slot.scene, source: obs.status.slots[slot.scene] ?? null })),
-    }));
+    const { missingScenes, missingSources, installed, sceneStatus } = obsSceneView(obs.status, this.buildPlan(), (id) => this.slotWanted(id));
     const feedState = capture.state === 'live' && roomStatus?.lastFeedAt == null ? 'waiting' : capture.state;
     const snapshot: Snapshot = {
       version,
@@ -1709,7 +1526,7 @@ export class Production extends EventEmitter {
       outputs,
       testRound: { running: roomStatus?.testRound.running ?? false, startedAt: roomStatus?.testRound.startedAt ?? null, durationMs: roomStatus?.testRound.durationMs ?? 0, speed: roomStatus?.testRound.speed ?? 1, fromMs: roomStatus?.testRound.fromMs ?? 0 },
       capture: this.stats.view(),
-      cams: this.camsView(roomStatus?.cams),
+      cams: this.cams.view(roomStatus?.cams),
       triggers: this.liveTriggers(),
       layers: this.layerRows(),
       autopilot: this.autopilot.view(),
