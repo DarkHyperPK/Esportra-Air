@@ -1207,7 +1207,9 @@
     HUD.templateRects = () => {
       const scope = host ? HUD.fsShown && HUD.fsShown.el : root, g = host ? HUD.fsShown && HUD.fsShown.key : page; if (!scope) return { graphic: g, parts: {} };
       const box = root.getBoundingClientRect(), k = box.width / 1920 || 1, parts = {};
-      T.partsOf(g).forEach(([id, , sel]) => { const r = [...scope.querySelectorAll(sel)].map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0)
+      // Only what is really on screen: hidden or fully transparent parts get no box.
+      const seen = el => (el.checkVisibility ? el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : getComputedStyle(el).visibility !== 'hidden');
+      T.partsOf(g).forEach(([id, , sel]) => { const r = [...scope.querySelectorAll(sel)].filter(seen).map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0)
         .map(r => [r.left - box.left, r.top - box.top, r.width, r.height].map(v => Math.round(v / k))); if (r.length) parts[id] = r; });
       return { graphic: g, parts };
     };
@@ -1215,6 +1217,26 @@
       if (scope) T.enter(scope, tplDraft ? tplDraft.template : null, g); };
     HUD.templateRefresh = () => { HUD.state = previewSettings(sourceState); HUD.subs.forEach(fn => fn(HUD.state, {snapshot:true})); run(); };
   }
+  // Air's editor draws a box over each part. Parts that animate in (rise, slide) are measured once they
+  // have landed: positions are sent after a change and again whenever animations on the page settle.
+  let rectsTimer = 0, watching = false;
+  const sendRects = (id) => requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (HUD.templateRects) window.parent.postMessage({ type: 'AIR_TEMPLATE_RECTS', id, ...HUD.templateRects() }, '*');
+    clearTimeout(rectsTimer);
+    rectsTimer = setTimeout(() => {
+      const running = (document.getAnimations ? document.getAnimations() : []).filter(a => a.playState === 'running' && a.effect && a.effect.getTiming().iterations !== Infinity);
+      Promise.race([Promise.all(running.map(a => a.finished.catch(() => {}))), new Promise(r => setTimeout(r, 2500))])
+        .then(() => HUD.templateRects && window.parent.postMessage({ type: 'AIR_TEMPLATE_RECTS', id, ...HUD.templateRects() }, '*'));
+    }, 60);
+  }));
+  const watchRects = () => {
+    if (watching) return; watching = true;
+    let t = 0; const later = () => { clearTimeout(t); t = setTimeout(() => sendRects(null), 120); };
+    addEventListener('animationend', later, true); addEventListener('transitionend', later, true); addEventListener('resize', later);
+    // Agent portraits and logos arrive after the first measure and can change where things sit.
+    addEventListener('load', later, true); addEventListener('error', later, true);
+    if (document.fonts) document.fonts.ready.then(later);
+  };
   addEventListener('message', event => {
     if (event.source !== window.parent || window.parent === window) return;
     // Air's template editor (preview pages only): a draft to show, its entrance, and where the parts are.
@@ -1224,7 +1246,7 @@
       if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template || null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
       if (d.type === 'AIR_TEMPLATE_PLAY' && HUD.templatePlay) HUD.templatePlay();
       if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); }
-      if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS' || d.type === 'AIR_TEMPLATE_SAMPLE') && HUD.templateRects) requestAnimationFrame(() => requestAnimationFrame(() => window.parent.postMessage({ type: 'AIR_TEMPLATE_RECTS', id: d.id, ...HUD.templateRects() }, '*')));
+      if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS' || d.type === 'AIR_TEMPLATE_SAMPLE') && HUD.templateRects) { sendRects(d.id); watchRects(); }
       return;
     }
     if (event.data?.type === 'AIR_HUD_PREVIEW_PROBE' && window.HUD_READY)
