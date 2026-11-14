@@ -47,6 +47,8 @@ export function App() {
   const [command, setCommand] = useState<MatchCommand>(null);
   // Matches shows the open match's workspace until the producer goes back to the list.
   const [matchOpen, setMatchOpen] = useState(false);
+  const pageRef = useRef(page);
+  pageRef.current = page;
   const [status, setStatus] = useState<StatusId | null>(null);
   const [consent, setConsent] = useState(false);
   const [signIn, setSignIn] = useState(false);
@@ -145,8 +147,14 @@ export function App() {
   }
 
   const props: PageProps = { s, run, go, askCapture: () => setConsent(true), openFix: () => setFix(true), openCasters: () => { go('ready'); setMatchOpen(true); setCommand({ name: 'talent', n: Date.now() }); }, openSignIn: () => setSignIn(true) };
-  const openMatch = async (m: Match) => { if (await run(() => air.selectMatch(m.id))) { setMatchOpen(true); setCommand({ name: 'ready', n: Date.now() }); setPage('ready'); } };
-  const openRemote = async (e: EsportraMatch) => { if (await run(() => air.useEsportraMatch(e.id))) { setMatchOpen(true); setCommand({ name: 'ready', n: Date.now() }); setPage('ready'); } };
+  // Opening a match waits for the engine to switch to it. If the producer has gone somewhere else in
+  // the meantime, they are not pulled into the match when it finishes.
+  const opening = async (action: () => Promise<Snapshot | void>) => {
+    const from = pageRef.current;
+    if (await run(action) && pageRef.current === from) { setMatchOpen(true); setCommand({ name: 'ready', n: Date.now() }); setPage('ready'); }
+  };
+  const openMatch = (m: Match) => opening(() => air.selectMatch(m.id));
+  const openRemote = (e: EsportraMatch) => opening(() => air.useEsportraMatch(e.id));
   const newMatch = (eventId: string) => { setPage('ready'); setCommand({ name: 'new-match', n: Date.now(), eventId }); };
   // From a match, the event it belongs to (its Talent and sponsors tab, or its matches).
   const openEvent = (tab: EventView['tab']) => { setEventView({ id: s.event?.id ?? null, tab }); setPage('event'); };

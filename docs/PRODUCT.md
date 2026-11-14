@@ -39,6 +39,21 @@ The rework plan and its stages are in `/root/.claude/plans` for this session and
 
 **`docs/SPEC.md` (approved 11 Nov) is the full product specification**: product model (event, talent, sponsors, cameras), the producer's journey, screens, Live, look and feel, language, reliability and game modules. Where this file and the spec differ, the spec wins.
 
+## Focus and parked work (14 November 2026)
+
+The work now is the core: finish it, polish it, test it and fix its bugs, with Valorant as the only game. Everything below is parked. Raise it again only when the core is done.
+
+| Parked | What it would be |
+|---|---|
+| Results to Esportra | Map results sent for the organiser's review (backend: `/api/air/broadcast/packages/{id}/result-proposals` already exists) |
+| Sponsor proof of play | Time each sponsor was really on air, with a report (backend package events already accept sponsor timing) |
+| Other games | CS2 through GSI, PUBG Mobile's live data API, other stat tools, each as a game module |
+| Your own elements in templates | Text, image, shape, logo wall and data fields in templates; exit animations; your own fonts |
+| Remote and roles | Browser control on the LAN with roles; the Esportra relay for remote crew and observers |
+| Template packs | One file with templates, a brand kit and assets; packs shared in an Esportra organisation |
+| Deep live stats on Esportra | Kill-by-kill match stats from Air shown on Esportra, HLTV-style |
+| Languages, several stages, pitch kit, licences | Graphics in other languages; one Air per stage sharing an event; a branded demo; licence status in Settings |
+
 ## Product decisions
 
 | Area | Decision |

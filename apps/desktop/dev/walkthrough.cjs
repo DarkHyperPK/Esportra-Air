@@ -60,6 +60,8 @@ let failShot = async () => {};
       }
       const cur = page.locator('.ev-match[aria-current="true"]');
       await ((await cur.count()) ? cur : page.locator('.ev-match')).first().getByRole('button', { name: 'Open' }).click();
+      // Opening waits for the engine to switch match; wait for the match itself.
+      await steps.waitFor();
     }
     await steps.getByRole('button', { name, exact: true }).click();
   };
@@ -243,6 +245,7 @@ let failShot = async () => {};
   await page.locator('.ev-match').first().waitFor();
   await shot('matches');
   await page.locator('.ev-match').first().getByRole('button', { name: 'Open' }).click();
+  await page.getByRole('navigation', { name: 'Match steps' }).waitFor();
   await step('Rehearse');
   await page.getByRole('region', { name: 'Rehearse' }).waitFor();
   await page.waitForTimeout(1500);

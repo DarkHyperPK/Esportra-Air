@@ -141,13 +141,16 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(obsServer.inputs.get('ESPORTRA · Sponsor video · Acme')!.inputKind, 'ffmpeg_source');
     // Over-the-game graphics also sit over the desk cameras; the break frame's two windows have slots.
     assert.ok(obsServer.scenes.get('ESPORTRA · Desk')!.some((i) => i.sourceName === 'ESPORTRA · Full screen over desk'), 'the host is over the desk');
-    assert.ok(obsServer.scenes.has('ESPORTRA · Break window 1') && obsServer.scenes.has('ESPORTRA · Break window 2'));
+    assert.ok(!obsServer.scenes.has('ESPORTRA · Break window 1'), 'classic break: no Break windows are added to OBS');
     assert.ok(!snap.obs.scenes.find((x) => x.key === 'holding')!.slots.length, 'classic break: the windows ask for nothing');
     await assert.rejects(production.updateSetup({ look: { timer: { dx: 999, width: 160, plate: '#17181e' } } }), /up to 200 pixels/);
     await assert.rejects(production.updateSetup({ look: { pause: 'sideways' as never } }), /pause panel or the box/);
     await production.updateSetup({ look: { break: 'frame', timer: { dx: 6, width: 150, plate: '#1a1b20' } } });
     assert.equal(production.setup.screens.find((x) => x.id === 'holding')!.overlay, 'break-frame', 'the Break screen shows the frame');
     assert.equal(production.snapshot().obs.scenes.find((x) => x.key === 'holding')!.slots.length, 2, 'frame: both windows want a source');
+    assert.equal(production.snapshot().obs.installed, false, 'the frame needs its two windows in OBS');
+    await production.installGraphics();
+    assert.ok(obsServer.scenes.has('ESPORTRA · Break window 1') && obsServer.scenes.has('ESPORTRA · Break window 2'), 'Add for me adds the windows for the frame');
     assert.deepEqual((await engine.client.get<any>(`/api/${match.code}`)).state.layout.timerWindow, { dx: 6, width: 150, plate: '#1a1b20' }, 'the scorebug lines up with the game timer');
     await production.updateSetup({ look: { break: 'classic', timer: { dx: 0, width: 160, plate: '#17181e' } } });
     assert.ok(Array.isArray((await engine.client.get<any>(`/api/${match.code}`)).state.schedule), "today's schedule is in the room");

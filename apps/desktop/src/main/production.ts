@@ -836,6 +836,11 @@ export class Production extends EventEmitter {
     return lookOf(this.setup.look).break;
   }
 
+  /** OBS slots this show needs: Break's two windows only with the frame look. */
+  private slotWanted(id: string) {
+    return !id.startsWith('break') || this.breakLook() === 'frame';
+  }
+
   /** How many saved match rundowns use each template. */
   private templateUse(): Record<string, number> {
     const out: Record<string, number> = {};
@@ -1079,7 +1084,8 @@ export class Production extends EventEmitter {
         name: def.name,
         formerly: def.formerly,
         exclusive: def.exclusive,
-        slots: def.slots.map((slot) => ({ id: slot.id, sceneName: slot.scene, formerly: slot.formerly, frame: slot.frame, ...(deskFill(slot.id) ? { fill: deskFill(slot.id)! } : {}) })),
+        // Break's two windows exist only when Break uses the frame look.
+        slots: def.slots.filter((slot) => this.slotWanted(slot.id)).map((slot) => ({ id: slot.id, sceneName: slot.scene, formerly: slot.formerly, frame: slot.frame, ...(deskFill(slot.id) ? { fill: deskFill(slot.id)! } : {}) })),
         sources: [
           ...this.setup.screens
             .filter((x) => x.scene === key && x.enabled && !x.hosted)
@@ -1760,7 +1766,7 @@ export class Production extends EventEmitter {
       const o = status?.outputs.find((x) => x.id === s.outputId);
       return { screenId: s.id, title: s.title, overlay: s.overlay, url: `http://127.0.0.1:${engine.port}/o/${s.outputId}`, connections: o?.connections ?? 0, lastFrameAt: o?.lastFrameAt ?? null };
     });
-    const wanted = SCENE_KEYS.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.map((slot) => slot.scene)]);
+    const wanted = SCENE_KEYS.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.filter((slot) => this.slotWanted(slot.id)).map((slot) => slot.scene)]);
     const missingScenes = wanted.filter((n) => !obs.status.scenes.includes(n));
     const installed = obs.status.state === 'connected' && missingScenes.length === 0;
     const sceneStatus: SceneStatus[] = SCENE_KEYS.map((k) => ({
@@ -1768,7 +1774,7 @@ export class Production extends EventEmitter {
       name: SCENES[k].name,
       inObs: obs.status.scenes.includes(SCENES[k].name),
       // The Break windows only need a source with the frame style.
-      slots: SCENES[k].slots.filter((slot) => !slot.id.startsWith('break') || this.breakLook() === 'frame').map((slot) => ({ id: slot.id, label: slot.label, scene: slot.scene, source: obs.status.slots[slot.scene] ?? null })),
+      slots: SCENES[k].slots.filter((slot) => this.slotWanted(slot.id)).map((slot) => ({ id: slot.id, label: slot.label, scene: slot.scene, source: obs.status.slots[slot.scene] ?? null })),
     }));
     const feedState = capture.state === 'live' && roomStatus?.lastFeedAt == null ? 'waiting' : capture.state;
     const snapshot: Snapshot = {
