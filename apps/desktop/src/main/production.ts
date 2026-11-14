@@ -50,6 +50,8 @@ import { HEX, IMAGE, text } from './validate.ts';
 import { checks } from './readiness.ts';
 import { CueDeck, type GraphicAction } from './cue-deck.ts';
 import { OwnGraphics } from './own-graphics-service.ts';
+import { Looks } from './looks.ts';
+import { planScenes, sourcesMissing } from './scene-plan.ts';
 import { cameraLinkUrl, cameraViewUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
 import type { ApiMethod, MatchPatch } from '../shared/api.ts';
 import { GlobalKeys, type ShortcutRegistry } from './global-keys.ts';
@@ -193,6 +195,11 @@ export class Production extends EventEmitter {
       // One at a time, in order: a round or map event first reads the room's score.
       this.eventChain = this.eventChain.then(() => this.onEngineEvent(event)).catch(() => {});
     } });
+    this.looks = new Looks({
+      store: deps.store, setup: () => this.setup, rows: () => this.autopilot.rows(), save: () => this.save(),
+      publish: async () => { if (this.match) await this.syncEngine(); },
+      brand: () => this.brandOf(this.match ? this.eventOf(this.match) : null), own: () => this.ownGraphics,
+    });
     this.own = new OwnGraphics({
       store: deps.store, setup: () => this.setup, save: () => this.save(),
       putAsset: async (id, bytes) => { await this.client.putBytes(`/control/assets/${id}`, bytes); },
@@ -843,87 +850,18 @@ export class Production extends EventEmitter {
     await this.putEvent({ ...event, accent: primary, brand: rest });
   }
 
-  // ── templates ──
+  // ── templates and looks: src/main/looks.ts ──
 
-  /** Saved looks (Graphics › Templates). A broken entry in the saved file is skipped, never sent. */
-  get templates(): Template[] {
-    // Checked once per saved list: every change to templates stores a new array.
-    const saved = this.deps.store.data.templates ?? [];
-    if (this.checkedTemplates?.from === saved) return this.checkedTemplates.list;
-    const out: Template[] = [];
-    for (const t of saved) {
-      try { out.push(validTemplate(t, t.updatedAt)); } catch { /* skipped */ }
-    }
-    this.checkedTemplates = { from: saved, list: out };
-    return out;
-  }
-  private checkedTemplates: { from: Template[]; list: Template[] } | null = null;
-
-  /** Adds a template, or saves one (same id). */
-  async templateSave(input: unknown) {
-    const t = validTemplate(input);
-    const data = this.deps.store.data;
-    const list = data.templates ?? [];
-    const old = list.find((x) => x.id === t.id);
-    if (!old && list.length >= 300) throw new Error('Air keeps up to 300 templates. Delete some you no longer use.');
-    if (old && old.graphic !== t.graphic) throw new Error('A template stays with its graphic. Use Save as to start one for another graphic.');
-    data.templates = old ? list.map((x) => (x.id === t.id ? { ...t, createdAt: old.createdAt } : x)) : [...list, t];
-    this.save();
-    if (this.match) await this.syncEngine();
-  }
-
-  /** Deletes a template; Rundown rows that used it go back to the default look. */
-  async templateDelete(id: string) {
-    const data = this.deps.store.data;
-    if (!(data.templates ?? []).some((t) => t.id === id)) throw new Error('That template is already gone.');
-    data.templates = (data.templates ?? []).filter((t) => t.id !== id);
-    for (const saved of Object.values(data.rundown ?? {})) {
-      if (saved && Array.isArray(saved.rows)) saved.rows = saved.rows.map((r) => (r.template === id ? (({ template: _t, ...rest }) => rest)(r) : r));
-    }
-    // Steps already built keep the id; a missing template shows the default look.
-    this.save();
-    if (this.match) await this.syncEngine();
-  }
-
-  /** The Break screen's look: the Break row's (frame = over the game), else the production's older setting. */
-  private breakLook(): 'classic' | 'frame' {
-    const row = this.autopilot.rows().find((r) => r.show === 'holding');
-    if (row?.style) return row.style === 'band' ? 'frame' : 'classic';
-    return lookOf(this.setup.look).break;
-  }
-
-  /** OBS slots this show needs: Break's two windows only with the frame look. */
-  private slotWanted(id: string) {
-    return !id.startsWith('break') || this.breakLook() === 'frame';
-  }
-
-  /** How many saved match rundowns use each template. */
-  private templateUse(): Record<string, number> {
-    const out: Record<string, number> = {};
-    for (const saved of Object.values(this.deps.store.data.rundown ?? {})) {
-      const ids = new Set((saved?.rows ?? []).map((r) => r.template).filter((x): x is string => !!x));
-      for (const id of ids) out[id] = (out[id] ?? 0) + 1;
-    }
-    return out;
-  }
-
-  /** The look of the in-game HUD: the template on the match's HUD row, if any. */
-  private hudTemplate(): Template | null {
-    const id = this.autopilot.rows().find((r) => r.show === HUD_ROW)?.template;
-    return id ? this.templates.find((t) => t.id === id && t.graphic === 'hud') ?? null : null;
-  }
-
-  /** What the graphics need for templates: every saved look, the brand kit and the HUD's look. */
-  private templateState(match: Match | null) {
-    // Scene pages (Break, Desk) find their own look by graphic: holding|full, holding|band or casters|full.
-    // Every key is sent, null when unused: the room merges, so a removed look must be cleared explicitly.
-    const pages: Record<string, string | null> = { 'holding|full': null, 'holding|band': null, 'casters|full': null };
-    for (const r of this.autopilot.rows()) {
-      const t = r.template && (r.show === 'holding' || r.show === 'casters') ? this.templates.find((x) => x.id === r.template && x.graphic.startsWith(`${r.show}|`)) : undefined;
-      if (t) pages[t.graphic] = t.id;
-    }
-    return { airTemplates: this.templates, airBrand: this.brandOf(match ? this.eventOf(match) : null), airHudTemplate: this.hudTemplate()?.id ?? null, airPageTemplates: pages, airOwn: this.ownGraphics };
-  }
+  readonly looks: Looks;
+  get templates(): Template[] { return this.looks.templates; }
+  templateSave(input: unknown) { return this.looks.save(input); }
+  templateDelete(id: string) { return this.looks.delete(id); }
+  private breakLook() { return this.looks.breakLook(); }
+  private slotWanted(id: string) { return this.looks.slotWanted(id); }
+  private templateUse() { return this.looks.use(); }
+  private hudTemplate() { return this.looks.hud(); }
+  /** templateState(match) still decides the brand from the given match (sample rooms pass theirs). */
+  private templateState(match: Match | null) { return { ...this.looks.state(), airBrand: this.brandOf(match ? this.eventOf(match) : null) }; }
 
   private requireEvent(id: string): EventInfo {
     const event = this.deps.store.data.events.find((e) => e.id === id);
@@ -1119,41 +1057,10 @@ export class Production extends EventEmitter {
 
   // ── OBS ──
 
-  /** The scenes Air builds, with each enabled graphic in its scene (PRD picture 9). */
+  /** The scenes Air builds, with each enabled graphic in its scene (PRD picture 9; src/main/scene-plan.ts). */
   buildPlan(): BuildScene[] {
-    const port = this.deps.engine.port;
-    const full = { x: 0, y: 0, width: 1920, height: 1080 };
-    // Sponsor loops of the selected match's sponsors, hidden until shown (a break, or by autopilot).
-    const sponsorVideos = this.match ? onAir(this.match, this.eventOf(this.match)).sponsors.filter((x) => x.video) : [];
-    // The desk's two camera windows: the first two people on air with a camera, in the event's order.
-    const cams = this.match ? onAir(this.match, this.eventOf(this.match)).talent.filter((t) => t.camera.kind !== 'none').slice(0, 2) : [];
-    const deskFill = (slot: string): BuildSlot['fill'] | null => {
-      const t = cams[slot === 'cam1' ? 0 : slot === 'cam2' ? 1 : 2];
-      if (!t) return null;
-      if (t.camera.kind === 'obs' && t.camera.obsSource) return { kind: 'source', sourceName: t.camera.obsSource };
-      if (t.camera.kind === 'link' && t.camera.linkId) return { kind: 'link', inputName: sourceName(`Camera · ${t.name}`), url: cameraViewUrl(t.camera.linkId) };
-      return null;
-    };
-    return SCENE_KEYS.map((key) => {
-      const def = SCENES[key];
-      return {
-        name: def.name,
-        formerly: def.formerly,
-        exclusive: def.exclusive,
-        // Break's two windows exist only when Break uses the frame look.
-        slots: def.slots.filter((slot) => this.slotWanted(slot.id)).map((slot) => ({ id: slot.id, sceneName: slot.scene, formerly: slot.formerly, frame: slot.frame, ...(deskFill(slot.id) ? { fill: deskFill(slot.id)! } : {}) })),
-        sources: [
-          ...this.setup.screens
-            .filter((x) => x.scene === key && x.enabled && !x.hosted)
-            .map((x) => ({ id: x.id, inputName: graphicSourceName(x.title), formerly: legacySourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
-          // Full-screen graphics also cover the game: Take shows them without switching OBS scenes.
-          ...(key === 'gameplay' ? this.setup.screens.filter((x) => x.id === 'fullscreen' && x.enabled).map((x) => ({ id: 'fullscreen-over-game', inputName: sourceName('Full screen over game'), formerly: legacySourceName('Full screen over game'), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })) : []),
-          // Over-the-game graphics also sit over the desk cameras (as bands over a stage shot).
-          ...(key === 'casters' ? this.setup.screens.filter((x) => x.id === 'fullscreen' && x.enabled).map((x) => ({ id: 'fullscreen-over-desk', inputName: sourceName('Full screen over desk'), formerly: legacySourceName('Full screen over desk'), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })) : []),
-          ...(key === 'holding' ? sponsorVideos.map((x) => ({ id: `sponsor:${x.id}`, inputName: sourceName(`Sponsor video · ${x.name}`), kind: 'media' as const, url: x.video, frame: full, enabled: false })) : []),
-        ],
-      };
-    });
+    const on = this.match ? onAir(this.match, this.eventOf(this.match)) : { talent: [], sponsors: [] };
+    return planScenes({ port: this.deps.engine.port, screens: this.setup.screens, talent: on.talent, sponsors: on.sponsors, slotWanted: (id) => this.slotWanted(id) });
   }
 
   /** Why the last Add to OBS failed, until one succeeds (shown on the Scenes check, not only as a toast). */
@@ -1764,12 +1671,7 @@ export class Production extends EventEmitter {
     const wanted = SCENE_KEYS.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.filter((slot) => this.slotWanted(slot.id)).map((slot) => slot.scene)]);
     const missingScenes = wanted.filter((n) => !obs.status.scenes.includes(n));
     // Drift: a source Air put in one of its scenes that is no longer there (deleted or renamed in OBS).
-    const missingSources = obs.status.state === 'connected' ? this.buildPlan().flatMap((scene) => {
-      const have = obs.status.items?.[scene.name];
-      if (!have) return [];
-      const want = [...scene.sources.map((x) => x.inputName), ...scene.slots.map((x) => x.sceneName)];
-      return want.filter((n) => !have.includes(n));
-    }) : [];
+    const missingSources = obs.status.state === 'connected' ? sourcesMissing(this.buildPlan(), obs.status.items ?? {}) : [];
     const installed = obs.status.state === 'connected' && missingScenes.length === 0 && missingSources.length === 0;
     const sceneStatus: SceneStatus[] = SCENE_KEYS.map((k) => ({
       key: k,
