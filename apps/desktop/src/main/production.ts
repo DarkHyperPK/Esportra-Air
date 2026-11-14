@@ -41,7 +41,7 @@ import type { CamsView } from '../shared/api.ts';
 import type { Preset, RowInput } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 import { CompanionHost } from './companion.ts';
-import { presetRows, rowsForScreens, rundownScreens } from './autopilot/rundown.ts';
+import { presetRows, rowsForScreens, ruleOf, rundownScreens } from './autopilot/rundown.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
@@ -540,7 +540,7 @@ export class Production extends EventEmitter {
     const known = new Set(this.setup.screens.map((x) => x.id));
     if (input.screens !== undefined && (!Array.isArray(input.screens) || input.screens.some((x) => typeof x !== 'string' || !known.has(x)))) throw new Error('Choose screens from the list.');
     const preset = input.template ?? 'standard';
-    (data.rundown ??= {})[id] = { rows: input.screens ? rowsForScreens([...new Set(input.screens)], preset, input.bestOf, (show) => this.sectionOf(show)) : presetRows(preset, input.bestOf), startedFrom: preset };
+    (data.rundown ??= {})[id] = { rows: input.screens ? rowsForScreens([...new Set(input.screens)], preset, input.bestOf, (show) => this.sectionOf(show), (show) => this.purposeOf(show)) : presetRows(preset, input.bestOf), startedFrom: preset };
     data.selectedMatchId = id;
     this.save();
     await this.syncEngine();
@@ -613,12 +613,12 @@ export class Production extends EventEmitter {
     return this.deps.store.data.ownGraphics ?? [];
   }
 
-  /** The design: a 1920×1080 PNG up to 8 MB, stored exactly as exported (never resized or recompressed). */
+  /** The design: a 1920×1080 PNG up to 16 MB (any Photoshop export fits), stored exactly as exported. */
   async uploadArtwork(dataUrl: string): Promise<string> {
     const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
     if (!m) throw new Error('Export the design from Photoshop as a PNG.');
     const raw = Buffer.from(m[1]!, 'base64');
-    if (raw.length > 8_000_000) throw new Error('The design is larger than 8 MB. Export it again with PNG compression on.');
+    if (raw.length > 16_000_000) throw new Error('The design is larger than 16 MB, which a 1920 × 1080 PNG never is. Export it again as a PNG.');
     const size = pngSize(raw);
     if (!size) throw new Error('That file is not a PNG.');
     if (size.width !== 1920 || size.height !== 1080) throw new Error(`The design is ${size.width} × ${size.height}. Export it at 1920 × 1080.`);
@@ -660,6 +660,8 @@ export class Production extends EventEmitter {
   async ownDelete(id: string) {
     const data = this.deps.store.data;
     if (!(data.ownGraphics ?? []).some((g) => g.id === id)) throw new Error('That graphic is already gone.');
+    // Mid-show, deleting would change this match's Rundown and stop autopilot: it waits until after the show.
+    if (this.gameLocked() && this.autopilot.rows().some((r) => r.show === ownScreenId(id))) throw new Error('It is in this match’s Rundown and the match is live. Delete it after the show.');
     if (this.room?.airFullscreen === ownScreenId(id) && this.gameLocked()) throw new Error('It is on air. Take it off before deleting it.');
     data.ownGraphics = (data.ownGraphics ?? []).filter((g) => g.id !== id);
     for (const saved of Object.values(data.rundown ?? {})) {
@@ -672,6 +674,22 @@ export class Production extends EventEmitter {
     if (this.match && this.room?.airFullscreen === ownScreenId(id)) await this.fullscreen(null, false, true);
     if (this.match) await this.syncEngine();
     await this.librarySeed().catch(() => {});
+  }
+
+  /** The built-in screen an own graphic stands for (null for "Anything" or a built-in screen). */
+  purposeOf(show: string): string | null {
+    const g = isOwnScreen(show) ? this.ownGraphics.find((x) => ownScreenId(x.id) === show) : undefined;
+    return g && g.purpose !== 'any' ? g.purpose : null;
+  }
+
+  /** Graphics › Your graphics › Use in this match: a Rundown row with the rule of the screen it stands for. */
+  ownUse(id: string) {
+    const g = this.ownGraphics.find((x) => x.id === id);
+    if (!g) throw new Error('That graphic is no longer available.');
+    const show = ownScreenId(id);
+    if (this.autopilot.rows().some((r) => r.show === show)) throw new Error('It is already in this match’s Rundown.');
+    const preset = this.match ? this.deps.store.data.rundown?.[this.match.id]?.startedFrom ?? 'standard' : 'standard';
+    this.rundownSave({ section: this.sectionOf(show), show, ...ruleOf(g.purpose === 'any' ? '' : g.purpose, preset, this.match?.bestOf ?? 3) });
   }
 
   /** Where a screen goes in the Rundown; an own graphic goes where the screen it stands for goes. */

@@ -1037,7 +1037,8 @@ test('your own graphics: the design is kept as exported, its boxes reach the roo
   const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'own-graphic-test-key-0123456789', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
   await engine.start();
   const store = new Store(join(dir, 'air.json'));
-  const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  const capture = new FakeCapture();
+  const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture, ingest: { target: () => {} }, version: 'test' });
   production.setup.game = 'valorant';
   const { newBox } = await import('../src/shared/own-graphics.ts');
   try {
@@ -1061,8 +1062,11 @@ test('your own graphics: the design is kept as exported, its boxes reach the roo
     assert.deepEqual((await room()).airOwn.map((g: { id: string }) => g.id), [id], 'its definition is in the room for the full-screen host');
     assert.equal(production.sectionOf(`own:${id}`), 'between', 'it goes where Map result goes');
     // Used in the match: a Rundown row, then on air through Take like any full-screen graphic.
-    production.rundownSave({ section: 'between', show: `own:${id}`, trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'cut', holdMode: 'manual', holdSeconds: 0 });
+    production.ownUse(id);
     await production.syncEngine();
+    const row = production.snapshot().rundown.find((r) => r.show === `own:${id}`)!;
+    assert.deepEqual([row.section, row.trigger], ['between', 'map_end'], 'it comes up when the map ends, like Map result');
+    assert.throws(() => production.ownUse(id), /already in this match/);
     assert.ok(production.snapshot().layers.some((l) => l.id === `fs:own:${id}` && l.available), 'it is a graphic on Live');
     await production.setLayer(`fs:own:${id}`, 'on');
     await production.takeCue('cut');
@@ -1072,6 +1076,10 @@ test('your own graphics: the design is kept as exported, its boxes reach the roo
     production.log.stop();
     const again = new Store(join(dir, 'air.json'));
     assert.ok(again.data.setup.screens.some((x) => x.id === `own:${id}` && x.hosted), 'kept across restarts');
+    // Mid-show it cannot be deleted (that would change the live Rundown and stop autopilot).
+    capture.start();
+    await assert.rejects(production.ownDelete(id), /match is live\. Delete it after the show/);
+    capture.stop();
     // Deleting it takes its rows with it.
     await production.ownDelete(id);
     assert.equal(production.snapshot().rundown.some((r) => r.show === `own:${id}`), false);

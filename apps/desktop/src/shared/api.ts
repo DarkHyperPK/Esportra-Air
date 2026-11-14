@@ -462,6 +462,8 @@ export interface AirApi {
   /** Your own graphics: save (new or changed) and delete. */
   ownSave(graphic: import('./own-graphics.ts').OwnGraphic): Promise<Snapshot>;
   ownDelete(id: string): Promise<Snapshot>;
+  /** Adds an own graphic to this match's Rundown with the rule of the screen it stands for. */
+  ownUse(id: string): Promise<Snapshot>;
   /** Stores the design (a 1920×1080 PNG, kept as exported) and resolves to its URL on the engine. */
   uploadArtwork(dataUrl: string): Promise<string>;
   /** Stores a font for the data boxes. */

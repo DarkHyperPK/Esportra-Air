@@ -73,6 +73,14 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
     try { const f = await air.uploadFont(await readFile(file), file.name); change({ fonts: [...g.fonts, f] }); } catch (e) { setNotice((e as Error).message); }
   };
   const save = async () => { if (await run(() => air.ownSave(g))) setSaved(JSON.stringify(g)); };
+  // Closing never loses work silently: unsaved changes ask first (Esc and the Close button alike).
+  const [leaving, setLeaving] = useState(false);
+  const tryClose = () => (dirty ? setLeaving(true) : close());
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); if (leaving) setLeaving(false); else tryClose(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   // Drag a box to move it, its corner to size it (design pixels, snapped to whole pixels).
   const drag = useRef<{ id: string; kind: 'move' | 'size'; x: number; y: number; start: OwnBox } | null>(null);
@@ -128,14 +136,22 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
             <button className="btn" disabled={mode !== 'data'} onClick={() => post({ type: 'AIR_OWN_PLAY' })}>▶ Play entrance</button>
             <button className="btn primary" disabled={!dirty || !g.image} onClick={() => void save()}>Save</button>
           </>}
-          <button className="btn quiet" onClick={close}>Esc · Close</button>
+          <button className="btn quiet" onClick={tryClose}>Esc · Close</button>
         </header>
+        {leaving && (
+          <div className="tpl-confirm" role="alertdialog" aria-label="Unsaved changes">
+            <span>This graphic has changes that are not saved.</span>
+            <button className="btn primary small" disabled={!g.image || !g.name.trim()} onClick={() => void (async () => { if (await run(() => air.ownSave(g))) close(); })()}>Save and close</button>
+            <button className="btn small danger" onClick={close}>Close without saving</button>
+            <button className="btn quiet small" onClick={() => setLeaving(false)}>Keep editing</button>
+          </div>
+        )}
         {notice && <p className="own-notice" role="alert">{notice}</p>}
 
         {step === 'import' ? (
           <div className="own-import">
             <label className={`own-drop ${g.image ? 'has' : ''}`}>
-              {g.image ? <img src={asset(g.image)} alt="Your design" /> : <span className="own-drop-in"><b>{busy ? 'Checking the design…' : 'Choose the design (PNG)'}</b><span className="faint t-sm">1920 × 1080, up to 8 MB, exported from Photoshop with see-through areas where the game should show.</span></span>}
+              {g.image ? <img src={asset(g.image)} alt="Your design" /> : <span className="own-drop-in"><b>{busy ? 'Checking the design…' : 'Choose the design (PNG)'}</b><span className="faint t-sm">1920 × 1080, up to 16 MB, exported from Photoshop with see-through areas where the game should show.</span></span>}
               <input type="file" accept="image/png" aria-label="Design PNG" hidden onChange={(e) => void importDesign(e.target.files?.[0])} />
             </label>
             <div className="stack" style={{ gap: 14 }}>
@@ -147,11 +163,11 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
                 <button aria-pressed={g.style === 'band'} onClick={() => change({ style: 'band' })}>Over the game</button>
               </div></div>
               <ul className="own-checks">
-                <li className={g.image ? 'ok' : ''}>{g.image ? '✓' : '·'} 1920 × 1080 PNG, up to 8 MB</li>
+                <li className={g.image ? 'ok' : ''}>{g.image ? '✓' : '·'} 1920 × 1080 PNG, up to 16 MB</li>
                 <li className="warn">! Text that is part of the picture stays as it is: put a box over anything that should change.</li>
               </ul>
               <span className="row-gap" style={{ justifyContent: 'flex-end' }}>
-                <button className="btn quiet" onClick={close}>Cancel</button>
+                <button className="btn quiet" onClick={tryClose}>Cancel</button>
                 <button className="btn primary" disabled={!g.image || !g.name.trim()} onClick={() => setStep('place')}>Next: place the data</button>
               </span>
             </div>

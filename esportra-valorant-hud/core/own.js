@@ -75,7 +75,7 @@
     const art = E('img', '', wrap);
     Object.assign(art.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', display: 'block' });
     art.alt = '';
-    let boxes = {}, drawn = null, drawnKey = '';
+    let boxes = {}, drawn = null, drawnKey = '', lastTick = 0;
     const build = g => {
       wrap.querySelectorAll('[data-own-box]').forEach(n => n.remove());
       boxes = {};
@@ -125,6 +125,8 @@
         if (first) motion(g, true);
         fill(g, s);
       },
+      // A rotating sponsor changes with time, not only with new game data: refilled about once a second.
+      tick(s) { const g = drawn; if (!g || !(g.boxes || []).some(b => b.field.startsWith('sponsor.'))) return; const now = Date.now(); if (now - lastTick < 1000) return; lastTick = now; fill(g, s); },
       play(s) { const g = get(s); if (g) motion(g, true); },
       leave(s, done) { const g = get(s); if (!g || g.exit === 'cut') return done(); motion(g, false); setTimeout(done, 480); },
     };

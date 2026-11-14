@@ -24,8 +24,9 @@ use crate::engine::{now_ms, Engine};
 use crate::AppState;
 
 const MAX_BODY: usize = 2_000_000;
-// Pictures (your own graphics are full 1920×1080 PNGs, up to 8 MB) and fonts for their data boxes.
-const MAX_ASSET: usize = 8_500_000;
+// Pictures (your own graphics are full 1920×1080 PNGs, up to 16 MB: even an uncompressed
+// Photoshop export is about 8.3 MB) and fonts for their data boxes.
+const MAX_ASSET: usize = 16_500_000;
 
 fn content_type(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("") {

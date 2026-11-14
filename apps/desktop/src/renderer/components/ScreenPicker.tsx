@@ -52,7 +52,14 @@ export function ScreenPicker({ s, picked, onPick, point, onPoint, theme, onTheme
 }) {
   const [big, setBig] = useState<PickScreen | null>(null);
   const on = new Set(picked);
-  const toggle = (id: string) => onPick(on.has(id) ? picked.filter((x) => x !== id) : [...picked, id]);
+  // Your design for a screen replaces it: ticking one unticks the built-in screen (and the other way round).
+  const replaces = (id: string) => (id.startsWith('own:') ? s.ownGraphics.find((o) => `own:${o.id}` === id)?.purpose ?? null : null);
+  const toggle = (id: string) => {
+    if (on.has(id)) return onPick(picked.filter((x) => x !== id));
+    const builtin = replaces(id);
+    const mine = s.ownGraphics.filter((o) => o.purpose === id).map((o) => `own:${o.id}`);
+    onPick([...picked.filter((x) => x !== builtin && !mine.includes(x)), id]);
+  };
   return (
     <div className="stack" style={{ gap: 16 }}>
       <div className="pick-head">

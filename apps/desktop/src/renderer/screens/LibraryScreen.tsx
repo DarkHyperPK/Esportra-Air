@@ -10,7 +10,6 @@ import { GRAPHICS, graphicTitle, type BrandKit, type Template } from '../../shar
 import { brandOfMatch, openTemplateEditor, templatePreviewUrl } from '../components/TemplateEditor.tsx';
 import { OwnGraphicEditor, blankOwn } from '../components/OwnGraphicEditor.tsx';
 import { OWN_PURPOSES, ownScreenId, type OwnGraphic } from '../../shared/own-graphics.ts';
-import { defaultSection } from '../../shared/autopilot.ts';
 
 /** A live thumbnail of a graphic with a template (or its default look). */
 export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit }) {
@@ -51,7 +50,7 @@ function OwnTab({ s, run }: { s: Snapshot; run: Run }) {
                   <span className="faint t-xs">{purpose(g.purpose)} · {g.boxes.length} box{g.boxes.length === 1 ? '' : 'es'}</span>
                   <span className="row-gap" style={{ flexWrap: 'wrap' }}>
                     <button className="btn small" onClick={() => setEditing(g)}>Edit</button>
-                    {s.match && <button className="btn small" disabled={inRundown(g.id)} onClick={() => void run(() => air.rundownSave({ section: g.purpose === 'any' ? 'between' : defaultSection(g.purpose), show: ownScreenId(g.id), trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 }))}>Use in this match</button>}
+                    {s.match && <button className="btn small" disabled={inRundown(g.id)} onClick={() => void run(() => air.ownUse(g.id))}>Use in this match</button>}
                     {sure === g.id
                       ? <><button className="btn small danger-solid" onClick={() => { setSure(null); void run(() => air.ownDelete(g.id)); }}>Delete</button><button className="btn quiet small" onClick={() => setSure(null)}>Keep</button></>
                       : <button className="btn quiet small danger" onClick={() => setSure(g.id)}>Delete</button>}

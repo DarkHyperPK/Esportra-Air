@@ -69,6 +69,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'templateDelete': await p.templateDelete(String(a[0])); break;
     case 'ownSave': await p.ownSave(a[0]); break;
     case 'ownDelete': await p.ownDelete(String(a[0])); break;
+    case 'ownUse': p.ownUse(String(a[0])); await p.syncEngine(); break;
     case 'uploadArtwork': return p.uploadArtwork(String(a[0]));
     case 'uploadFont': return p.uploadFont(String(a[0]), String(a[1] ?? ''));
     case 'saveTalent': await p.saveTalent(String(a[0]), (a[1] ?? {}) as TalentInput); break;

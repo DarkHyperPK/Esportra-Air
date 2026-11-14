@@ -522,6 +522,10 @@ let failShot = async () => {};
   }
   await own.getByLabel('Size').fill('120');
   await shot('own-boxes');
+  // Esc with unsaved boxes asks first, never loses work.
+  await page.keyboard.press('Escape');
+  await own.getByRole('alertdialog', { name: 'Unsaved changes' }).waitFor();
+  await own.getByRole('button', { name: 'Keep editing' }).click();
   await own.getByRole('button', { name: 'With data' }).click();
   await page.waitForTimeout(2500);
   await shot('own-with-data');

@@ -107,3 +107,13 @@ test('the screens ticked in New match become the rundown, with the starting poin
   assert.equal(results.find((r) => r.show === 'map-result')!.trigger, 'map_end');
   assert.deepEqual(rowsForScreens(['in-game'], 'standard', 1).map((r) => r.show), ['in-game'], 'just the HUD: no Back to the game row');
 });
+
+test('a design of your own takes the rule of the screen it stands for', async () => {
+  const { rowsForScreens, ruleOf } = await import('../src/main/autopilot/rundown.ts');
+  const rows = rowsForScreens(['in-game', 'own:abc'], 'standard', 3, () => 'between', (show) => (show === 'own:abc' ? 'map-result' : null));
+  const mine = rows.find((r) => r.show === 'own:abc')!;
+  assert.deepEqual([mine.section, mine.trigger, mine.map], ['between', 'map_end', 'every']);
+  assert.ok(rows.some((r) => r.show === null), 'back to the game comes with it');
+  assert.equal(ruleOf('', 'standard', 3).trigger, 'manual', '"Anything" waits for Take');
+  assert.equal(ruleOf('halftime', 'minimal', 3).trigger, 'manual', 'Results only: only the result comes up by itself');
+});

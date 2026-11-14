@@ -65,7 +65,17 @@ export function presetRows(preset: Preset, bestOf: 1 | 3 | 5): RundownRow[] {
  * has (with their rules), then each other ticked screen in its usual section, waiting for Take. Back to
  * the game comes along with any full-screen graphic; the HUD row only when the in-game HUD is ticked.
  */
-export function rowsForScreens(screens: string[], preset: Preset, bestOf: 1 | 3 | 5, sectionOf: (show: string) => Section = defaultSection): RundownRow[] {
+/**
+ * The rule a screen gets from a starting point: the built-in screen's own row (Map result: when the map
+ * ends), or Take. A design of your own uses the rule of the screen it stands for.
+ */
+export function ruleOf(purpose: string, preset: Preset, bestOf: 1 | 3 | 5): Pick<RundownRow, 'trigger' | 'map' | 'forSeconds' | 'delaySeconds' | 'transition' | 'holdMode' | 'holdSeconds'> {
+  const r = presetRows(preset === 'empty' ? 'standard' : preset, bestOf).find((x) => x.show === purpose);
+  if (r) return { trigger: r.trigger, map: r.map, forSeconds: r.forSeconds, delaySeconds: r.delaySeconds, transition: r.transition, holdMode: r.holdMode, holdSeconds: r.holdSeconds };
+  return { trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 };
+}
+
+export function rowsForScreens(screens: string[], preset: Preset, bestOf: 1 | 3 | 5, sectionOf: (show: string) => Section = defaultSection, purposeOf: (show: string) => string | null = () => null): RundownRow[] {
   const want = new Set(screens);
   const base = presetRows(preset === 'empty' ? 'standard' : preset, bestOf);
   const anyFull = screens.some((x) => FULLSCREEN_IDS.has(x) || isOwnScreen(x));
@@ -73,7 +83,10 @@ export function rowsForScreens(screens: string[], preset: Preset, bestOf: 1 | 3 
   for (const show of screens) {
     if (rows.some((r) => r.show === show)) continue;
     if (show === HUD_ROW) { rows.push(hudRow()); continue; }
-    rows.push(row({ id: `pick-${show.replace(/[^a-z0-9-]/gi, '-')}`, show, section: sectionOf(show), trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }));
+    // Your own design for Map result comes up when the map ends, like Map result; anything else waits for Take.
+    const purpose = purposeOf(show);
+    const rule = purpose ? ruleOf(purpose, preset, bestOf) : ruleOf('', preset, bestOf);
+    rows.push(row({ id: `pick-${show.replace(/[^a-z0-9-]/gi, '-')}`, show, section: sectionOf(show), ...rule }));
   }
   return sortRows(rows);
 }
