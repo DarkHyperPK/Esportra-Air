@@ -147,6 +147,30 @@
   // A player photo from the producer's lineup (served by Air's engine). Only its own asset paths are trusted.
   const photoOk = HUD.photoOk = v => typeof v === 'string' && /^\/air-assets\/[0-9a-f-]{36}$/i.test(v);
   const txt = (e, v) => { v = String(v); if (e.textContent !== v) e.textContent = v; };
+  // Updates `parent` to match `html` in place: unchanged nodes (and their pictures and running
+  // animations) are kept, only what differs is changed. Graphics that redraw on live data use this so
+  // nothing blinks or replays its entrance when an unrelated value changes. A picture that failed and
+  // fell back keeps its fallback until its source really changes.
+  const morphAttrs = (a, b) => {
+    if (a.tagName === 'IMG' && a.dataset.failed && a.dataset.failed === b.getAttribute('src')) return;
+    for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
+    for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+  };
+  const morphKids = (a, b) => {
+    const an = [...a.childNodes], bn = [...b.childNodes];
+    bn.forEach((y, i) => {
+      const x = an[i];
+      if (!x) { a.appendChild(y); return; }
+      if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y, x); return; }
+      if (y.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; return; }
+      morphAttrs(x, y);
+      if (x.innerHTML !== y.innerHTML) morphKids(x, y);
+    });
+    for (let i = an.length - 1; i >= bn.length; i--) a.removeChild(an[i]);
+  };
+  const morph = HUD.morph = (parent, html) => { const t = document.createElement('template'); t.innerHTML = html; morphKids(parent, t.content); };
+  /** A picture that fails shows its fallback once; the swap is remembered so a redraw does not retry it. */
+  const fallbackOnError = root => root.querySelectorAll('img[data-fallback]').forEach(im => { if (im.onerror) return; im.onerror = () => { im.onerror = null; im.dataset.failed = im.getAttribute('src'); im.src = im.dataset.fallback; im.classList.add('fallback'); }; });
   const timeLeft = HUD.timeLeft = r => r.endsAt ? Math.max(0, (r.endsAt - HUD.now()) / 1000) : (r.remaining || 0);
   // Align CSS motion once per plant; the compositor keeps it smooth between HUD ticks.
   const pulseSpike = (el, round) => {
@@ -658,29 +682,44 @@
 
   // ───── full-screen scenes ─────
   M.veto = root => {
-    const m = E('div', 'mod on vt', root); const sc = sceneBg(m); const ch = chrome(m, 'MAP VETO');
-    const title = E('div', 'title disp hl', m, 'MAP VETO'), hdr = E('div', 'title-r mono', m); hdr.style.color = '#f0f0f2'; const box = E('div', '', m), cap = E('div', 'cap mono', m); sceneFx(sc);
-    return { update(s) { if (same(this, s)) return;
-      txt(hdr, `VALORANT   /   ${s.teams[0].tag}  VS  ${s.teams[1].tag}`); box.innerHTML = '';
-      s.veto.forEach((v, i) => { const M_ = mapA(v.map); const c = E('div', 'card ' + (v.action === 'ban' ? 'ban' : v.action === 'decider' ? 'dec' : 'pick'), box); c.style.left = (167 + i * 230) + 'px';
-        c.style.animation = `tIn .6s ${.08 * i}s var(--ease) both`; c.style.transform = 'translateY(40px)'; c.style.opacity = 0;
-        const T = v.team >= 0 ? s.teams[v.team] : null; const inner = E('div', 'inner', c);
-        inner.innerHTML = `<img src="${M_ ? M_.tall : ''}">${v.action === 'decider' ? '<div class="tint"></div>' : ''}<div class="sh"></div><div class="idx mono">0${i + 1}</div><div class="mn">${v.map}</div><div class="by mono">${T ? T.tag + ' ' + (v.action === 'ban' ? 'BAN' : 'PICK') : 'DECIDER'}${v.side ? '   /   ' + v.side : ''}</div>`;
-        if (v.action === 'ban') c.insertAdjacentHTML('beforeend', `<svg class="slash" width="212" height="620"><line x1="12" y1="-18" x2="200" y2="638" stroke="#e0445e" stroke-width="3.5"/></svg>`);
-        const col = T ? T.color : '#e0445e';
-        const stp = E('div', 'stamp mono', c, v.action === 'ban' ? 'BANNED' : v.action === 'pick' ? `PICKED<small>${T.tag}</small>` : `DECIDER<small>MAP ${s.series.findIndex(x => x.map === v.map) + 1 || ''}</small>`);
-        stp.style.cssText += v.action === 'ban' ? ';color:#e0445e;border:3px solid #e0445e;background:rgba(18,10,13,.9)' : v.action === 'pick' ? `;color:#fff;border:3px solid ${col};background:rgba(14,14,16,.85)` : ';color:#fff;border:3px solid #e0445e;background:#e0445e'; });
-      const l = s.veto[s.veto.length - 1]; txt(cap, l ? (l.team >= 0 ? `${s.teams[l.team].tag} ${l.action.toUpperCase()}S ${l.map}` : `DECIDER: ${l.map}`) : '');
-    } };
+    const m = E('div', 'mod on vt', root); const sc = sceneBg(m); chrome(m, 'MAP VETO');
+    E('div', 'title disp hl', m, 'MAP VETO'); const hdr = E('div', 'title-r mono', m); hdr.style.color = '#f0f0f2'; const box = E('div', '', m), cap = E('div', 'cap mono', m); sceneFx(sc);
+    let sig = '';
+    return {
+      // Coming on air plays every card's entrance once; afterwards only a new card animates.
+      play() { sig = ''; box.innerHTML = ''; },
+      update(s) {
+        const k = JSON.stringify([s.veto, s.teams.map(t => [t.tag, t.color]), s.series.map(x => x.map)]);
+        if (k === sig) return; sig = k;
+        txt(hdr, `VALORANT   /   ${s.teams[0].tag}  VS  ${s.teams[1].tag}`);
+        morph(box, s.veto.map((v, i) => {
+          const M_ = mapA(v.map), T = v.team >= 0 ? s.teams[v.team] : null, col = T ? T.color : '#e0445e';
+          const kind = v.action === 'ban' ? 'ban' : v.action === 'decider' ? 'dec' : 'pick';
+          const stamp = v.action === 'ban' ? ['BANNED', 'color:#e0445e;border:3px solid #e0445e;background:rgba(18,10,13,.9)'] : v.action === 'pick' ? [`PICKED<small>${T.tag}</small>`, `color:#fff;border:3px solid ${col};background:rgba(14,14,16,.85)`] : [`DECIDER<small>MAP ${s.series.findIndex(x => x.map === v.map) + 1 || ''}</small>`, 'color:#fff;border:3px solid #e0445e;background:#e0445e'];
+          return `<div class="card ${kind}" style="left:${167 + i * 230}px;animation:tIn .6s ${.08 * i}s var(--ease) both;transform:translateY(40px);opacity:0"><div class="inner"><img src="${M_ ? M_.tall : ''}">${v.action === 'decider' ? '<div class="tint"></div>' : ''}<div class="sh"></div><div class="idx mono">0${i + 1}</div><div class="mn">${v.map}</div><div class="by mono">${T ? T.tag + ' ' + (v.action === 'ban' ? 'BAN' : 'PICK') : 'DECIDER'}${v.side ? '   /   ' + v.side : ''}</div></div>` +
+            (v.action === 'ban' ? `<svg class="slash" width="212" height="620"><line x1="12" y1="-18" x2="200" y2="638" stroke="#e0445e" stroke-width="3.5"/></svg>` : '') +
+            `<div class="stamp mono" style="${stamp[1]}">${stamp[0]}</div></div>`;
+        }).join(''));
+        const l = s.veto[s.veto.length - 1]; txt(cap, l ? (l.team >= 0 ? `${s.teams[l.team].tag} ${l.action.toUpperCase()}S ${l.map}` : `DECIDER: ${l.map}`) : '');
+      },
+    };
   };
 
   M.lineups = root => {
     const m = E('div', 'mod on lu', root); const sc = sceneBg(m); chrome(m, 'AGENT SELECT'); const box = E('div', '', m); sceneFx(sc);
-    return { update(s) { if (same(this, s)) return; box.innerHTML = `<div class="vs">vs</div>` + [0, 1].map(i => { const T = s.teams[i];
-      return `<div class="th disp hl ${i ? 'r' : 'l'}">${T.name}<small>${T.side || ''}   /   MAP ${s.map.number} ${s.map.name}</small></div><div class="col ${i ? 'r' : 'l'}" style="--c:${T.color}">` + s.players[i].map((p, j) => { const A = agent(p.agent);
-        return `<div class="pc" style="animation:tIn .6s ${.07 * (i * 5 + j)}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img class="por" src="${A.full}" data-fallback="${A.icon}"><img class="icon" src="${A.icon}">` : '<div class="pending mono">AWAITING PICK</div>'}<div class="sh"></div><div class="pn">${p.name || 'PLAYER ' + (j + 1)}</div><div class="an mono">${A ? A.name : 'AGENT PENDING'}</div><div class="rl mono">${A ? A.role : ''}</div></div>`; }).join('') + '</div>'; }).join('');
-      box.querySelectorAll('.pc img.por').forEach(im => { im.onerror = () => { im.onerror = null; im.src = im.dataset.fallback; im.classList.add('fallback'); }; });
-    } };
+    let sig = '';
+    return {
+      // Coming on air plays every card's entrance once; a lock-in afterwards changes only that card.
+      play() { sig = ''; box.innerHTML = ''; },
+      update(s) {
+        const k = JSON.stringify([s.players.map(t => t.map(p => [p.name, p.agent])), s.teams.map(t => [t.name, t.color, t.side]), s.map]);
+        if (k === sig) return; sig = k;
+        morph(box, `<div class="vs">vs</div>` + [0, 1].map(i => { const T = s.teams[i];
+          return `<div class="th disp hl ${i ? 'r' : 'l'}">${T.name}<small>${T.side || ''}   /   MAP ${s.map.number} ${s.map.name}</small></div><div class="col ${i ? 'r' : 'l'}" style="--c:${T.color}">` + s.players[i].map((p, j) => { const A = agent(p.agent);
+            return `<div class="pc" style="animation:tIn .6s ${.07 * (i * 5 + j)}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img class="por" src="${A.full}" data-fallback="${A.icon}"><img class="icon" src="${A.icon}">` : '<div class="pending mono">AWAITING PICK</div>'}<div class="sh"></div><div class="pn">${p.name || 'PLAYER ' + (j + 1)}</div><div class="an mono">${A ? A.name : 'AGENT PENDING'}</div><div class="rl mono">${A ? A.role : ''}</div></div>`; }).join('') + '</div>'; }).join(''));
+        fallbackOnError(box);
+      },
+    };
   };
 
   M.intro = root => {

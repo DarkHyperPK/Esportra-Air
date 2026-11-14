@@ -153,3 +153,62 @@ test('over the game, the host never shows a graphic that covers the game', { ski
     await browser.close();
   }
 });
+
+// Map veto and Agent select redraw on live data. Unrelated changes (kills, credits, the score) must not
+// rebuild them, and a lock-in or a new veto entry changes only that card: no picture reloads, no card
+// replays its entrance. The over-the-game versions behave the same.
+test('map veto and agent select change in place: nothing blinks on live data', { skip: !chromium && 'needs Playwright' }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const errors: string[] = [];
+    page.on('pageerror', (e: Error) => errors.push(e.message));
+    const run = async (url: string, show: string | null, cardSel: string, change: string) => {
+      await page.goto(`file://${OVERLAYS}/${url}`);
+      await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
+      return page.evaluate(([show, cardSel, change]: [string | null, string, string]) => {
+        const HUD = (window as any).HUD, s = HUD.state;
+        const push = () => HUD.subs.forEach((f: (x: unknown) => void) => f(s));
+        if (show) { s.airFullscreen = show; s.airFullscreenStyle = null; }
+        s.players[0][0].agent = 'JETT';
+        push();
+        const cards = () => [...document.querySelectorAll(cardSel)] as HTMLElement[];
+        const before = cards(), imgs = before.map((c) => c.querySelector('img')), html = before.map((c) => c.outerHTML);
+        before.forEach((c, i) => ((c as any).__mark = i));
+        // 50 live updates that change nothing on these graphics.
+        for (let i = 0; i < 50; i++) {
+          s.players[1][2].k = (+s.players[1][2].k || 0) + 1;
+          s.players[0][3].credits = 1000 + i * 50;
+          s.teams[0].score = i % 13;
+          push();
+        }
+        const kept = cards().every((c, i) => c === before[i]) && cards().every((c, i) => c.querySelector('img') === imgs[i]);
+        // One real change: a lock-in (agent select) or a new veto entry.
+        if (change === 'lockin') s.players[0][1].agent = 'SOVA';
+        else s.veto = [...s.veto, { map: 'BIND', action: 'ban', team: 1 }];
+        push();
+        const after = cards();
+        return {
+          count: [before.length, after.length], kept,
+          others: after.filter((c, i) => i !== 1 && i < before.length).every((c) => before.includes(c)),
+          changed: change === 'lockin' ? after[1] === before[1] && after[1]!.outerHTML !== html[1] : after.length === before.length + 1,
+        };
+      }, [show, cardSel, change] as [string | null, string, string]);
+    };
+    for (const [url, show, sel, change] of [
+      ['fullscreen.html?preview=1', 'agent-select', '.lu .pc', 'lockin'],
+      ['fullscreen.html?preview=1', 'map-veto', '.vt .card', 'veto'],
+      ['agent-select-band.html?preview=1', null, '.bd-ag', 'lockin'],
+      ['map-veto-band.html?preview=1', null, '.bd-vcol', 'veto'],
+    ] as const) {
+      const out = await run(url, show, sel, change);
+      assert.ok(out.count[0] > 0, `${url} ${show}: cards found ${JSON.stringify(out)}`);
+      assert.ok(out.kept, `${url} ${show}: 50 unrelated updates keep every card and picture`);
+      assert.ok(out.others, `${url} ${show}: the other cards stay as they are`);
+      assert.ok(out.changed, `${url} ${show}: the change shows ${JSON.stringify(out)}`);
+    }
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});

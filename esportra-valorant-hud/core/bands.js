@@ -30,9 +30,12 @@
       m.style.setProperty('--ev', accent(s));
       const k = JSON.stringify(keyOf(s));
       if (k === sig) return;
-      sig = k; panel.innerHTML = render(s);
-      panel.classList.remove('bd-show'); void panel.offsetWidth; panel.classList.add('bd-show');
-    } };
+      // The band enters once when it comes on air; later changes (a pick, a lock-in) update in place.
+      const first = !sig;
+      sig = k;
+      if (first) { panel.innerHTML = render(s); panel.classList.remove('bd-show'); void panel.offsetWidth; panel.classList.add('bd-show'); }
+      else HUD.morph(panel, render(s));
+    }, play() { sig = ''; } };
   }
 
   // 1 · Map veto: every ban, pick (with the side the other team chose) and the decider.
