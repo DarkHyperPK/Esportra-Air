@@ -134,6 +134,18 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await production.installGraphics();
     const snap = production.snapshot();
     assert.equal(snap.obs.installed, true);
+    // Drift: someone deletes Air's HUD source inside its scene in OBS. Air notices, and Rebuild puts it back.
+    { const gp = obsServer.scenes.get('ESPORTRA · Gameplay')!;
+      obsServer.scenes.set('ESPORTRA · Gameplay', gp.filter((i) => i.sourceName !== 'ESPORTRA · In-game HUD'));
+      await obs.refresh();
+      const drifted = production.snapshot();
+      assert.equal(drifted.obs.installed, false, 'a missing Air source means the scenes are not complete');
+      assert.deepEqual(drifted.obs.missingSources, ['ESPORTRA · In-game HUD']);
+      const check = drifted.checks.find((c) => c.id === 'scenes')!;
+      assert.match(check.detail, /OBS changed since Air added its scenes: ESPORTRA · In-game HUD missing/);
+      assert.equal(check.action?.label, 'Rebuild');
+      await production.installGraphics();
+      assert.equal(production.snapshot().obs.installed, true, 'Rebuild puts it back'); }
     assert.ok(obsServer.scenes.has('ESPORTRA · Gameplay') && obsServer.scenes.has('ESPORTRA · Break') && obsServer.scenes.has('ESPORTRA · Desk'), 'scenes carry the ESPORTRA names');
     assert.equal(obsServer.inputs.get('ESPORTRA · In-game HUD')!.settings.url, `http://127.0.0.1:${port}/o/${ingameOutput}`);
     const video = obsServer.scenes.get('ESPORTRA · Break')!.find((i) => i.sourceName === 'ESPORTRA · Sponsor video · Acme');

@@ -34,6 +34,8 @@ export interface ObsStatus {
   replayBufferActive: boolean | null;
   /** First source in each watched slot scene (null while empty). */
   slots: Record<string, string | null>;
+  /** What is inside each of Air's own scenes (source names), to notice what changed in OBS since Air built them. */
+  items: Record<string, string[]>;
 }
 
 const AUDIO_OR_BROWSER = /audio|wasapi|pulse|alsa|coreaudio|browser_source/i;
@@ -42,7 +44,7 @@ const BACKOFF_MS = [1000, 2000, 4000, 8000, 10000];
 
 const initial = (): ObsStatus => ({
   state: 'disconnected', error: null, version: null, collection: null, studioMode: false, programScene: null, previewScene: null,
-  scenes: [], videoInputs: [], transitions: [], currentTransition: null, transitionActive: false, replayBufferActive: null, slots: {},
+  scenes: [], videoInputs: [], transitions: [], currentTransition: null, transitionActive: false, replayBufferActive: null, slots: {}, items: {},
 });
 
 const SETTINGS = 'OBS › Tools › WebSocket Server Settings';
@@ -66,6 +68,7 @@ export class ObsLink extends EventEmitter {
   private readonly create: () => ObsSocket;
   private args: { host: string; port: number; password: string } | null = null;
   private watched: string[] = [];
+  private airScenes: string[] = [];
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
@@ -85,6 +88,11 @@ export class ObsLink extends EventEmitter {
 
   get connected() {
     return this.status.state === 'connected';
+  }
+
+  /** Air's own scenes, whose contents are read on every refresh (drift: something removed in OBS). */
+  watchScenes(sceneNames: string[]) {
+    this.airScenes = sceneNames;
   }
 
   /** Slot scenes whose contents Air watches (to turn "Add your source" into the real name). */
@@ -181,6 +189,12 @@ export class ObsLink extends EventEmitter {
       const studioMode = !!studio?.studioModeEnabled;
       const preview = studioMode ? await call('GetCurrentPreviewScene') : null;
       const slots = await readSlots(socket, this.watched);
+      const present = new Set((scenes?.scenes ?? []).map((x: { sceneName: string }) => x.sceneName));
+      const items: Record<string, string[]> = {};
+      await Promise.all(this.airScenes.filter((n) => present.has(n)).map(async (n) => {
+        const list = await socket.call('GetSceneItemList', { sceneName: n }).catch(() => null);
+        if (list) items[n] = (list.sceneItems ?? []).map((i: { sourceName: string }) => i.sourceName);
+      }));
       this.update({
         programScene: scenes?.currentProgramSceneName ?? this.status.programScene,
         previewScene: studioMode ? preview?.currentPreviewSceneName ?? null : null,
@@ -195,6 +209,7 @@ export class ObsLink extends EventEmitter {
         // OBS answers 604 when its replay buffer is not configured; that reads as unavailable.
         replayBufferActive: replay ? !!replay.outputActive : null,
         slots,
+        items,
       });
     } catch {
       // A failed read keeps the last known status; ConnectionClosed reports real loss.

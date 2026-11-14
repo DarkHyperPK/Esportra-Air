@@ -22,6 +22,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The Rust parser is checked against fixtures recorded from the JS pipeline. A JS change that was
+      # not re-recorded fails here instead of drifting silently.
+      - name: Parser fixtures match the JS pipeline
+        run: node engine/fixtures/record.cjs --check
+
+      - name: HUD adapter test
+        working-directory: esportra-valorant-hud
+        run: node adapters/test-valorant.js
+
       - name: Rust toolchain
         run: rustup toolchain install stable --profile minimal && rustup default stable
 
@@ -32,10 +45,6 @@ jobs:
       - name: Engine release build
         working-directory: engine
         run: cargo build --release
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
       # The desktop tests load the Companion module, which has its own packages (ws, the Companion SDK).
       - name: Companion module tests

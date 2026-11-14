@@ -286,6 +286,8 @@ export interface Snapshot {
     replay: { bufferActive: boolean | null; busy: boolean };
     installed: boolean;
     missingScenes: string[];
+    /** Sources Air put in its own scenes that are no longer there (changed in OBS since). */
+    missingSources: string[];
     /** Why the last Add to OBS stopped, until it succeeds. */
     installError: string | null;
     scenes: SceneStatus[];

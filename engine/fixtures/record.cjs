@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Records golden parity fixtures from the existing JavaScript HUD pipeline.
 //
-//   node engine/fixtures/record.cjs
+//   node engine/fixtures/record.cjs           (re-record)
+//   node engine/fixtures/record.cjs --check   (CI: fail if the JS pipeline no longer gives the committed fixtures)
 //
 // Each fixture is NDJSON: a header line {fixture, initial}, then one line per step
 // {step, kind, t, input, events, state}. `state` is the full match state after the step,
@@ -13,6 +14,20 @@ const path = require('node:path');
 
 const HUD = path.resolve(__dirname, '../../esportra-valorant-hud');
 const OUT = __dirname;
+const CHECK = process.argv.includes('--check');
+const drift = [];
+/** Writes a fixture, or with --check compares it with the committed file (a JS change not re-recorded fails CI). */
+function out(file, content) {
+  if (!CHECK) return fs.writeFileSync(file, content);
+  // Line endings are ignored: a Windows checkout may turn them into CRLF.
+  const had = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : null;
+  if (had !== content) drift.push(path.relative(path.resolve(__dirname, '../..'), file));
+}
+process.on('exit', (code) => {
+  if (!CHECK || code !== 0) return;
+  if (drift.length) { console.error(`Fixtures differ from the JS pipeline (run node engine/fixtures/record.cjs and commit):\n  ${drift.join('\n  ')}`); process.exitCode = 1; }
+  else console.error('Fixtures match the JS pipeline.');
+});
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 // Same merge as server/server.js
@@ -29,7 +44,7 @@ const { createValorantAdapter } = adapterModule;
 function writeFixture(name, initial, steps) {
   const lines = [JSON.stringify({ fixture: name, initial })];
   for (const step of steps) lines.push(JSON.stringify(step));
-  fs.writeFileSync(path.join(OUT, name + '.ndjson'), lines.join('\n') + '\n');
+  out(path.join(OUT, name + '.ndjson'), lines.join('\n') + '\n');
   console.log(`${name}: ${steps.length} steps`);
 }
 
@@ -102,7 +117,7 @@ function exportTestRound(calls) {
     body: c.path.endsWith('/ingest/valorant') ? c.body : rebase(c.body),
   }));
   const file = path.resolve(__dirname, '../crates/air-engine/test-round.json');
-  fs.writeFileSync(file, JSON.stringify({ source: 'esportra-valorant-hud/tools/simulate-valorant.js --slow, rounds 1-3', steps }) + '\n');
+  out(file, JSON.stringify({ source: 'esportra-valorant-hud/tools/simulate-valorant.js --slow, rounds 1-3', steps }) + '\n');
   console.log(`test round: ${steps.length} steps, ${(steps.at(-1).at / 1000).toFixed(0)} s`);
 }
 
@@ -210,7 +225,7 @@ function recordEdgeCases() {
 // The engine embeds the HUD's default states; they are JavaScript files, so export them as JSON.
 function exportDefaults() {
   const file = path.resolve(__dirname, '../crates/air-engine/defaults.json');
-  fs.writeFileSync(file, JSON.stringify({ default: DEFAULT, clean: CLEAN }, null, 1) + '\n');
+  out(file, JSON.stringify({ default: DEFAULT, clean: CLEAN }, null, 1) + '\n');
   console.log('defaults: crates/air-engine/defaults.json');
 }
 

@@ -230,6 +230,7 @@ export class Production extends EventEmitter {
     if (deps.store.data.control && deps.store.data.control !== 'air') deps.store.data.control = 'air';
     void this.companion.sync();
     deps.obs.watchSlots(SCENE_KEYS.flatMap((key) => SCENES[key].slots.map((slot) => slot.scene)));
+    deps.obs.watchScenes(SCENE_KEYS.map((key) => SCENES[key].name));
     deps.capture.on('change', changed);
     // The Capture page's sparklines move once a second while data is flowing.
     const tick = setInterval(() => deps.capture.state === 'live' && this.emit('change'), 1000);
@@ -1931,7 +1932,14 @@ export class Production extends EventEmitter {
     });
     const wanted = SCENE_KEYS.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.filter((slot) => this.slotWanted(slot.id)).map((slot) => slot.scene)]);
     const missingScenes = wanted.filter((n) => !obs.status.scenes.includes(n));
-    const installed = obs.status.state === 'connected' && missingScenes.length === 0;
+    // Drift: a source Air put in one of its scenes that is no longer there (deleted or renamed in OBS).
+    const missingSources = obs.status.state === 'connected' ? this.buildPlan().flatMap((scene) => {
+      const have = obs.status.items?.[scene.name];
+      if (!have) return [];
+      const want = [...scene.sources.map((x) => x.inputName), ...scene.slots.map((x) => x.sceneName)];
+      return want.filter((n) => !have.includes(n));
+    }) : [];
+    const installed = obs.status.state === 'connected' && missingScenes.length === 0 && missingSources.length === 0;
     const sceneStatus: SceneStatus[] = SCENE_KEYS.map((k) => ({
       key: k,
       name: SCENES[k].name,
@@ -1961,7 +1969,7 @@ export class Production extends EventEmitter {
         studioMode: obs.status.studioMode, programScene: obs.status.programScene, previewScene: obs.status.previewScene,
         transitions: obs.status.transitions.map((t) => ({ name: t.name, kind: t.kind })), transitionActive: obs.status.transitionActive,
         replay: { bufferActive: obs.status.replayBufferActive, busy: false },
-        installed, missingScenes, installError: installed ? null : this.installError, scenes: sceneStatus, sceneNames: obs.status.scenes, videoInputs: obs.status.videoInputs,
+        installed, missingScenes, missingSources, installError: installed ? null : this.installError, scenes: sceneStatus, sceneNames: obs.status.scenes, videoInputs: obs.status.videoInputs,
       },
       outputs,
       testRound: { running: roomStatus?.testRound.running ?? false, startedAt: roomStatus?.testRound.startedAt ?? null, durationMs: roomStatus?.testRound.durationMs ?? 0, speed: roomStatus?.testRound.speed ?? 1, fromMs: roomStatus?.testRound.fromMs ?? 0 },
@@ -2045,7 +2053,7 @@ export function checks(s: Snapshot): CheckItem[] {
     s.obs.installed
       ? { id: 'scenes', title: 'Scenes', detail: `${s.outputs.length} Esportra scenes are in your OBS collection.`, health: 'ok' }
       : s.obs.state === 'connected'
-        ? { id: 'scenes', title: 'Scenes', detail: s.obs.installError ? `Adding them stopped: ${s.obs.installError}` : `Not in OBS yet: ${s.obs.missingScenes.join(', ')}.`, health: s.obs.installError ? 'bad' : 'warn', action: { id: 'install-graphics', label: s.obs.installError ? 'Try again' : 'Add for me' } }
+        ? { id: 'scenes', title: 'Scenes', detail: s.obs.installError ? `Adding them stopped: ${s.obs.installError}` : s.obs.missingScenes.length ? `Not in OBS yet: ${s.obs.missingScenes.join(', ')}.` : `OBS changed since Air added its scenes: ${s.obs.missingSources.slice(0, 4).join(', ')}${s.obs.missingSources.length > 4 ? ' and more' : ''} missing. Rebuild puts them back without touching your own sources.`, health: s.obs.installError ? 'bad' : 'warn', action: { id: 'install-graphics', label: s.obs.installError ? 'Try again' : s.obs.missingScenes.length ? 'Add for me' : 'Rebuild' } }
         : { id: 'scenes', title: 'Scenes', detail: 'Shown once OBS is connected.', health: 'off' },
   );
   const loading = s.outputs.filter((o) => o.connections > 0).length;
