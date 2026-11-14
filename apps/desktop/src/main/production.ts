@@ -187,6 +187,8 @@ export class Production extends EventEmitter {
     deps.engine.on('status', () => void this.readRoom());
     // A restarted engine has the saved state; re-send outputs and context so nothing drifts.
     deps.engine.on('restarted', () => {
+      // Game events follow at once: the event stream reconnects now, not at its next retry.
+      this.log?.reconnect();
       this.noteRecovery();
       void this.syncEngine().catch(() => {});
     });

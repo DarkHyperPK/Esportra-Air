@@ -108,6 +108,15 @@ export class EventLog {
     socket?.close();
   }
 
+  /** The engine is back after a restart: reconnect now instead of waiting for the next retry, so no game event is missed. */
+  reconnect() {
+    const url = this.url;
+    if (!url) return;
+    this.close();
+    this.url = url;
+    this.connect();
+  }
+
   stop() {
     this.url = null;
     this.close();
