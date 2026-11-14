@@ -13,6 +13,7 @@ export interface ApiContext {
   copy: (text: string) => void;
   /** Saves the manual as a PDF where the producer chooses (the app), or next to the dev data (dev host). */
   saveManualPdf?: () => Promise<string | null>;
+  pickVideo?: () => Promise<string | null>;
 }
 
 export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void> {
@@ -24,7 +25,14 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'selectMatch': await p.selectMatch(String(a[0])); break;
     case 'librarySeed': await p.librarySeed(); break;
     case 'libraryPlay': await p.libraryPlay(a[0] === true); break;
-    case 'artDownload': await p.art.download(); break;
+    case 'artDownload': {
+      await p.art.download();
+      const a = p.art.status;
+      const missing = a.total - a.have - a.unavailable.length;
+      // The button says how it went, not only the check: nothing happening looked like a broken button.
+      if (missing > 0) throw new Error(`${missing} picture${missing === 1 ? ' is' : 's are'} still missing. ${a.lastError ?? 'Riot’s picture server could not be reached.'}`);
+      break;
+    }
     case 'autopilotRestart': p.autopilotRestart(); break;
     case 'recoveryDismiss': p.dismissRecovery(); break;
     case 'rehearsalStart': await p.rehearsal.start(a[0] && typeof a[0] === 'object' ? a[0] : {}); break;
@@ -39,6 +47,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'setGlobalKeys': p.setGlobalKeys(a[0] === true); break;
     case 'holdGlobalKeys': p.holdGlobalKeys(a[0] === true); break;
     case 'saveManualPdf': return ctx.saveManualPdf ? ctx.saveManualPdf() : null;
+    case 'pickVideo': return ctx.pickVideo ? ctx.pickVideo() : null;
     case 'chooseGame': await p.chooseGame(String(a[0]) as GameId); break;
     case 'chooseProfile': await p.chooseProfile(String(a[0]) as Profile); break;
     case 'finishOnboarding': await p.finishOnboarding(); break;

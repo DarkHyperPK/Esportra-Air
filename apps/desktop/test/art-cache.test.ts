@@ -87,3 +87,21 @@ test('a picture the art server does not have (404) is named, counted apart and n
     server.close();
   }
 });
+
+test('map splash pictures of about 7 MB are downloaded (they were refused at 5 MB)', async () => {
+  const big = Buffer.concat([PNG, Buffer.alloc(7_100_000)]);
+  const server = createServer((_req, res) => res.writeHead(200, { 'content-type': 'image/png' }).end(big));
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const dir = mkdtempSync(join(tmpdir(), 'air-art-'));
+  const catalogue = join(dir, 'catalog.js');
+  writeFileSync(catalogue, `window.VCAT=${JSON.stringify({ m: `https://media.valorant-api.com/maps/${A}/splash.png` })};`);
+  const cache = new ArtCache({ catalogue, dir: join(dir, 'art'), origin: `http://127.0.0.1:${(server.address() as { port: number }).port}/` });
+  try {
+    await cache.download();
+    assert.deepEqual([cache.status.have, cache.status.total, cache.status.lastError], [1, 1, null]);
+    assert.ok(existsSync(join(dir, 'art', 'maps', A, 'splash.png')));
+  } finally {
+    cache.stop();
+    server.close();
+  }
+});

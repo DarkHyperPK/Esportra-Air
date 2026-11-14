@@ -10,7 +10,8 @@ import { dirname, join } from 'node:path';
 export const ART_ORIGIN = 'https://media.valorant-api.com/';
 const PATH = /^((agents|weapons|maps|gear)\/[0-9a-f-]{36}|agents\/[0-9a-f-]{36}\/abilities\/[a-z0-9]{1,16})\/[a-z]{1,32}\.png$/;
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const MAX_BYTES = 5_000_000;
+// Map splash pictures are up to about 7 MB; the cap only guards against something that is not a picture.
+const MAX_BYTES = 20_000_000;
 
 export interface ArtStatus {
   total: number;
@@ -133,9 +134,9 @@ export class ArtCache extends EventEmitter {
     if (res.status === 404) throw new NotOnServer(path);
     if (!res.ok) throw new Error(`The art server answered ${res.status}.`);
     if (!/^image\/png\b/i.test(res.headers.get('content-type') ?? '')) throw new Error('The art server sent something that is not a PNG.');
-    if (Number(res.headers.get('content-length') ?? 0) > MAX_BYTES) throw new Error('A picture was larger than 5 MB.');
+    if (Number(res.headers.get('content-length') ?? 0) > MAX_BYTES) throw new Error('A picture was larger than 20 MB.');
     const bytes = Buffer.from(await res.arrayBuffer());
-    if (bytes.length > MAX_BYTES) throw new Error('A picture was larger than 5 MB.');
+    if (bytes.length > MAX_BYTES) throw new Error('A picture was larger than 20 MB.');
     if (!bytes.subarray(0, 8).equals(PNG)) throw new Error('The art server sent something that is not a PNG.');
     const file = join(this.o.dir, path);
     await mkdir(dirname(file), { recursive: true });

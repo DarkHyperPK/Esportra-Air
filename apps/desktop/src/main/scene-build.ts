@@ -115,7 +115,17 @@ export async function buildScenes(options: { socket: ObsSocket; scenes: BuildSce
     }
   }
 
-  // Preflight every collision before creating anything.
+  // Preflight every collision before creating anything. OBS keeps scenes and inputs in one list of
+  // names, so a scene can't take an input's name and an input can't take a scene's.
+  const planned = new Set(options.scenes.flatMap((scene) => [scene.name, ...scene.slots.map((slot) => slot.sceneName)]));
+  for (const name of planned) {
+    if (!existing.has(name) && inputs.has(name)) throw new Error(`OBS already has a source called “${name}”. Rename it in OBS, then add the scenes again.`);
+  }
+  for (const scene of options.scenes) {
+    for (const source of scene.sources) {
+      if (planned.has(source.inputName) || existing.has(source.inputName)) throw new Error(`The graphic “${source.inputName}” has the same name as a scene. Rename that scene in OBS.`);
+    }
+  }
   for (const scene of options.scenes) {
     if (existing.has(scene.name) && !owned.scenes[scene.name]) throw new Error(`OBS already has a scene called “${scene.name}” that Air did not create. Rename it in OBS.`);
     for (const slot of scene.slots) {

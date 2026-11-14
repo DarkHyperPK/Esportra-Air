@@ -11,7 +11,7 @@ import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from '../../../../packages/capture/src/gep.ts';
 import type { ObsLink } from './obs.ts';
 import type { BuildScene, BuildSlot } from './scene-build.ts';
-import { SCENE_KEYS, SCENES, legacySourceName, sourceName, type SlotId } from '../shared/scenes.ts';
+import { SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, sourceName, type SlotId } from '../shared/scenes.ts';
 import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
@@ -1094,7 +1094,7 @@ export class Production extends EventEmitter {
         sources: [
           ...this.setup.screens
             .filter((x) => x.scene === key && x.enabled && !x.hosted)
-            .map((x) => ({ id: x.id, inputName: sourceName(x.title), formerly: legacySourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
+            .map((x) => ({ id: x.id, inputName: graphicSourceName(x.title), formerly: legacySourceName(x.title), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })),
           // Full-screen graphics also cover the game: Take shows them without switching OBS scenes.
           ...(key === 'gameplay' ? this.setup.screens.filter((x) => x.id === 'fullscreen' && x.enabled).map((x) => ({ id: 'fullscreen-over-game', inputName: sourceName('Full screen over game'), formerly: legacySourceName('Full screen over game'), url: `http://127.0.0.1:${port}/o/${x.outputId}`, frame: x.frame, enabled: true })) : []),
           // Over-the-game graphics also sit over the desk cameras (as bands over a stage shot).
@@ -1105,13 +1105,25 @@ export class Production extends EventEmitter {
     });
   }
 
+  /** Why the last Add to OBS failed, until one succeeds (shown on the Scenes check, not only as a toast). */
+  private installError: string | null = null;
+
   async installGraphics() {
     const data = this.deps.store.data;
-    await this.deps.obs.build(this.buildPlan(), data.owned, (owned) => {
-      data.owned = owned;
-      this.deps.store.save();
-    });
-    this.emit('change');
+    try {
+      await this.deps.obs.build(this.buildPlan(), data.owned, (owned) => {
+        data.owned = owned;
+        this.deps.store.save();
+      });
+      this.installError = null;
+    } catch (error) {
+      const text = String((error as Error)?.message ?? error);
+      this.installError = text;
+      this.log.add(`OBS scenes not added · ${text}`);
+      throw error;
+    } finally {
+      this.emit('change');
+    }
   }
 
   async useSlotSource(slot: SlotId, source: string) {
@@ -1823,7 +1835,7 @@ export class Production extends EventEmitter {
         studioMode: obs.status.studioMode, programScene: obs.status.programScene, previewScene: obs.status.previewScene,
         transitions: obs.status.transitions.map((t) => ({ name: t.name, kind: t.kind })), transitionActive: obs.status.transitionActive,
         replay: { bufferActive: obs.status.replayBufferActive, busy: false },
-        installed, missingScenes, scenes: sceneStatus, sceneNames: obs.status.scenes, videoInputs: obs.status.videoInputs,
+        installed, missingScenes, installError: installed ? null : this.installError, scenes: sceneStatus, sceneNames: obs.status.scenes, videoInputs: obs.status.videoInputs,
       },
       outputs,
       testRound: { running: roomStatus?.testRound.running ?? false, startedAt: roomStatus?.testRound.startedAt ?? null, durationMs: roomStatus?.testRound.durationMs ?? 0, speed: roomStatus?.testRound.speed ?? 1, fromMs: roomStatus?.testRound.fromMs ?? 0 },
@@ -1866,7 +1878,7 @@ function artCheck(a: ArtStatus): CheckItem {
   const missing = a.total - a.have - gone;
   if (missing <= 0) return { id: 'art', title, detail: `${a.have} of ${a.total} agent, weapon and map pictures are on this PC. Graphics show them without internet.${names}`, health: gone ? 'warn' : 'ok' };
   if (a.downloading) return { id: 'art', title, detail: `Downloading pictures to this PC: ${a.have} of ${a.total}…`, health: 'off' };
-  return { id: 'art', title, detail: `${missing} of ${a.total} pictures are not on this PC yet. The picture download could not reach Riot’s picture server; Air tries again every minute.${names}`, health: 'warn', action: { id: 'download-art', label: 'Download now' } };
+  return { id: 'art', title, detail: `${missing} of ${a.total} pictures are not on this PC yet. ${a.lastError ? `Last try: ${a.lastError}` : 'The picture download could not reach Riot’s picture server.'} Air tries again every minute.${names}`, health: 'warn', action: { id: 'download-art', label: 'Download now' } };
 }
 
 export function checks(s: Snapshot): CheckItem[] {
@@ -1905,7 +1917,7 @@ export function checks(s: Snapshot): CheckItem[] {
     s.obs.installed
       ? { id: 'scenes', title: 'Scenes', detail: `${s.outputs.length} Esportra scenes are in your OBS collection.`, health: 'ok' }
       : s.obs.state === 'connected'
-        ? { id: 'scenes', title: 'Scenes', detail: `Not in OBS yet: ${s.obs.missingScenes.join(', ')}.`, health: 'warn', action: { id: 'install-graphics', label: 'Add for me' } }
+        ? { id: 'scenes', title: 'Scenes', detail: s.obs.installError ? `Adding them stopped: ${s.obs.installError}` : `Not in OBS yet: ${s.obs.missingScenes.join(', ')}.`, health: s.obs.installError ? 'bad' : 'warn', action: { id: 'install-graphics', label: s.obs.installError ? 'Try again' : 'Add for me' } }
         : { id: 'scenes', title: 'Scenes', detail: 'Shown once OBS is connected.', health: 'off' },
   );
   const loading = s.outputs.filter((o) => o.connections > 0).length;

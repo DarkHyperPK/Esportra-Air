@@ -40,6 +40,10 @@ export class FakeObs extends EventEmitter implements ObsSocket {
     this.scenes.get(scene)!.push({ sceneItemId: this.nextId++, sourceName });
     this.emit('SceneItemCreated', { sceneName: scene, sourceName });
   }
+  /** Like OBS: scenes and inputs are all sources, so a name can be used once (error 601). */
+  private unique(name: string) {
+    if (this.scenes.has(name) || this.inputs.has(name)) throw Object.assign(new Error(`A source already exists by that name: ${name}`), { code: 601 });
+  }
   private item(scene: string, id: number) { return this.scenes.get(scene)!.find((i) => i.sceneItemId === id)!; }
 
   async call(request: string, data: any = {}): Promise<any> {
@@ -51,8 +55,9 @@ export class FakeObs extends EventEmitter implements ObsSocket {
       case 'GetSceneList': return { currentProgramSceneName: this.program, scenes: [...this.scenes.keys()].map((sceneName) => ({ sceneName })) };
       case 'GetSceneCollectionList': return { currentSceneCollectionName: 'Test collection', sceneCollections: ['Test collection'] };
       case 'GetInputList': return { inputs: [...this.inputs].map(([inputName, i]) => ({ inputName, inputKind: i.inputKind })) };
-      case 'CreateScene': this.scenes.set(data.sceneName, []); return {};
+      case 'CreateScene': this.unique(data.sceneName); this.scenes.set(data.sceneName, []); return {};
       case 'SetSceneName': {
+        this.unique(data.newSceneName);
         const items = this.scenes.get(data.sceneName)!;
         this.scenes.delete(data.sceneName);
         this.scenes.set(data.newSceneName, items);
@@ -61,12 +66,14 @@ export class FakeObs extends EventEmitter implements ObsSocket {
         return {};
       }
       case 'SetInputName': {
+        this.unique(data.newInputName);
         this.inputs.set(data.newInputName, this.inputs.get(data.inputName)!);
         this.inputs.delete(data.inputName);
         for (const list of this.scenes.values()) for (const i of list) if (i.sourceName === data.inputName) i.sourceName = data.newInputName;
         return {};
       }
       case 'CreateInput': {
+        this.unique(data.inputName);
         this.inputs.set(data.inputName, { inputKind: data.inputKind, settings: data.inputSettings });
         const sceneItemId = this.nextId++;
         this.scenes.get(data.sceneName)!.push({ sceneItemId, sourceName: data.inputName, enabled: data.sceneItemEnabled });

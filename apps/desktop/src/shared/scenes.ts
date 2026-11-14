@@ -61,6 +61,10 @@ export const SCENES: Record<SceneKey, SceneDef> = {
 
 export const sourceName = (title: string) => `${PREFIX}${title}`;
 export const legacySourceName = (title: string) => `${LEGACY_PREFIX}${title}`;
+/** Every scene name Air uses. OBS keeps scenes and sources in one list of names, so a source can't share one. */
+export const sceneNames = () => SCENE_KEYS.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.map((slot) => slot.scene)]);
+/** A graphic's browser source: its title, or "<title> graphics" where that would be a scene's name (Full screen). */
+export const graphicSourceName = (title: string) => (sceneNames().includes(sourceName(title)) ? sourceName(`${title} graphics`) : sourceName(title));
 /** True for anything Air named, now or before the rename. */
 export const isAirName = (name: string) => name.startsWith(PREFIX) || name.startsWith(LEGACY_PREFIX);
 /** The part after the prefix, for labels. */

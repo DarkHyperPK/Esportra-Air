@@ -112,7 +112,13 @@ export function SponsorEditor({ s, run, event, sponsor, close }: { s: Snapshot; 
       </div>
       <label className="field"><span>Read</span><input value={d.read} onChange={(e) => setD({ ...d, read: e.target.value })} maxLength={120} placeholder={`This match is brought to you by ${d.name || 'our sponsor'}.`} /></label>
       <span className="faint t-xs" style={{ marginTop: -8 }}>Shown under the logo in the sponsor slot and on the sponsor read lower third.</span>
-      <label className="field"><span>Video loop for breaks (optional)</span><input value={d.video} onChange={(e) => setD({ ...d, video: e.target.value })} maxLength={400} placeholder="C:\Sponsors\nova-loop.mp4" /></label>
+      <div className="field"><span>Video loop for breaks (optional)</span>
+        <div className="row" style={{ gap: 8 }}>
+          <input aria-label="Video loop for breaks" style={{ flex: 1, minWidth: 0 }} value={d.video} onChange={(e) => setD({ ...d, video: e.target.value })} maxLength={400} placeholder="C:\Sponsors\nova-loop.mp4" />
+          <button type="button" className="btn" onClick={() => void air.pickVideo().then((path) => { if (path) setD((x) => ({ ...x, video: path })); })}>Browse…</button>
+          {d.video && <button type="button" className="btn" onClick={() => setD((x) => ({ ...x, video: '' }))}>Remove</button>}
+        </div>
+      </div>
       <span className="faint t-xs" style={{ marginTop: -8 }}>A file on this PC. Air adds it to the break scene in OBS when you go live.</span>
     </EditorDrawer>
   );

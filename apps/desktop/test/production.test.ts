@@ -379,7 +379,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.equal(row('fs:series').mode, 'off');
     assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.airFullscreen, 'map-result');
     assert.equal(production.snapshot().obs.previewScene, previewBefore, 'no OBS scene change');
-    assert.deepEqual(obsServer.scenes.get('ESPORTRA · Full screen')!.map((i) => i.sourceName), ['ESPORTRA · Full screen'], 'one host source in the Full screen scene');
+    assert.deepEqual(obsServer.scenes.get('ESPORTRA · Full screen')!.map((i) => i.sourceName), ['ESPORTRA · Full screen graphics'], 'one host source in the Full screen scene, named apart from the scene (OBS keeps one list of names)');
     await production.setLayer('fs:series', 'on');
     assert.equal(row('fs:map-result').mode, 'off', 'one at a time');
     assert.equal(row('fs:series').mode, 'on');

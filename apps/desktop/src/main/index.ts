@@ -85,7 +85,12 @@ async function main() {
     }
     return target.filePath;
   };
-  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf };
+  // A sponsor's break loop: OBS plays the file from this PC, so Air keeps only its path.
+  const pickVideo = async () => {
+    const choice = await dialog.showOpenDialog(window!, { title: 'Choose the sponsor video', properties: ['openFile'], filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'flv', 'ts', 'm4v'] }] });
+    return choice.canceled ? null : choice.filePaths[0] ?? null;
+  };
+  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf, pickVideo };
 
   // Keys over the game (F-keys and Ctrl/Alt keys): a press runs the same call as inside Air.
   production.attachKeys(globalShortcut, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });

@@ -286,6 +286,8 @@ export interface Snapshot {
     replay: { bufferActive: boolean | null; busy: boolean };
     installed: boolean;
     missingScenes: string[];
+    /** Why the last Add to OBS stopped, until it succeeds. */
+    installError: string | null;
     scenes: SceneStatus[];
     /** Every scene in the OBS collection, for mapping segments to scenes. */
     sceneNames: string[];
@@ -426,6 +428,8 @@ export interface AirApi {
   holdGlobalKeys(listening: boolean): Promise<Snapshot>;
   /** Saves the manual as a PDF (the app asks where); resolves to where it went, or null if cancelled. */
   saveManualPdf(): Promise<string | null>;
+  /** Opens the system file picker for a video on this PC; its path, or null when cancelled. */
+  pickVideo(): Promise<string | null>;
   chooseProfile(profile: Profile): Promise<Snapshot>;
   finishOnboarding(): Promise<Snapshot>;
   restartOnboarding(): Promise<Snapshot>;
