@@ -37,6 +37,13 @@ jobs:
         with:
           node-version: 22
 
+      # The desktop tests load the Companion module, which has its own packages (ws, the Companion SDK).
+      - name: Companion module tests
+        working-directory: packages/companion-module
+        run: |
+          npm ci
+          npm test
+
       - name: Desktop tests
         working-directory: apps/desktop
         run: |

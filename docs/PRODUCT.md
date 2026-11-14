@@ -133,6 +133,8 @@ Outside the build: Overwolf app approval (developer account exists, app not yet 
 
 ### Stage 1 exit check (needs a Windows PC with Overwolf, Valorant and OBS)
 
+The full, current list is `docs/WINDOWS-CHECKS.md`; the Overwolf submission facts are in `docs/OVERWOLF-SUBMISSION.md`. The steps below are the original Stage 1 check.
+
 1. Install from the workflow's `esportra-air-windows` artifact and open Air.
 2. Create a quick match. Setup › OBS: connect, choose the game capture as gameplay source, Install graphics in OBS.
 3. Open each Air scene in OBS once; Check should show every check except Esportra as ready apart from the game feed.
