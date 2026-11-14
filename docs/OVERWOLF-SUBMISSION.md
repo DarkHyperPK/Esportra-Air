@@ -13,7 +13,7 @@ Both are ow-electron apps using one Overwolf package: `gep` (`"overwolf": { "pac
 
 - **Game:** Valorant only.
 - **Observer PC (Air, or Player in observer role):** GEP features `match_info`, `me` and `game_info` (`OBSERVER_FEATURES` in `packages/capture/src/gep.ts`).
-- **Player PC (Player in player role):** feature `me` only (`PLAYER_FEATURES`), i.e. that player's own data.
+- **Player PC (Player in player role):** features `me` and `match_info` (`PLAYER_FEATURES`). Only that player's own `me` data (health, abilities, player id) is sent. `match_info` is read on the PC only to find which player it is (the scoreboard line marked as the local player) when Riot is slow to send the player id; it never leaves the PC.
 - **What it is used for:** scores, rounds, sides, credits, the spike state, the players in the match, and the local player's health and abilities, all for on-screen graphics.
 - **What is not read or done:** no game memory is read or changed; there is no input automation, no overlay inside the game, and nothing that gives a player an advantage. Graphics are shown to viewers through OBS, not to players.
 

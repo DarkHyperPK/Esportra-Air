@@ -8,7 +8,9 @@ import { EventEmitter } from 'node:events';
 
 export const VALORANT_IDS = [21640, 22904] as const;
 const OBSERVER_FEATURES = ['match_info', 'me', 'game_info'];
-const PLAYER_FEATURES = ['me'];
+// A player PC also reads match_info, only to find which player it is from the scoreboard (backup for a
+// slow `me.player_id`). Match data is never sent from a player PC (PlayerSource.prepare).
+const PLAYER_FEATURES = ['me', 'match_info'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The parts of `app.overwolf.packages.gep` that Air uses. */
@@ -32,6 +34,25 @@ export const GAME_OPEN = 'Valorant is open on this PC. Nothing is read until you
 /** Shown on a player PC until Valorant reports which player it is. */
 export const WAITING_FOR_PLAYER = 'Reading Valorant. Waiting for the game to say which player you are: join the match on this PC.';
 
+const parse = (v: unknown) => {
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v); } catch { return null; }
+};
+
+/** The local player's Riot id from a scoreboard or roster entry (`is_local` / `local`), if this message has one. */
+export function localPlayer(message: any): string | null {
+  const entries: Array<[string, unknown]> = [];
+  if (typeof message?.key === 'string') entries.push([message.key, message.value ?? message.data]);
+  const info = message?.info?.match_info;
+  if (info && typeof info === 'object') entries.push(...(Object.entries(info) as Array<[string, unknown]>));
+  for (const [key, raw] of entries) {
+    if (!/^(scoreboard|roster)_\d+$/.test(key)) continue;
+    const v = parse(raw) as any;
+    if (v && (v.is_local === true || v.local === true) && typeof v.player_id === 'string' && UUID.test(v.player_id)) return v.player_id;
+  }
+  return null;
+}
+
 /** On a player PC, forwards only that player's own data, tagged with their Riot id (player-source.js). */
 export class PlayerSource {
   playerId: string;
@@ -50,9 +71,11 @@ export class PlayerSource {
     if (this.role !== 'player') return [message];
     const me = message?.info?.me;
     const key = message?.feature === 'me' || message?.category === 'me' ? message.key : null;
-    const identity = me?.player_id || (key === 'player_id' ? (message.data ?? message.value) : null);
+    // Riot's own `me.player_id` decides; the scoreboard's local player is the backup until it arrives.
+    const identity = me?.player_id || (key === 'player_id' ? (message.data ?? message.value) : null) || (this.playerId ? null : localPlayer(message));
     if (typeof identity === 'string' && UUID.test(identity)) this.playerId = identity;
-    if (!me && !key) return [];
+    // Anything else (the match as this player sees it) never leaves the PC; held data goes once identified.
+    if (!me && !key) return this.playerId ? this.flush() : [];
     // Only this player's own data leaves the PC. A full getInfo() also carries the player's own view of
     // the match (score, round), which must never reach the production PC.
     const packet = me ? { feature: 'me', info: { me } } : { ...message };
@@ -61,9 +84,13 @@ export class PlayerSource {
       this.pending.push({ at: this.now(), packet });
       return [];
     }
+    return [...this.flush(), { ...packet, playerId: this.playerId }];
+  }
+
+  private flush() {
     const pending = this.pending.filter((item) => this.now() - item.at < 60_000);
     this.pending = [];
-    return [...pending.map((item) => ({ ...item.packet, playerId: this.playerId })), { ...packet, playerId: this.playerId }];
+    return pending.map((item) => ({ ...item.packet, playerId: this.playerId }));
   }
 
   heartbeat() {

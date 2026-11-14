@@ -91,6 +91,28 @@ test('player PCs forward only their own data, tagged with their Riot id', () => 
   assert.throws(() => new PlayerSource('player', 'not-a-uuid'));
 });
 
+test('a player PC finds itself on the scoreboard when Riot is slow to send its id, and never sends the scoreboard', () => {
+  const source = new PlayerSource('player');
+  const id = '00000000-0000-4000-8000-000000000007';
+  const other = '00000000-0000-4000-8000-000000000002';
+  assert.deepEqual(source.prepare({ feature: 'me', key: 'health', value: '100' }), [], 'held: not identified yet');
+  assert.deepEqual(source.prepare({ feature: 'match_info', key: 'scoreboard_2', value: JSON.stringify({ player_id: other, is_local: false }) }), []);
+  assert.equal(source.playerId, '', 'another player on the scoreboard is not this PC');
+  // The local player's own scoreboard line identifies the PC; what was held goes out, the scoreboard does not.
+  const out = source.prepare({ feature: 'match_info', key: 'scoreboard_7', value: JSON.stringify({ player_id: id, is_local: true, money: 3900 }) });
+  assert.equal(source.playerId, id);
+  assert.deepEqual(out, [{ feature: 'me', key: 'health', value: '100', playerId: id }]);
+  // getInfo() shape and the roster's `local` work too; Riot's own id then always wins.
+  const roster = new PlayerSource('player');
+  roster.prepare({ info: { match_info: { roster_3: JSON.stringify({ player_id: other, local: true }) } } });
+  assert.equal(roster.playerId, other);
+  roster.prepare({ feature: 'me', info: { me: { player_id: id } } });
+  assert.equal(roster.playerId, id, 'me.player_id overrides the scoreboard');
+  roster.prepare({ feature: 'match_info', key: 'scoreboard_1', value: JSON.stringify({ player_id: other, is_local: true }) });
+  assert.equal(roster.playerId, id, 'and the scoreboard never overrides it');
+  for (const m of out) assert.equal(JSON.stringify(m).includes('scoreboard'), false);
+});
+
 test('a player PC is not shown as live until the game says which player it is', async () => {
   const { packages, gep } = fakeOverwolf();
   const sent: unknown[] = [];

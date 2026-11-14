@@ -115,7 +115,7 @@ test('a player PC with Esportra Player: joins, sends only its own player, surviv
     // With consent: only this player's own data, tagged with their Riot id, reaches the room.
     player.startCapture({ consent: true });
     await until(() => gep.features !== null, 'GEP switched on');
-    assert.deepEqual(gep.features, ['me'], 'a player PC asks Riot for its own player only');
+    assert.deepEqual(gep.features, ['me', 'match_info'], 'its own player, plus the scoreboard to find itself (never sent)');
     await until(async () => (await seatOf(1))?.hp === 64, 'health reaches the seat');
     const seat = await seatOf(1);
     assert.equal(seat.hpKnown, true);
@@ -129,6 +129,7 @@ test('a player PC with Esportra Player: joins, sends only its own player, surviv
 
     // Match data from the player PC is never sent at all: every message that left it is its own player.
     gep.report({ feature: 'match_info', key: 'match_score', value: '{"team_0":12,"team_1":0}' });
+    gep.report({ feature: 'match_info', key: 'scoreboard_1', value: JSON.stringify({ player_id: pid(1), is_local: true, money: 9000 }) });
     await new Promise((r) => setTimeout(r, 300));
     assert.ok(wire.length > 0);
     for (const m of wire as any[]) {
