@@ -52,6 +52,9 @@ async function main() {
       const shots = {}, errors = [];
       for (const [name, base] of Object.entries(bases)) {
         const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+        // The JS server points pictures at Riot's server; the engine at its own /art/ cache. Neither is
+        // part of what is compared, so pictures from Riot's server are blocked for both.
+        await page.route(/media\.valorant-api\.com/, (r) => r.abort());
         await page.clock.setFixedTime(FIXED_TIME);
         page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
         await page.goto(`${base}/overlays/${overlay}.html?match=${MATCH}&bg=1`, { waitUntil: 'networkidle' }).catch(() => {});
