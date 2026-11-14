@@ -1133,7 +1133,16 @@ export class Production extends EventEmitter {
 
   /** Changes go to the Cued column first (Take puts them on air), or straight on air. */
   private cueMode = true;
-  private pending: Array<{ key: string; label: string; actions: Array<{ name: string; args: Record<string, unknown> }> }> = [];
+  private cued: { matchId: string | null; changes: Array<{ key: string; label: string; actions: Array<{ name: string; args: Record<string, unknown> }> }> } = { matchId: null, changes: [] };
+  /** Cued changes belong to the match they were cued on; switching match drops them. */
+  private get pending() {
+    const id = this.deps.store.data.selectedMatchId ?? null;
+    if (this.cued.matchId !== id) this.cued = { matchId: id, changes: [] };
+    return this.cued.changes;
+  }
+  private set pending(changes) {
+    this.cued = { matchId: this.deps.store.data.selectedMatchId ?? null, changes };
+  }
   private cueTimer: ReturnType<typeof setTimeout> | null = null;
 
   private get cueRoom() {
@@ -1219,7 +1228,18 @@ export class Production extends EventEmitter {
       await this.act('stinger.play', {}, false);
       await new Promise((r) => setTimeout(r, 450));
     }
-    for (const change of changes) for (const a of change.actions) await this.act(a.name, a.args, false);
+    for (let i = 0; i < changes.length; i++) {
+      try {
+        for (const a of changes[i]!.actions) await this.act(a.name, a.args, false);
+      } catch (error) {
+        // What did not go on air stays cued, so the operator can Take again.
+        this.pending = [...changes.slice(i), ...this.pending];
+        this.roomV = -1;
+        await this.readRoom().catch(() => {});
+        this.emit('change');
+        throw error;
+      }
+    }
     this.roomV = -1;
     await this.readRoom();
     this.log.add(`${how === 'stinger' ? 'Stinger' : how === 'cut' ? 'Cut' : 'Take'} · ${changes.map((c) => c.label).join(', ')}`);

@@ -296,3 +296,32 @@ test('halftime is the 12th round played and a map end is a finished map, read fr
   assert.deepEqual([mapComplete([13, 11]), mapComplete([12, 10]), mapComplete([14, 12])], [true, false, true]);
   assert.deepEqual(withScores({ type: 'round.phase' }, [{ score: 1 }, { score: 2 }]), { type: 'round.phase' }, 'only rounds won and map ends carry scores');
 });
+
+test('a step that missed its moment does not block the rundown: the map end skips it and runs', async () => {
+  const { runner, clock, taken, logs, walkTo } = setup();
+  runner.start();
+  // Autopilot was started after halftime (or the data dropped at round 12): map 1 halftime waits in vain.
+  await walkTo('map1-half');
+  runner.onGameEvent({ type: 'round.won', scores: [9, 8] });
+  assert.equal(runner.view().next!.id, 'map1-half');
+  // Map 1 ends: halftime is skipped as missed, and the map result comes up as it should.
+  runner.onGameEvent({ type: 'match.end', scores: [13, 9] });
+  assert.ok(logs.some((l) => l.kind === 'skipped' && l.segment?.id === 'map1-half'), 'halftime is skipped, with a reason');
+  await clock.advance(10_000);
+  assert.ok(taken.includes('map1-result'), 'the map result still comes up');
+  // A map stopped early (a remake) skips nothing.
+  const fresh = setup();
+  fresh.runner.start();
+  await fresh.walkTo('map1-half');
+  fresh.runner.onGameEvent({ type: 'match.end', scores: [4, 2] });
+  assert.equal(fresh.runner.view().next!.id, 'map1-half', 'not a finished map: nothing is skipped');
+});
+
+test('a step waiting for Take is never skipped by the map end', async () => {
+  const { runner, walkTo } = setup();
+  runner.load(buildRundown(3).map((s) => (s.id === 'map1-half' ? { ...s, mode: 'manual' as const, trigger: 'manual' as const } : s)));
+  runner.start();
+  await walkTo('map1-half');
+  runner.onGameEvent({ type: 'match.end', scores: [13, 9] });
+  assert.equal(runner.view().next!.id, 'map1-half', 'the producer decides');
+});

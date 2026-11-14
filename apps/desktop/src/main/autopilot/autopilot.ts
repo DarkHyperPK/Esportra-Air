@@ -35,7 +35,7 @@ const describe = (entry: RunnerLog): string | null => {
   switch (entry.kind) {
     case 'armed': return `Autopilot armed · ${name}`;
     case 'held': return `Held by operator · ${name}`;
-    case 'skipped': return `Skipped · ${name}`;
+    case 'skipped': return `Skipped · ${name}${entry.message ? ` · ${entry.message}` : ''}`;
     case 'taken': return `Taken (${entry.actor === 'automation' ? 'automatic' : 'operator'}) · ${name}`;
     case 'on_air': return `On air · ${name}`;
     case 'paused': return `Autopilot paused · ${entry.message === 'tech' ? 'technical pause' : 'timeout'}`;

@@ -215,11 +215,29 @@ export class ShowRunner extends EventEmitter {
   /** Feeds a game event: an armed automatic segment whose trigger matches opens its hold window. */
   onGameEvent(event: GameEvent) {
     if (!this.canAutomate()) return;
+    if (triggerMatches('map_end', event)) this.skipMissed();
     const seg = this.segments.find((s) => s.state === 'armed');
     if (!seg || seg.mode !== 'automatic' || seg.trigger === 'manual' || seg.trigger === 'delay') return;
     if (seg.mapNumber != null && seg.mapNumber !== this.currentMap()) return;
     if (!triggerMatches(seg.trigger, event)) return;
     this.openHold(seg);
+  }
+
+  /**
+   * The map has ended: automatic steps of this map still waiting on a moment inside it (round live,
+   * halftime, a round end, the spike) missed it and would block the rundown, so they are skipped.
+   * Steps that wait for the producer's Take are left alone.
+   */
+  private skipMissed() {
+    const map = this.currentMap();
+    for (;;) {
+      const seg = this.segments.find((s) => s.state === 'armed');
+      if (!seg || seg.mode !== 'automatic' || !IN_MAP.has(seg.trigger) || (seg.mapNumber != null && seg.mapNumber !== map)) return;
+      seg.state = 'done';
+      this.log({ kind: 'skipped', segment: seg, message: 'the map ended first' });
+      this.armNext(this.segments.indexOf(seg));
+      this.change();
+    }
   }
 
   // ── operator controls ──
@@ -437,6 +455,9 @@ export class ShowRunner extends EventEmitter {
     this.emit('log', entry);
   }
 }
+
+/** Triggers that happen inside a map; once the map has ended they cannot come any more. */
+const IN_MAP = new Set<Segment['trigger']>(['match_start', 'round_live', 'halftime', 'round_end', 'spike_planted', 'spike_defused']);
 
 /** The two teams' rounds, when Air has read them from the room alongside the event. */
 const scoresOf = (event: GameEvent): [number, number] | null => {

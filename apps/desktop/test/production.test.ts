@@ -421,6 +421,17 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
       await engine.poll();
       await new Promise((r) => setTimeout(r, 100));
     }
+    production.stopCapture();
+    production.setCueMode(true);
+    // Cued changes belong to their match: switching match drops them, so a Take never lands on another match.
+    await production.toast('For this match only');
+    assert.deepEqual(production.snapshot().cue.pending, ['Toast · For this match only']);
+    await production.createQuickMatch({ teamA: 'Other', teamB: 'Side', bestOf: 1 });
+    assert.deepEqual(production.snapshot().cue.pending, [], 'nothing cued on the new match');
+    await production.selectMatch(match.id);
+    assert.deepEqual(production.snapshot().cue.pending, [], 'and nothing comes back on the old one');
+    await assert.rejects(production.takeCue('take'), /Nothing is cued/);
+    production.setCueMode(false);
     overlay.close();
   } finally {
     await obs.disconnect();
