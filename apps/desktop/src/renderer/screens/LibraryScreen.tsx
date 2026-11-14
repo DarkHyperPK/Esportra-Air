@@ -4,10 +4,13 @@ import { LIBRARY, inShow } from '../../shared/library.ts';
 import { PackWindow } from '../components/PackWindow.tsx';
 import { air } from '../bridge.ts';
 import { Preview, overlayUrl } from '../components/Preview.tsx';
-import type { PageProps } from '../App.tsx';
+import type { PageProps, Run } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
 import { GRAPHICS, graphicTitle, type BrandKit, type Template } from '../../shared/templates.ts';
 import { brandOfMatch, openTemplateEditor, templatePreviewUrl } from '../components/TemplateEditor.tsx';
+import { OwnGraphicEditor, blankOwn } from '../components/OwnGraphicEditor.tsx';
+import { OWN_PURPOSES, ownScreenId, type OwnGraphic } from '../../shared/own-graphics.ts';
+import { defaultSection } from '../../shared/autopilot.ts';
 
 /** A live thumbnail of a graphic with a template (or its default look). */
 export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit }) {
@@ -25,6 +28,43 @@ const GROUPS: Array<[string, string, (g: string) => boolean]> = [
 ];
 
 /** Graphics › Templates: your saved looks by graphic, the built-in looks to start from, and New template. */
+/** Graphics › Your graphics: designs from Photoshop with data boxes (approved mock, 14 Nov). */
+function OwnTab({ s, run }: { s: Snapshot; run: Run }) {
+  const [editing, setEditing] = useState<OwnGraphic | null>(null);
+  const [sure, setSure] = useState<string | null>(null);
+  const purpose = (id: string) => OWN_PURPOSES.find(([p]) => p === id)?.[1] ?? id;
+  const inRundown = (id: string) => s.rundown.some((r) => r.show === ownScreenId(id));
+  return (
+    <div className="stack" style={{ gap: 22 }}>
+      <div className="between">
+        <p className="muted t-sm" style={{ maxWidth: '72ch' }}>Design in Photoshop as you do now, export the finished graphic as a PNG, and place data boxes where the names, scores and stats go. Air fills them from the game, Esportra and what you keep in Air, and plays them like any built-in screen.</p>
+        <button className="btn primary" onClick={() => setEditing(blankOwn())}>+ Import a design</button>
+      </div>
+      {s.ownGraphics.length === 0
+        ? <div className="empty own-empty"><b>No graphics of your own yet</b><span className="muted t-sm">Import a 1920 × 1080 PNG to start.</span></div>
+        : <div className="tpl-grid">
+            {s.ownGraphics.map((g) => (
+              <div key={g.id} className="card tpl-card">
+                <Preview src={overlayUrl(s, 'own', { own: g.id })} label={g.name} />
+                <div className="tpl-meta">
+                  <span className="between"><b>{g.name}</b>{inRundown(g.id) && <span className="tally ready">In this match</span>}</span>
+                  <span className="faint t-xs">{purpose(g.purpose)} · {g.boxes.length} box{g.boxes.length === 1 ? '' : 'es'}</span>
+                  <span className="row-gap" style={{ flexWrap: 'wrap' }}>
+                    <button className="btn small" onClick={() => setEditing(g)}>Edit</button>
+                    {s.match && <button className="btn small" disabled={inRundown(g.id)} onClick={() => void run(() => air.rundownSave({ section: g.purpose === 'any' ? 'between' : defaultSection(g.purpose), show: ownScreenId(g.id), trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'stinger', holdMode: 'manual', holdSeconds: 0 }))}>Use in this match</button>}
+                    {sure === g.id
+                      ? <><button className="btn small danger-solid" onClick={() => { setSure(null); void run(() => air.ownDelete(g.id)); }}>Delete</button><button className="btn quiet small" onClick={() => setSure(null)}>Keep</button></>
+                      : <button className="btn quiet small danger" onClick={() => setSure(g.id)}>Delete</button>}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>}
+      {editing && <OwnGraphicEditor s={s} run={run} start={editing} close={() => setEditing(null)} />}
+    </div>
+  );
+}
+
 function TemplatesTab({ s }: { s: Snapshot }) {
   const [graphic, setGraphic] = useState('map-veto|band');
   const [show, setShow] = useState<'all' | 'builtin' | 'yours'>('all');
@@ -103,7 +143,7 @@ export function BannerStyles({ s, value, onPick }: { s: Snapshot; value: BannerT
 
 export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'library' | 'templates'>('library');
+  const [tab, setTab] = useState<'library' | 'templates' | 'own'>('library');
   const game = s.game;
   const items = LIBRARY[game?.id ?? 'valorant'];
   const chosen = items.filter((i) => inShow(s.setup, i)).length;
@@ -112,14 +152,15 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id, theme, s.match?.teams.map((t) => t.name + t.logo + t.color).join()]);
   return (
     <div className="stack" style={{ gap: 26 }}>
-      <PageHeader eyebrow={`Library · ${game?.name ?? 'no game chosen'}`} title={tab === 'library' ? 'Graphics packs' : 'Templates'}>
-        {tab === 'library' ? <>Every graphic Air can put on air, live {s.match ? <>with <b>{s.match.teams[0].name}</b> and <b>{s.match.teams[1].name}</b></> : 'with sample teams'}. Open a pack to choose what is in your show.</> : 'Your own looks for the graphics, used by the Rundown.'}
+      <PageHeader eyebrow={`Library · ${game?.name ?? 'no game chosen'}`} title={tab === 'library' ? 'Graphics packs' : tab === 'own' ? 'Your graphics' : 'Templates'}>
+        {tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : tab === 'library' ? <>Every graphic Air can put on air, live {s.match ? <>with <b>{s.match.teams[0].name}</b> and <b>{s.match.teams[1].name}</b></> : 'with sample teams'}. Open a pack to choose what is in your show.</> : 'Your own looks for the graphics, used by the Rundown.'}
       </PageHeader>
       <div className="seg tabs-seg" role="tablist" aria-label="Graphics">
         <button role="tab" aria-selected={tab === 'library'} aria-pressed={tab === 'library'} onClick={() => setTab('library')}>Library</button>
         <button role="tab" aria-selected={tab === 'templates'} aria-pressed={tab === 'templates'} onClick={() => setTab('templates')}>Templates{s.templates.length ? ` · ${s.templates.length}` : ''}</button>
+        <button role="tab" aria-selected={tab === 'own'} aria-pressed={tab === 'own'} onClick={() => setTab('own')}>Your graphics{s.ownGraphics.length ? ` · ${s.ownGraphics.length}` : ''}</button>
       </div>
-      {tab === 'templates' ? <TemplatesTab s={s} /> : <>
+      {tab === 'own' ? <OwnTab s={s} run={run} /> : tab === 'templates' ? <TemplatesTab s={s} /> : <>
       <div className="packs">
         <button className="pack-card" onClick={() => setOpen(true)} aria-label={`Open ${game?.pack ?? 'the'} pack`}>
           <Preview src={overlayUrl(s, 'ingame')} label={`${game?.pack ?? 'Graphics'} pack`} />

@@ -1036,15 +1036,20 @@
     let shown = null;
     // airFullscreenStyle 'band' shows the over-the-game version (core/bands.js) where there is one.
     const slot = key => {
-      if (!slots[key]) { const [id, style] = key.split('|'); const el = E('div', 'fs-slot', root); el.style.display = 'none'; slots[key] = { el, part: M[style === 'band' ? HUD.BANDS[id] : FULLSCREEN[id]](el) }; }
+      if (!slots[key]) { const [id, style] = key.split('|'); const el = E('div', 'fs-slot', root); el.style.display = 'none'; slots[key] = { el, part: style === 'own' ? M.ownslot(el, id.slice(4)) : M[style === 'band' ? HUD.BANDS[id] : FULLSCREEN[id]](el) }; }
       return slots[key];
     };
     return {
       update(s, opts) {
         const band = s.airFullscreenStyle === 'band' && HUD.BANDS && HUD.BANDS[s.airFullscreen] && M[HUD.BANDS[s.airFullscreen]];
-        const want = FULLSCREEN[s.airFullscreen] ? s.airFullscreen + (band ? '|band' : '|full') : null;
+        // The producer's own graphics (core/own.js) are `own:<id>`, defined in state.airOwn.
+        const own = typeof s.airFullscreen === 'string' && s.airFullscreen.startsWith('own:') && M.ownslot && HUD.OWN.find(s, s.airFullscreen.slice(4));
+        const want = own ? s.airFullscreen + '|own' : FULLSCREEN[s.airFullscreen] ? s.airFullscreen + (band ? '|band' : '|full') : null;
         if (want !== shown) {
-          if (shown) slots[shown].el.style.display = 'none';
+          // An own graphic plays its exit (fade or slide) before it is hidden.
+          if (shown && slots[shown].part.leave) { const was = shown; slots[was].part.leave(s, () => { if (shown !== was) slots[was].el.style.display = 'none'; }); }
+          else if (shown) slots[shown].el.style.display = 'none';
+          if (want && slots[want] && slots[want].part.play) slots[want].part.play(s);
           if (want) { const sl = slot(want); sl.el.style.display = ''; }
           shown = want;
           HUD.fsShown = shown ? { el: slots[shown].el, key: shown, fresh: true } : null;

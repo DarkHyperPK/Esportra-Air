@@ -16,7 +16,7 @@ export interface ApiContext {
   pickVideo?: () => Promise<string | null>;
 }
 
-export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void> {
+export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void | { id: string; name: string; url: string }> {
   const p = ctx.production;
   const a = args as any[];
   switch (method) {
@@ -67,6 +67,10 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'brandSave': await p.brandSave(String(a[0]), a[1] ?? {}); break;
     case 'templateSave': await p.templateSave(a[0]); break;
     case 'templateDelete': await p.templateDelete(String(a[0])); break;
+    case 'ownSave': await p.ownSave(a[0]); break;
+    case 'ownDelete': await p.ownDelete(String(a[0])); break;
+    case 'uploadArtwork': return p.uploadArtwork(String(a[0]));
+    case 'uploadFont': return p.uploadFont(String(a[0]), String(a[1] ?? ''));
     case 'saveTalent': await p.saveTalent(String(a[0]), (a[1] ?? {}) as TalentInput); break;
     case 'removeTalent': await p.removeTalent(String(a[0]), String(a[1])); break;
     case 'renewTalentLink': await p.renewTalentLink(String(a[0]), String(a[1])); break;

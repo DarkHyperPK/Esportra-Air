@@ -4,9 +4,9 @@ import { useState } from 'react';
 import type { BannerTheme, Snapshot } from '../../shared/api.ts';
 import type { Preset } from '../../shared/autopilot.ts';
 import { BANNER_THEMES } from '../../shared/api.ts';
-import { Preview, overlayUrl } from './Preview.tsx';
+import { Preview, screenUrl } from './Preview.tsx';
 
-export interface PickScreen { id: string; overlay: string; title: string; when: string }
+export interface PickScreen { id: string; overlay: string; title: string; when: string; yours?: boolean }
 
 export const SCREEN_GROUPS: Array<{ label: string; hint: string; screens: PickScreen[] }> = [
   { label: 'Before the match', hint: 'Starting soon, the intro, the veto and agent select', screens: [
@@ -62,7 +62,12 @@ export function ScreenPicker({ s, picked, onPick, point, onPoint, theme, onTheme
         </div>
         <span className="pick-sum"><b>{picked.length} screen{picked.length === 1 ? '' : 's'}</b> in this match · Rehearse plays them in show order</span>
       </div>
-      {SCREEN_GROUPS.map((g) => (
+      {SCREEN_GROUPS.map((g0) => {
+        // Your own graphics sit next to the built-in screen they stand for ("Anything": between maps).
+        const own = s.ownGraphics.filter((o) => (o.purpose === 'any' ? g0.label === 'Between maps' : g0.screens.some((x) => x.id === o.purpose)))
+          .map((o) => ({ id: `own:${o.id}`, overlay: 'own', title: o.name, when: o.purpose === 'any' ? 'On Take' : `Instead of ${g0.screens.find((x) => x.id === o.purpose)?.title ?? 'it'}`, yours: true }));
+        const g = { ...g0, screens: [...g0.screens, ...own] };
+        return (
         <section key={g.label} className="stack" style={{ gap: 10 }} aria-label={g.label}>
           <div className="pick-group"><h4>{g.label}</h4>{g.hint && <span className="faint t-sm">{g.hint}</span>}</div>
           <div className="pick-grid">
@@ -72,8 +77,9 @@ export function ScreenPicker({ s, picked, onPick, point, onPoint, theme, onTheme
               return (
                 <div key={x.id} className={`pick ${ticked ? 'on' : ''}`}>
                   <button type="button" className="pick-hit" role="checkbox" aria-checked={ticked} aria-label={x.title} disabled={fixed} onClick={() => toggle(x.id)}>
-                    <Preview src={overlayUrl(s, x.overlay)} label={x.title} />
+                    <Preview src={screenUrl(s, x.id, x.overlay)} label={x.title} />
                     <span className="pick-tick" aria-hidden>✓</span>
+                    {x.yours && <span className="pick-badge pick-yours">Yours</span>}
                     <span className="pick-meta"><b>{x.title}</b><span className="faint">{x.when}</span></span>
                   </button>
                   {fixed ? <span className="pick-badge">Always</span> : <button type="button" className="pick-eye" onClick={() => setBig(x)}>Preview</button>}
@@ -91,12 +97,13 @@ export function ScreenPicker({ s, picked, onPick, point, onPoint, theme, onTheme
             )}
           </div>
         </section>
-      ))}
+        );
+      })}
       {big && (
         <div className="pick-big" role="dialog" aria-label={`Preview: ${big.title}`} onClick={() => setBig(null)}>
           <div className="pick-big-in" onClick={(e) => e.stopPropagation()}>
             <div className="between"><b>{big.title}</b><button type="button" className="btn quiet small" onClick={() => setBig(null)}>Close</button></div>
-            <Preview src={overlayUrl(s, big.overlay)} label={big.title} />
+            <Preview src={screenUrl(s, big.id, big.overlay)} label={big.title} />
             <span className="faint t-sm">Sample data, with this match’s teams once it exists.</span>
           </div>
         </div>

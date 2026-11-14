@@ -8,7 +8,7 @@ import { HUD_ROW, rowTitle, takesItself, type RundownRow, type Segment } from '.
 import { BEATS, SPEEDS, type RehearsalOptions } from '../../shared/rehearsal.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
-import { Composite, Preview, overlayUrl } from './Preview.tsx';
+import { Composite, Preview, screenUrl } from './Preview.tsx';
 
 type ItemState = 'done' | 'now' | 'next' | '';
 
@@ -97,7 +97,7 @@ export function RehearsePanel({ s, run, focus = null }: { s: Snapshot; run: Run;
     <section className="rehearse2" aria-label="Rehearse">
       <div className="reh2-stage">
         <div className="reh2-screen">
-          {still ? <Preview src={r.room ? room(overlayOf(still)) : overlayUrl(s, overlayOf(still))} label={titleOf(still)} />
+          {still ? <Preview src={r.room ? room(overlayOf(still)) : screenUrl(s, still)} label={titleOf(still)} />
             : r.room ? <Composite srcs={[room('ingame'), room('fullscreen')]} label="Rehearsal preview" />
             : <div className="pv pv-bg reh-poster"><div><b>{s.match?.title ?? 'Your match'}</b><span>Press Play to watch it run through your screens.</span></div></div>}
           <span className="reh2-tag">Rehearsal · private · never in OBS</span>
@@ -131,7 +131,7 @@ export function RehearsePanel({ s, run, focus = null }: { s: Snapshot; run: Run;
             return (
               <li key={row.id}>
                 <button type="button" className={`reh2-item ${st}`} aria-current={st === 'now' ? 'step' : undefined} onClick={() => void show(row)}>
-                  <span className="reh2-th"><Preview src={overlayUrl(s, overlayOf(id))} label={rowTitle(row.show, row.section, titleOf)} /></span>
+                  <span className="reh2-th"><Preview src={screenUrl(s, id)} label={rowTitle(row.show, row.section, titleOf)} /></span>
                   <span><b>{rowTitle(row.show, row.section, titleOf)}</b><span>{label(row, st)}</span></span>
                 </button>
               </li>

@@ -8,7 +8,7 @@ import { HUD_ROW, PRESETS, SECTIONS, SECTION_LABEL, WHEN_LABEL, rowTitle, takesI
 import { SCENES } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
-import { Preview, overlayUrl } from './Preview.tsx';
+import { Preview, overlayUrl, screenUrl } from './Preview.tsx';
 import { lookOf } from '../../shared/look.ts';
 import { LookPicker } from './LookPicker.tsx';
 import { TemplateThumb } from '../screens/LibraryScreen.tsx';
@@ -99,7 +99,7 @@ export function Rundown({ s, run }: { s: Snapshot; run: Run }) {
                     <button className="btn quiet small" disabled={locked || i === 0} aria-label={`Move ${name} up`} onClick={() => void run(() => air.rundownMove(r.id, -1))}>↑</button>
                     <button className="btn quiet small" disabled={locked || i === list.length - 1} aria-label={`Move ${name} down`} onClick={() => void run(() => air.rundownMove(r.id, 1))}>↓</button>
                   </span>
-                  <span className="rd-thumb">{r.template && s.templates.some((t) => t.id === r.template) ? <TemplateThumb s={s} graphic={s.templates.find((t) => t.id === r.template)!.graphic} template={s.templates.find((t) => t.id === r.template)!} label={name} /> : ov ? <Preview src={overlayUrl(s, ov)} label={name} /> : <span className="sr-thumb">GAME</span>}</span>
+                  <span className="rd-thumb">{r.template && s.templates.some((t) => t.id === r.template) ? <TemplateThumb s={s} graphic={s.templates.find((t) => t.id === r.template)!.graphic} template={s.templates.find((t) => t.id === r.template)!} label={name} /> : ov && r.show ? <Preview src={screenUrl(s, r.show, ov)} label={name} /> : <span className="sr-thumb">GAME</span>}</span>
                   <span className="rd-name"><b>{name}</b><span className="muted t-sm">{comesUp(r)}</span></span>
                   <span className="row-gap">
                     {takesItself(r.show) && <button className="btn quiet small" disabled={locked} onClick={() => setEditing(r)} aria-label={`Edit ${name}`}>Edit</button>}

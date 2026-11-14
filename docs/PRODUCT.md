@@ -48,7 +48,7 @@ The work now is the core: finish it, polish it, test it and fix its bugs, with V
 | Results to Esportra | Map results sent for the organiser's review (backend: `/api/air/broadcast/packages/{id}/result-proposals` already exists) |
 | Sponsor proof of play | Time each sponsor was really on air, with a report (backend package events already accept sponsor timing) |
 | Other games | CS2 through GSI, PUBG Mobile's live data API, other stat tools, each as a game module |
-| Your own elements in templates | Text, image, shape, logo wall and data fields in templates; exit animations; your own fonts |
+| Your own elements in templates | Built in a lighter form (14 Nov): Your graphics, a finished design from Photoshop with data boxes from verified sources. Still parked: layered PSD import, repeating lists, conditions, drawing tools |
 | Remote and roles | Browser control on the LAN with roles; the Esportra relay for remote crew and observers |
 | Template packs | One file with templates, a brand kit and assets; packs shared in an Esportra organisation |
 | Deep live stats on Esportra | Kill-by-kill match stats from Air shown on Esportra, HLTV-style |

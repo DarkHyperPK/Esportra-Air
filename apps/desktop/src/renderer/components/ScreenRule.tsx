@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import { SECTION_LABEL, SECTION_SCREENS, WHEN, WHEN_LABEL, rowTitle, takesItself, type RowInput, type RowMap, type RundownRow, type Section, type When } from '../../shared/autopilot.ts';
-import { Preview, overlayUrl } from './Preview.tsx';
+import { Preview, overlayUrl, screenUrl } from './Preview.tsx';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { EditorDrawer } from './Editors.tsx';
@@ -36,7 +36,8 @@ function sentence(d: RowInput, title: string): string {
 export function ScreenRule({ s, run, row, section, close }: { s: Snapshot; run: Run; row: RundownRow | null; section?: Section; close: () => void }) {
   const sec: Section = row?.section ?? section ?? 'between';
   // Only the screens that go in this part of the show.
-  const allowed = SECTION_SCREENS[sec];
+  // Your own graphics go before, between or after the maps.
+  const allowed = sec === 'game' ? SECTION_SCREENS[sec] : [...SECTION_SCREENS[sec], ...s.setup.screens.filter((x) => x.id.startsWith('own:')).map((x) => x.id)];
   const screens = s.setup.screens.filter((x) => allowed.includes(x.id));
   const [d, setD] = useState<RowInput>(row ?? { ...BLANK, section: sec, show: allowed[0] ?? null });
   const set = (patch: Partial<RowInput>) => setD({ ...d, ...patch });
@@ -60,7 +61,7 @@ export function ScreenRule({ s, run, row, section, close }: { s: Snapshot; run: 
         <div className="sr-tiles" role="radiogroup" aria-label="Screen">
           {tiles.map(([id, name, overlay]) => (
             <button key={id ?? 'game'} type="button" role="radio" aria-checked={d.show === id} aria-label={name} className="sr-tile" onClick={() => set({ show: id })}>
-              <span className="sr-thumb" aria-hidden="true">{overlay ? <Preview src={overlayUrl(s, overlay)} label={name} /> : 'GAME'}</span>
+              <span className="sr-thumb" aria-hidden="true">{overlay && id ? <Preview src={screenUrl(s, id, overlay)} label={name} /> : 'GAME'}</span>
               <span>{name}</span>
             </button>
           ))}

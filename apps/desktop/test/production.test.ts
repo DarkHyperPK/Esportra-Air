@@ -1014,3 +1014,71 @@ test('a match finishes when a team wins the series, and then keeps the teams it 
     await engine.stop(true);
   }
 });
+
+/** A real PNG of a given size (all see-through), as Photoshop would export it. */
+async function blankPng(width: number, height: number) {
+  const { deflateSync, crc32 } = await import('node:zlib');
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body) >>> 0);
+    return Buffer.concat([len, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 6;
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+test('your own graphics: the design is kept as exported, its boxes reach the room, and it goes on air like Map result', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-own-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'own-graphic-test-key-0123456789', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const store = new Store(join(dir, 'air.json'));
+  const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
+  const { newBox } = await import('../src/shared/own-graphics.ts');
+  try {
+    await production.createQuickMatch({ teamA: 'Night Owls', teamB: 'Crimson Five', bestOf: 3 });
+    const code = production.match!.code;
+    // The design: only a 1920×1080 PNG, stored byte for byte.
+    const png = await blankPng(1920, 1080);
+    await assert.rejects(production.uploadArtwork(`data:image/png;base64,${(await blankPng(1280, 720)).toString('base64')}`), /1280 × 720\. Export it at 1920 × 1080/);
+    await assert.rejects(production.uploadArtwork('data:image/jpeg;base64,/9j/4AAQ'), /as a PNG/);
+    const image = await production.uploadArtwork(`data:image/png;base64,${png.toString('base64')}`);
+    const served = await fetch(`http://127.0.0.1:${port}${image}`);
+    assert.equal(served.headers.get('content-type'), 'image/png');
+    assert.ok(Buffer.from(await served.arrayBuffer()).equals(png), 'kept exactly as exported');
+    await assert.rejects(production.uploadFont(`data:text/html;base64,${Buffer.from('<html>').toString('base64')}`, 'x.woff2'), /not a font/);
+    const font = await production.uploadFont(`data:font/woff2;base64,${Buffer.from('wOF2\0\x01\0\0 a font').toString('base64')}`, 'Neon Grotesk Bold.woff2');
+    assert.equal(font.name, 'Neon Grotesk Bold');
+
+    const id = randomUUID();
+    await production.ownSave({ id, name: 'Neon Cup · Map result', purpose: 'map-result', style: 'full', image, fonts: [font], boxes: [{ ...newBox('team.1.score', 1180, 400, 'b'), font: 'Neon Grotesk Bold' }], enter: 'fade', exit: 'fade', createdAt: 1, updatedAt: 1 });
+    const room = async () => (await engine.client.get<any>(`/api/${code}`)).state;
+    assert.deepEqual((await room()).airOwn.map((g: { id: string }) => g.id), [id], 'its definition is in the room for the full-screen host');
+    assert.equal(production.sectionOf(`own:${id}`), 'between', 'it goes where Map result goes');
+    // Used in the match: a Rundown row, then on air through Take like any full-screen graphic.
+    production.rundownSave({ section: 'between', show: `own:${id}`, trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'cut', holdMode: 'manual', holdSeconds: 0 });
+    await production.syncEngine();
+    assert.ok(production.snapshot().layers.some((l) => l.id === `fs:own:${id}` && l.available), 'it is a graphic on Live');
+    await production.setLayer(`fs:own:${id}`, 'on');
+    await production.takeCue('cut');
+    assert.equal((await room()).airFullscreen, `own:${id}`);
+    assert.throws(() => production.rundownSave({ section: 'game', show: `own:${id}`, trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'cut', holdMode: 'manual', holdSeconds: 0 }), /does not go in this part/);
+    // It survives a restart of Air: the store brings it back as a screen.
+    production.log.stop();
+    const again = new Store(join(dir, 'air.json'));
+    assert.ok(again.data.setup.screens.some((x) => x.id === `own:${id}` && x.hosted), 'kept across restarts');
+    // Deleting it takes its rows with it.
+    await production.ownDelete(id);
+    assert.equal(production.snapshot().rundown.some((r) => r.show === `own:${id}`), false);
+    assert.deepEqual((await room()).airOwn, []);
+    assert.equal((await room()).airFullscreen ?? null, null, 'it was on screen: back to the game');
+  } finally {
+    production.log.stop();
+    await engine.stop(true);
+  }
+});

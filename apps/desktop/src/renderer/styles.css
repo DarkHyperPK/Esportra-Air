@@ -1085,3 +1085,40 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .reh2-item.next span span { color: var(--text-2); }
 .reh2-auto { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid var(--hair); font-size: 12.5px; color: var(--text-2); }
 @media (max-width: 1100px) { .rehearse2 { grid-template-columns: 1fr; } .reh2-list { max-height: none; } }
+
+/* Your own graphics (approved mock, 14 Nov) */
+.own-notice { margin: 0; padding: 8px 18px; background: rgba(244, 63, 94, 0.12); border-bottom: 1px solid rgba(244, 63, 94, 0.35); color: #fda4af; font-size: 12.5px; }
+.own-import { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 22px; padding: 22px 24px; }
+.own-drop { display: grid; place-items: center; aspect-ratio: 16 / 9; border: 1.5px dashed var(--hair-strong); border-radius: 14px; background: repeating-conic-gradient(#17171b 0 25%, #121216 0 50%) 0 0 / 24px 24px; cursor: pointer; overflow: hidden; }
+.own-drop.has { border-style: solid; }
+.own-drop img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.own-drop-in { display: grid; gap: 8px; text-align: center; padding: 24px; max-width: 46ch; }
+.own-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.own-checks .ok { color: var(--ok); }
+.own-checks .warn { color: var(--amber, #fbbf24); }
+.own-fields { overflow: auto; gap: 10px; }
+.own-field-list { display: grid; gap: 1px; }
+.own-field { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--text-2); font: 500 12.5px var(--font); text-align: left; cursor: grab; }
+.own-field:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.own-field i { font-style: normal; font-size: 10.5px; color: var(--text-3); }
+.own-field.used { color: var(--text); }
+.own-field.used span::before { content: '● '; color: #5b9dff; font-size: 9px; }
+.own-canvas .own-art { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.own-box { position: absolute; z-index: 2; border: 1.5px dashed rgba(91, 157, 255, 0.85); background: rgba(91, 157, 255, 0.08); cursor: move; touch-action: none; }
+.own-box > span { position: absolute; left: -1px; bottom: 100%; margin-bottom: 2px; padding: 1px 5px; border-radius: 3px; background: rgba(91, 157, 255, 0.9); color: #06101f; font: 700 9.5px var(--font); white-space: nowrap; pointer-events: none; }
+.own-box.quiet { background: transparent; border-color: rgba(91, 157, 255, 0.35); }
+.own-box.quiet > span { opacity: 0; }
+.own-box.on { border: 2px solid #5b9dff; background: rgba(91, 157, 255, 0.14); }
+.own-box.on > span { opacity: 1; background: #5b9dff; }
+.own-handle { position: absolute; right: -6px; bottom: -6px; width: 10px; height: 10px; background: #fff; border: 1.5px solid #5b9dff; cursor: nwse-resize; display: none; }
+.own-box.on .own-handle { display: block; }
+.own-swatches, .own-fonts { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.own-sw { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0; }
+.own-sw.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px #5b9dff; }
+.own-swatches input[type=color] { width: 26px; height: 22px; padding: 0; border: 0; background: none; }
+.own-empty { display: grid; gap: 6px; place-items: center; padding: 48px; border: 1px dashed var(--hair-strong); border-radius: 14px; }
+.pick-yours { left: auto; right: 36px; color: #5b9dff; border-color: rgba(91, 157, 255, 0.5); }
+@media (max-width: 1100px) { .own-import { grid-template-columns: 1fr; } }
+.own-ed .tpl-row input:not([type=color]), .own-ed .tpl-row select { width: 100%; min-width: 0; height: 30px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--hair-strong); background: #0e0e11; color: var(--text); font: 500 12.5px var(--font); }
+.own-ed .tpl-row input:focus, .own-ed .tpl-row select:focus { outline: 2px solid #5b9dff; outline-offset: 1px; }
+.own-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; width: 100%; }

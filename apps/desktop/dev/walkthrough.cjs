@@ -501,11 +501,45 @@ let failShot = async () => {};
   { const t = (await call('snapshot')).templates.find((x) => x.name === 'Cup HUD'); if (!t || t.graphic !== 'hud' || t.parts.scoreboard?.radius !== 14 || t.parts.scoreboard?.entrance?.kind !== 'fade') throw new Error('the HUD template was not saved as edited: ' + JSON.stringify(t)); }
   await hudEd.getByRole('button', { name: 'Esc · Close' }).click();
   await hudEd.waitFor({ state: 'detached' });
+  // Your own graphics (approved mock, 14 Nov): a design from Photoshop, data boxes on it, then used in the match.
+  const designFile = path.join(OUT, 'neon-cup-map-result.png');
+  { const art = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    await art.setContent('<body style="margin:0;background:transparent"><div style="position:absolute;left:260px;top:220px;width:1400px;height:520px;background:#1d0f2b;box-shadow:0 0 0 3px #ffb22e inset"></div><div style="position:absolute;left:260px;top:160px;width:520px;height:60px;background:#ffb22e"></div></body>');
+    await art.screenshot({ path: designFile, omitBackground: true });
+    await art.close(); }
+  await page.getByRole('tab', { name: /Your graphics/ }).click();
+  await btn('+ Import a design');
+  const own = page.getByRole('dialog', { name: /Your graphic/ });
+  await own.getByLabel('Design PNG').setInputFiles(designFile);
+  await own.getByRole('img', { name: 'Your design' }).waitFor();
+  await own.getByLabel('Graphic name').fill('Neon Cup · Map result');
+  await shot('own-import');
+  await own.getByRole('button', { name: 'Next: place the data' }).click();
+  for (const [field, x, y] of [['Team A name', 560, 510], ['Team B map score', 1000, 300], ['Map MVP K/D/A', 900, 600]]) {
+    await own.getByRole('button', { name: new RegExp(`^${field.replace('/', '\\/')}`) }).first().click();
+    await own.getByLabel('X', { exact: true }).fill(String(x));
+    await own.getByLabel('Y', { exact: true }).fill(String(y));
+  }
+  await own.getByLabel('Size').fill('120');
+  await shot('own-boxes');
+  await own.getByRole('button', { name: 'With data' }).click();
+  await page.waitForTimeout(2500);
+  await shot('own-with-data');
+  await own.getByRole('button', { name: 'Save', exact: true }).click();
+  await own.getByText('Saved', { exact: true }).waitFor();
+  { const snap = await call('snapshot'); const g = snap.ownGraphics.find((x) => x.name === 'Neon Cup · Map result');
+    if (!g || g.boxes.length !== 3 || !g.boxes.some((b) => b.field === 'mvp.kda' && b.size === 120 && b.x === 900)) throw new Error('the own graphic was not saved as placed: ' + JSON.stringify(g)); }
+  await own.getByRole('button', { name: 'Esc · Close' }).click();
+  await own.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Use in this match' }).first().click();
+  await page.getByText('In this match').first().waitFor();
+  await page.waitForTimeout(1500);
+  await shot('own-graphics');
   await step('Rundown');
   // Add a screen to Between maps with its own rule.
   await section('Between maps').getByRole('button', { name: 'Add screen' }).click();
   const addDrawer = page.getByRole('dialog', { name: 'Add to Between maps' });
-  await addDrawer.getByRole('radiogroup', { name: 'Screen' }).getByRole('radio', { name: /Map result/ }).click();
+  await addDrawer.getByRole('radiogroup', { name: 'Screen' }).getByRole('radio', { name: 'Map result', exact: true }).click();
   await addDrawer.getByRole('radiogroup', { name: 'When' }).getByRole('radio', { name: 'I press Take' }).click();
   await addDrawer.getByRole('radiogroup', { name: 'Map' }).getByRole('radio', { name: 'Map 2' }).click();
   await addDrawer.getByRole('radiogroup', { name: 'On screen' }).getByRole('radio', { name: '20 s' }).click();

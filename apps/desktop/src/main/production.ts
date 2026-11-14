@@ -23,7 +23,8 @@ import { gameName, gameOf, type GameId, type Profile } from '../shared/games.ts'
 import { LIBRARY_ROOM } from '../shared/library.ts';
 import { lookOf, validLook } from '../shared/look.ts';
 import { BRAND_KEYS, graphicStyle, validBrand, validTemplate, DEFAULT_BRAND, type BrandKit, type Template } from '../shared/templates.ts';
-import { HUD_ROW } from '../shared/autopilot.ts';
+import { isOwnScreen, ownScreen, ownScreenId, pngSize, validOwn, type OwnGraphic } from '../shared/own-graphics.ts';
+import { HUD_ROW, defaultSection, type Section } from '../shared/autopilot.ts';
 import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { Rehearsal } from './rehearsal.ts';
@@ -539,7 +540,7 @@ export class Production extends EventEmitter {
     const known = new Set(this.setup.screens.map((x) => x.id));
     if (input.screens !== undefined && (!Array.isArray(input.screens) || input.screens.some((x) => typeof x !== 'string' || !known.has(x)))) throw new Error('Choose screens from the list.');
     const preset = input.template ?? 'standard';
-    (data.rundown ??= {})[id] = { rows: input.screens ? rowsForScreens([...new Set(input.screens)], preset, input.bestOf) : presetRows(preset, input.bestOf), startedFrom: preset };
+    (data.rundown ??= {})[id] = { rows: input.screens ? rowsForScreens([...new Set(input.screens)], preset, input.bestOf, (show) => this.sectionOf(show)) : presetRows(preset, input.bestOf), startedFrom: preset };
     data.selectedMatchId = id;
     this.save();
     await this.syncEngine();
@@ -604,6 +605,88 @@ export class Production extends EventEmitter {
     const id = randomUUID();
     await this.client.putBytes(`/control/assets/${id}`, png);
     return `/air-assets/${id}`;
+  }
+
+  // ── your own graphics (approved mock, 14 Nov) ──
+
+  get ownGraphics(): OwnGraphic[] {
+    return this.deps.store.data.ownGraphics ?? [];
+  }
+
+  /** The design: a 1920×1080 PNG up to 8 MB, stored exactly as exported (never resized or recompressed). */
+  async uploadArtwork(dataUrl: string): Promise<string> {
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
+    if (!m) throw new Error('Export the design from Photoshop as a PNG.');
+    const raw = Buffer.from(m[1]!, 'base64');
+    if (raw.length > 8_000_000) throw new Error('The design is larger than 8 MB. Export it again with PNG compression on.');
+    const size = pngSize(raw);
+    if (!size) throw new Error('That file is not a PNG.');
+    if (size.width !== 1920 || size.height !== 1080) throw new Error(`The design is ${size.width} × ${size.height}. Export it at 1920 × 1080.`);
+    const id = randomUUID();
+    await this.client.putBytes(`/control/assets/${id}`, raw);
+    return `/air-assets/${id}`;
+  }
+
+  /** A font for the data boxes: WOFF2, WOFF, TTF or OTF, up to 2 MB. */
+  async uploadFont(dataUrl: string, name: string): Promise<{ id: string; name: string; url: string }> {
+    const m = /^data:[a-z0-9./+-]*;base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl));
+    if (!m) throw new Error('Choose a WOFF2, WOFF, TTF or OTF font file.');
+    const raw = Buffer.from(m[1]!, 'base64');
+    if (raw.length > 2_000_000) throw new Error('That font is larger than 2 MB.');
+    const head = raw.subarray(0, 4);
+    const ok = head.equals(Buffer.from('wOF2')) || head.equals(Buffer.from('wOFF')) || head.equals(Buffer.from([0, 1, 0, 0])) || head.equals(Buffer.from('OTTO'));
+    if (!ok) throw new Error('That file is not a font (WOFF2, WOFF, TTF or OTF).');
+    const clean = String(name ?? '').replace(/\.(woff2?|ttf|otf)$/i, '').replace(/[^A-Za-z0-9 _-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) || 'My font';
+    const id = randomUUID();
+    await this.client.putBytes(`/control/assets/${id}`, raw);
+    return { id, name: clean, url: `/air-assets/${id}` };
+  }
+
+  async ownSave(input: unknown) {
+    const g = validOwn(input);
+    const data = this.deps.store.data;
+    const list = data.ownGraphics ?? [];
+    const old = list.find((x) => x.id === g.id);
+    if (!old && list.length >= 100) throw new Error('Air keeps up to 100 of your own graphics. Delete some you no longer use.');
+    data.ownGraphics = old ? list.map((x) => (x.id === g.id ? { ...g, createdAt: old.createdAt } : x)) : [...list, g];
+    this.syncOwnScreens();
+    this.save();
+    if (this.match) await this.syncEngine();
+    // Previews (Graphics, Screens, Rundown) read the sample room, which needs the new design too.
+    await this.librarySeed().catch(() => {});
+  }
+
+  /** Deletes an own graphic; Rundown rows that showed it go too. */
+  async ownDelete(id: string) {
+    const data = this.deps.store.data;
+    if (!(data.ownGraphics ?? []).some((g) => g.id === id)) throw new Error('That graphic is already gone.');
+    if (this.room?.airFullscreen === ownScreenId(id) && this.gameLocked()) throw new Error('It is on air. Take it off before deleting it.');
+    data.ownGraphics = (data.ownGraphics ?? []).filter((g) => g.id !== id);
+    for (const saved of Object.values(data.rundown ?? {})) {
+      if (saved && Array.isArray(saved.rows)) saved.rows = saved.rows.filter((r) => r.show !== ownScreenId(id));
+    }
+    this.syncOwnScreens();
+    this.save();
+    this.autopilot.loadForMatch();
+    // On screen right now: back to the game, so nothing is left half shown.
+    if (this.match && this.room?.airFullscreen === ownScreenId(id)) await this.fullscreen(null, false, true);
+    if (this.match) await this.syncEngine();
+    await this.librarySeed().catch(() => {});
+  }
+
+  /** Where a screen goes in the Rundown; an own graphic goes where the screen it stands for goes. */
+  sectionOf(show: string): Section {
+    if (!isOwnScreen(show)) return defaultSection(show);
+    const g = this.ownGraphics.find((x) => ownScreenId(x.id) === show);
+    return g && g.purpose !== 'any' ? defaultSection(g.purpose) : 'between';
+  }
+
+  /** Each own graphic is a hosted screen of the setup, so Rundown, Live, keys and Companion treat it like Map result. */
+  private syncOwnScreens() {
+    const own = this.ownGraphics;
+    const keep = this.setup.screens.filter((x) => !isOwnScreen(x.id));
+    const old = new Map(this.setup.screens.filter((x) => isOwnScreen(x.id)).map((x) => [x.id, x]));
+    this.setup.screens = [...keep, ...own.map((g) => ownScreen(g, old.get(ownScreenId(g.id))?.enabled ?? false))];
   }
 
   async selectMatch(id: string) {
@@ -874,7 +957,7 @@ export class Production extends EventEmitter {
       const t = r.template && (r.show === 'holding' || r.show === 'casters') ? this.templates.find((x) => x.id === r.template && x.graphic.startsWith(`${r.show}|`)) : undefined;
       if (t) pages[t.graphic] = t.id;
     }
-    return { airTemplates: this.templates, airBrand: this.brandOf(match ? this.eventOf(match) : null), airHudTemplate: this.hudTemplate()?.id ?? null, airPageTemplates: pages };
+    return { airTemplates: this.templates, airBrand: this.brandOf(match ? this.eventOf(match) : null), airHudTemplate: this.hudTemplate()?.id ?? null, airPageTemplates: pages, airOwn: this.ownGraphics };
   }
 
   private requireEvent(id: string): EventInfo {
@@ -1763,7 +1846,9 @@ export class Production extends EventEmitter {
   private layerRows(): LayerRow[] {
     const { obs } = this.deps;
     const layers = this.room?.airLayers ?? {};
-    return LAYER_DEFS.map((def) => {
+    // Your own graphics are full-screen graphics on Live too (no default key; bind one in Settings › Keyboard).
+    const own = this.ownGraphics.map((g) => ({ id: `fs:${ownScreenId(g.id)}`, label: g.name, group: 'fullscreen' as const, hotkey: '' }));
+    return [...LAYER_DEFS, ...own].map((def) => {
       if (def.id.startsWith('fs:')) {
         const screen = this.setup.screens.find((x) => x.id === def.id.slice(3));
         const on = !!screen && this.room?.airFullscreen === screen.id;
@@ -1849,6 +1934,7 @@ export class Production extends EventEmitter {
       autopilot: this.autopilot.view(),
       rundown: this.autopilot.rows(),
       templates: this.templates,
+      ownGraphics: this.ownGraphics,
       templateUse: this.templateUse(),
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,

@@ -24,7 +24,8 @@ use crate::engine::{now_ms, Engine};
 use crate::AppState;
 
 const MAX_BODY: usize = 2_000_000;
-const MAX_ASSET: usize = 5_000_000;
+// Pictures (your own graphics are full 1920×1080 PNGs, up to 8 MB) and fonts for their data boxes.
+const MAX_ASSET: usize = 8_500_000;
 
 fn content_type(path: &str) -> &'static str {
     match path.rsplit('.').next().unwrap_or("") {
@@ -258,6 +259,25 @@ async fn art(engine: &Engine, method: &Method, segments: &[&str]) -> Response {
     }
 }
 
+/// What an uploaded asset is, from its first bytes: a PNG picture or a font. Anything else is refused.
+fn asset_kind(bytes: &[u8]) -> Option<(&'static str, &'static str)> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some(("png", "image/png"))
+    } else if bytes.starts_with(b"wOF2") {
+        Some(("woff2", "font/woff2"))
+    } else if bytes.starts_with(b"wOFF") {
+        Some(("woff", "font/woff"))
+    } else if bytes.starts_with(&[0, 1, 0, 0]) {
+        Some(("ttf", "font/ttf"))
+    } else if bytes.starts_with(b"OTTO") {
+        Some(("otf", "font/otf"))
+    } else {
+        None
+    }
+}
+
+const ASSET_TYPES: [(&str, &str); 5] = [("png", "image/png"), ("woff2", "font/woff2"), ("woff", "font/woff"), ("ttf", "font/ttf"), ("otf", "font/otf")];
+
 async fn asset(engine: &Engine, method: &Method, segments: &[&str]) -> Response {
     let valid = segments.len() == 2
         && uuid::Uuid::parse_str(segments[1]).is_ok()
@@ -265,18 +285,20 @@ async fn asset(engine: &Engine, method: &Method, segments: &[&str]) -> Response 
     if method != Method::GET || !valid {
         return status(StatusCode::NOT_FOUND);
     }
-    match tokio::fs::read(
-        engine
-            .data
-            .join("assets")
-            .join(format!("{}.png", segments[1].to_lowercase())),
-    )
-    .await
-    {
-        Ok(bytes) => {
+    let id = segments[1].to_lowercase();
+    let dir = engine.data.join("assets");
+    let mut found = None;
+    for (ext, mime) in ASSET_TYPES {
+        if let Ok(bytes) = tokio::fs::read(dir.join(format!("{id}.{ext}"))).await {
+            found = Some((bytes, mime));
+            break;
+        }
+    }
+    match found {
+        Some((bytes, mime)) => {
             let mut res = Body::from(bytes).into_response();
             let h = res.headers_mut();
-            h.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+            h.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
             h.insert(
                 header::CACHE_CONTROL,
                 HeaderValue::from_static("private, max-age=3600"),
@@ -287,7 +309,7 @@ async fn asset(engine: &Engine, method: &Method, segments: &[&str]) -> Response 
             );
             res
         }
-        Err(_) => status(StatusCode::NOT_FOUND),
+        None => status(StatusCode::NOT_FOUND),
     }
 }
 
@@ -681,14 +703,14 @@ async fn control(
                 Ok(b) => b,
                 Err(_) => return error(StatusCode::PAYLOAD_TOO_LARGE, "Image is too large."),
             };
-            if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-                return error(StatusCode::BAD_REQUEST, "Assets must be PNG images.");
-            }
+            let Some((ext, _)) = asset_kind(&bytes) else {
+                return error(StatusCode::BAD_REQUEST, "Assets must be PNG images or fonts (WOFF2, WOFF, TTF, OTF).");
+            };
             match tokio::fs::write(
                 engine
                     .data
                     .join("assets")
-                    .join(format!("{}.png", segments[2].to_lowercase())),
+                    .join(format!("{}.{ext}", segments[2].to_lowercase())),
                 &bytes,
             )
             .await

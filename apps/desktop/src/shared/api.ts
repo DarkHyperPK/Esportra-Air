@@ -314,6 +314,8 @@ export interface Snapshot {
   rundown: RundownRow[];
   /** Saved looks (Graphics › Templates). */
   templates: import('./templates.ts').Template[];
+  /** Your own graphics (Graphics › Your graphics). */
+  ownGraphics: import('./own-graphics.ts').OwnGraphic[];
   /** How many saved match rundowns use each template. */
   templateUse: Record<string, number>;
   /** Teams/Players. */
@@ -457,6 +459,13 @@ export interface AirApi {
   templateSave(template: import('./templates.ts').Template): Promise<Snapshot>;
   /** Deletes a template; Rundown rows that used it go back to the default look. */
   templateDelete(id: string): Promise<Snapshot>;
+  /** Your own graphics: save (new or changed) and delete. */
+  ownSave(graphic: import('./own-graphics.ts').OwnGraphic): Promise<Snapshot>;
+  ownDelete(id: string): Promise<Snapshot>;
+  /** Stores the design (a 1920×1080 PNG, kept as exported) and resolves to its URL on the engine. */
+  uploadArtwork(dataUrl: string): Promise<string>;
+  /** Stores a font for the data boxes. */
+  uploadFont(dataUrl: string, name: string): Promise<import('./own-graphics.ts').OwnFont>;
   /** Adds (no id) or changes a person on air. A camera link gets its id here. */
   saveTalent(eventId: string, input: TalentInput): Promise<Snapshot>;
   removeTalent(eventId: string, talentId: string): Promise<Snapshot>;

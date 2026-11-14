@@ -6,6 +6,7 @@
 
 import { BAND_SCREENS } from '../../shared/look.ts';
 import { graphicScreen, graphicStyle, type Template } from '../../shared/templates.ts';
+import { isOwnScreen } from '../../shared/own-graphics.ts';
 import { HUD_ROW, PRESETS, defaultSection, SECTIONS, SECTION_SCREENS, WHEN, takesItself, type Preset, type RowInput, type RundownRow, type Section, type Segment, type SegmentEdit } from '../../shared/autopilot.ts';
 
 export interface SavedRundown {
@@ -64,15 +65,15 @@ export function presetRows(preset: Preset, bestOf: 1 | 3 | 5): RundownRow[] {
  * has (with their rules), then each other ticked screen in its usual section, waiting for Take. Back to
  * the game comes along with any full-screen graphic; the HUD row only when the in-game HUD is ticked.
  */
-export function rowsForScreens(screens: string[], preset: Preset, bestOf: 1 | 3 | 5): RundownRow[] {
+export function rowsForScreens(screens: string[], preset: Preset, bestOf: 1 | 3 | 5, sectionOf: (show: string) => Section = defaultSection): RundownRow[] {
   const want = new Set(screens);
   const base = presetRows(preset === 'empty' ? 'standard' : preset, bestOf);
-  const anyFull = screens.some((x) => FULLSCREEN_IDS.has(x));
+  const anyFull = screens.some((x) => FULLSCREEN_IDS.has(x) || isOwnScreen(x));
   const rows = base.filter((r) => (r.show === null ? anyFull : want.has(r.show)));
   for (const show of screens) {
     if (rows.some((r) => r.show === show)) continue;
     if (show === HUD_ROW) { rows.push(hudRow()); continue; }
-    rows.push(row({ id: `pick-${show}`, show, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }));
+    rows.push(row({ id: `pick-${show.replace(/[^a-z0-9-]/gi, '-')}`, show, section: sectionOf(show), trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }));
   }
   return sortRows(rows);
 }
@@ -93,7 +94,8 @@ export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens
   const section = input.section;
   if (!(SECTIONS as readonly unknown[]).includes(section)) throw new Error('Choose Pre-show, Game, Between maps or Post-show.');
   if (input.show !== null && !(typeof input.show === 'string' && screens.includes(input.show))) throw new Error('Choose one of the screens.');
-  if (!SECTION_SCREENS[section].includes(input.show)) throw new Error('That screen does not go in this part of the show.');
+  // Your own graphics go before, between or after the maps (never in the game section).
+  if (isOwnScreen(input.show) ? section === 'game' : !SECTION_SCREENS[section].includes(input.show)) throw new Error('That screen does not go in this part of the show.');
   // A saved look: for this screen, or for the in-game HUD on the HUD row. Its graphic says full screen or over the game.
   let template: Template | undefined;
   if (input.template !== undefined && input.template !== null && input.template !== '') {

@@ -9,6 +9,12 @@ export function overlayUrl(s: Snapshot, overlay: string, extra: Record<string, s
   return `http://127.0.0.1:${s.engine.port}/overlays/${overlay}.html?${q}`;
 }
 
+/** The preview page for a screen of the setup; your own graphics are overlays/own.html?own=<id>. */
+export function screenUrl(s: Snapshot, screenId: string, overlay?: string | null) {
+  if (screenId.startsWith('own:')) return overlayUrl(s, 'own', { own: screenId.slice(4) });
+  return overlayUrl(s, overlay ?? s.setup.screens.find((x) => x.id === screenId)?.overlay ?? screenId);
+}
+
 export function Preview({ src, label, backdrop = true }: { src: string; label: string; backdrop?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.2);

@@ -119,6 +119,8 @@ pub fn run(room: &Arc<Room>, name: &str, args: &Value) -> Result<u64, String> {
             match &screen {
                 Value::Null => {}
                 Value::String(s) if FULLSCREEN.contains(&s.as_str()) => {}
+                // One of the producer's own graphics (state.airOwn), by its id.
+                Value::String(s) if s.strip_prefix("own:").is_some_and(|id| uuid::Uuid::parse_str(id).is_ok() && id.len() == 36) => {}
                 _ => return Err("Choose one of the full-screen graphics.".into()),
             }
             // "band" shows the over-the-game version (core/bands.js); anything else is full screen.

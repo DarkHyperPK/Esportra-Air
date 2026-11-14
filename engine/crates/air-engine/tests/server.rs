@@ -1370,3 +1370,29 @@ async fn credits_after_a_data_gap_are_a_baseline_not_a_spike_plant() {
         assert_eq!(planted, expect_plant, "{code}: a +300 after a {gap_ms} ms gap");
     }
 }
+
+/// A raw request with a binary body (the asset store takes picture and font bytes).
+async fn put_bytes(r: &Running, path: &str, bytes: &[u8]) -> u16 {
+    let mut stream = TcpStream::connect(r.addr).await.unwrap();
+    let head = format!("PUT {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nX-Esportra-Key: {KEY}\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n", bytes.len());
+    stream.write_all(head.as_bytes()).await.unwrap();
+    stream.write_all(bytes).await.unwrap();
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.unwrap();
+    String::from_utf8_lossy(&raw).split(' ').nth(1).unwrap().parse().unwrap()
+}
+
+#[tokio::test]
+async fn own_graphics_store_fonts_and_show_in_the_fullscreen_host() {
+    let r = engine(temp_dir()).await;
+    let font = "6f9619ff-8b86-4011-b42d-00c04fc964ff";
+    assert_eq!(put_bytes(&r, &format!("/control/assets/{font}"), b"wOF2\0\x01\0\0rest-of-a-font").await, 200);
+    let got = request(&r, "GET", &format!("/air-assets/{font}"), None, false).await;
+    assert_eq!(got.status, 200);
+    assert!(got.headers.to_ascii_lowercase().contains("content-type: font/woff2"), "{}", got.headers);
+    assert_eq!(put_bytes(&r, &format!("/control/assets/{font}"), b"<script>alert(1)</script>").await, 400, "only pictures and fonts");
+    let own = "own:2c1f5f4e-6a7b-4f3e-9d10-111122223333";
+    assert_eq!(action(&r, "OWN", "fullscreen.show", json!({ "screen": own })).await.status, 200);
+    assert_eq!(show(&r, "OWN").await["airFullscreen"], json!(own));
+    assert_eq!(action(&r, "OWN", "fullscreen.show", json!({ "screen": "own:../../etc" })).await.status, 400);
+}

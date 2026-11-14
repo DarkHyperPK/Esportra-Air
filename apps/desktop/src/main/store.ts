@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { ownScreen, ownScreenId } from '../shared/own-graphics.ts';
 import type { Match, Screen, Setup } from '../shared/api.ts';
 import { emptyOwned, type Owned } from './scene-build.ts';
 import type { SceneKey } from '../shared/scenes.ts';
@@ -43,6 +44,8 @@ export interface Saved {
   moments?: string[];
   /** Saved looks from Graphics › Templates. */
   templates?: import('../shared/templates.ts').Template[];
+  /** Your own graphics: imported designs with data boxes (Graphics › Your graphics). */
+  ownGraphics?: import('../shared/own-graphics.ts').OwnGraphic[];
   /** F-keys and Ctrl/Alt keys work over the game (absent: on). */
   globalKeys?: boolean;
   /** How this PC runs graphics: Air, Stream Deck / Companion, or both (absent: Air). */
@@ -141,6 +144,8 @@ export class Store {
       const old = known.get(def.id);
       return { ...def, hosted: def.hosted, outputId: /^[0-9a-f-]{36}$/i.test(old?.outputId ?? '') ? old!.outputId : randomUUID(), enabled: old?.enabled ?? def.enabled, frame: old?.frame ?? { ...def.frame }, title: old?.title ?? def.title };
     });
+    // Your own graphics are hosted screens too (shown by the full-screen host, never their own OBS source).
+    setup.screens.push(...(this.data.ownGraphics ?? []).map((g) => ownScreen(g, known.get(ownScreenId(g.id))?.enabled ?? false)));
     setup.obs = { host: setup.obs?.host ?? '127.0.0.1', port: setup.obs?.port ?? 4455, stinger: setup.obs?.stinger ?? null };
     if (!this.data.owned || typeof this.data.owned !== 'object' || !('scenes' in this.data.owned)) this.data.owned = emptyOwned();
     // Valorant draws its own killfeed, observer card and minimap; Air no longer offers them.
