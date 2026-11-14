@@ -240,7 +240,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
           ) : <span className="muted">Waiting for game data</span>}
           <span className="spacer" />
           <span><i className={`dot ${s.feed.state === 'live' ? 'ok' : 'off'}`} /> Game data {s.feed.state === 'live' ? age(s.feed.ageMs) : 'off'}</span>
-          {(s.setup.profile === 'player-pcs' || d.seats.some((x) => x.pc)) && <span><i className={`dot ${d.checkedIn === d.seats.length && d.seats.length ? 'ok' : 'warn'}`} /> Player PCs {d.checkedIn}/{d.seats.length}</span>}
+          {(s.setup.profile === 'player-pcs' || d.pcs.length > 0) && <span><i className={`dot ${d.fromGame ? (d.checkedIn === d.seats.length && d.seats.length ? 'ok' : 'warn') : d.pcs.length ? 'ok' : 'warn'}`} /> Player PCs {d.fromGame ? `${d.checkedIn}/${d.seats.length}` : `${d.pcs.length} detected`}</span>}
           <span><i className={`dot ${s.obs.state === 'connected' ? 'ok' : 'warn'}`} /> OBS</span>
           <button className="btn small" onClick={openFix}>Fix data <span className="kbd">{keyLabel(keyOf(s.keymap, 'fix'))}</span></button>
         </div>

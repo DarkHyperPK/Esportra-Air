@@ -26,8 +26,24 @@ export interface UnseatedPc {
   detail: string;
 }
 
+/** A player PC as it joined: known by its own name and address, never by a player before the game pairs it. */
+export interface DetectedPc {
+  id: number;
+  name: string;
+  ip: string;
+  /** ready: Valorant has said which player this PC is; joined: waiting for Valorant on that PC. */
+  state: 'ready' | 'joined';
+  /** The seat it was paired with by the game (its in-game name), once the game lists the players. */
+  seat: string | null;
+  /** How long ago it last sent anything. */
+  ageMs: number | null;
+}
+
 export interface DevicesView {
+  /** Seats from the game's own player list; empty until the game reports its players (no guessing from the lineup). */
   seats: SeatView[];
+  /** Every player PC that has joined, shown by PC before pairing. */
+  pcs: DetectedPc[];
   /** Seats whose own data is live. */
   checkedIn: number;
   /** True once the game has reported its players (seats come from the game, not the lineup). */
@@ -45,7 +61,9 @@ export function devicesView(input: { lineup: Match['players'] | null; roomPlayer
   const seated = new Set<number>();
   const seats: SeatView[] = [];
   for (const team of [0, 1] as const) {
-    const list = fromGame ? room[team] ?? [] : (input.lineup?.[team] ?? []).slice(0, 5);
+    // Pairing happens when the match starts: the game lists its players and each PC is seated by its
+    // player id. Before that there are no seats, so no PC is shown against a player it may not be.
+    const list = fromGame ? room[team] ?? [] : [];
     list.forEach((p, index) => {
       const puuid = fromGame ? (p as RoomPlayer).puuid ?? '' : '';
       const pc = puuid ? players.find((x) => x.playerId === puuid) ?? null : null;
@@ -59,10 +77,13 @@ export function devicesView(input: { lineup: Match['players'] | null; roomPlayer
   const unseated = players.filter((p) => !seated.has(p.id)).map((p) => ({
     id: p.id,
     name: p.name,
-    detail: !p.playerId ? 'Joined. Waiting for the game to open on this PC.' : fromGame ? 'This player is not in the match the observer is watching.' : 'Ready. Seated as soon as the match starts.',
+    detail: !p.playerId ? 'Joined. Waiting for Valorant on this PC.' : fromGame ? 'This player is not in the match the observer is watching.' : 'Ready. Pairs with its player when the match starts.',
   }));
+  const seatName = (pc: JoinedPc) => (fromGame && pc.playerId ? seats.find((x) => room[x.team]?.[x.index]?.puuid === pc.playerId)?.name ?? null : null);
+  const pcs: DetectedPc[] = players.map((p) => ({ id: p.id, name: p.name, ip: p.ip, state: p.playerId ? 'ready' : 'joined', seat: seatName(p), ageMs: p.lastAgeMs }));
   return {
     seats,
+    pcs,
     checkedIn: seats.filter((x) => x.state === 'live').length,
     fromGame,
     unseated,

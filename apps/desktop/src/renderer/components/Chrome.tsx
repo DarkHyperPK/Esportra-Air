@@ -73,13 +73,14 @@ function GameSwitcher({ s, run }: { s: Snapshot; run: Run }) {
   );
 }
 
-export function TopBar({ s, page, open, search, help, run }: { s: Snapshot | null; page?: Page; open?: (id: StatusId) => void; search?: () => void; help?: () => void; run?: Run }) {
+export function TopBar({ s, page, open, search, help, run, back }: { s: Snapshot | null; page?: Page; open?: (id: StatusId) => void; search?: () => void; help?: () => void; run?: Run; back?: { can: boolean; go: () => void; to: string } }) {
   const now = useClock();
   const status = s ? statusOf(s) : null;
   return (
     <header className="topbar">
       <span className="brand">{LOGO}Esportra Air</span>
       {s && run && <GameSwitcher s={s} run={run} />}
+      {back && <button type="button" className="btn quiet small topbar-back" disabled={!back.can} onClick={back.go} aria-label={back.can ? `Back to ${back.to}` : 'Back'} title={back.can ? `Back to ${back.to} (Alt ←)` : 'Nothing to go back to'}>←<span className="topbar-back-text"> Back</span></button>}
       {page && (
         <nav className="crumbs" aria-label="You are here">
           <span className="sep">/</span>

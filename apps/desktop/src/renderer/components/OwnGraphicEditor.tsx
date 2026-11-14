@@ -134,7 +134,7 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
               <button aria-pressed={mode === 'data'} onClick={() => setMode('data')}>With data</button>
             </div>
             <button className="btn" disabled={mode !== 'data'} onClick={() => post({ type: 'AIR_OWN_PLAY' })}>▶ Play entrance</button>
-            <button className="btn primary" disabled={!dirty || !g.image} onClick={() => void save()}>Save</button>
+            <button className="btn primary" disabled={!dirty || !g.image} onClick={() => void save()}>{s.onAirLooks.includes(g.id) ? 'Save · on air now' : 'Save'}</button>
           </>}
           <button className="btn quiet" onClick={tryClose}>Esc · Close</button>
         </header>
@@ -147,6 +147,7 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
           </div>
         )}
         {notice && <p className="own-notice" role="alert">{notice}</p>}
+        {s.onAirLooks.includes(g.id) && <p className="onair-note" role="status"><b>On air now.</b> Saving changes what viewers see straight away.</p>}
 
         {step === 'import' ? (
           <div className="own-import">

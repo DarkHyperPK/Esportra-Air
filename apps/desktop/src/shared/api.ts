@@ -316,6 +316,8 @@ export interface Snapshot {
   templates: import('./templates.ts').Template[];
   /** Your own graphics (Graphics › Your graphics). */
   ownGraphics: import('./own-graphics.ts').OwnGraphic[];
+  /** Ids of templates and own graphics on air right now: editing one changes what viewers see at once. */
+  onAirLooks: string[];
   /** How many saved match rundowns use each template. */
   templateUse: Record<string, number>;
   /** Teams/Players. */

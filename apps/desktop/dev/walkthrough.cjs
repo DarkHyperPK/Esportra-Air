@@ -310,6 +310,15 @@ let failShot = async () => {};
   await rail('Settings');
   await page.getByRole('heading', { name: 'Settings' }).waitFor();
   await shot('settings');
+  // Back (top bar) returns to where you were, and comes back with Alt ←.
+  await page.getByRole('button', { name: /^Back to / }).click();
+  await page.getByRole('heading', { name: 'Settings' }).waitFor({ state: 'detached' });
+  await rail('Settings');
+  await page.getByRole('heading', { name: 'Settings' }).waitFor();
+  await page.keyboard.press('Alt+ArrowLeft');
+  await page.getByRole('heading', { name: 'Settings' }).waitFor({ state: 'detached' });
+  await rail('Settings');
+  await page.getByRole('heading', { name: 'Settings' }).waitFor();
   await step('OBS');
   await btn('Add all to OBS');
   await page.getByRole('button', { name: 'Rebuild scenes', exact: true }).waitFor();
@@ -734,16 +743,25 @@ let failShot = async () => {};
   const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
   const names = [['Juno', 'Mira', 'Dax', 'Riku', 'Echo'], ['Kairo', 'Sol', 'Vex', 'Nyx', 'Zen']];
   const board = names.flatMap((team, t) => team.map((name, i) => ({ feature: 'match_info', key: `scoreboard_${t * 5 + i}`, data: JSON.stringify({ player_id: uuid(t * 5 + i), name: `${name} #EU1`, character: 'Clay', team: t, alive: true, money: 800 }) })));
-  await fetch(`http://127.0.0.1:5399/api/${roomCode}/ingest/valorant`, { method: 'POST', headers: { 'X-Esportra-Key': 'dev-host-key-0123456789abcdef', 'Content-Type': 'application/json' }, body: JSON.stringify(board) });
   const WebSocket = require('ws');
+  // Juno's PC joins before the match: it shows as a detected PC (by its own name and address), never as a player.
   const juno = new WebSocket(`ws://127.0.0.1:5301/join?code=${joinCode}&role=player&name=JUNO-PC`);
   await new Promise((r) => juno.once('message', r));
   const sendMe = () => juno.send(JSON.stringify({ type: 'valorant', message: { feature: 'me', info: { me: { health: '80' } }, playerId: uuid(0) } }));
   sendMe();
   const beat = setInterval(sendMe, 1000);
+  const detected = page.getByLabel('Detected player PCs');
+  await detected.getByText('JUNO-PC').waitFor();
+  await detected.getByText(/PC detected · ready/).waitFor();
+  await page.getByText(/Player PCs · 1 detected/).waitFor();
+  if ((await detected.innerText()).includes('Juno')) throw new Error('a player name was shown before pairing');
+  await shot('devices-detected');
+  // The match starts: the observer's game lists its ten players and the PC pairs with its seat by itself.
+  await fetch(`http://127.0.0.1:5399/api/${roomCode}/ingest/valorant`, { method: 'POST', headers: { 'X-Esportra-Key': 'dev-host-key-0123456789abcdef', 'Content-Type': 'application/json' }, body: JSON.stringify(board) });
   await page.locator('.seat.live').filter({ hasText: 'JUNO' }).or(page.locator('.seat.live').filter({ hasText: 'Juno' })).first().waitFor();
   await page.getByText(/Player PCs · 1 of 10 checked in/).waitFor();
   await page.locator('.seat').filter({ hasText: 'JUNO-PC' }).waitFor();
+  await detected.getByText(/Paired with Juno/i).waitFor();
   // Earlier steps failed on purpose (a wrong password, a refused switch); clear their notes.
   for (const close of await page.locator('.toast button').all()) await close.click().catch(() => {});
   await shot('devices-checkin');

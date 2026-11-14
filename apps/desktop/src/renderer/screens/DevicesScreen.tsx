@@ -32,21 +32,32 @@ function Seat({ s, seat }: { s: Snapshot; seat: SeatView }) {
 
 function CheckIn({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const d = s.devices;
-  const usesPcs = s.setup.profile === 'player-pcs' || d.unseated.length > 0 || d.seats.some((x) => x.pc);
+  const usesPcs = s.setup.profile === 'player-pcs' || d.pcs.length > 0;
   const thisPc = s.feed.state === 'live' ? 'ok' : s.feed.state === 'waiting' ? 'warn' : 'off';
   return (
     <div className="side-grid">
       <div className="stack" style={{ gap: 24 }}>
         {usesPcs && (
           <section className="stack" style={{ gap: 10 }}>
-            <div className="between"><h2 className="title-sm">Player PCs · {d.checkedIn} of {d.seats.length} checked in</h2><span className="faint t-xs">Each sends only that player’s own data</span></div>
-            {d.seats.length === 0 ? <p className="muted t-sm">Choose a match to see its seats.</p> : (
-              <>
-                {[0, 1].map((t) => <div key={t} className="seats">{d.seats.filter((x) => x.team === t).map((x) => <Seat key={`${x.team}-${x.index}`} s={s} seat={x} />)}</div>)}
-                {!d.fromGame && <p className="muted t-sm">Seats show the lineup until the game starts; each PC takes its seat as soon as the observer’s game lists the players.</p>}
-              </>
-            )}
-            {d.unseated.map((u) => <div key={u.id} className="alert info"><span><b>{u.name}</b> · {u.detail}</span></div>)}
+            <div className="between"><h2 className="title-sm">{d.fromGame ? `Player PCs · ${d.checkedIn} of ${d.seats.length} checked in` : `Player PCs · ${d.pcs.length} detected`}</h2><span className="faint t-xs">Each sends only that player’s own data</span></div>
+            {/* Detected PCs: by their own name and address. They pair with their players by Riot ID when the match starts. */}
+            {d.pcs.length === 0
+              ? <p className="muted t-sm">No player PC has joined yet. Open Esportra Player on each player PC and join with the code on the right.</p>
+              : (
+                <div className="lst" aria-label="Detected player PCs">
+                  {d.pcs.map((pc) => (
+                    <div key={pc.id} className="li device-row">
+                      <i className={`dot ${pc.seat || pc.state === 'ready' ? 'ok' : 'warn'}`} />
+                      <span><b>{pc.name}</b> <span className="faint t-xs mono">{pc.ip}</span><br />
+                        <span className="muted t-sm">{pc.seat ? `Paired with ${pc.seat}` : pc.state === 'ready' ? 'PC detected · ready. Pairs with its player when the match starts.' : 'PC detected · waiting for Valorant on this PC.'}</span></span>
+                      <span className="faint t-xs">{pc.ageMs === null ? '' : `${age(pc.ageMs)} ago`}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            {d.fromGame && d.seats.length > 0 && [0, 1].map((t) => <div key={t} className="seats">{d.seats.filter((x) => x.team === t).map((x) => <Seat key={`${x.team}-${x.index}`} s={s} seat={x} />)}</div>)}
+            {!d.fromGame && d.pcs.length > 0 && <p className="muted t-sm">No player names until the match starts: then the game lists its players and each PC pairs with its seat by itself.</p>}
+            {d.fromGame && d.unseated.map((u) => <div key={u.id} className="alert info"><span><b>{u.name}</b> · {u.detail}</span></div>)}
             <p className="faint t-xs">A player without a PC still plays on air: their health and abilities stay hidden, never shown out of date.</p>
           </section>
         )}

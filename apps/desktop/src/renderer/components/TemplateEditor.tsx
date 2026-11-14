@@ -268,6 +268,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
           <button className="btn primary small" onClick={() => void save()}>Save <span className="kbd">Ctrl S</span></button>
           <button className="btn quiet small" onClick={tryClose}>Esc · Close</button>
         </header>
+        {!isNew && s.onAirLooks.includes(draft.id) && <p className="onair-note" role="status"><b>On air now.</b> This look is on screen: saving changes what viewers see straight away. Save as copy to work on it safely.</p>}
         {confirm && (
           <div className="tpl-confirm" role="alertdialog" aria-label="Confirm">
             {confirm === 'close'

@@ -1071,6 +1071,7 @@ test('your own graphics: the design is kept as exported, its boxes reach the roo
     await production.setLayer(`fs:own:${id}`, 'on');
     await production.takeCue('cut');
     assert.equal((await room()).airFullscreen, `own:${id}`);
+    assert.deepEqual(production.snapshot().onAirLooks, [id], 'the editor can warn that saving changes it on air');
     assert.throws(() => production.rundownSave({ section: 'game', show: `own:${id}`, trigger: 'manual', map: 'every', forSeconds: 0, delaySeconds: 12, transition: 'cut', holdMode: 'manual', holdSeconds: 0 }), /does not go in this part/);
     // It survives a restart of Air: the store brings it back as a screen.
     production.log.stop();

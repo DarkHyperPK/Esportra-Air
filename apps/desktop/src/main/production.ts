@@ -692,6 +692,26 @@ export class Production extends EventEmitter {
     this.rundownSave({ section: this.sectionOf(show), show, ...ruleOf(g.purpose === 'any' ? '' : g.purpose, preset, this.match?.bestOf ?? 3) });
   }
 
+  /**
+   * Templates and own graphics viewers see right now (editing one changes it on air at once): the
+   * full-screen graphic and its look, the HUD's look while game data is live, and the Break or Desk
+   * look while that scene is on program in OBS.
+   */
+  private onAirLooks(): string[] {
+    const room = this.room ?? {};
+    const out: string[] = [];
+    if (typeof room.airFullscreen === 'string') {
+      if (isOwnScreen(room.airFullscreen)) out.push(room.airFullscreen.slice(4));
+      else if (typeof room.airFullscreenTemplate === 'string') out.push(room.airFullscreenTemplate);
+    }
+    if (this.deps.capture.state === 'live') { const hud = this.hudTemplate(); if (hud) out.push(hud.id); }
+    const program = this.deps.obs.status.programScene;
+    const pages = (room.airPageTemplates ?? {}) as Record<string, string | null>;
+    if (program === SCENES.holding.name) for (const k of ['holding|full', 'holding|band']) if (pages[k]) out.push(pages[k]!);
+    if (program === SCENES.casters.name && pages['casters|full']) out.push(pages['casters|full']);
+    return [...new Set(out)];
+  }
+
   /** Where a screen goes in the Rundown; an own graphic goes where the screen it stands for goes. */
   sectionOf(show: string): Section {
     if (!isOwnScreen(show)) return defaultSection(show);
@@ -1953,6 +1973,7 @@ export class Production extends EventEmitter {
       rundown: this.autopilot.rows(),
       templates: this.templates,
       ownGraphics: this.ownGraphics,
+      onAirLooks: this.onAirLooks(),
       templateUse: this.templateUse(),
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,
@@ -2040,9 +2061,13 @@ export function checks(s: Snapshot): CheckItem[] {
   if (s.setup.profile === 'player-pcs' && s.match) {
     const d = s.devices;
     const missing = d.seats.filter((x) => x.state !== 'live').map((x) => x.name).filter(Boolean);
-    out.push(d.checkedIn === d.seats.length && d.seats.length > 0
+    // Before the match: PCs are counted as detected, never named after a player (pairing happens in the game).
+    if (!d.fromGame) out.push(d.pcs.length
+      ? { id: 'player-pcs', title: `Player PCs · ${d.pcs.length} detected`, detail: `${d.pcs.filter((p) => p.state === 'ready').length} ready. They pair with their players by themselves when the match starts; until then health and abilities stay hidden on air.`, health: 'ok', action: { id: 'open-devices' as const, label: 'Open Devices' } }
+      : { id: 'player-pcs', title: 'Player PCs · none detected', detail: 'Open Esportra Player on each player PC and join with this match’s code.', health: 'warn', action: { id: 'open-devices' as const, label: 'Open Devices' } });
+    else out.push(d.checkedIn === d.seats.length && d.seats.length > 0
       ? { id: 'player-pcs', title: `Player PCs · ${d.checkedIn} of ${d.seats.length} checked in`, detail: 'Every player’s own data is arriving.', health: 'ok' }
-      : { id: 'player-pcs', title: `Player PCs · ${d.checkedIn} of ${d.seats.length} checked in`, detail: d.fromGame ? `${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` and ${missing.length - 4} more` : ''}: health and abilities stay hidden on air until their PC sends them.` : 'Player PCs are seated once the game starts. Until then health and abilities stay hidden on air.', health: 'warn', action: { id: 'open-devices' as const, label: 'Open Devices' } });
+      : { id: 'player-pcs', title: `Player PCs · ${d.checkedIn} of ${d.seats.length} checked in`, detail: `${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` and ${missing.length - 4} more` : ''}: health and abilities stay hidden on air until their PC sends them.`, health: 'warn', action: { id: 'open-devices' as const, label: 'Open Devices' } });
   }
   const air = s.match ? onAir(s.match, s.event) : { talent: [], sponsors: [] };
   const people = air.talent.length;

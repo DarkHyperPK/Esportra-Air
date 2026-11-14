@@ -23,14 +23,20 @@ test('a player PC is seated by the player id it sends, with how fresh its data i
 
 test('PCs without a seat say why', () => {
   const v = devicesView({ lineup: null, roomPlayers: room(), peers: [pc(1, null), pc(2, id(99))], now: NOW });
-  assert.deepEqual(v.unseated.map((u) => u.detail), ['Joined. Waiting for the game to open on this PC.', 'This player is not in the match the observer is watching.']);
+  assert.deepEqual(v.unseated.map((u) => u.detail), ['Joined. Waiting for Valorant on this PC.', 'This player is not in the match the observer is watching.']);
 });
 
-test('before the game reports its players, seats come from the lineup and nobody is checked in', () => {
+test('before the game reports its players, PCs are shown as detected PCs and no player is named', () => {
   const lineup = [[{ id: 'a', name: 'Juno', realName: '', gameId: 'Juno#EU1', photo: '/p' }], []] as never;
-  const v = devicesView({ lineup, roomPlayers: [[{ name: '', puuid: '' }], []], peers: [pc(1, id(0))], now: NOW });
+  const v = devicesView({ lineup, roomPlayers: [[{ name: '', puuid: '' }], []], peers: [pc(1, id(0)), pc(2, null)], now: NOW });
   assert.equal(v.fromGame, false);
-  assert.deepEqual(v.seats.map((x) => [x.name, x.photo, x.state]), [['Juno', '/p', 'none']]);
-  assert.deepEqual(v.unseated.map((u) => u.detail), ['Ready. Seated as soon as the match starts.']);
+  assert.deepEqual(v.seats, [], 'no seats from the lineup: pairing happens when the match starts');
+  assert.deepEqual(v.pcs.map((x) => [x.name, x.ip, x.state, x.seat]), [['PC-1', '10.0.0.1', 'ready', null], ['PC-2', '10.0.0.2', 'joined', null]]);
+  assert.equal(JSON.stringify(v).includes('Juno'), false, 'no player name before pairing');
   assert.equal(v.checkedIn, 0);
+});
+
+test('once the game lists its players, each PC shows the seat it paired with', () => {
+  const v = devicesView({ lineup: null, roomPlayers: room(), peers: [pc(1, id(6)), pc(2, null)], now: NOW });
+  assert.deepEqual(v.pcs.map((x) => x.seat), ['P11', null]);
 });

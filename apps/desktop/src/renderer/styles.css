@@ -1122,3 +1122,8 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .own-ed .tpl-row input:not([type=color]), .own-ed .tpl-row select { width: 100%; min-width: 0; height: 30px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--hair-strong); background: #0e0e11; color: var(--text); font: 500 12.5px var(--font); }
 .own-ed .tpl-row input:focus, .own-ed .tpl-row select:focus { outline: 2px solid #5b9dff; outline-offset: 1px; }
 .own-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; width: 100%; }
+.onair-note { margin: 0; padding: 8px 18px; background: rgba(244, 63, 94, 0.12); border-bottom: 1px solid rgba(244, 63, 94, 0.4); color: #fecdd3; font-size: 12.5px; }
+.onair-note b { color: #fb7185; }
+.topbar-back { flex: none; margin-left: 4px; }
+.topbar-back[disabled] { opacity: 0.35; }
+@media (max-width: 1440px) { .topbar-back-text { display: none; } .topbar-back { padding: 0 9px; } }

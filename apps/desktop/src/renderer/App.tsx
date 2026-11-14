@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Page, Snapshot } from '../shared/api.ts';
 import { air } from './bridge.ts';
-import { Rail, TopBar } from './components/Chrome.tsx';
+import { PAGE_NAME, Rail, TopBar } from './components/Chrome.tsx';
 import { CommandPalette, ShortcutsDialog, Toasts, type PaletteActions, type Toast } from './components/Global.tsx';
 import { LOGO } from './components/ui.tsx';
 import { ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
@@ -47,6 +47,39 @@ export function App() {
   const [command, setCommand] = useState<MatchCommand>(null);
   // Matches shows the open match's workspace until the producer goes back to the list.
   const [matchOpen, setMatchOpen] = useState(false);
+  // Back (top bar, Alt ←, the mouse's back button): where you were before, by page, event and match.
+  type Nav = { page: Page; event: string | null; tab: EventView['tab']; match: boolean };
+  const here: Nav = { page, event: eventView.id, tab: eventView.tab, match: matchOpen };
+  const trail = useRef<Nav[]>([]);
+  const last = useRef<Nav>(here);
+  const goingBack = useRef(false);
+  const [, setDepth] = useState(0);
+  useEffect(() => {
+    const prev = last.current;
+    const moved = prev.page !== page || prev.event !== eventView.id || prev.match !== matchOpen;
+    last.current = here;
+    if (!moved) return;
+    if (goingBack.current) { goingBack.current = false; return; }
+    trail.current = [...trail.current, prev].slice(-30);
+    setDepth(trail.current.length);
+  }, [page, eventView.id, eventView.tab, matchOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const goBack = useCallback(() => {
+    const to = trail.current.at(-1);
+    if (!to) return;
+    trail.current = trail.current.slice(0, -1);
+    setDepth(trail.current.length);
+    goingBack.current = true;
+    setPage(to.page);
+    setEventView({ id: to.event, tab: to.tab });
+    setMatchOpen(to.match);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); } };
+    const onMouse = (e: MouseEvent) => { if (e.button === 3) { e.preventDefault(); goBack(); } };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mouseup', onMouse);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mouseup', onMouse); };
+  }, [goBack]);
   const pageRef = useRef(page);
   pageRef.current = page;
   const [status, setStatus] = useState<StatusId | null>(null);
@@ -167,7 +200,8 @@ export function App() {
 
   return (
     <div className="win">
-      <TopBar s={s} page={page} open={(id) => setStatus(id)} search={() => setPalette(true)} help={() => setHelp(true)} run={run} />
+      <TopBar s={s} page={page} open={(id) => setStatus(id)} search={() => setPalette(true)} help={() => setHelp(true)} run={run}
+        back={{ can: trail.current.length > 0, go: goBack, to: (() => { const to = trail.current.at(-1); if (!to) return ''; if (to.match && s.match) return s.match.title; if (to.event) return s.events.find((e) => e.id === to.event)?.name ?? 'the event'; return PAGE_NAME[to.page] ?? 'the last page'; })() }} />
       <div className="body">
         <Rail page={page} go={(p) => go(p)} onAir={s.feed.state === 'live'} />
         <div className="main">
