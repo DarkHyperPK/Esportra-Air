@@ -123,3 +123,33 @@ test('samples, entrances on appear, and the cost of a HUD template', { skip: !ch
     await browser.close();
   }
 });
+
+// The copies of the full-screen host over the game and over the desk (?over=1) show only over-the-game
+// versions: a graphic that covers the whole picture belongs to the Full screen scene the crew switches to.
+test('over the game, the host never shows a graphic that covers the game', { skip: !chromium && 'needs Playwright' }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const errors: string[] = [];
+    page.on('pageerror', (e: Error) => errors.push(e.message));
+    const shows = async (over: boolean, show: string, style: string | null) => {
+      await page.goto(`file://${OVERLAYS}/fullscreen.html?preview=1${over ? '&over=1' : ''}`);
+      await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
+      return page.evaluate(([show, style]: [string, string | null]) => {
+        const HUD = (window as any).HUD;
+        HUD.state.airFullscreen = show;
+        HUD.state.airFullscreenStyle = style;
+        HUD.subs.forEach((f: (s: unknown) => void) => f(HUD.state));
+        return [...document.querySelectorAll('.fs-slot')].some((el) => (el as HTMLElement).style.display !== 'none');
+      }, [show, style] as [string, string | null]);
+    };
+    assert.equal(await shows(false, 'match-intro', null), true, 'the Full screen scene shows the intro');
+    assert.equal(await shows(true, 'match-intro', null), false, 'over the game it does not');
+    assert.equal(await shows(true, 'champion', null), false, 'nor the champion, which has no over-the-game version');
+    assert.equal(await shows(true, 'halftime', 'band'), true, 'an over-the-game look does show over the game');
+    assert.equal(await shows(false, 'halftime', 'band'), true, 'and in the Full screen scene');
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});

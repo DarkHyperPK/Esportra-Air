@@ -21,7 +21,9 @@ test('the scene plan is plain data: graphics in their scenes, the host over game
   const talent = [{ id: 't1', name: 'Sara', camera: { kind: 'obs', obsSource: 'Cam A' } }] as never;
   const plan = planScenes({ port: 5300, screens, talent, sponsors, slotWanted: (id) => !id.startsWith('break') });
   const scene = (n: string) => plan.find((x) => x.name === n)!;
-  assert.ok(scene('ESPORTRA · Gameplay').sources.some((x) => x.inputName === 'ESPORTRA · Full screen over game'));
+  const overGame = scene('ESPORTRA · Gameplay').sources.find((x) => x.inputName === 'ESPORTRA · Full screen over game');
+  assert.ok(overGame?.url.endsWith('?over=1'), 'over the game the host shows only over-the-game versions');
+  assert.ok(scene('ESPORTRA · Desk').sources.find((x) => x.inputName === 'ESPORTRA · Full screen over desk')?.url.endsWith('?over=1'), 'and over the desk');
   assert.ok(scene('ESPORTRA · Desk').sources.some((x) => x.inputName === 'ESPORTRA · Full screen over desk'));
   assert.equal(scene('ESPORTRA · Full screen').sources[0]!.inputName, 'ESPORTRA · Full screen graphics', 'never the scene’s own name');
   const loop = scene('ESPORTRA · Break').sources.find((x) => x.id === 'sponsor:s1')!;

@@ -30,6 +30,8 @@ export function planScenes({ port, screens, talent, sponsors, slotWanted }: Plan
     return null;
   };
   const page = (x: Screen) => `http://127.0.0.1:${port}/o/${x.outputId}`;
+  // Over the game and over the desk the host shows only over-the-game versions (never a graphic that covers everything).
+  const over = (x: Screen) => `${page(x)}?over=1`;
   const host = screens.filter((x) => x.id === 'fullscreen' && x.enabled);
   return SCENE_KEYS.map((key) => {
     const def = SCENES[key];
@@ -43,10 +45,10 @@ export function planScenes({ port, screens, talent, sponsors, slotWanted }: Plan
         ...screens
           .filter((x) => x.scene === key && x.enabled && !x.hosted)
           .map((x) => ({ id: x.id, inputName: graphicSourceName(x.title), formerly: legacySourceName(x.title), url: page(x), frame: x.frame, enabled: true })),
-        // Full-screen graphics also cover the game: Take shows them without switching OBS scenes.
-        ...(key === 'gameplay' ? host.map((x) => ({ id: 'fullscreen-over-game', inputName: sourceName('Full screen over game'), formerly: legacySourceName('Full screen over game'), url: page(x), frame: x.frame, enabled: true })) : []),
+        // Over-the-game versions of full-screen graphics sit over the game; the full versions only in the Full screen scene.
+        ...(key === 'gameplay' ? host.map((x) => ({ id: 'fullscreen-over-game', inputName: sourceName('Full screen over game'), formerly: legacySourceName('Full screen over game'), url: over(x), frame: x.frame, enabled: true })) : []),
         // Over-the-game graphics also sit over the desk cameras (as bands over a stage shot).
-        ...(key === 'casters' ? host.map((x) => ({ id: 'fullscreen-over-desk', inputName: sourceName('Full screen over desk'), formerly: legacySourceName('Full screen over desk'), url: page(x), frame: x.frame, enabled: true })) : []),
+        ...(key === 'casters' ? host.map((x) => ({ id: 'fullscreen-over-desk', inputName: sourceName('Full screen over desk'), formerly: legacySourceName('Full screen over desk'), url: over(x), frame: x.frame, enabled: true })) : []),
         ...(key === 'holding' ? sponsorVideos.map((x) => ({ id: `sponsor:${x.id}`, inputName: sourceName(`Sponsor video · ${x.name}`), kind: 'media' as const, url: x.video, frame: full, enabled: false })) : []),
       ],
     };

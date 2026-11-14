@@ -1030,6 +1030,7 @@
 
   // Full-screen host: one browser source that shows the graphic named in state.airFullscreen
   // (set by Esportra Air), so switching full-screen graphics never touches OBS.
+  const OVER_ONLY = Q.get('over') === '1';
   const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule' };
   M.fullscreen = root => {
     const slots = {};
@@ -1044,7 +1045,10 @@
         const band = s.airFullscreenStyle === 'band' && HUD.BANDS && HUD.BANDS[s.airFullscreen] && M[HUD.BANDS[s.airFullscreen]];
         // The producer's own graphics (core/own.js) are `own:<id>`, defined in state.airOwn.
         const own = typeof s.airFullscreen === 'string' && s.airFullscreen.startsWith('own:') && M.ownslot && HUD.OWN.find(s, s.airFullscreen.slice(4));
-        const want = own ? s.airFullscreen + '|own' : FULLSCREEN[s.airFullscreen] ? s.airFullscreen + (band ? '|band' : '|full') : null;
+        let want = own ? s.airFullscreen + '|own' : FULLSCREEN[s.airFullscreen] ? s.airFullscreen + (band ? '|band' : '|full') : null;
+        // The copies over the game and over the desk (?over=1) show only over-the-game versions: a
+        // full-screen graphic covers the whole picture, so it lives in the Full screen scene the crew switches to.
+        if (OVER_ONLY && want && !(want.endsWith('|band') || (own && own.style === 'band'))) want = null;
         if (want !== shown) {
           // An own graphic plays its exit (fade or slide) before it is hidden.
           if (shown && slots[shown].part.leave) { const was = shown; slots[was].part.leave(s, () => { if (shown !== was) slots[was].el.style.display = 'none'; }); }
