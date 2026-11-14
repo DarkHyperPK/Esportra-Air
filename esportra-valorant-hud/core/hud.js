@@ -493,7 +493,8 @@
       return {row, frames};
     });
     return {update(s) {
-      const cams = s.airCams, layout = cams?.layout, wanted = layout === 'grid5' || layout === 'grid10';
+      // Previews (library, editor, rehearsal) show the full wall; on air it follows the producer's layout.
+      const cams = s.airCams, layout = cams?.layout || (PREVIEW ? 'grid10' : null), wanted = layout === 'grid5' || layout === 'grid10';
       toggle(m, wanted);
       wall.classList.toggle('one', layout === 'grid5');
       const first = s.observed && s.observed[0] === 1 ? 1 : 0;
