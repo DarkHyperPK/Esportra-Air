@@ -83,7 +83,7 @@ export class Rehearsal extends EventEmitter {
 
   view(): RehearsalView {
     return {
-      running: this.running, beat: this.beat, speed: this.options.speed, autopilotOn: this.options.autopilot, handsFree: this.options.handsFree,
+      running: this.running, beat: this.beat, showing: this.showing, speed: this.options.speed, autopilotOn: this.options.autopilot, handsFree: this.options.handsFree,
       room: this.room, autopilot: this.autopilot ? this.autopilot.view() : null, log: this.lines.slice(0, 40), error: this.error,
     };
   }
@@ -154,6 +154,15 @@ export class Rehearsal extends EventEmitter {
     this.autopilot = ap;
   }
 
+  /** Shows one screen in the rehearsal (the producer clicked it in Your show), or back to the game. */
+  async show(screen: string | null) {
+    if (!this.running || !this.room) throw new Error('Press Play first.');
+    if (screen !== null && !this.deps.screens().some((x) => x.id === screen)) throw new Error('Choose one of your screens.');
+    await this.deps.client().post('/control/action', { match: this.room, name: 'fullscreen.show', args: { screen, style: 'full', template: null } });
+    this.showing = screen;
+    this.add(screen ? `Shown · ${screen}` : 'Back to the game');
+  }
+
   /** Takes the step autopilot is waiting on (the rehearsal's own Take). */
   async take() {
     if (!this.autopilot) throw new Error('Autopilot is not part of this rehearsal.');
@@ -213,8 +222,14 @@ export class Rehearsal extends EventEmitter {
 
       // The test round restores the room afterwards; the rest of the map is played as scores.
       beat(2);
-      for (let r = 1; r <= 12; r++) {
-        await ingest([info('round_number', String(r)), score(Math.ceil(r / 2), Math.floor(r / 2))]);
+      // First half 7–5 (team A wins rounds 1, 3, 4, 6, 8, 10, 12), so halftime and every later screen agree.
+      const first = [0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0];
+      let a = 0;
+      let b = 0;
+      for (const [i, winner] of first.entries()) {
+        if (winner === 0) a++;
+        else b++;
+        await ingest([info('round_number', String(i + 1)), score(a, b)]);
         await wait(250);
       }
       await wait(22_000);
@@ -223,9 +238,8 @@ export class Rehearsal extends EventEmitter {
       await ingest([info('round_number', '13'), info('round_phase', 'shopping')]);
       await wait(1500);
       await ingest([info('round_phase', 'combat')]);
-      const second = [0, 1, 0, 0, 1, 0, 1, 0, 0, 0];
-      let a = 6;
-      let b = 6;
+      // Second half to 13–9: a finished map (13 and ahead), as on the night.
+      const second = [0, 1, 0, 0, 1, 0, 1, 0, 1, 0];
       for (const [i, winner] of second.entries()) {
         if (winner === 0) a++;
         else b++;

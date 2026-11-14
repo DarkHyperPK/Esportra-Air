@@ -1,29 +1,78 @@
-// Rehearse: the match plays privately inside Air, with its own teams, players and photos, through the
-// chosen graphics, and autopilot fires as it would on the night. Nothing here reaches OBS or viewers.
+// Rehearse (approved mock, 14 Nov): the match plays privately inside Air, with its own teams, players
+// and photos, on a sample map that adds up (7–5 at halftime, 13–9 at the end). One big picture; on the
+// right, only the screens of this match's Rundown, in show order: shown, on screen, next. Click one to
+// jump to it. Nothing here reaches OBS or viewers.
 import { useEffect, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
+import { HUD_ROW, rowTitle, takesItself, type RundownRow, type Segment } from '../../shared/autopilot.ts';
 import { BEATS, SPEEDS, type RehearsalOptions } from '../../shared/rehearsal.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
-import { action } from './Autopilot.tsx';
-import { Composite } from './Preview.tsx';
-import { Cap, Tally } from './ui.tsx';
+import { Composite, Preview, overlayUrl } from './Preview.tsx';
 
-export function RehearsePanel({ s, run, compact = false }: { s: Snapshot; run: Run; compact?: boolean }) {
+type ItemState = 'done' | 'now' | 'next' | '';
+
+export function RehearsePanel({ s, run, focus = null }: { s: Snapshot; run: Run; compact?: boolean; focus?: string | null }) {
   const r = s.rehearsal;
   const ap = r.autopilot;
   const ref = useRef(s);
   ref.current = s;
-  const url = (overlay: string) => `http://127.0.0.1:${s.engine.port}/overlays/${overlay}.html?${new URLSearchParams({ match: r.room ?? '', screen: '1' })}`;
-  const waiting = r.running && ap?.next && ap.next.state !== 'taking' && (ap.next.mode === 'manual' || ap.next.trigger === 'manual' || ap.next.state === 'holding');
-  // Choices apply at the next Play; a new speed while playing restarts the rehearsal at that speed.
-  const [opts, setOpts] = useState<RehearsalOptions>({ speed: r.speed, autopilot: r.autopilotOn, handsFree: r.handsFree });
-  const play = (next: RehearsalOptions = opts) => void run(() => air.rehearsalStart(next));
-  const pick = (patch: Partial<RehearsalOptions>) => {
-    const next = { ...opts, ...patch };
-    setOpts(next);
-    if (r.running && patch.speed) play(next);
+  const room = (overlay: string) => `http://127.0.0.1:${s.engine.port}/overlays/${overlay}.html?${new URLSearchParams({ match: r.room ?? '', screen: '1' })}`;
+  const overlayOf = (id: string) => s.setup.screens.find((x) => x.id === id)?.overlay ?? id;
+  const titleOf = (id: string) => s.setup.screens.find((x) => x.id === id)?.title ?? id;
+  // Your show: the Rundown's screens (not the "back to the game" steps), in show order.
+  const rows = s.rundown.filter((x) => x.enabled && x.show !== null);
+  // A scene screen (Starting soon, Desk) is its own OBS scene: the rehearsal shows it as a still.
+  const [still, setStill] = useState<string | null>(null);
+  const [auto, setAuto] = useState(r.autopilotOn && r.handsFree);
+  const [speed, setSpeed] = useState(r.speed);
+  const options = (patch: Partial<RehearsalOptions> = {}): RehearsalOptions => ({ speed, autopilot: auto, handsFree: auto, ...patch });
+  const play = (patch: Partial<RehearsalOptions> = {}) => run(() => air.rehearsalStart(options(patch)));
+
+  const segsOf = (row: RundownRow): Segment[] => (ap?.segments ?? []).filter((x) => x.id === row.id || x.id.endsWith(`-${row.id}`));
+  const stateOf = (row: RundownRow): ItemState => {
+    if (!r.running && r.beat < 0) return '';
+    if (row.show === HUD_ROW) return r.beat >= 4 ? 'done' : r.beat >= 1 && !r.showing && !still ? 'now' : '';
+    if (!takesItself(row.show)) return still === row.show ? 'now' : '';
+    const segs = segsOf(row);
+    if (r.showing === row.show && !still) return 'now';
+    if (ap?.next && segs.some((x) => x.id === ap.next!.id)) return 'next';
+    if (segs.some((x) => x.state === 'done' || x.state === 'on_air')) return 'done';
+    return '';
   };
+  const label = (row: RundownRow, state: ItemState) => {
+    if (state === 'now') return 'On screen';
+    if (state === 'next') return 'Next';
+    if (state === 'done') return 'Shown';
+    if (row.show === HUD_ROW) return 'During the rounds';
+    if (!takesItself(row.show)) return 'Its own OBS scene: shown as a still';
+    return row.trigger === 'manual' ? 'On Take' : 'On its moment';
+  };
+
+  // Jump: a full-screen graphic goes up in the rehearsal; the HUD row goes back to the game.
+  const show = async (row: RundownRow) => {
+    if (!takesItself(row.show)) { setStill(row.show); return; }
+    setStill(null);
+    const screen = row.show === HUD_ROW ? null : row.show;
+    if (!r.running) await play();
+    await run(() => air.rehearsalShow(screen));
+  };
+  const jumpable = rows.filter((x) => x.show !== HUD_ROW);
+  const current = jumpable.findIndex((x) => stateOf(x) === 'now');
+  const step = (dir: 1 | -1) => {
+    const next = jumpable[current < 0 ? (dir > 0 ? 0 : jumpable.length - 1) : current + dir];
+    if (next) void show(next);
+  };
+
+  // "Rehearse this" from Graphics: play and go straight to that screen.
+  const focused = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focus || focused.current === focus) return;
+    focused.current = focus;
+    const row = rows.find((x) => x.show === focus);
+    if (row) void show(row);
+    else void (async () => { if (!r.running) await play(); await run(() => air.rehearsalShow(focus)); })();
+  }, [focus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Space takes the step the rehearsal's autopilot is waiting on.
   useEffect(() => {
@@ -39,67 +88,60 @@ export function RehearsePanel({ s, run, compact = false }: { s: Snapshot; run: R
     return () => window.removeEventListener('keydown', onKey);
   }, [run]);
 
-  const firedIn = (beat: number) => r.log.filter((l) => l.beat === beat && l.text.startsWith('On air · ')).map((l) => l.text.slice(9)).reverse();
+  const progress = r.beat < 0 ? 0 : Math.min(1, (r.beat + 0.5) / BEATS.length);
+  const a = s.match?.teams[0].name ?? 'Team A';
+  const b = s.match?.teams[1].name ?? 'Team B';
+  const nowRow = rows.find((x) => stateOf(x) === 'now');
 
   return (
-    <section className={`rehearse ${compact ? 'compact' : ''}`} aria-label="Rehearse">
-      <div className="reh-stage">
-        <div className="reh-monitor">
-          {r.room ? <Composite srcs={[url('ingame'), url('fullscreen')]} label="Rehearsal preview" /> : (
-            <div className="pv pv-bg reh-poster"><div><b>{s.match?.title ?? 'Your match'}</b><span>Press Play to watch it run through your graphics.</span></div></div>
-          )}
-          <span className="reh-tag"><Tally kind={r.running ? 'pvw' : 'off'}>{r.running ? 'Rehearsal · private' : 'Rehearsal'}</Tally></span>
+    <section className="rehearse2" aria-label="Rehearse">
+      <div className="reh2-stage">
+        <div className="reh2-screen">
+          {still ? <Preview src={r.room ? room(overlayOf(still)) : overlayUrl(s, overlayOf(still))} label={titleOf(still)} />
+            : r.room ? <Composite srcs={[room('ingame'), room('fullscreen')]} label="Rehearsal preview" />
+            : <div className="pv pv-bg reh-poster"><div><b>{s.match?.title ?? 'Your match'}</b><span>Press Play to watch it run through your screens.</span></div></div>}
+          <span className="reh2-tag">Rehearsal · private · never in OBS</span>
+          {nowRow && <span className="reh2-now">{rowTitle(nowRow.show, nowRow.section, titleOf)} · {rows.indexOf(nowRow) + 1} of {rows.length}</span>}
         </div>
-        <ol className="beats" aria-label="Rehearsal beats">
-          {BEATS.map((b, i) => {
-            const state = r.beat > i ? 'done' : r.beat === i ? 'now' : '';
-            const fired = firedIn(i);
+        <div className="reh2-transport">
+          <button type="button" className="btn icon" aria-label="Previous screen" onClick={() => step(-1)} disabled={!jumpable.length}>⏮</button>
+          {r.running
+            ? <button type="button" className="btn primary reh2-play" onClick={() => void run(() => air.rehearsalStop())}>■ Stop</button>
+            : <button type="button" className="btn primary reh2-play" disabled={!s.match} onClick={() => { setStill(null); void play(); }}>▶ {r.beat >= BEATS.length ? 'Play again' : 'Play'}</button>}
+          <button type="button" className="btn icon" aria-label="Next screen" onClick={() => step(1)} disabled={!jumpable.length}>⏭</button>
+          <div className="reh2-scrub" role="progressbar" aria-label="The sample game" aria-valuemin={0} aria-valuemax={BEATS.length} aria-valuenow={Math.max(0, r.beat)}>
+            <b style={{ width: `${progress * 100}%` }} />
+            {BEATS.map((x, i) => <i key={x.id} style={{ left: `${(i / BEATS.length) * 100}%` }} title={x.label} />)}
+          </div>
+          <div className="seg" role="group" aria-label="Rehearsal speed">
+            {SPEEDS.map((n) => <button type="button" key={n} aria-pressed={speed === n} onClick={() => { setSpeed(n); if (r.running) void play({ speed: n }); }}>{n}×</button>)}
+          </div>
+        </div>
+        <p className="reh2-story"><b>Sample game:</b> {a} vs {b} · Map 1 · {a} win <b>13–9</b> (halftime 7–5) · your players, photos, casters and sponsors{r.beat >= 0 && r.beat < BEATS.length ? <> · <b>{BEATS[r.beat]!.label}</b></> : null}.</p>
+        {r.error && <p style={{ color: 'var(--bad)', fontSize: 12.5 }}>{r.error}</p>}
+      </div>
+
+      <aside className="reh2-list card-plain" aria-label="Your show">
+        <h4>Your show · {rows.length} screen{rows.length === 1 ? '' : 's'}</h4>
+        {rows.length === 0 && <p className="faint t-sm">Nothing in the Rundown yet. Add screens in the Rundown step.</p>}
+        <ol>
+          {rows.map((row) => {
+            const st = stateOf(row);
+            const id = row.show!;
             return (
-              <li key={b.id} className={state} aria-current={state === 'now' ? 'step' : undefined}>
-                <span className="beat-dot" aria-hidden="true" />
-                <b>{b.label}</b>
-                <span className="beat-fired">{fired.length ? fired.map((f) => `→ ${f}`).join('  ') : state ? 'No graphic' : ''}</span>
+              <li key={row.id}>
+                <button type="button" className={`reh2-item ${st}`} aria-current={st === 'now' ? 'step' : undefined} onClick={() => void show(row)}>
+                  <span className="reh2-th"><Preview src={overlayUrl(s, overlayOf(id))} label={rowTitle(row.show, row.section, titleOf)} /></span>
+                  <span><b>{rowTitle(row.show, row.section, titleOf)}</b><span>{label(row, st)}</span></span>
+                </button>
               </li>
             );
           })}
         </ol>
-      </div>
-
-      <aside className="reh-side stack" style={{ gap: 14 }}>
-        <div className="stack" style={{ gap: 8 }}>
-          {r.running
-            ? <button className="btn big" onClick={() => void run(() => air.rehearsalStop())}>Stop rehearsal</button>
-            : <button className="btn primary big" disabled={!s.match} onClick={() => play()}>{r.beat >= BEATS.length ? 'Play again' : 'Play rehearsal'}</button>}
-          <p className="muted" style={{ fontSize: 12 }}>Private: nothing here reaches OBS or viewers. About {Math.round(160 / opts.speed / 10) * 10} seconds.</p>
-        </div>
-        <div className="row-item" style={{ padding: 0, border: 0 }}>
-          <Cap>Speed</Cap>
-          <div className="seg" role="group" aria-label="Rehearsal speed">
-            {SPEEDS.map((n) => <button type="button" key={n} aria-pressed={opts.speed === n} onClick={() => pick({ speed: n })}>{n}×</button>)}
-          </div>
-        </div>
-        <label className="row-item" style={{ padding: 0, border: 0 }}>
-          <span>Autopilot in rehearsal<br /><span className="muted" style={{ fontSize: 12 }}>Your Rundown, from the Rundown step</span></span>
-          <button type="button" className="switch" role="switch" aria-checked={opts.autopilot} aria-label="Autopilot in rehearsal" disabled={r.running} onClick={() => pick({ autopilot: !opts.autopilot })} />
+        <label className="reh2-auto">
+          <span>Run it as autopilot will<br /><span className="faint t-xs">Screens come up on their moments from the Rundown. Off: step through them yourself.</span></span>
+          <button type="button" className="switch" role="switch" aria-checked={auto} aria-label="Run it as autopilot will" onClick={() => { const next = !auto; setAuto(next); if (r.running) void play({ autopilot: next, handsFree: next }); }} />
         </label>
-        <label className="row-item" style={{ padding: 0, border: 0 }}>
-          <span>Take manual steps for me<br /><span className="muted" style={{ fontSize: 12 }}>Intro and winner go up after 3 s</span></span>
-          <button type="button" className="switch" role="switch" aria-checked={opts.handsFree} aria-label="Take manual steps for me" disabled={r.running || !opts.autopilot} onClick={() => pick({ handsFree: !opts.handsFree })} />
-        </label>
-
-        {ap && (
-          <div className="reh-ap">
-            <div><Cap>Now</Cap><p>{ap.now ? <>{ap.now.name} <Tally kind="onair" /></> : <span className="muted">Nothing yet</span>}</p></div>
-            <div><Cap>Next</Cap><p>{ap.next ? <>{ap.next.name}<br /><span className="muted" style={{ fontSize: 12 }}>{action(ap.next)}</span></> : <span className="muted">Done</span>}</p></div>
-            <button className="btn take" disabled={!waiting} onClick={() => void run(() => air.rehearsalTake())} aria-keyshortcuts="Space">Take <span className="kbd">Space</span></button>
-          </div>
-        )}
-        {r.error && <p style={{ color: 'var(--bad)', fontSize: 12.5 }}>{r.error}</p>}
-        {!compact && (
-          <div className="log reh-log" aria-live="polite">
-            {r.log.slice(0, 12).map((l, i) => <div key={`${l.t}-${i}`}><time>{new Date(l.t).toLocaleTimeString('en-GB')}</time><span>{l.text}</span></div>)}
-          </div>
-        )}
       </aside>
     </section>
   );

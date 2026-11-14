@@ -40,7 +40,7 @@ import type { CamsView } from '../shared/api.ts';
 import type { Preset, RowInput } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 import { CompanionHost } from './companion.ts';
-import { presetRows, rundownScreens } from './autopilot/rundown.ts';
+import { presetRows, rowsForScreens, rundownScreens } from './autopilot/rundown.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
@@ -536,7 +536,10 @@ export class Production extends EventEmitter {
     linkMatch(match, this.library);
     data.matches = [match, ...data.matches].slice(0, 50);
     // The wizard is a guided setup: its match starts from the Standard rundown (quick and Esportra matches start empty).
-    (data.rundown ??= {})[id] = { rows: presetRows(input.template ?? 'standard', input.bestOf), startedFrom: input.template ?? 'standard' };
+    const known = new Set(this.setup.screens.map((x) => x.id));
+    if (input.screens !== undefined && (!Array.isArray(input.screens) || input.screens.some((x) => typeof x !== 'string' || !known.has(x)))) throw new Error('Choose screens from the list.');
+    const preset = input.template ?? 'standard';
+    (data.rundown ??= {})[id] = { rows: input.screens ? rowsForScreens([...new Set(input.screens)], preset, input.bestOf) : presetRows(preset, input.bestOf), startedFrom: preset };
     data.selectedMatchId = id;
     this.save();
     await this.syncEngine();

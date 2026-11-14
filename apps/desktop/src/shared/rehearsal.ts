@@ -8,8 +8,8 @@ import type { AutopilotView } from './autopilot.ts';
  * order per team. During a rehearsal each is mapped by position to the match's own player.
  */
 export const SAMPLE_GAME_NAMES: [string[], string[]] = [
-  ['JUNO #PRX', 'MIRA #PRX', 'DAX #PRX', 'RIKU #PRX', 'ECHO #PRX'],
-  ['KAIRO #FNC', 'SOL #FNC', 'VEX #FNC', 'NYX #FNC', 'ZEN #FNC'],
+  ['JUNO #NWL', 'MIRA #NWL', 'DAX #NWL', 'RIKU #NWL', 'ECHO #NWL'],
+  ['KAIRO #CRF', 'SOL #CRF', 'VEX #CRF', 'NYX #CRF', 'ZEN #CRF'],
 ];
 
 export const BEATS = [
@@ -39,6 +39,8 @@ export interface RehearsalView {
   speed: RehearsalSpeed;
   autopilotOn: boolean;
   handsFree: boolean;
+  /** The full-screen graphic on screen in the rehearsal (null: the game). */
+  showing: string | null;
   /** The engine room the rehearsal preview shows (null before the first rehearsal). */
   room: string | null;
   autopilot: AutopilotView | null;

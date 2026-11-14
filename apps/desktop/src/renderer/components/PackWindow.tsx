@@ -115,6 +115,7 @@ function Details({ s, run, item }: { s: Snapshot; run: Run; item: LibraryItem })
         : link.kind === 'screen' && !s.match
           ? <button className="btn" disabled>Open a match first</button>
           : <button className={`btn ${on ? '' : 'primary'}`} aria-pressed={on} onClick={() => void toggle()}>{on ? (link.kind === 'screen' ? 'In the Rundown ✓ · Remove' : 'In the HUD ✓ · Remove') : link.kind === 'screen' ? 'Add to this match’s Rundown' : 'Add to the HUD'}</button>}
+      {link.kind === 'screen' && s.match && screen && <button className="btn" onClick={() => window.dispatchEvent(new CustomEvent('air:rehearse', { detail: screen.id }))}>Rehearse this</button>}
       <span className="faint t-xs">{link.kind === 'screen' ? (s.match ? `Adds it to ${s.match.title}. Set when it comes up in the match’s Rundown.` : 'Screens go in a match’s Rundown.') : 'HUD parts are switched for the whole production.'}</span>
     </aside>
   );

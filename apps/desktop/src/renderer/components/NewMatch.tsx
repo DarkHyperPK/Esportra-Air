@@ -1,14 +1,15 @@
 // New match wizard: the prerequisites of a show, in order, ending with a private rehearsal.
 import { useEffect, useState } from 'react';
 import type { BannerTheme, Snapshot, Team } from '../../shared/api.ts';
-import { BannerStyles } from '../screens/LibraryScreen.tsx';
+import { ScreenPicker, startPoint, type StartPoint } from './ScreenPicker.tsx';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { LineupEditor, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
 import { RehearsePanel } from './Rehearse.tsx';
 
-const STEPS = ['Teams', 'Players', 'Event', 'Graphics', 'Rehearse'] as const;
-const REHEARSE = 4;
+const STEPS = ['Teams', 'Players', 'Screens', 'Rehearse'] as const;
+const SCREENS = 2;
+const REHEARSE = 3;
 
 export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapshot; run: Run; close: () => void; eventId?: string | null }) {
   const last = s.matches[0];
@@ -28,17 +29,23 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
   const [newEvent, setNewEvent] = useState('');
   const [stage, setStage] = useState(last?.stage ?? '');
   const [theme, setTheme] = useState<BannerTheme>(last?.theme ?? 'broadcast');
+  // The screens ticked in Screens; they become this match's Rundown.
+  const [point, setPoint] = useState<StartPoint | null>('standard');
+  const [picked, setPicked] = useState<string[]>(() => startPoint('standard', 3).screens);
+  const [template, setTemplate] = useState(startPoint('standard', 3).template);
+  const choosePoint = (p: StartPoint) => { const x = startPoint(p, bestOf); setPoint(p); setPicked(x.screens); setTemplate(x.template); };
+  useEffect(() => { if (point) choosePoint(point); }, [bestOf]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   // Once created, the match is edited on its own page; the wizard only rehearses it.
   const [created, setCreated] = useState(false);
-  useEffect(() => { if (step === 3) void air.librarySeed().catch(() => {}); }, [step]);
+  useEffect(() => { if (step === SCREENS) void air.librarySeed().catch(() => {}); }, [step]);
 
   const teamsOk = teams.every((t) => t.name.trim()) && teams[0].name.trim().toLowerCase() !== teams[1].name.trim().toLowerCase();
   const canNext = step === 0 ? teamsOk : true;
   const finish = async () => {
     setBusy(true);
     const players = lineups.map((team) => team.filter((p) => p.name.trim())) as Lineups;
-    const ok = await run(() => air.createMatch({ bestOf, teams, players, ...(event ? { eventId: event.id } : {}), stage, theme }));
+    const ok = await run(() => air.createMatch({ bestOf, teams, players, ...(event ? { eventId: event.id } : {}), stage, theme, template, screens: [...new Set(['in-game', ...picked])] }));
     setBusy(false);
     if (ok) {
       setCreated(true);
@@ -60,6 +67,22 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
           </ol>
           <button className="btn quiet small" onClick={done} aria-label="Close">Esc · Close</button>
         </header>
+        {step < REHEARSE && (
+          <div className="wizard-ctx">
+            {forEvent && event
+              ? <span>Match in <b>{event.name}</b></span>
+              : s.events.length > 0
+                ? <label className="row-gap"><span>Event</span><select aria-label="Event" value={event?.id ?? ''} onChange={(e) => setEventId(e.target.value)}>{s.events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
+                : <form className="row-gap" onSubmit={async (e) => { e.preventDefault(); if (await run(() => air.createEvent(newEvent))) { setNewEvent(''); setEventId('__last'); } }}>
+                    <input className="cell" aria-label="New event name" value={newEvent} onChange={(e) => setNewEvent(e.target.value)} placeholder="Name the event this match belongs to" maxLength={60} />
+                    <button className="btn small" disabled={!newEvent.trim()}>Create event</button>
+                  </form>}
+            <label className="row-gap"><span>Stage</span><input className="cell" aria-label="Stage on air" value={stage} onChange={(e) => setStage(e.target.value)} maxLength={40} placeholder="e.g. Playoffs" list="wizard-stages" style={{ width: 160 }} /></label>
+            <datalist id="wizard-stages">{(event?.stages ?? []).map((x) => <option key={x} value={x} />)}</datalist>
+            <span className="faint">Best of {bestOf}{teams[0].name && teams[1].name ? <> · <b>{teams[0].name}</b> vs <b>{teams[1].name}</b></> : null}</span>
+            {event && <span className="faint push">On air: {event.talent.length ? event.talent.map((t) => t.name).join(', ') : 'nobody yet'} · {event.sponsors.length} sponsor{event.sponsors.length === 1 ? '' : 's'}</span>}
+          </div>
+        )}
         <div className="wizard-body">
           {step === 0 && (
             <div className="stack" style={{ gap: 14 }}>
@@ -104,39 +127,13 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
               <LineupEditor s={s} teams={teams} lineups={lineups} onChange={setLineups} game={game} />
             </div>
           )}
-          {step === 3 && (
-            <div className="stack" style={{ gap: 14 }}>
-              <p className="lead">Pick the banner style for this match. Each preview shows the same moment; the Library shows every other graphic live.</p>
-              <BannerStyles s={s} value={theme} onPick={setTheme} />
-              <p className="muted" style={{ fontSize: 12.5 }}>Previews use sample data until the match exists.</p>
-            </div>
+          {step === SCREENS && (
+            <ScreenPicker s={s} picked={picked} onPick={(ids) => { setPicked(ids); setPoint(null); }} point={point} onPoint={choosePoint} theme={theme} onTheme={setTheme} />
           )}
           {step === REHEARSE && (
             <div className="stack" style={{ gap: 14 }}>
               <p className="lead">Watch {s.match?.title ?? 'the match'} run through your graphics: your teams, players and photos on sample game data, with autopilot firing as it would on the night.</p>
               <RehearsePanel s={s} run={run} compact />
-            </div>
-          )}
-          {step === 2 && (
-            <div className="stack" style={{ gap: 14 }}>
-              <p className="lead">The event gives this match its logo, people on air and sponsors. Switch any off for this match after it is created.</p>
-              {s.events.length > 0 && (
-                <div className="grid2" style={{ maxWidth: 640 }}>
-                  <label className="field"><span>Event</span><select value={event?.id ?? ''} onChange={(e) => setEventId(e.target.value)}>{s.events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
-                  <label className="field"><span>Stage on air</span><input value={stage} onChange={(e) => setStage(e.target.value)} maxLength={40} placeholder="e.g. Playoffs" list="wizard-stages" /></label>
-                  <datalist id="wizard-stages">{(event?.stages ?? []).map((x) => <option key={x} value={x} />)}</datalist>
-                </div>
-              )}
-              <form className="row-gap" style={{ maxWidth: 520 }} onSubmit={async (e) => { e.preventDefault(); if (await run(() => air.createEvent(newEvent))) { setNewEvent(''); setEventId('__last'); } }}>
-                <input className="cell" aria-label="New event name" value={newEvent} onChange={(e) => setNewEvent(e.target.value)} placeholder={s.events.length ? 'Or a new event' : 'Name the event this match belongs to'} maxLength={60} style={{ flex: 1 }} />
-                <button className="btn" disabled={!newEvent.trim()}>Create event</button>
-              </form>
-              {event && (
-                <div className="stack" style={{ gap: 6 }}>
-                  <span className="faint t-xs">On air from {event.name}</span>
-                  <span className="muted">{event.talent.length ? event.talent.map((t) => t.name).join(', ') : 'Nobody yet'} · {event.sponsors.length} sponsor{event.sponsors.length === 1 ? '' : 's'}. Edit them in Event.</span>
-                </div>
-              )}
             </div>
           )}
         </div>

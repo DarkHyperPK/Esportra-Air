@@ -3,8 +3,8 @@
 window.HUD_DEFAULT = {
   event: { name: 'ESPORTRA INVITATIONAL', stage: 'GRAND FINAL', bestOf: 3, handle: '@esportra', site: 'ESPORTRA.COM' },
   teams: [
-    { name: 'PAPER REX', tag: 'PRX', color: '#4fd3ea', logo: '', score: 11, series: 1, side: 'DEF', timeouts: 2, lossStreak: 1 },
-    { name: 'FNATIC',    tag: 'FNC', color: '#e0445e', logo: '', score: 12, series: 1, side: 'ATK', timeouts: 1, lossStreak: 0 }
+    { name: 'NIGHT OWLS', tag: 'NWL', color: '#4fd3ea', logo: '', score: 11, series: 1, side: 'DEF', timeouts: 2, lossStreak: 1 },
+    { name: 'CRIMSON FIVE',    tag: 'CRF', color: '#e0445e', logo: '', score: 13, series: 2, side: 'ATK', timeouts: 1, lossStreak: 0 }
   ],
   map: { name: 'LOTUS', number: 3 },
   mapPool: ['HAVEN', 'ASCENT', 'SPLIT', 'SUNSET', 'ABYSS', 'LOTUS', 'SUMMIT'],
@@ -22,9 +22,9 @@ window.HUD_DEFAULT = {
   series: [
     { map: 'HAVEN',  pick: 1, score: [9, 13],  winner: 1 },
     { map: 'SUNSET', pick: 0, score: [13, 10], winner: 0 },
-    { map: 'LOTUS',  pick: -1, score: [11, 12], winner: null }
+    { map: 'LOTUS',  pick: -1, score: [11, 13], winner: 1 }
   ],
-  round: { number: 24, phase: 'live', endsAt: 0, remaining: 84, winner: null, method: '' },
+  round: { number: 24, phase: 'end', endsAt: 0, remaining: 0, winner: 1, method: 'elim' },
   // phase: 'buy' | 'live' | 'planted' | 'paused' | 'end'. endsAt = epoch ms when the timer hits 0 (0 = frozen at `remaining`)
   players: [
     [
@@ -54,34 +54,34 @@ window.HUD_DEFAULT = {
   casters: [ { name: 'Ava "Sparrow" Lind', handle: '@sparrowcasts' }, { name: 'Marcus Hale', handle: '@hale_gg' } ],
   holding: { mode: 'starting', target: 0, minutes: 10, message: 'The Grand Final is about to begin' },
   schedule: [
-    { time: '17:00', a: 'SEN', b: 'DRX', label: 'Show match', done: true },
-    { time: '18:30', a: 'PRX', b: 'FNC', label: 'Grand Final', done: false },
+    { time: '17:00', a: 'VLT', b: 'HLX', label: 'Show match', done: true },
+    { time: '18:30', a: 'NWL', b: 'CRF', label: 'Grand Final', done: false },
     { time: '21:00', a: '', b: '', label: 'Trophy lift + interviews', done: false }
   ],
   ticker: [
-    'PRX and FNC trade maps: Haven to Fnatic 13–9, Sunset to Paper Rex 13–10',
+    'NWL and CRF trade maps: Haven to Crimson Five 13–9, Sunset to Night Owls 13–10',
     'KAIRO leads the event with 298 average combat score',
-    'Decider on Lotus: first to 13, win by two in overtime',
+    'Crimson Five take the decider on Lotus 13–11 and the title',
     'Follow @esportra for match highlights'
   ],
   bracket: {
-    qf: [['SENTINELS', 13, 'DRX', 9], ['EDG', 7, 'FNATIC', 13], ['PAPER REX', 13, 'NRG', 11], ['G2 ESPORTS', 10, 'HERETICS', 13]],
-    sf: [['SENTINELS', 1, 'FNATIC', 2], ['PAPER REX', 2, 'HERETICS', 0]],
-    gf: [['PAPER REX', 1, 'FNATIC', 1]]
+    qf: [['VOLTAGE', 13, 'HLX', 9], ['KESTREL', 7, 'CRIMSON FIVE', 13], ['NIGHT OWLS', 13, 'ORBIT', 11], ['TIDEBREAK', 10, 'EMBERS', 13]],
+    sf: [['VOLTAGE', 1, 'CRIMSON FIVE', 2], ['NIGHT OWLS', 2, 'EMBERS', 0]],
+    gf: [['NIGHT OWLS', 1, 'CRIMSON FIVE', 2]]
   },
   standings: [
-    ['FNATIC', '4–1', '8–4', '+28'], ['SENTINELS', '3–1', '7–3', '+33'], ['PAPER REX', '3–2', '7–5', '+13'], ['NRG', '2–2', '5–4', '+3'],
-    ['HERETICS', '2–2', '4–5', '-7'], ['EDG', '2–2', '4–6', '-14'], ['G2 ESPORTS', '1–3', '4–7', '-16'], ['DRX', '0–4', '1–8', '-41']
+    ['CRIMSON FIVE', '4–1', '8–4', '+28'], ['VOLTAGE', '3–1', '7–3', '+33'], ['NIGHT OWLS', '3–2', '7–5', '+13'], ['ORBIT', '2–2', '5–4', '+3'],
+    ['EMBERS', '2–2', '4–5', '-7'], ['KESTREL', '2–2', '4–6', '-14'], ['TIDEBREAK', '1–3', '4–7', '-16'], ['HLX', '0–4', '1–8', '-41']
   ],
-  rounds: [{"w": 1, "how": "elim"}, {"w": 1, "how": "defuse"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "time"}, {"w": 0, "how": "boom"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "elim"}, {"w": 1, "how": "defuse"}, {"w": 0, "how": "boom"}, {"w": 1, "how": "elim"}, {"w": 1, "how": "elim"}, {"w": 0, "how": "elim"}, {"w": 0, "how": "defuse"}, {"w": 0, "how": "time"}, {"w": 1, "how": "elim"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "boom"}, {"w": 1, "how": "elim"}, {"w": 0, "how": "defuse"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "boom"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "elim"}],          // completed rounds: w = winning team index, how = elim | boom | defuse | time
+  rounds: [{"w": 1, "how": "elim"}, {"w": 1, "how": "defuse"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "time"}, {"w": 0, "how": "boom"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "elim"}, {"w": 1, "how": "defuse"}, {"w": 0, "how": "boom"}, {"w": 1, "how": "elim"}, {"w": 1, "how": "elim"}, {"w": 0, "how": "elim"}, {"w": 0, "how": "defuse"}, {"w": 0, "how": "time"}, {"w": 1, "how": "elim"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "boom"}, {"w": 1, "how": "elim"}, {"w": 0, "how": "defuse"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "boom"}, {"w": 0, "how": "elim"}, {"w": 1, "how": "elim"}, {"w": 1, "how": "elim"}],          // completed rounds: w = winning team index, how = elim | boom | defuse | time
   firstSide: ['ATK', 'DEF'],     // side each team started the map on (rounds 1-12)
   teamStats: [
-    { plants: 9, defuses: 3, clutches: 2, pistols: 1, ecoWins: 2, firstKills: 11 },
-    { plants: 11, defuses: 2, clutches: 3, pistols: 1, ecoWins: 1, firstKills: 12 }
+    { plants: 5, defuses: 2, clutches: 1, pistols: 1, ecoWins: 2, firstKills: 11 },
+    { plants: 6, defuses: 1, clutches: 2, pistols: 1, ecoWins: 1, firstKills: 12 }
   ],
   sponsors: [ { name: 'NOVA ENERGY', line: 'Official energy partner', logo: '' }, { name: 'ARCLIGHT PC', line: 'Powering every observer', logo: '' }, { name: 'KITE NETWORK', line: 'Low-latency partner', logo: '' } ],
   toast: { text: 'Replay of the round-23 retake coming up after this round', ts: 0 },
-  poll: { question: 'Who takes the decider on Lotus?', options: [{ label: 'PRX', pct: 41 }, { label: 'FNC', pct: 59 }], votes: 18240 },
+  poll: { question: 'Who takes the decider on Lotus?', options: [{ label: 'NWL', pct: 41 }, { label: 'CRF', pct: 59 }], votes: 18240 },
   duel: { a: [1, 0], b: [0, 3], title: 'OPERATOR DUEL' },
   spotlight: { team: 1, player: 0, season: { maps: 18, rating: '1.24', kpr: '0.86', acs: 262, hs: '28%', clutches: 9 }, quote: 'I just want the last round.' },
   champion: { team: -1 },     // -1 = decide from series score; 0/1 = force a winner

@@ -301,8 +301,8 @@ function Talent({ s, run, openEvent }: Pick<PageProps, 's' | 'run'> & { openEven
 }
 
 /** The match: its steps, from Overview to Go live. */
-export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, openEvent }: Pick<PageProps, 's' | 'run' | 'go'> & {
-  step: MatchStep; setStep: (t: MatchStep) => void; act: (id: ActionId) => void; start: () => void; back: () => void; openEvent: (tab: EventView['tab']) => void;
+export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, openEvent, focus = null }: Pick<PageProps, 's' | 'run' | 'go'> & {
+  focus?: string | null; step: MatchStep; setStep: (t: MatchStep) => void; act: (id: ActionId) => void; start: () => void; back: () => void; openEvent: (tab: EventView['tab']) => void;
 }) {
   const m = s.match!;
   const [goLive, setGoLive] = useState(false);
@@ -335,7 +335,7 @@ export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, op
           {step === 'rundown' && <Rundown s={s} run={run} />}
           {step === 'obs' && <ObsStep s={s} run={run} go={go} />}
           {step === 'devices' && <DevicesScreen {...page} embedded />}
-          {step === 'rehearse' && <RehearsePanel s={s} run={run} />}
+          {step === 'rehearse' && <RehearsePanel s={s} run={run} focus={focus} />}
         </div>
       </div>
       {goLive && <GoLiveDialog s={s} close={() => setGoLive(false)} done={() => { setGoLive(false); start(); }} connectObs={() => { setGoLive(false); setStep('obs'); }} />}

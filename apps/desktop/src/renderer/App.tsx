@@ -22,7 +22,7 @@ import { FirstRun } from './components/FirstRun.tsx';
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
 export type MatchStep = 'ready' | 'teams' | 'talent' | 'rundown' | 'obs' | 'devices' | 'rehearse';
-export type MatchCommand = { name: 'new-match' | MatchStep | 'autopilot' | 'myshow'; n: number; eventId?: string | null } | null;
+export type MatchCommand = { name: 'new-match' | MatchStep | 'autopilot' | 'myshow'; n: number; eventId?: string | null; screen?: string } | null;
 
 export interface PageProps {
   s: Snapshot;
@@ -59,6 +59,12 @@ export function App() {
     const on = (e: Event) => setTplEdit((e as CustomEvent<EditorStart>).detail);
     window.addEventListener('air:edit-template', on);
     return () => window.removeEventListener('air:edit-template', on);
+  }, []);
+  // Graphics › Rehearse this: the match's Rehearse step, playing that screen.
+  useEffect(() => {
+    const on = (e: Event) => { setPage('ready'); setMatchOpen(true); setCommand({ name: 'rehearse', n: Date.now(), screen: (e as CustomEvent<string>).detail }); };
+    window.addEventListener('air:rehearse', on);
+    return () => window.removeEventListener('air:rehearse', on);
   }, []);
 
   useEffect(() => {

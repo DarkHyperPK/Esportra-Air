@@ -13,12 +13,14 @@ export function ReadyScreen({ s, run, go, askCapture, openSignIn, start, command
 }) {
   const [wizard, setWizard] = useState<{ eventId: string | null } | null>(null);
   const [step, setStep] = useState<MatchStep>('ready');
+  const [focus, setFocus] = useState<string | null>(null);
   // Commands: the New match wizard for an event, or a step of the open match (palette, old links).
   useEffect(() => {
     if (!command) return;
     if (command.name === 'new-match') return setWizard({ eventId: command.eventId ?? null });
     const name = command.name === 'myshow' || command.name === 'autopilot' ? 'rundown' : command.name;
     setStep(name);
+    setFocus(command.screen ?? null);
     setOpen(true);
   }, [command]);
 
@@ -50,7 +52,7 @@ export function ReadyScreen({ s, run, go, askCapture, openSignIn, start, command
   }
   return (
     <>
-      <MatchWorkspace s={s} run={run} go={go} step={step} setStep={setStep} act={act} start={start} back={() => openEvent('matches')} openEvent={openEvent} />
+      <MatchWorkspace s={s} run={run} go={go} focus={focus} step={step} setStep={setStep} act={act} start={start} back={() => openEvent('matches')} openEvent={openEvent} />
       {wizardEl}
     </>
   );

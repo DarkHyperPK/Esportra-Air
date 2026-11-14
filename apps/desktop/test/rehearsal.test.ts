@@ -21,6 +21,6 @@ test('the sample game names match the engine’s test round, in scoreboard order
 test('each sample player is known by the match’s own player in the same position', () => {
   const match = { players: [[{ name: 'Juno Park', photo: '/air-assets/x', gameId: 'Juno#EU1', realName: '', id: 'a' }], []] } as never;
   const roster = rehearsalRoster(match);
-  assert.deepEqual(roster[0]![0], { gameId: 'JUNO#PRX', name: 'Juno Park', photo: '/air-assets/x' });
-  assert.deepEqual(roster[1]![4], { gameId: 'ZEN#FNC', name: '', photo: '' }, 'no player there: the sample name stays');
+  assert.deepEqual(roster[0]![0], { gameId: 'JUNO#NWL', name: 'Juno Park', photo: '/air-assets/x' });
+  assert.deepEqual(roster[1]![4], { gameId: 'ZEN#CRF', name: '', photo: '' }, 'no player there: the sample name stays');
 });

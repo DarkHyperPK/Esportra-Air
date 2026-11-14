@@ -90,3 +90,20 @@ test('a row can show its graphic over the game; only graphics that have that ver
   const steps = buildRundown(1, [validRow({ ...base, style: 'band' }, 'v', 1, all)]);
   assert.equal(steps[0]!.style, 'band', 'autopilot takes it over the game');
 });
+
+test('the screens ticked in New match become the rundown, with the starting point’s rules', async () => {
+  const { rowsForScreens } = await import('../src/main/autopilot/rundown.ts');
+  const rows = rowsForScreens(['holding', 'match-intro', 'map-veto', 'in-game', 'halftime', 'map-result', 'series', 'casters', 'champion'], 'standard', 3);
+  assert.deepEqual(rows.map((r) => `${r.section}:${r.show ?? 'game'}`), [
+    'pre:match-intro', 'pre:holding', 'pre:map-veto',
+    'game:in-game', 'game:game',
+    'between:halftime', 'between:map-result', 'between:series', 'between:casters',
+    'post:champion',
+  ]);
+  assert.equal(rows.find((r) => r.show === 'halftime')!.trigger, 'halftime', 'Standard keeps halftime automatic');
+  assert.equal(rows.find((r) => r.show === 'map-veto')!.trigger, 'manual', 'a screen Standard has no rule for waits for Take');
+  const results = rowsForScreens(['in-game', 'halftime', 'map-result'], 'minimal', 3);
+  assert.equal(results.find((r) => r.show === 'halftime')!.trigger, 'manual', 'Results only: only the result comes up by itself');
+  assert.equal(results.find((r) => r.show === 'map-result')!.trigger, 'map_end');
+  assert.deepEqual(rowsForScreens(['in-game'], 'standard', 1).map((r) => r.show), ['in-game'], 'just the HUD: no Back to the game row');
+});

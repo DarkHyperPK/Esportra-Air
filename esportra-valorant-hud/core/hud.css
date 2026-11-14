@@ -439,7 +439,10 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 .mr .mvp .k{position:absolute;left:34px;top:30px;font-size:14px;letter-spacing:.3em;color:var(--gold)}
 .mr .mvp .n{position:absolute;left:30px;top:62px;font-size:96px}
 .mr .mvp .a{position:absolute;left:34px;top:170px;font-size:14px;letter-spacing:.3em;color:var(--c)}
-.mr .mvp .sts{position:absolute;left:34px;bottom:34px;display:grid;grid-template-columns:repeat(2,150px);gap:22px 20px}
+.mr .mvp .sts{position:absolute;left:34px;bottom:34px;display:grid;grid-template-columns:repeat(2,max-content);gap:22px 44px;z-index:2}
+/* The stats sit on a fade, never on the agent picture */
+.mr .mvp::before{content:'';position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,var(--ink) 0,var(--ink) 38%,transparent 72%);pointer-events:none}
+.mr .mvp .k,.mr .mvp .n,.mr .mvp .a{z-index:2}
 .mr .mvp .sts div{font-family:JB;font-weight:700;font-size:42px}
 .mr .mvp .sts small{display:block;font-weight:500;font-size:11px;letter-spacing:.24em;color:var(--muted);margin-top:2px}
 .mr .tp{position:absolute;left:108px;top:560px;width:900px}

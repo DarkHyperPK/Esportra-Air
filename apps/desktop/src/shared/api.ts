@@ -358,6 +358,8 @@ export interface NewMatchInput {
   theme?: BannerTheme;
   /** How the Rundown starts (default Standard). */
   template?: Preset;
+  /** The screens ticked in New match › Screens; the Rundown is made of these (with the template's rules). */
+  screens?: string[];
 }
 
 export type MatchPatch = Partial<Pick<Match, 'title' | 'players' | 'teams' | 'bestOf' | 'theme' | 'eventId' | 'stage' | 'talentOff' | 'sponsorsOff'>>;
@@ -476,6 +478,8 @@ export interface AirApi {
   rehearsalStop(): Promise<Snapshot>;
   /** Takes the step the rehearsal's autopilot is waiting on. */
   rehearsalTake(): Promise<Snapshot>;
+  /** Shows one full-screen graphic in the rehearsal (null: back to the game). */
+  rehearsalShow(screen: string | null): Promise<Snapshot>;
   createMatch(input: NewMatchInput): Promise<Snapshot>;
   /** Stores an image (data URL) and resolves to its URL on the engine. */
   uploadImage(dataUrl: string): Promise<string>;

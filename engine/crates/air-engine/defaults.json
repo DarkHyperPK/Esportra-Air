@@ -9,8 +9,8 @@
   },
   "teams": [
    {
-    "name": "PAPER REX",
-    "tag": "PRX",
+    "name": "NIGHT OWLS",
+    "tag": "NWL",
     "color": "#4fd3ea",
     "logo": "",
     "score": 11,
@@ -20,12 +20,12 @@
     "lossStreak": 1
    },
    {
-    "name": "FNATIC",
-    "tag": "FNC",
+    "name": "CRIMSON FIVE",
+    "tag": "CRF",
     "color": "#e0445e",
     "logo": "",
-    "score": 12,
-    "series": 1,
+    "score": 13,
+    "series": 2,
     "side": "ATK",
     "timeouts": 1,
     "lossStreak": 0
@@ -108,18 +108,18 @@
     "pick": -1,
     "score": [
      11,
-     12
+     13
     ],
-    "winner": null
+    "winner": 1
    }
   ],
   "round": {
    "number": 24,
-   "phase": "live",
+   "phase": "end",
    "endsAt": 0,
-   "remaining": 84,
-   "winner": null,
-   "method": ""
+   "remaining": 0,
+   "winner": 1,
+   "method": "elim"
   },
   "players": [
    [
@@ -437,15 +437,15 @@
   "schedule": [
    {
     "time": "17:00",
-    "a": "SEN",
-    "b": "DRX",
+    "a": "VLT",
+    "b": "HLX",
     "label": "Show match",
     "done": true
    },
    {
     "time": "18:30",
-    "a": "PRX",
-    "b": "FNC",
+    "a": "NWL",
+    "b": "CRF",
     "label": "Grand Final",
     "done": false
    },
@@ -458,106 +458,106 @@
    }
   ],
   "ticker": [
-   "PRX and FNC trade maps: Haven to Fnatic 13–9, Sunset to Paper Rex 13–10",
+   "NWL and CRF trade maps: Haven to Crimson Five 13–9, Sunset to Night Owls 13–10",
    "KAIRO leads the event with 298 average combat score",
-   "Decider on Lotus: first to 13, win by two in overtime",
+   "Crimson Five take the decider on Lotus 13–11 and the title",
    "Follow @esportra for match highlights"
   ],
   "bracket": {
    "qf": [
     [
-     "SENTINELS",
+     "VOLTAGE",
      13,
-     "DRX",
+     "HLX",
      9
     ],
     [
-     "EDG",
+     "KESTREL",
      7,
-     "FNATIC",
+     "CRIMSON FIVE",
      13
     ],
     [
-     "PAPER REX",
+     "NIGHT OWLS",
      13,
-     "NRG",
+     "ORBIT",
      11
     ],
     [
-     "G2 ESPORTS",
+     "TIDEBREAK",
      10,
-     "HERETICS",
+     "EMBERS",
      13
     ]
    ],
    "sf": [
     [
-     "SENTINELS",
+     "VOLTAGE",
      1,
-     "FNATIC",
+     "CRIMSON FIVE",
      2
     ],
     [
-     "PAPER REX",
+     "NIGHT OWLS",
      2,
-     "HERETICS",
+     "EMBERS",
      0
     ]
    ],
    "gf": [
     [
-     "PAPER REX",
+     "NIGHT OWLS",
      1,
-     "FNATIC",
-     1
+     "CRIMSON FIVE",
+     2
     ]
    ]
   },
   "standings": [
    [
-    "FNATIC",
+    "CRIMSON FIVE",
     "4–1",
     "8–4",
     "+28"
    ],
    [
-    "SENTINELS",
+    "VOLTAGE",
     "3–1",
     "7–3",
     "+33"
    ],
    [
-    "PAPER REX",
+    "NIGHT OWLS",
     "3–2",
     "7–5",
     "+13"
    ],
    [
-    "NRG",
+    "ORBIT",
     "2–2",
     "5–4",
     "+3"
    ],
    [
-    "HERETICS",
+    "EMBERS",
     "2–2",
     "4–5",
     "-7"
    ],
    [
-    "EDG",
+    "KESTREL",
     "2–2",
     "4–6",
     "-14"
    ],
    [
-    "G2 ESPORTS",
+    "TIDEBREAK",
     "1–3",
     "4–7",
     "-16"
    ],
    [
-    "DRX",
+    "HLX",
     "0–4",
     "1–8",
     "-41"
@@ -655,6 +655,10 @@
    {
     "w": 1,
     "how": "elim"
+   },
+   {
+    "w": 1,
+    "how": "elim"
    }
   ],
   "firstSide": [
@@ -663,17 +667,17 @@
   ],
   "teamStats": [
    {
-    "plants": 9,
-    "defuses": 3,
-    "clutches": 2,
+    "plants": 5,
+    "defuses": 2,
+    "clutches": 1,
     "pistols": 1,
     "ecoWins": 2,
     "firstKills": 11
    },
    {
-    "plants": 11,
-    "defuses": 2,
-    "clutches": 3,
+    "plants": 6,
+    "defuses": 1,
+    "clutches": 2,
     "pistols": 1,
     "ecoWins": 1,
     "firstKills": 12
@@ -704,11 +708,11 @@
    "question": "Who takes the decider on Lotus?",
    "options": [
     {
-     "label": "PRX",
+     "label": "NWL",
      "pct": 41
     },
     {
-     "label": "FNC",
+     "label": "CRF",
      "pct": 59
     }
    ],

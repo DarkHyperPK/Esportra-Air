@@ -178,26 +178,35 @@ let failShot = async () => {};
   await wizard.locator('.lineup').nth(0).locator('.player-row .imgpick-btn img').first().waitFor();
   await shot('wizard-players');
   await wizard.getByRole('button', { name: 'Continue' }).click();
-  // The event step: the match joins Community Cup; its people come from the event.
+  // The event line: started inside the event, so the wizard just says so; the stage sits next to it.
   await wizard.getByLabel('Stage on air').fill('Playoffs');
-  await wizard.getByText('Sara Malik, Omar Sheikh · 1 sponsor.', { exact: false }).waitFor();
-  await shot('wizard-event');
-  await wizard.getByRole('button', { name: 'Continue' }).click();
-  await wizard.getByRole('radio', { name: /Impact/ }).click();
+  await wizard.getByText('On air: Sara Malik, Omar Sheikh · 1 sponsor', { exact: false }).waitFor();
+  if (await wizard.getByRole('button', { name: /Event/ }).count()) throw new Error('the Event step is gone (approved mock, 14 Nov)');
+  // Screens: every screen previewed; Standard ticks the usual show; the banner style sits with the HUD.
+  await wizard.getByRole('checkbox', { name: 'Match intro' }).waitFor();
+  if (await wizard.getByRole('checkbox', { name: 'Map veto' }).getAttribute('aria-checked') !== 'true') throw new Error('Standard ticks the map veto');
+  await wizard.getByRole('checkbox', { name: 'Standings' }).click();
+  if (await wizard.getByRole('checkbox', { name: 'Standings' }).getAttribute('aria-checked') !== 'true') throw new Error('a screen can be ticked');
+  await wizard.getByRole('radio', { name: 'Impact' }).click();
   await page.waitForTimeout(2500);
-  await shot('wizard-graphics');
+  await shot('wizard-screens');
   await wizard.getByRole('button', { name: 'Create match and rehearse' }).click();
-  // Step 6: the match rehearses privately at 4x, autopilot firing (intro, back to the game, halftime, result).
-  await wizard.getByRole('button', { name: 'Play rehearsal' }).waitFor();
+  // Rehearse: one big picture and the screens just picked, in show order.
+  await wizard.getByRole('button', { name: /Play/ }).first().waitFor();
+  { const snap = await call('snapshot'); if (!snap.rundown.some((r) => r.show === 'standings') || !snap.rundown.some((r) => r.show === 'map-veto')) throw new Error('the ticked screens are the Rundown'); }
+  await wizard.getByRole('complementary', { name: 'Your show' }).getByText('Standings').waitFor();
   await shot('wizard-rehearse-ready');
   await wizard.getByRole('group', { name: 'Rehearsal speed' }).getByRole('button', { name: '4×' }).click();
-  await wizard.getByRole('button', { name: 'Play rehearsal' }).click();
-  await wizard.getByText('→ Map 1 · Halftime').waitFor({ timeout: 90_000 });
+  await wizard.getByRole('button', { name: /^▶ Play/ }).click();
+  await wizard.locator('.reh2-item.now', { hasText: 'Halftime' }).waitFor({ timeout: 90_000 });
   await page.waitForTimeout(1200);
   await shot('wizard-rehearse-halftime');
-  await wizard.getByText('→ Map 1 · Map result').waitFor({ timeout: 90_000 });
-  await page.waitForTimeout(1500);
+  await wizard.locator('.reh2-item.now', { hasText: 'Map result' }).waitFor({ timeout: 90_000 });
+  await page.waitForTimeout(1200);
   await shot('wizard-rehearse-map-result');
+  // Jump straight to a screen from Your show.
+  await wizard.getByRole('complementary', { name: 'Your show' }).getByRole('button', { name: /Standings/ }).click();
+  await wizard.locator('.reh2-item.now', { hasText: 'Standings' }).waitFor({ timeout: 10_000 });
   await wizard.getByRole('button', { name: 'Finish · Readiness' }).click();
   await wizard.waitFor({ state: 'detached' });
   await page.locator('[title="Sara Malik, Omar Sheikh · 1 sponsor"]').waitFor(); // a Ready chip
@@ -270,10 +279,15 @@ let failShot = async () => {};
   await pack.getByRole('button', { name: /In the HUD ✓/ }).waitFor();
   await pack.getByRole('button', { name: 'In the show', exact: true }).click();
   await pack.getByRole('option', { name: /Win probability/ }).waitFor();
-  if (await pack.getByRole('option', { name: /Agent select/ }).count() !== 0) throw new Error('Agent select is not in a Standard rundown');
+  if (await pack.getByRole('option', { name: /Player cams/ }).count() !== 0) throw new Error('Player cams was not ticked, so it is not in the show');
+  if (await pack.getByRole('option', { name: /Agent select/ }).count() !== 1) throw new Error('Agent select was ticked (Standard), so it is in the show');
   await shot('pack-in-my-show');
   await pack.getByRole('button', { name: /In the HUD ✓/ }).click();
   await pack.getByRole('option', { name: /Win probability/ }).waitFor({ state: 'detached' });
+  // Rehearse this: the match's Rehearse step, playing that screen.
+  await pack.getByRole('button', { name: 'All', exact: true }).click();
+  await pack.getByRole('option', { name: /Halftime/ }).click();
+  await pack.getByRole('button', { name: 'Rehearse this' }).waitFor();
   // Map veto in both looks.
   await pack.getByRole('button', { name: 'All', exact: true }).click();
   await pack.getByRole('option', { name: /Map veto/ }).click();
@@ -285,7 +299,7 @@ let failShot = async () => {};
   await pack.getByRole('tab', { name: 'Full screen' }).click();
   // A screen goes into this match's Rundown.
   await pack.getByRole('button', { name: 'All', exact: true }).click();
-  await pack.getByRole('option', { name: /Standings/ }).click();
+  await pack.getByRole('option', { name: /Player cams/ }).click();
   await pack.getByRole('button', { name: 'Add to this match’s Rundown' }).click();
   await pack.getByRole('button', { name: /In the Rundown ✓/ }).click();
   await pack.getByRole('button', { name: 'Add to this match’s Rundown' }).waitFor();
@@ -402,6 +416,11 @@ let failShot = async () => {};
   await page.locator('.next-card').getByText('Match intro', { exact: true }).waitFor();
   await shot('autopilot-armed');
   await page.keyboard.press(' ');           // Space takes the waiting step: the intro goes up full screen
+  // The ticked pre-show screens follow on Take: the veto, then agent select, then back to the game.
+  await page.waitForFunction(() => /Map veto/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => /Agent select/.test(document.querySelector('.next-card')?.textContent ?? ''));
+  await page.keyboard.press(' ');
   await page.waitForFunction(() => /Map 1 · Back to the game/.test(document.querySelector('.next-card')?.textContent ?? ''));
   await page.waitForTimeout(2500);
   await shot('autopilot-intro-on-air');
@@ -809,8 +828,10 @@ let failShot = async () => {};
     await shot(name);
   }
 
-  const loading = (await call('snapshot')).outputs.filter((o) => o.connections > 0).length;
-  if (loading !== snap.outputs.length) errors.push(`only ${loading} of ${snap.outputs.length} outputs connected`);
+  // Compared with the outputs the match has now (the Rundown changed during the walk).
+  const end = await call('snapshot');
+  const loading = end.outputs.filter((o) => o.connections > 0).length;
+  if (loading !== end.outputs.length) errors.push(`only ${loading} of ${end.outputs.length} outputs connected`);
   await browser.close();
   if (errors.length) { console.error('Problems:\n' + errors.join('\n')); process.exit(1); }
   console.log(`Walkthrough complete: ${n} screenshots in ${OUT}`);

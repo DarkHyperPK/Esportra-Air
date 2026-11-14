@@ -38,6 +38,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'rehearsalStart': await p.rehearsal.start(a[0] && typeof a[0] === 'object' ? a[0] : {}); break;
     case 'rehearsalStop': p.rehearsal.stop(); break;
     case 'rehearsalTake': await p.rehearsal.take(); break;
+    case 'rehearsalShow': await p.rehearsal.show(a[0] === null || a[0] === undefined ? null : String(a[0])); break;
     case 'createMatch': await p.createMatch(a[0]); break;
     case 'uploadImage': return p.uploadImage(String(a[0]));
     case 'updateMatch': await p.updateMatch(String(a[0]), a[1] ?? {}); break;

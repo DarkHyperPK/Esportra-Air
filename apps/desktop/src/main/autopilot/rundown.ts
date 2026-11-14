@@ -59,6 +59,24 @@ export function presetRows(preset: Preset, bestOf: 1 | 3 | 5): RundownRow[] {
   });
 }
 
+/**
+ * The rows for the screens ticked in New match › Screens: the starting point's rows for the screens it
+ * has (with their rules), then each other ticked screen in its usual section, waiting for Take. Back to
+ * the game comes along with any full-screen graphic; the HUD row only when the in-game HUD is ticked.
+ */
+export function rowsForScreens(screens: string[], preset: Preset, bestOf: 1 | 3 | 5): RundownRow[] {
+  const want = new Set(screens);
+  const base = presetRows(preset === 'empty' ? 'standard' : preset, bestOf);
+  const anyFull = screens.some((x) => FULLSCREEN_IDS.has(x));
+  const rows = base.filter((r) => (r.show === null ? anyFull : want.has(r.show)));
+  for (const show of screens) {
+    if (rows.some((r) => r.show === show)) continue;
+    if (show === HUD_ROW) { rows.push(hudRow()); continue; }
+    rows.push(row({ id: `pick-${show}`, show, trigger: 'manual', map: 'every', holdMode: 'manual', holdSeconds: 0 }));
+  }
+  return sortRows(rows);
+}
+
 export const validPreset = (p: unknown): Preset => {
   if (!(PRESETS as readonly unknown[]).includes(p)) throw new Error('Choose Standard, Results only, Manual or Empty.');
   return p as Preset;
