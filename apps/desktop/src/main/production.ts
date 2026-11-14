@@ -47,6 +47,9 @@ import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
 import { ROLE_NAME } from '../shared/model.ts';
 import { HEX, IMAGE, text } from './validate.ts';
+import { checks } from './readiness.ts';
+import { CueDeck, type GraphicAction } from './cue-deck.ts';
+import { OwnGraphics } from './own-graphics-service.ts';
 import { cameraLinkUrl, cameraViewUrl, type EventInfo, type EventPatch, type SponsorInput, type TalentInput } from '../shared/model.ts';
 import type { ApiMethod, MatchPatch } from '../shared/api.ts';
 import { GlobalKeys, type ShortcutRegistry } from './global-keys.ts';
@@ -139,14 +142,6 @@ export function validPlayers(input: unknown): Match['players'] {
   }) as Match['players'];
 }
 
-/** Which on-air slot a change fills: a later cued change for the same slot replaces it. */
-function cueKey(actions: Array<{ name: string; args: Record<string, unknown> }>): string {
-  const last = actions.at(-1)!;
-  if (last.name === 'layer.set') return `layer:${String(last.args.layer)}`;
-  if (last.name === 'fullscreen.show') return 'fs';
-  return last.name.split('.')[0]!;
-}
-
 export class Production extends EventEmitter {
   private readonly deps: ProductionDeps;
   private room: any = null;
@@ -198,6 +193,25 @@ export class Production extends EventEmitter {
       // One at a time, in order: a round or map event first reads the room's score.
       this.eventChain = this.eventChain.then(() => this.onEngineEvent(event)).catch(() => {});
     } });
+    this.own = new OwnGraphics({
+      store: deps.store, setup: () => this.setup, save: () => this.save(),
+      putAsset: async (id, bytes) => { await this.client.putBytes(`/control/assets/${id}`, bytes); },
+      publish: async () => { if (this.match) await this.syncEngine(); await this.librarySeed().catch(() => {}); },
+      match: () => this.match, rows: () => this.autopilot.rows(), reloadRundown: () => this.autopilot.loadForMatch(),
+      addRow: (row) => this.rundownSave(row), live: () => !!this.gameLocked(),
+      onAir: () => (typeof this.room?.airFullscreen === 'string' ? this.room.airFullscreen : null),
+      takeOff: () => this.fullscreen(null, false, true),
+    });
+    this.cue = new CueDeck({
+      match: () => this.match,
+      client: () => this.client,
+      engineRunning: () => this.deps.engine.state === 'running',
+      act: (name, args) => this.act(name, args, false),
+      refresh: async () => { this.roomV = -1; await this.readRoom(); },
+      matchesAir: (actions) => this.matchesAir(actions),
+      log: (text) => this.log.add(text),
+      changed: () => this.emit('change'),
+    });
     this.autopilot = new Autopilot({
       store: deps.store, match: () => this.match, screens: () => this.setup.screens,
       showGraphic: async (id, transition, style, template) => {
@@ -483,7 +497,7 @@ export class Production extends EventEmitter {
       const data = await this.client.get<{ v: number; state: any }>(`/api/${encodeURIComponent(match.code)}`);
       this.room = data.state;
       this.roomV = data.v;
-      this.scheduleCueSync();
+      this.cue.scheduleSync();
       this.autopilot.onRoom(this.room);
       this.finishIfWon(match);
     } catch {
@@ -608,90 +622,17 @@ export class Production extends EventEmitter {
     return `/air-assets/${id}`;
   }
 
-  // ── your own graphics (approved mock, 14 Nov) ──
+  // ── your own graphics: src/main/own-graphics-service.ts ──
 
-  get ownGraphics(): OwnGraphic[] {
-    return this.deps.store.data.ownGraphics ?? [];
-  }
-
-  /** The design: a 1920×1080 PNG up to 16 MB (any Photoshop export fits), stored exactly as exported. */
-  async uploadArtwork(dataUrl: string): Promise<string> {
-    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
-    if (!m) throw new Error('Export the design from Photoshop as a PNG.');
-    const raw = Buffer.from(m[1]!, 'base64');
-    if (raw.length > 16_000_000) throw new Error('The design is larger than 16 MB, which a 1920 × 1080 PNG never is. Export it again as a PNG.');
-    const size = pngSize(raw);
-    if (!size) throw new Error('That file is not a PNG.');
-    if (size.width !== 1920 || size.height !== 1080) throw new Error(`The design is ${size.width} × ${size.height}. Export it at 1920 × 1080.`);
-    const id = randomUUID();
-    await this.client.putBytes(`/control/assets/${id}`, raw);
-    return `/air-assets/${id}`;
-  }
-
-  /** A font for the data boxes: WOFF2, WOFF, TTF or OTF, up to 2 MB. */
-  async uploadFont(dataUrl: string, name: string): Promise<{ id: string; name: string; url: string }> {
-    const m = /^data:[a-z0-9./+-]*;base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl));
-    if (!m) throw new Error('Choose a WOFF2, WOFF, TTF or OTF font file.');
-    const raw = Buffer.from(m[1]!, 'base64');
-    if (raw.length > 2_000_000) throw new Error('That font is larger than 2 MB.');
-    const head = raw.subarray(0, 4);
-    const ok = head.equals(Buffer.from('wOF2')) || head.equals(Buffer.from('wOFF')) || head.equals(Buffer.from([0, 1, 0, 0])) || head.equals(Buffer.from('OTTO'));
-    if (!ok) throw new Error('That file is not a font (WOFF2, WOFF, TTF or OTF).');
-    const clean = String(name ?? '').replace(/\.(woff2?|ttf|otf)$/i, '').replace(/[^A-Za-z0-9 _-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) || 'My font';
-    const id = randomUUID();
-    await this.client.putBytes(`/control/assets/${id}`, raw);
-    return { id, name: clean, url: `/air-assets/${id}` };
-  }
-
-  async ownSave(input: unknown) {
-    const g = validOwn(input);
-    const data = this.deps.store.data;
-    const list = data.ownGraphics ?? [];
-    const old = list.find((x) => x.id === g.id);
-    if (!old && list.length >= 100) throw new Error('Air keeps up to 100 of your own graphics. Delete some you no longer use.');
-    data.ownGraphics = old ? list.map((x) => (x.id === g.id ? { ...g, createdAt: old.createdAt } : x)) : [...list, g];
-    this.syncOwnScreens();
-    this.save();
-    if (this.match) await this.syncEngine();
-    // Previews (Graphics, Screens, Rundown) read the sample room, which needs the new design too.
-    await this.librarySeed().catch(() => {});
-  }
-
-  /** Deletes an own graphic; Rundown rows that showed it go too. */
-  async ownDelete(id: string) {
-    const data = this.deps.store.data;
-    if (!(data.ownGraphics ?? []).some((g) => g.id === id)) throw new Error('That graphic is already gone.');
-    // Mid-show, deleting would change this match's Rundown and stop autopilot: it waits until after the show.
-    if (this.gameLocked() && this.autopilot.rows().some((r) => r.show === ownScreenId(id))) throw new Error('It is in this match’s Rundown and the match is live. Delete it after the show.');
-    if (this.room?.airFullscreen === ownScreenId(id) && this.gameLocked()) throw new Error('It is on air. Take it off before deleting it.');
-    data.ownGraphics = (data.ownGraphics ?? []).filter((g) => g.id !== id);
-    for (const saved of Object.values(data.rundown ?? {})) {
-      if (saved && Array.isArray(saved.rows)) saved.rows = saved.rows.filter((r) => r.show !== ownScreenId(id));
-    }
-    this.syncOwnScreens();
-    this.save();
-    this.autopilot.loadForMatch();
-    // On screen right now: back to the game, so nothing is left half shown.
-    if (this.match && this.room?.airFullscreen === ownScreenId(id)) await this.fullscreen(null, false, true);
-    if (this.match) await this.syncEngine();
-    await this.librarySeed().catch(() => {});
-  }
-
-  /** The built-in screen an own graphic stands for (null for "Anything" or a built-in screen). */
-  purposeOf(show: string): string | null {
-    const g = isOwnScreen(show) ? this.ownGraphics.find((x) => ownScreenId(x.id) === show) : undefined;
-    return g && g.purpose !== 'any' ? g.purpose : null;
-  }
-
-  /** Graphics › Your graphics › Use in this match: a Rundown row with the rule of the screen it stands for. */
-  ownUse(id: string) {
-    const g = this.ownGraphics.find((x) => x.id === id);
-    if (!g) throw new Error('That graphic is no longer available.');
-    const show = ownScreenId(id);
-    if (this.autopilot.rows().some((r) => r.show === show)) throw new Error('It is already in this match’s Rundown.');
-    const preset = this.match ? this.deps.store.data.rundown?.[this.match.id]?.startedFrom ?? 'standard' : 'standard';
-    this.rundownSave({ section: this.sectionOf(show), show, ...ruleOf(g.purpose === 'any' ? '' : g.purpose, preset, this.match?.bestOf ?? 3) });
-  }
+  readonly own: OwnGraphics;
+  get ownGraphics(): OwnGraphic[] { return this.own.list; }
+  uploadArtwork(dataUrl: string) { return this.own.uploadArtwork(dataUrl); }
+  uploadFont(dataUrl: string, name: string) { return this.own.uploadFont(dataUrl, name); }
+  ownSave(input: unknown) { return this.own.save(input); }
+  ownDelete(id: string) { return this.own.delete(id); }
+  ownUse(id: string) { this.own.use(id); }
+  purposeOf(show: string) { return this.own.purposeOf(show); }
+  sectionOf(show: string): Section { return this.own.sectionOf(show); }
 
   /**
    * Templates and own graphics viewers see right now (editing one changes it on air at once): the
@@ -711,21 +652,6 @@ export class Production extends EventEmitter {
     if (program === SCENES.holding.name) for (const k of ['holding|full', 'holding|band']) if (pages[k]) out.push(pages[k]!);
     if (program === SCENES.casters.name && pages['casters|full']) out.push(pages['casters|full']);
     return [...new Set(out)];
-  }
-
-  /** Where a screen goes in the Rundown; an own graphic goes where the screen it stands for goes. */
-  sectionOf(show: string): Section {
-    if (!isOwnScreen(show)) return defaultSection(show);
-    const g = this.ownGraphics.find((x) => ownScreenId(x.id) === show);
-    return g && g.purpose !== 'any' ? defaultSection(g.purpose) : 'between';
-  }
-
-  /** Each own graphic is a hosted screen of the setup, so Rundown, Live, keys and Companion treat it like Map result. */
-  private syncOwnScreens() {
-    const own = this.ownGraphics;
-    const keep = this.setup.screens.filter((x) => !isOwnScreen(x.id));
-    const old = new Map(this.setup.screens.filter((x) => isOwnScreen(x.id)).map((x) => [x.id, x]));
-    this.setup.screens = [...keep, ...own.map((g) => ownScreen(g, old.get(ownScreenId(g.id))?.enabled ?? false))];
   }
 
   async selectMatch(id: string) {
@@ -1266,55 +1192,14 @@ export class Production extends EventEmitter {
     this.log.add('Replay saved in OBS');
   }
 
-  // ── cue and take (graphics only) ──
+  // ── cue and take (graphics only): src/main/cue-deck.ts ──
 
-  /** Changes go to the Cued column first (Take puts them on air), or straight on air. */
-  private cueMode = true;
-  private cued: { matchId: string | null; changes: Array<{ key: string; label: string; actions: Array<{ name: string; args: Record<string, unknown> }> }> } = { matchId: null, changes: [] };
-  /** Cued changes belong to the match they were cued on; switching match drops them. */
-  private get pending() {
-    const id = this.deps.store.data.selectedMatchId ?? null;
-    if (this.cued.matchId !== id) this.cued = { matchId: id, changes: [] };
-    return this.cued.changes;
-  }
-  private set pending(changes) {
-    this.cued = { matchId: this.deps.store.data.selectedMatchId ?? null, changes };
-  }
-  private cueTimer: ReturnType<typeof setTimeout> | null = null;
-
-  private get cueRoom() {
-    return `__ESA_SIM_CUE_${this.requireMatch().code}`;
-  }
-
-  /**
-   * A graphic change: queued while cueing, applied at once otherwise. A cued change replaces an
-   * earlier one for the same slot (one lower third, one full-screen graphic, one mode per layer), and
-   * a change that would leave the slot as it is on air simply uncues it.
-   */
-  private async graphic(label: string, actions: Array<{ name: string; args: Record<string, unknown> }>) {
-    this.requireMatch();
-    if (this.cueMode) {
-      const key = cueKey(actions);
-      const replaced = this.pending.some((c) => c.key === key);
-      this.pending = this.pending.filter((c) => c.key !== key);
-      if (this.matchesAir(actions)) {
-        if (replaced) this.log.add(`Uncued · ${label}`);
-      } else {
-        this.pending.push({ key, label, actions });
-        this.log.add(`Cued · ${label}`);
-      }
-      await this.syncCue();
-      this.emit('change');
-      return;
-    }
-    for (const a of actions) await this.act(a.name, a.args, false);
-    this.roomV = -1;
-    await this.readRoom();
-    this.log.add(label);
-  }
+  readonly cue: CueDeck;
+  private get pending() { return this.cue.pending; }
+  private graphic(label: string, actions: GraphicAction[]) { return this.cue.graphic(label, actions); }
 
   /** True when applying these actions would leave the on-air graphics as they are. */
-  private matchesAir(actions: Array<{ name: string; args: Record<string, unknown> }>) {
+  private matchesAir(actions: GraphicAction[]) {
     const last = actions.at(-1)!;
     const room = this.room ?? {};
     if (last.name === 'layer.set') return this.layerRows().find((r) => r.id === last.args.layer)?.mode === last.args.mode;
@@ -1324,64 +1209,10 @@ export class Production extends EventEmitter {
     return false;
   }
 
-  /** The Cued monitor's room: the live state with the cued changes applied. */
-  async syncCue() {
-    const match = this.match;
-    if (!match || this.deps.engine.state !== 'running') return;
-    const { state } = await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`);
-    await this.client.put(`/api/${this.cueRoom}`, state);
-    for (const change of this.pending) for (const a of change.actions) await this.client.post('/control/action', { match: this.cueRoom, name: a.name, args: a.args }).catch(() => {});
-  }
-
-  /** Keeps the cue room following the live match (throttled). */
-  private scheduleCueSync() {
-    if (this.cueTimer || !this.match) return;
-    this.cueTimer = setTimeout(() => {
-      this.cueTimer = null;
-      void this.syncCue().catch(() => {});
-    }, 800);
-    this.cueTimer.unref?.();
-  }
-
-  setCueMode(on: boolean) {
-    this.cueMode = on === true;
-    if (!this.cueMode && this.pending.length) this.pending = [];
-    this.emit('change');
-  }
-
-  clearCue() {
-    this.pending = [];
-    void this.syncCue().catch(() => {});
-    this.log.add('Cue cleared');
-    this.emit('change');
-  }
-
-  /** Take: everything cued goes on air. With the stinger, the HUD wipe plays first and the change lands behind it. */
-  async takeCue(how: 'take' | 'cut' | 'stinger' = 'take') {
-    if (!this.pending.length) throw new Error('Nothing is cued. Choose a graphic first.');
-    const changes = this.pending;
-    this.pending = [];
-    if (how === 'stinger') {
-      await this.act('stinger.play', {}, false);
-      await new Promise((r) => setTimeout(r, 450));
-    }
-    for (let i = 0; i < changes.length; i++) {
-      try {
-        for (const a of changes[i]!.actions) await this.act(a.name, a.args, false);
-      } catch (error) {
-        // What did not go on air stays cued, so the operator can Take again.
-        this.pending = [...changes.slice(i), ...this.pending];
-        this.roomV = -1;
-        await this.readRoom().catch(() => {});
-        this.emit('change');
-        throw error;
-      }
-    }
-    this.roomV = -1;
-    await this.readRoom();
-    this.log.add(`${how === 'stinger' ? 'Stinger' : how === 'cut' ? 'Cut' : 'Take'} · ${changes.map((c) => c.label).join(', ')}`);
-    await this.syncCue().catch(() => {});
-  }
+  syncCue() { return this.cue.sync(); }
+  setCueMode(on: boolean) { this.cue.setMode(on); }
+  clearCue() { this.cue.clear(); }
+  takeCue(how: 'take' | 'cut' | 'stinger' = 'take') { return this.cue.take(how); }
 
   /** Starts or stops the PVW / PGM screenshot loop (the Console asks for it while it is on screen). */
   setMonitoring(on: boolean) {
@@ -1986,7 +1817,7 @@ export class Production extends EventEmitter {
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,
       companion: this.companion.view(),
-      cue: { mode: this.cueMode, pending: this.pending.map((c) => c.label), room: match ? `__ESA_SIM_CUE_${match.code}` : null },
+      cue: { mode: this.cue.mode, pending: this.pending.map((c) => c.label), room: this.cue.room() },
       esportra: this.deps.esportra?.view() ?? signedOut(),
       mode: this.mode,
       join: this.joinHost.view(),
@@ -2002,90 +1833,4 @@ export class Production extends EventEmitter {
     snapshot.checks = checks(snapshot);
     return snapshot;
   }
-}
-
-/** The readiness checklist (PRD picture 7). Warns, never blocks; every problem names its one fix. */
-/** Readiness: are the agent, weapon and map pictures on this PC? */
-function artCheck(a: ArtStatus): CheckItem {
-  const title = 'Agent and map art';
-  if (!a.total) return { id: 'art', title, detail: 'Looking for the agent and map pictures on this PC…', health: 'off' };
-  const gone = a.unavailable.length;
-  const names = gone ? ` Riot’s art server does not have ${gone === 1 ? 'this picture' : `these ${gone} pictures`}: ${a.unavailable.slice(0, 6).join(', ')}${gone > 6 ? ', …' : ''}. Graphics show the name instead.` : '';
-  const missing = a.total - a.have - gone;
-  if (missing <= 0) return { id: 'art', title, detail: `${a.have} of ${a.total} agent, weapon and map pictures are on this PC. Graphics show them without internet.${names}`, health: gone ? 'warn' : 'ok' };
-  if (a.downloading) return { id: 'art', title, detail: `Downloading pictures to this PC: ${a.have} of ${a.total}…`, health: 'off' };
-  return { id: 'art', title, detail: `${missing} of ${a.total} pictures are not on this PC yet. ${a.lastError ? `Last try: ${a.lastError}` : 'The picture download could not reach Riot’s picture server.'} Air tries again every minute.${names}`, health: 'warn', action: { id: 'download-art', label: 'Download now' } };
-}
-
-export function checks(s: Snapshot): CheckItem[] {
-  const out: CheckItem[] = [];
-  const e = s.esportra;
-  out.push(
-    e.state === 'signed-out'
-      ? { id: 'esportra', title: 'Esportra', detail: e.error ?? 'Not signed in. Quick matches work without an account.', health: 'off', action: { id: 'sign-in', label: 'Sign in' } }
-      : e.state === 'online'
-        ? { id: 'esportra', title: 'Esportra', detail: `Signed in as ${e.email} · ${e.matches.length} match${e.matches.length === 1 ? '' : 'es'} on your schedule${e.warning ? ` · ${e.warning}` : ''}`, health: e.warning ? 'warn' : 'ok' }
-        : e.state === 'offline'
-          ? { id: 'esportra', title: 'Esportra', detail: e.warning ?? 'Working offline.', health: 'warn' }
-          : { id: 'esportra', title: 'Esportra', detail: e.warning ?? 'No Air access.', health: 'warn', action: { id: 'sign-in', label: 'Sign in again' } },
-  );
-  out.push(
-    s.match
-      ? { id: 'match', title: 'Show and match', detail: `${s.match.title}${s.event?.name ? ` · ${s.event.name}` : ''} · Bo${s.match.bestOf}`, health: 'ok' }
-      : { id: 'match', title: 'Show and match', detail: 'No match selected yet.', health: 'warn', action: { id: 'choose-match', label: 'Create a match' } },
-  );
-  const found = s.readout ? s.readout.playersFound[0] + s.readout.playersFound[1] : 0;
-  out.push(
-    s.feed.state === 'live'
-      ? { id: 'feed', title: 'Game data', detail: `Valorant is feeding GEP${found ? ` · ${found} of 10 players found` : ''}.`, health: 'ok' }
-      : s.feed.state === 'waiting'
-        ? { id: 'feed', title: 'Game data', detail: s.feed.reason ?? 'Waiting for Valorant.', health: 'warn' }
-        : s.feed.state === 'unavailable'
-          ? { id: 'feed', title: 'Game data', detail: s.feed.reason ?? 'Game capture is unavailable on this PC.', health: 'bad' }
-          : { id: 'feed', title: 'Game data', detail: 'Game capture is off on this PC. Nothing is read until you start it.', health: 'off', action: { id: 'start-capture', label: 'Start capture' } },
-  );
-  out.push(
-    s.obs.state === 'connected'
-      ? { id: 'obs', title: 'OBS', detail: `OBS ${s.obs.version ?? ''} on this PC · Connected`, health: 'ok' }
-      : { id: 'obs', title: 'OBS', detail: s.obs.error ?? 'OBS is not connected.', health: 'warn', action: { id: 'connect-obs', label: 'Connect OBS' } },
-  );
-  out.push(
-    s.obs.installed
-      ? { id: 'scenes', title: 'Scenes', detail: `${s.outputs.length} Esportra scenes are in your OBS collection.`, health: 'ok' }
-      : s.obs.state === 'connected'
-        ? { id: 'scenes', title: 'Scenes', detail: s.obs.installError ? `Adding them stopped: ${s.obs.installError}` : s.obs.missingScenes.length ? `Not in OBS yet: ${s.obs.missingScenes.join(', ')}.` : `OBS changed since Air added its scenes: ${s.obs.missingSources.slice(0, 4).join(', ')}${s.obs.missingSources.length > 4 ? ' and more' : ''} missing. Rebuild puts them back without touching your own sources.`, health: s.obs.installError ? 'bad' : 'warn', action: { id: 'install-graphics', label: s.obs.installError ? 'Try again' : s.obs.missingScenes.length ? 'Add for me' : 'Rebuild' } }
-        : { id: 'scenes', title: 'Scenes', detail: 'Shown once OBS is connected.', health: 'off' },
-  );
-  const loading = s.outputs.filter((o) => o.connections > 0).length;
-  const idle = s.outputs.filter((o) => o.connections === 0);
-  out.push(
-    s.obs.installed && idle.length === 0
-      ? { id: 'sources', title: 'Browser sources', detail: `${loading} of ${s.outputs.length} connected.`, health: 'ok' }
-      : s.obs.installed
-        ? { id: 'sources', title: 'Browser sources', detail: `${loading} of ${s.outputs.length} connected · not loading: ${idle.map((o) => o.title).join(', ')}. OBS loads a source when its scene is opened once.`, health: 'warn' }
-        : { id: 'sources', title: 'Browser sources', detail: 'Shown once scenes are in OBS.', health: 'off' },
-  );
-  // Player PCs: only for setups that use them, and only once a match exists.
-  if (s.setup.profile === 'player-pcs' && s.match) {
-    const d = s.devices;
-    const missing = d.seats.filter((x) => x.state !== 'live').map((x) => x.name).filter(Boolean);
-    // Before the match: PCs are counted as detected, never named after a player (pairing happens in the game).
-    if (!d.fromGame) out.push(d.pcs.length
-      ? { id: 'player-pcs', title: `Player PCs · ${d.pcs.length} detected`, detail: `${d.pcs.filter((p) => p.state === 'ready').length} ready. They pair with their players by themselves when the match starts; until then health and abilities stay hidden on air.`, health: 'ok', action: { id: 'open-devices' as const, label: 'Open Devices' } }
-      : { id: 'player-pcs', title: 'Player PCs · none detected', detail: 'Open Esportra Player on each player PC and join with this match’s code.', health: 'warn', action: { id: 'open-devices' as const, label: 'Open Devices' } });
-    else out.push(d.checkedIn === d.seats.length && d.seats.length > 0
-      ? { id: 'player-pcs', title: `Player PCs · ${d.checkedIn} of ${d.seats.length} checked in`, detail: 'Every player’s own data is arriving.', health: 'ok' }
-      : { id: 'player-pcs', title: `Player PCs · ${d.checkedIn} of ${d.seats.length} checked in`, detail: `${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` and ${missing.length - 4} more` : ''}: health and abilities stay hidden on air until their PC sends them.`, health: 'warn', action: { id: 'open-devices' as const, label: 'Open Devices' } });
-  }
-  const air = s.match ? onAir(s.match, s.event) : { talent: [], sponsors: [] };
-  const people = air.talent.length;
-  out.push(
-    people
-      ? { id: 'talent', title: 'Talent and sponsors', detail: `${air.talent.map((t) => t.name).join(', ')}${air.sponsors.length ? ` · ${air.sponsors.length} sponsor${air.sponsors.length > 1 ? 's' : ''}` : ''}`, health: 'ok' }
-      : { id: 'talent', title: 'Talent and sponsors', detail: 'Nobody on air for this match. Talent graphics need their names.', health: s.match ? 'warn' : 'off', ...(s.match ? { action: { id: 'add-casters' as const, label: 'Add people' } } : {}) },
-  );
-  out.push(
-    artCheck(s.art),
-  );
-  return out;
 }
