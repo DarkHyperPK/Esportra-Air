@@ -50,10 +50,10 @@ function swatchColor(ref: ColorRef | undefined, brand: BrandKit, s: Snapshot): s
 export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run; start: EditorStart; close: () => void }) {
   const saved = start.id ? s.templates.find((t) => t.id === start.id) : undefined;
   const initial = useMemo<Template>(() => saved ? structuredClone(saved) : start.from ? { ...structuredClone(start.from), id: newTemplateId(), name: `${start.from.name} copy` } : blank(start.graphic ?? 'map-veto|band'), []);
-  const [draft, setDraft] = useState<Template>(initial);
+  // The draft and its undo history, changed together by pure updates.
+  const [h, setH] = useState<{ draft: Template; past: Template[]; future: Template[] }>({ draft: initial, past: [], future: [] });
+  const { draft, past, future } = h;
   const [isNew, setIsNew] = useState(!saved);
-  const [past, setPast] = useState<Template[]>([]);
-  const [future, setFuture] = useState<Template[]>([]);
   const [baseline, setBaseline] = useState(JSON.stringify(initial));
   const [sel, setSel] = useState<string>(partsOf(initial.graphic)[0]?.[0] ?? '');
   const [rects, setRects] = useState<Rects>({});
@@ -83,14 +83,10 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
 
   /** Every edit goes through here: one undo step, or one per gesture when `coalesce` names it. */
   const change = useCallback((fn: (t: Template) => Template, coalesce?: string) => {
-    setDraft((cur) => {
-      const next = fn(structuredClone(cur));
-      const now = Date.now();
-      const same = coalesce && lastKey.current?.k === coalesce && now - lastKey.current.at < 800;
-      lastKey.current = coalesce ? { k: coalesce, at: now } : null;
-      if (!same) { setPast((p) => [...p.slice(-99), cur]); setFuture([]); }
-      return next;
-    });
+    const now = Date.now();
+    const same = !!coalesce && lastKey.current?.k === coalesce && now - lastKey.current.at < 800;
+    lastKey.current = coalesce ? { k: coalesce, at: now } : null;
+    setH((cur) => ({ draft: fn(structuredClone(cur.draft)), past: same ? cur.past : [...cur.past.slice(-99), cur.draft], future: same ? cur.future : [] }));
   }, []);
   const setPart = (id: string, patch: Partial<PartStyle> | null, coalesce?: string) => change((t) => {
     const cur = { ...(t.parts[id] ?? {}) } as Record<string, unknown>;
@@ -101,8 +97,8 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
     }
     return t;
   }, coalesce);
-  const undo = () => setPast((p) => { if (!p.length) return p; const prev = p[p.length - 1]!; setFuture((f) => [draft, ...f]); setDraft(prev); lastKey.current = null; return p.slice(0, -1); });
-  const redo = () => setFuture((f) => { if (!f.length) return f; const next = f[0]!; setPast((p) => [...p, draft]); setDraft(next); lastKey.current = null; return f.slice(1); });
+  const undo = () => { lastKey.current = null; setH((cur) => (cur.past.length ? { draft: cur.past[cur.past.length - 1]!, past: cur.past.slice(0, -1), future: [cur.draft, ...cur.future] } : cur)); };
+  const redo = () => { lastKey.current = null; setH((cur) => (cur.future.length ? { draft: cur.future[0]!, past: [...cur.past, cur.draft], future: cur.future.slice(1) } : cur)); };
 
   // The page: send the draft whenever it changes; it answers with where the parts are.
   const post = useCallback((msg: Record<string, unknown>) => frame.current?.contentWindow?.postMessage({ ...msg, key }, '*'), [key]);
@@ -145,7 +141,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
     try { t = validTemplate(copy ? { ...draft, id: newTemplateId(), name: `${draft.name} copy` } : draft); } catch (e) { setNotice((e as Error).message); return; }
     const ok = await run(() => air.templateSave(t));
     if (!ok) return;
-    if (copy) { setDraft(t); setPast([]); setFuture([]); }
+    if (copy) setH({ draft: t, past: [], future: [] });
     setBaseline(JSON.stringify(copy ? t : draft)); setIsNew(false);
     setNotice(copy ? `Saved as “${t.name}”.` : 'Saved.');
   };

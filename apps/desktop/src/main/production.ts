@@ -796,12 +796,17 @@ export class Production extends EventEmitter {
 
   /** Saved looks (Graphics › Templates). A broken entry in the saved file is skipped, never sent. */
   get templates(): Template[] {
+    // Checked once per saved list: every change to templates stores a new array.
+    const saved = this.deps.store.data.templates ?? [];
+    if (this.checkedTemplates?.from === saved) return this.checkedTemplates.list;
     const out: Template[] = [];
-    for (const t of this.deps.store.data.templates ?? []) {
+    for (const t of saved) {
       try { out.push(validTemplate(t, t.updatedAt)); } catch { /* skipped */ }
     }
+    this.checkedTemplates = { from: saved, list: out };
     return out;
   }
+  private checkedTemplates: { from: Template[]; list: Template[] } | null = null;
 
   /** Adds a template, or saves one (same id). */
   async templateSave(input: unknown) {

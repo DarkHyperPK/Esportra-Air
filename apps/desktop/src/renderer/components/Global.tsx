@@ -13,8 +13,9 @@ export interface Toast { id: number; kind: 'error' | 'ok' | 'info'; title?: stri
 
 export function Toasts({ list, dismiss }: { list: Toast[]; dismiss: (id: number) => void }) {
   // Confirmations leave after a few seconds; errors stay long enough to read, or until dismissed.
+  // Each counts from when it appeared (its id is its creation time), so a newer toast never keeps an older one up.
   useEffect(() => {
-    const timers = list.map((t) => setTimeout(() => dismiss(t.id), t.kind === 'error' ? 12_000 : 4500));
+    const timers = list.map((t) => setTimeout(() => dismiss(t.id), Math.max(0, (t.kind === 'error' ? 12_000 : 4500) - (Date.now() - Math.floor(t.id)))));
     return () => timers.forEach(clearTimeout);
   }, [list, dismiss]);
   return (
