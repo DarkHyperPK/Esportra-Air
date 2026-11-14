@@ -19,7 +19,7 @@ Both are ow-electron apps using one Overwolf package: `gep` (`"overwolf": { "pac
 
 ## Consent and privacy
 
-- **Consent first:** game capture starts only after the user accepts a notice in the app, every time capture is first started. It is never started automatically.
+- **Consent first:** game capture starts only after the user accepts a notice in the app, every time capture is first started. It is never started automatically. When Valorant starts, the app lets Overwolf attach to it (`game-detected`), but it asks for no game data and sends nothing until the notice is accepted.
 - **Local by default:** game data stays on the local network. It goes from the capturing PC to the producer's Air graphics engine on the same PC or network.
 - **What reaches Esportra:** no game data is sent to Esportra's servers. The Esportra account is used for sign-in and for tournament data (matches, rosters).
 - **Remote mode** (observers in another place, through an Esportra relay) is planned and will have its own consent. It is not in this build.

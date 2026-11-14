@@ -1,7 +1,7 @@
 // Overwolf Game Events (GEP) for Valorant, in the ow-electron main process.
 // Ported from esportra-valorant-hud/capture/overwolf-valorant/main.js and player-source.js.
 //
-// Capture never starts on its own: game tracking is enabled only after the producer consents.
+// Capture never starts on its own: game data is requested and forwarded only after the producer consents.
 // The bridge does no parsing; raw messages go to the engine, which owns the Valorant parser.
 
 import { EventEmitter } from 'node:events';
@@ -25,6 +25,9 @@ export interface OverwolfPackages {
 }
 
 export type CaptureState = 'off' | 'waiting' | 'live' | 'unavailable';
+
+/** Shown before capture starts while Valorant is open on this PC. */
+export const GAME_OPEN = 'Valorant is open on this PC. Nothing is read until you start capture.';
 
 /** Shown on a player PC until Valorant reports which player it is. */
 export const WAITING_FOR_PLAYER = 'Reading Valorant. Waiting for the game to say which player you are: join the match on this PC.';
@@ -88,7 +91,7 @@ export class GepBridge extends EventEmitter {
   lastMessageAt: number | null = null;
   private gep: GepPackage | null = null;
   private consented = false;
-  private detected: { gameId: number; enable?: () => void } | null = null;
+  private detected: { gameId: number } | null = null;
   private tracking: number | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private polling = false;
@@ -141,8 +144,11 @@ export class GepBridge extends EventEmitter {
     const isValorant = (id: number) => (VALORANT_IDS as readonly number[]).includes(id);
     gep.on('game-detected', (e: { enable?: () => void }, gameId: number) => {
       if (!isValorant(gameId)) return;
-      this.detected = { gameId, enable: e?.enable?.bind(e) };
-      // Without consent the game is only noted; GEP is not enabled for it.
+      // Enabled while Overwolf is announcing the game (as Overwolf's own apps do); this asks for no data.
+      // Without consent no features are requested and nothing is read or sent.
+      e?.enable?.();
+      this.detected = { gameId };
+      if (!this.consented) this.set('off', GAME_OPEN);
       if (this.consented) void this.track(gameId);
     });
     gep.on('elevated-privileges-required', (_e: unknown, gameId: number) => {
@@ -154,14 +160,37 @@ export class GepBridge extends EventEmitter {
       this.tracking = null;
       this.source.reset();
       if (this.consented) this.set('waiting', 'Valorant closed. Waiting for the next game.');
+      else if (this.reason === GAME_OPEN) this.set('off');
     });
-    gep.on('new-info-update', (_e: unknown, gameId: number, ...args: unknown[]) => {
-      if (isValorant(gameId)) for (const message of args) this.forward(message);
+    gep.on('new-info-update', (_e: unknown, gameId: number, ...args: any[]) => {
+      if (!isValorant(gameId)) return;
+      for (const message of args) if (!this.repeatedKill(message?.key, message?.value ?? message?.data)) this.forward(message);
     });
+    // ow-electron sends game events flat, like info updates: { gameId, feature, key, value }.
     gep.on('new-game-event', (_e: unknown, gameId: number, ...args: any[]) => {
-      if (isValorant(gameId)) for (const message of args) this.forward(message?.events ? message : { events: [message] });
+      if (!isValorant(gameId)) return;
+      for (const message of args) {
+        if (message?.events) { this.forward(message); continue; }
+        const name = message?.name ?? message?.key;
+        const data = message?.data ?? message?.value;
+        if (typeof name !== 'string' || this.repeatedKill(name, data)) continue;
+        this.forward({ events: [{ name, data }] });
+      }
     });
     gep.on('error', (_e: unknown, gameId: number, error: unknown) => this.options.log?.(`GEP error for ${gameId}: ${String(error)}`));
+  }
+
+  private kills = new Map<string, number>();
+
+  /** Valorant reports each kill twice (an info update and a game event); only the first is passed on. */
+  private repeatedKill(key: unknown, value: unknown) {
+    if (key !== 'kill_feed' || value == null) return false;
+    const id = typeof value === 'string' ? value : JSON.stringify(value);
+    const now = Date.now();
+    for (const [k, at] of this.kills) if (now - at > 5000) this.kills.delete(k);
+    if (this.kills.has(id)) return true;
+    this.kills.set(id, now);
+    return false;
   }
 
   private forward(message: unknown) {
@@ -180,7 +209,6 @@ export class GepBridge extends EventEmitter {
     if (!this.gep || this.tracking === gameId) return;
     this.tracking = gameId;
     try {
-      this.detected?.enable?.();
       await this.gep.setRequiredFeatures(gameId, this.features);
       const info = await this.gep.getInfo(gameId);
       if (info?.info) this.forward(info);
@@ -225,6 +253,6 @@ export class GepBridge extends EventEmitter {
     this.consented = false;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    this.set('off');
+    this.set('off', this.detected ? GAME_OPEN : null);
   }
 }

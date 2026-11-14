@@ -53,7 +53,7 @@ function CheckIn({ s, run }: Pick<PageProps, 's' | 'run'>) {
         <section className="stack" style={{ gap: 8 }}>
           <h2 className="title-sm">The match</h2>
           <div className="lst">
-            <div className="li device-row"><i className={`dot ${thisPc}`} /><span><b>This PC</b><br /><span className="muted t-sm">{s.feed.state === 'off' ? 'Game data is off on this PC.' : s.feed.state === 'waiting' ? 'Waiting for the game.' : s.feed.state === 'live' ? `Game data · last update ${age(s.feed.ageMs)} ago` : 'Not available here.'}</span></span><span /></div>
+            <div className="li device-row"><i className={`dot ${thisPc}`} /><span><b>This PC</b><br /><span className="muted t-sm">{s.feed.state === 'off' ? s.feed.reason ?? 'Game data is off on this PC.' : s.feed.state === 'waiting' ? 'Waiting for the game.' : s.feed.state === 'live' ? `Game data · last update ${age(s.feed.ageMs)} ago` : 'Not available here.'}</span></span><span /></div>
             {d.observers.map((o) => (
               <div key={o.id} className="li device-row"><i className={`dot ${o.ageMs !== null && o.ageMs < 10_000 ? 'ok' : 'warn'}`} /><span><b>{o.name}</b><br /><span className="muted t-sm">Observer PC · {o.ageMs === null ? 'no data yet' : `last update ${age(o.ageMs)} ago`}</span></span><span /></div>
             ))}

@@ -39,7 +39,7 @@ export const MANUAL: ManualSection[] = [
     { steps: [
       'Next shows autopilot’s next step with a countdown. Press {key:hold} to hold it, {key:skip} to skip it, or {key:take} to take it now.',
       'To put something up yourself, choose it from Moments or All graphics ({key:all}). It waits in Cued.',
-      'Press {key:take} to take what is cued, or {key:stinger} to take it behind the stinger.',
+      'Press {key:take} to take what is cued, or {key:stinger} to take it behind the stinger. While something is cued, {key:take} takes the cue, not autopilot’s next step.',
       'When a map ends with a team on 13 or more and ahead, Air counts it in the series and on the series graphics. A map stopped early (a remake) is not counted; set it in Fix data ({key:fix}) if it was.',
       'F-keys and Ctrl/Alt keys (such as {key:pause} and {key:stinger}) work while the game has focus, so you never click back into Air. {key:take}, {key:hold}, {key:skip} and the letter keys work inside Air. Settings › Keyboard shows which is which.',
     ] },

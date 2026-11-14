@@ -38,8 +38,9 @@ export function keyCommand(id: string, s: Snapshot): KeyCommand {
   if (UI_ACTIONS.has(id)) return 'ui';
   const ap = s.autopilot;
   if (id === 'take') {
-    if (ap.enabled && ap.next && ap.next.state !== 'taking') return call('autopilotTake');
-    return s.cue.pending.length ? call('cueTake', 'take') : null;
+    // What the operator cued is what they mean; autopilot's next step fires on its own anyway.
+    if (s.cue.pending.length) return call('cueTake', 'take');
+    return ap.enabled && ap.next && ap.next.state !== 'taking' ? call('autopilotTake') : null;
   }
   if (id === 'stinger') return s.cue.pending.length ? call('cueTake', 'stinger') : call('stingerPlay');
   if (id === 'hold' || id === 'skip') return ap.enabled && ap.next ? call(id === 'hold' ? 'autopilotHold' : 'autopilotSkip') : null;

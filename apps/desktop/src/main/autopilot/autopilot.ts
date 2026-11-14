@@ -92,6 +92,11 @@ export class Autopilot {
    */
   loadForMatch() {
     const match = this.deps.match();
+    // A timed graphic from the previous rundown never takes anything down on this one.
+    if (this.loadedFor !== (match?.id ?? null)) {
+      this.clock.clearTimeout(this.clearTimer);
+      this.clearTimer = null;
+    }
     this.loadedFor = match?.id ?? null;
     this.loading = true;
     this.runner.load(match ? buildRundown(match.bestOf, this.saved(match).rows, this.title) : [], match ? this.saved(match).startedFrom : 'standard');

@@ -118,7 +118,7 @@ export function CaptureOnlyScreen({ s, run, askCapture }: { s: Snapshot; run: Ru
       <section className="panel">
         <div className="head"><Cap>2 · Game capture</Cap>{feedTag}</div>
         <div className="body-pad stack" style={{ gap: 12 }}>
-          <p className="muted" style={{ fontSize: 12.5 }}>{s.feed.state === 'off' ? 'Capture is off. Nothing is read from the game until you start it.' : s.feed.reason ?? 'Reading Valorant game events.'}</p>
+          <p className="muted" style={{ fontSize: 12.5 }}>{s.feed.state === 'off' ? s.feed.reason ?? 'Capture is off. Nothing is read from the game until you start it.' : s.feed.reason ?? 'Reading Valorant game events.'}</p>
           <div style={{ display: 'flex', gap: 8 }}>
             {s.feed.state === 'off' && <button className="btn primary" disabled={l.state !== 'connected'} onClick={askCapture}>Start capture</button>}
             {(s.feed.state === 'waiting' || s.feed.state === 'live') && <button className="btn" onClick={() => void run(() => air.stopCapture())}>Stop capture</button>}

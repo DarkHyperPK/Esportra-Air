@@ -15,7 +15,7 @@ function fakeOverwolf() {
   return { packages, gep };
 }
 
-test('nothing is enabled or forwarded before the producer consents', async () => {
+test('nothing is asked for or forwarded before the producer consents', async () => {
   const { packages, gep } = fakeOverwolf();
   const sent: unknown[] = [];
   const bridge = new GepBridge({ packages, send: (m) => sent.push(m) });
@@ -24,14 +24,14 @@ test('nothing is enabled or forwarded before the producer consents', async () =>
   gep.emit('game-detected', { enable: () => { enabled += 1; } }, 21640, 'VALORANT');
   gep.emit('new-info-update', {}, 21640, { info: { match_info: { round_number: '1' } } });
   await tick();
-  assert.equal(enabled, 0);
-  assert.deepEqual(gep.calls, []);
+  assert.equal(enabled, 1, 'Overwolf may attach to the game, as its own apps do');
+  assert.deepEqual(gep.calls, [], 'but no game data is asked for before consent');
   assert.deepEqual(sent, []);
   assert.equal(bridge.state, 'off');
+  assert.match(bridge.reason ?? '', /Valorant is open on this PC\. Nothing is read/, 'the PC shows that it sees the game');
 
   bridge.start();
   await tick();
-  assert.equal(enabled, 1, 'the detected game is enabled once consent is given');
   assert.deepEqual(gep.calls, ['features:21640:match_info,me,game_info', 'info:21640']);
   assert.deepEqual(sent, [{ info: { match_info: { map: 'Jam' } } }]);
 
@@ -39,11 +39,19 @@ test('nothing is enabled or forwarded before the producer consents', async () =>
   gep.emit('new-info-update', {}, 1234, { info: { other: 1 } });
   assert.deepEqual(sent.at(-1), { events: [{ name: 'kill_feed', data: '{}' }] }, 'single events are wrapped; other games ignored');
   assert.equal(sent.length, 2);
+  // ow-electron's own shape: game events are flat like info updates, and each kill comes both ways.
+  gep.emit('new-game-event', {}, 21640, { gameId: 21640, feature: 'match_info', key: 'match_start', value: '' });
+  assert.deepEqual(sent.at(-1), { events: [{ name: 'match_start', data: '' }] }, 'a flat game event becomes an event');
+  const kill = '{"attacker":"A #1","victim":"B #2","weapon":"TX_Hud_Vandal","headshot":true}';
+  gep.emit('new-info-update', {}, 21640, { gameId: 21640, feature: 'match_info', category: 'match_info', key: 'kill_feed', value: kill });
+  gep.emit('new-game-event', {}, 21640, { gameId: 21640, feature: 'match_info', key: 'kill_feed', value: kill });
+  assert.equal(sent.filter((m: any) => JSON.stringify(m).includes('TX_Hud_Vandal')).length, 1, 'a kill reported twice is sent once');
+  assert.equal(sent.length, 4);
   assert.equal(bridge.state, 'live');
 
   bridge.stop();
   gep.emit('new-info-update', {}, 21640, { info: { match_info: { round_number: '2' } } });
-  assert.equal(sent.length, 2, 'stopping capture stops forwarding');
+  assert.equal(sent.length, 4, 'stopping capture stops forwarding');
   assert.equal(bridge.state, 'off');
 });
 

@@ -104,7 +104,7 @@ test('a player PC with Esportra Player: joins, sends only its own player, surviv
     await until(() => player.snapshot().link.state === 'connected', 'player PC connected');
     assert.throws(() => player.startCapture({}), /accept the capture notice/);
 
-    // Valorant starts on the player PC. Without consent GEP is not even switched on for it.
+    // Valorant starts on the player PC. Without consent no game data is asked for or sent.
     gep.info = { me: { player_id: pid(1), health: '64', abilities: '{"C":true,"Q":false,"E":true,"X":false}' }, match_info: { match_score: '{"team_0":9,"team_1":9}' } };
     gep.emit('game-detected', { enable: () => {} }, 21640);
     gep.report({ info: gep.info });

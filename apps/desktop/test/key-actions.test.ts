@@ -23,8 +23,9 @@ function snap(over: Record<string, unknown> = {}): Snapshot {
 test('Take: autopilot first, then the cue, else nothing; Stinger plays with or without a cue', () => {
   assert.equal(keyCommand('take', snap()), null);
   assert.deepEqual(keyCommand('take', snap({ cue: { pending: [{}] } })), { method: 'cueTake', args: ['take'] });
-  assert.deepEqual(keyCommand('take', snap({ cue: { pending: [{}] }, autopilot: { enabled: true, next: { state: 'queued' } } })), { method: 'autopilotTake', args: [] });
-  assert.deepEqual(keyCommand('take', snap({ cue: { pending: [{}] }, autopilot: { enabled: true, next: { state: 'taking' } } })), { method: 'cueTake', args: ['take'] }, 'a step already being taken is not taken twice');
+  assert.deepEqual(keyCommand('take', snap({ cue: { pending: [{}] }, autopilot: { enabled: true, next: { state: 'queued' } } })), { method: 'cueTake', args: ['take'] }, 'what is cued goes first, never an autopilot step early');
+  assert.deepEqual(keyCommand('take', snap({ autopilot: { enabled: true, next: { state: 'queued' } } })), { method: 'autopilotTake', args: [] }, 'nothing cued: Take takes the next step');
+  assert.equal(keyCommand('take', snap({ autopilot: { enabled: true, next: { state: 'taking' } } })), null, 'a step already being taken is not taken twice');
   assert.deepEqual(keyCommand('stinger', snap()), { method: 'stingerPlay', args: [] });
   assert.deepEqual(keyCommand('stinger', snap({ cue: { pending: [{}] } })), { method: 'cueTake', args: ['stinger'] });
   assert.equal(keyCommand('hold', snap()), null, 'hold only with a next step');
