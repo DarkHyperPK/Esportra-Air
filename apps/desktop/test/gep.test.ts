@@ -82,3 +82,21 @@ test('player PCs forward only their own data, tagged with their Riot id', () => 
   assert.deepEqual(poll, [{ feature: 'me', info: { me: { health: '64' } }, playerId: id }]);
   assert.throws(() => new PlayerSource('player', 'not-a-uuid'));
 });
+
+test('a player PC is not shown as live until the game says which player it is', async () => {
+  const { packages, gep } = fakeOverwolf();
+  const sent: unknown[] = [];
+  const bridge = new GepBridge({ packages, role: 'player', send: (m) => sent.push(m) });
+  packages.emit('ready', {}, 'gep', '1.0');
+  bridge.start();
+  gep.emit('game-detected', { enable() {} }, 21640, 'VALORANT');
+  await tick();
+  gep.emit('new-info-update', {}, 21640, { info: { me: { health: '80' } } });
+  assert.deepEqual(sent, [], 'held back without the player id');
+  assert.equal(bridge.state, 'waiting');
+  assert.match(bridge.reason ?? '', /which player you are/);
+  gep.emit('new-info-update', {}, 21640, { info: { me: { player_id: '00000000-0000-4000-8000-000000000001' } } });
+  assert.equal(bridge.state, 'live', 'live once identified');
+  assert.equal((sent[0] as any).info.me.health, '80', 'the held data is sent first');
+  bridge.stop();
+});

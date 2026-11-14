@@ -26,6 +26,9 @@ export interface OverwolfPackages {
 
 export type CaptureState = 'off' | 'waiting' | 'live' | 'unavailable';
 
+/** Shown on a player PC until Valorant reports which player it is. */
+export const WAITING_FOR_PLAYER = 'Reading Valorant. Waiting for the game to say which player you are: join the match on this PC.';
+
 /** On a player PC, forwards only that player's own data, tagged with their Riot id (player-source.js). */
 export class PlayerSource {
   playerId: string;
@@ -165,6 +168,11 @@ export class GepBridge extends EventEmitter {
     if (!this.consented) return;
     for (const packet of this.source.prepare(message)) this.options.send(packet);
     this.lastMessageAt = Date.now();
+    // A player PC holds its data until the game says which player it is; it is not live before then.
+    if (this.role === 'player' && !this.source.playerId) {
+      if (this.reason !== WAITING_FOR_PLAYER) this.set('waiting', WAITING_FOR_PLAYER);
+      return;
+    }
     if (this.state !== 'live') this.set('live');
   }
 

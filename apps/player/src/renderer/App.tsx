@@ -65,7 +65,7 @@ export function App() {
 
   return (
     <div className="win">
-      <div className="titlebar"><b>Esportra Player</b><span>— {s.name}</span></div>
+      <div className="titlebar"><b>Esportra Player</b><span>&nbsp;· {s.name}</span></div>
       <main className="page" style={{ padding: '20px 24px' }}>
         <div className="stack">
           <div><Cap>This PC</Cap><h1 className="title-lg" style={{ marginTop: 8 }}>{shownRole === 'player' ? 'Player' : 'Observer'}</h1><p className="lead" style={{ marginTop: 6 }}>Reads Valorant on this PC and sends it to the production PC. Nothing is recorded or shown here.</p></div>
@@ -76,7 +76,8 @@ export function App() {
               {linked || l.state === 'rejected' ? (
                 <>
                   <p>Sending to <b className="mono">{l.address}</b> as {l.role === 'player' ? 'a player' : 'the observer'}.</p>
-                  {l.error && <p style={{ color: 'var(--bad)', fontSize: 12.5 }}>{l.error}</p>}
+                  {l.state === 'connecting' && <p className="muted" style={{ fontSize: 12.5 }}>Trying to reach the production PC. Game data read meanwhile is kept and sent as soon as it is back{l.queued ? ` (${l.queued} waiting)` : ''}.</p>}
+                  {l.error && l.state !== 'connecting' && <p style={{ color: 'var(--bad)', fontSize: 12.5 }}>{l.error}</p>}
                   <div style={{ display: 'flex', gap: 8 }}>
                     {l.state === 'rejected' && <button className="btn" onClick={() => void run(() => player.retry())}>Try again</button>}
                     <button className="btn quiet" onClick={() => void run(() => player.disconnect())}>Disconnect</button>
