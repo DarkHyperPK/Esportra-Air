@@ -73,7 +73,7 @@ test('a capture-only PC joins with the code and its game data reaches the produc
   try {
     await production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 1 });
     const code = production.match!.code;
-    assert.deepEqual(production.snapshot().join, { enabled: false, code: null, port: joinPort, addresses: ['192.168.1.40:' + joinPort], peers: [], error: null });
+    assert.deepEqual(production.snapshot().join, { enabled: false, code: null, port: joinPort, addresses: ['192.168.1.40:' + joinPort], peers: [], dataSources: null, error: null });
     await assert.rejects(link.connect({ address: `127.0.0.1:${joinPort}`, code: 'ABC234', role: 'observer' }), /Could not reach/);
 
     // Joining is off until the producer allows it, and the code only exists while it is on.
@@ -97,6 +97,10 @@ test('a capture-only PC joins with the code and its game data reaches the produc
     await until(() => production.snapshot().join.peers.length === 1, 'peer listed');
     const peer = production.snapshot().join.peers[0]!;
     assert.deepEqual([peer.role, peer.name, peer.messages], ['observer', 'OBSERVER-PC', 1]);
+    // The only PC sending match data is the game data source.
+    await until(() => production.snapshot().devices.observers[0]?.data === 'source', 'shown as the game data source');
+    await assert.rejects(production.joinUseSource('peer:999'), /not sent game data/);
+    await assert.rejects(production.joinUseSource('anything'), /Choose a PC/);
 
     // Another match: the same PC keeps feeding the producer's current match.
     await production.createQuickMatch({ teamA: 'Cobra', teamB: 'Dune', bestOf: 3 });

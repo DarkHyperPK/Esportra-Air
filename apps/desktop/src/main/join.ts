@@ -7,7 +7,7 @@
 import { randomInt } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { CODE_ALPHABET, DEFAULT_JOIN_PORT, type PcRole } from '../../../../packages/capture/src/protocol.ts';
-import { emptyJoin, type JoinView } from '../shared/join.ts';
+import { emptyJoin, type DataSourcesView, type JoinView } from '../shared/join.ts';
 import type { EngineClient } from './engine-client.ts';
 import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 import type { Store } from './store.ts';
@@ -42,6 +42,7 @@ export class JoinHost {
   private readonly d: JoinHostDeps;
   private timer: ReturnType<typeof setInterval> | null = null;
   private peers: JoinView['peers'] = [];
+  private sources: JoinView['dataSources'] = null;
   private error: string | null = null;
 
   constructor(deps: JoinHostDeps) {
@@ -55,7 +56,7 @@ export class JoinHost {
   view(): JoinView {
     const { enabled, port } = this.saved;
     const addresses = (this.d.addresses ?? lanAddresses)().map((a) => `${a}:${port}`);
-    return { ...emptyJoin(), enabled, port, code: enabled ? this.d.secrets.get('joinCode') : null, addresses, peers: this.peers, error: this.error };
+    return { ...emptyJoin(), enabled, port, code: enabled ? this.d.secrets.get('joinCode') : null, addresses, peers: this.peers, dataSources: enabled ? this.sources : null, error: this.error };
   }
 
   /** Re-applies the saved setting to the engine (after an engine restart, a new match, or at startup). */
@@ -106,6 +107,21 @@ export class JoinHost {
     this.d.changed();
   }
 
+  private async readSources() {
+    const code = this.d.matchCode();
+    this.sources = code ? await this.d.client().get<DataSourcesView>(`/api/${encodeURIComponent(code)}/data-sources`).catch(() => null) : null;
+  }
+
+  /** The producer chooses which PC's match data is used (`this-pc` or `peer:<id>`). */
+  async useSource(id: string) {
+    const code = this.d.matchCode();
+    if (!code) throw new Error('Choose a match first.');
+    if (!/^(this-pc|peer:\d{1,9})$/.test(String(id))) throw new Error('Choose a PC that sends game data.');
+    await this.d.client().post(`/api/${encodeURIComponent(code)}/data-sources`, { use: id });
+    await this.readSources();
+    this.d.changed();
+  }
+
   /** Polls the joined PCs while joining is on. */
   private poll() {
     if (this.timer || !this.saved.enabled) return;
@@ -119,6 +135,7 @@ export class JoinHost {
         const status = await this.d.client().get<EnginePeers>('/control/join');
         this.peers = status.peers;
         if (!status.enabled) await this.apply(true, this.saved.port); // the engine restarted: switch it back on
+        await this.readSources();
         this.error = null;
       } catch (error) {
         this.error = (error as Error).message;

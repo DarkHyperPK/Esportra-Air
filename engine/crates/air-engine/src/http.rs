@@ -404,6 +404,10 @@ async fn api(
         );
     }
     let sub = segments.get(2).copied();
+    // Which PC's match data is used, and switching to another (one source at a time; sources.rs).
+    if *method == Method::GET && sub == Some("data-sources") {
+        return send(StatusCode::OK, room.lock().sources.status(now_ms()));
+    }
     if *method == Method::GET && sub == Some("display-fixes") {
         let inner = room.lock();
         return send(StatusCode::OK, inner.fixes.status(&inner.state));
@@ -423,6 +427,14 @@ async fn api(
             }
             Err(e) => error(StatusCode::BAD_REQUEST, &e.0),
         },
+        ("POST", _, Some("data-sources")) => {
+            let id = input.get("use").and_then(Value::as_str).unwrap_or("");
+            let mut inner = room.lock();
+            if !inner.sources.choose(id, now_ms()) {
+                return error(StatusCode::BAD_REQUEST, "That PC has not sent game data in the last minute.");
+            }
+            send(StatusCode::OK, inner.sources.status(now_ms()))
+        }
         ("POST", _, Some("config")) => config(engine, &room, &input),
         ("POST", _, Some("map-result")) => map_result(&room, &input),
         ("PUT", 2, None) => {
@@ -460,7 +472,7 @@ async fn api(
                 Value::Array(list) => list,
                 other => vec![other],
             };
-            let (v, events) = room.ingest(&messages, age);
+            let (v, events) = room.ingest(&messages, age, Some(crate::sources::THIS_PC));
             send(StatusCode::OK, json!({ "v": v, "events": events }))
         }
         _ => error(StatusCode::NOT_FOUND, "Unknown API route."),

@@ -404,7 +404,9 @@ async fn peer(
                 }
                 // The room is looked up for every message, so a peer follows the producer's current match.
                 let code = engine.join.match_code();
-                engine.room(Some(&code)).ingest(std::slice::from_ref(&payload), age);
+                // An observer PC is a match data source (one at a time); a player PC only adds its own player.
+                let source = (role != "player").then(|| format!("peer:{id}"));
+                engine.room(Some(&code)).ingest(std::slice::from_ref(&payload), age, source.as_deref());
                 if let Some(p) = engine.join.lock().peers.get_mut(&id) {
                     p.last = Some(now_ms());
                     p.messages += 1;

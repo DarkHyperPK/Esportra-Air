@@ -257,6 +257,7 @@ fn handle(
                 room.ingest(
                     std::slice::from_ref(m.get("message").unwrap_or(&Value::Null)),
                     age,
+                    Some(crate::sources::THIS_PC),
                 );
             }
         }

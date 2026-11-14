@@ -40,3 +40,11 @@ test('once the game lists its players, each PC shows the seat it paired with', (
   const v = devicesView({ lineup: null, roomPlayers: room(), peers: [pc(1, id(6)), pc(2, null)], now: NOW });
   assert.deepEqual(v.pcs.map((x) => x.seat), ['P11', null]);
 });
+
+test('one PC is the game data source; another observer sending too is standby', () => {
+  const sources = { active: 'peer:2', sources: [{ id: 'peer:2', active: true, ageMs: 100, held: 0 }, { id: 'peer:3', active: false, ageMs: 200, held: 40 }, { id: 'this-pc', active: false, ageMs: 300, held: 9 }] };
+  const d = devicesView({ lineup: null, roomPlayers: null, peers: [pc(2, null, 'observer'), pc(3, null, 'observer'), pc(4, null, 'observer')], now: 1000, sources });
+  assert.deepEqual(d.observers.map((o) => o.data), ['source', 'standby', null], 'an observer that sent nothing has no role yet');
+  assert.equal(d.thisPc, 'standby');
+  assert.equal(devicesView({ lineup: null, roomPlayers: null, peers: [], now: 0 }).thisPc, null, 'nothing known while joining is off');
+});

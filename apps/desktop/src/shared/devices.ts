@@ -1,7 +1,7 @@
 // Devices: every PC and camera the show depends on. The player PC board puts each joined PC in its
 // seat by the in-game player id it sends, and says how fresh that player's own data is.
 import type { Match } from './api.ts';
-import type { JoinedPc } from './join.ts';
+import type { DataSourcesView, JoinedPc } from './join.ts';
 
 /** A seat's player PC: live (data in the last 10 s), quiet (data stopped), joined (no data yet), none. */
 export type SeatState = 'live' | 'quiet' | 'joined' | 'none';
@@ -49,12 +49,21 @@ export interface DevicesView {
   /** True once the game has reported its players (seats come from the game, not the lineup). */
   fromGame: boolean;
   unseated: UnseatedPc[];
-  observers: Array<{ id: number; name: string; ageMs: number | null }>;
+  observers: Array<{ id: number; name: string; ageMs: number | null; data: DataRole }>;
+  /** This PC's own capture: the game data source, held back as standby, or not sending. */
+  thisPc: DataRole;
 }
+
+/** `source`: its match data is used. `standby`: it sends too, but another PC's data is used. */
+export type DataRole = 'source' | 'standby' | null;
 
 interface RoomPlayer { name?: string; photo?: string; puuid?: string; captureCoverage?: { lastSeenAt?: number } }
 
-export function devicesView(input: { lineup: Match['players'] | null; roomPlayers: RoomPlayer[][] | null; peers: JoinedPc[]; now: number }): DevicesView {
+export function devicesView(input: { lineup: Match['players'] | null; roomPlayers: RoomPlayer[][] | null; peers: JoinedPc[]; now: number; sources?: DataSourcesView | null }): DevicesView {
+  const role = (id: string): DataRole => {
+    const x = input.sources?.sources.find((s) => s.id === id);
+    return !x ? null : x.active ? 'source' : 'standby';
+  };
   const players = input.peers.filter((p) => p.role === 'player');
   const room = input.roomPlayers ?? [];
   const fromGame = room.some((team) => team?.some((p) => p?.puuid && p.name));
@@ -87,6 +96,7 @@ export function devicesView(input: { lineup: Match['players'] | null; roomPlayer
     checkedIn: seats.filter((x) => x.state === 'live').length,
     fromGame,
     unseated,
-    observers: input.peers.filter((p) => p.role === 'observer').map((p) => ({ id: p.id, name: p.name, ageMs: p.lastAgeMs })),
+    observers: input.peers.filter((p) => p.role === 'observer').map((p) => ({ id: p.id, name: p.name, ageMs: p.lastAgeMs, data: role(`peer:${p.id}`) })),
+    thisPc: role('this-pc'),
   };
 }

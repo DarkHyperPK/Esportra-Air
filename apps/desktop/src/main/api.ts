@@ -120,6 +120,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'setMode': await p.setMode(a[0]); break;
     case 'joinSet': await p.joinSet(a[0] === true); break;
     case 'joinRotate': await p.joinRotate(); break;
+    case 'joinUseSource': await p.joinUseSource(String(a[0] ?? '')); break;
     case 'linkConnect': await p.linkConnect(a[0] ?? {}); break;
     case 'linkDisconnect': p.linkDisconnect(); break;
     case 'linkRetry': p.linkRetry(); break;

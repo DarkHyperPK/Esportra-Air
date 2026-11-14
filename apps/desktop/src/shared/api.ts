@@ -508,6 +508,7 @@ export interface AirApi {
   setMode(mode: PcMode): Promise<Snapshot>;
   joinSet(enabled: boolean): Promise<Snapshot>;
   joinRotate(): Promise<Snapshot>;
+  joinUseSource(id: string): Promise<Snapshot>;
   linkConnect(input: { address: string; code: string; role: PcRole }): Promise<Snapshot>;
   linkDisconnect(): Promise<Snapshot>;
   linkRetry(): Promise<Snapshot>;

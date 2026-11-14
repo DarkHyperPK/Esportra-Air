@@ -18,6 +18,7 @@ use tokio::sync::{broadcast, watch};
 use crate::features::reported_features;
 use crate::fixes::{DisplayFixes, FixError, FixStore};
 use crate::layers;
+use crate::sources::{DataSources, Gate};
 
 /// A live round with no game data for this long shows "feed paused" on the HUD.
 pub const FEED_STALE_MS: f64 = 10_000.0;
@@ -95,6 +96,8 @@ pub struct RoomInner {
     pub last_gep_at: Option<f64>,
     /// Last capture time of observer data (not player-PC heartbeats), for feed freshness.
     pub last_feed_at: Option<f64>,
+    /// Which sender's match data is used (one at a time; see sources.rs).
+    pub sources: DataSources,
     dirty: bool,
     test: Option<TestRun>,
     /// Kills per (round, killer), for the multi-kill callout.
@@ -329,14 +332,26 @@ impl Room {
         event
     }
 
-    /// Raw GEP messages captured `age_ms` ago → state, events and feed freshness.
-    pub fn ingest(self: &Arc<Self>, messages: &[Value], age_ms: f64) -> (u64, usize) {
+    /// Raw GEP messages captured `age_ms` ago → state, events and feed freshness. `source` names the
+    /// sender of full match data (an observer PC or this PC); `None` is a player PC's own-player data,
+    /// which never competes. Only one source's match data is used (sources.rs).
+    pub fn ingest(self: &Arc<Self>, messages: &[Value], age_ms: f64, source: Option<&str>) -> (u64, usize) {
+        let mut inner = self.lock();
+        let switched = match source {
+            None => false,
+            Some(s) => match inner.sources.gate(s, now_ms()) {
+                Gate::Hold => return (inner.v, 0),
+                Gate::Use => false,
+                Gate::TakeOver => true,
+            },
+        };
+        drop(inner);
         // Real game data always wins over a test round.
         self.stop_test(None);
         let capture_at = now_ms() - age_ms;
         let mut inner = self.lock();
-        // Data returning after a gap (or the first data after a restart) sets a new baseline.
-        if inner.last_gep_at.is_none_or(|last| capture_at - last > FEED_STALE_MS) {
+        // Data returning after a gap (or the first data after a restart), or from a new source, sets a new baseline.
+        if switched || inner.last_gep_at.is_none_or(|last| capture_at - last > FEED_STALE_MS) {
             inner.adapter.rebaseline();
         }
         let mut state = inner.state.clone();
@@ -762,6 +777,7 @@ impl Engine {
                 },
                 last_gep_at: None,
                 last_feed_at: None,
+                sources: DataSources::default(),
                 dirty: false,
                 test: None,
                 multikills: HashMap::new(),

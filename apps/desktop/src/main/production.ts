@@ -1220,6 +1220,12 @@ export class Production extends EventEmitter {
     return this.joinHost.rotate();
   }
 
+  /** Which PC's match data is used: `this-pc` or `peer:<id>` (one game data source at a time). */
+  async joinUseSource(id: string) {
+    await this.joinHost.useSource(id);
+    this.log.add('Game data source changed');
+  }
+
   async linkConnect(input: { address: string; code: string; role: PcRole }) {
     if (this.mode !== 'capture') throw new Error('Switch this PC to Capture-only first.');
     await this.link.connect(input ?? ({} as never));
@@ -1542,7 +1548,7 @@ export class Production extends EventEmitter {
       esportra: this.deps.esportra?.view() ?? signedOut(),
       mode: this.mode,
       join: this.joinHost.view(),
-      devices: devicesView({ lineup: this.match?.players ?? null, roomPlayers: Array.isArray(this.room?.players) ? this.room.players : null, peers: this.joinHost.view().peers, now: Date.now() }),
+      devices: devicesView({ lineup: this.match?.players ?? null, roomPlayers: Array.isArray(this.room?.players) ? this.room.players : null, peers: this.joinHost.view().peers, sources: this.joinHost.view().dataSources, now: Date.now() }),
       link: this.link.view(),
       autopilotBlock: this.autopilot.block(),
       log: this.log.list(),

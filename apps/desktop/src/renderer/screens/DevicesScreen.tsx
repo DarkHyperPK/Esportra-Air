@@ -3,7 +3,7 @@
 // is a tab of its own.
 import { useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
-import type { SeatView } from '../../shared/devices.ts';
+import type { DataRole, SeatView } from '../../shared/devices.ts';
 import { ROLE_NAME, cameraLinkUrl, onAir } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
 import type { PageProps } from '../App.tsx';
@@ -64,16 +64,25 @@ function CheckIn({ s, run }: Pick<PageProps, 's' | 'run'>) {
         <section className="stack" style={{ gap: 8 }}>
           <h2 className="title-sm">The match</h2>
           <div className="lst">
-            <div className="li device-row"><i className={`dot ${thisPc}`} /><span><b>This PC</b><br /><span className="muted t-sm">{s.feed.state === 'off' ? s.feed.reason ?? 'Game data is off on this PC.' : s.feed.state === 'waiting' ? 'Waiting for the game.' : s.feed.state === 'live' ? `Game data · last update ${age(s.feed.ageMs)} ago` : 'Not available here.'}</span></span><span /></div>
+            <div className="li device-row"><i className={`dot ${d.thisPc === 'standby' ? 'warn' : thisPc}`} /><span><b>This PC</b><br /><span className="muted t-sm">{s.feed.state === 'off' ? s.feed.reason ?? 'Game data is off on this PC.' : s.feed.state === 'waiting' ? 'Waiting for the game.' : s.feed.state === 'live' ? `${dataLine(d.thisPc)} · last update ${age(s.feed.ageMs)} ago` : 'Not available here.'}</span></span><UseButton role={d.thisPc} id="this-pc" run={run} /></div>
             {d.observers.map((o) => (
-              <div key={o.id} className="li device-row"><i className={`dot ${o.ageMs !== null && o.ageMs < 10_000 ? 'ok' : 'warn'}`} /><span><b>{o.name}</b><br /><span className="muted t-sm">Observer PC · {o.ageMs === null ? 'no data yet' : `last update ${age(o.ageMs)} ago`}</span></span><span /></div>
+              <div key={o.id} className="li device-row"><i className={`dot ${o.data === 'standby' ? 'warn' : o.ageMs !== null && o.ageMs < 10_000 ? 'ok' : 'warn'}`} /><span><b>{o.name}</b><br /><span className="muted t-sm">Observer PC · {dataLine(o.data)} · {o.ageMs === null ? 'no data yet' : `last update ${age(o.ageMs)} ago`}</span></span><UseButton role={o.data} id={`peer:${o.id}`} run={run} /></div>
             ))}
+            {[d.thisPc, ...d.observers.map((o) => o.data)].filter((x) => x === 'standby').length > 0 && <p className="faint t-xs">Game data comes from one PC at a time, so nothing is counted twice. A standby PC takes over by itself if the game data PC stops sending for 5 seconds.</p>}
           </div>
         </section>
       </div>
       <JoinPanel s={s} run={run} />
     </div>
   );
+}
+
+/** What a PC's match data is doing: used, or held back because another PC sends it. */
+const dataLine = (role: DataRole) => (role === 'source' ? 'Game data from this PC' : role === 'standby' ? 'Standby: another PC sends the game data' : 'Game data');
+
+function UseButton({ role, id, run }: { role: DataRole; id: string; run: PageProps['run'] }) {
+  if (role !== 'standby') return <span />;
+  return <button className="btn quiet small" onClick={() => void run(() => air.joinUseSource(id))}>Use for game data</button>;
 }
 
 function Cameras({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {

@@ -1206,6 +1206,45 @@ async fn joined_observers_feed_the_current_match_and_players_only_their_own_data
 }
 
 #[tokio::test]
+async fn only_one_observer_pc_is_the_match_data_source() {
+    let r = engine(temp_dir()).await;
+    let port = free_port();
+    request(&r, "PUT", "/control/join", Some(&json!({ "enabled": true, "code": "K7M4QX", "match": "DS", "host": "127.0.0.1", "port": port })), true).await;
+    let mut first = join_ws(port, "code=K7M4QX&role=observer&name=Observer%201").await.unwrap();
+    next_json(&mut first).await;
+    let mut second = join_ws(port, "code=K7M4QX&role=observer&name=Observer%202").await.unwrap();
+    next_json(&mut second).await;
+    // Both observers see the same match and send the same data: every kill must count once.
+    for i in 0..10 {
+        first.send(data(scoreboard(i))).await.unwrap();
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    for i in 0..10 {
+        second.send(data(scoreboard(i))).await.unwrap();
+    }
+    first.send(data(kill(0, 5))).await.unwrap();
+    second.send(data(kill(0, 5))).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(show(&r, "DS").await["killfeed"].as_array().map(Vec::len), Some(1), "the second observer's copy of the kill is held back");
+    let sources = request(&r, "GET", "/api/DS/data-sources", None, true).await.json();
+    let peers = join_status(&r).await["peers"].as_array().unwrap().clone();
+    let id_of = |name: &str| format!("peer:{}", peers.iter().find(|p| p["name"] == name).unwrap()["id"].as_u64().unwrap());
+    assert_eq!(sources["active"], json!(id_of("Observer 1")));
+    let held = sources["sources"].as_array().unwrap().iter().find(|s| s["id"] == json!(id_of("Observer 2"))).unwrap();
+    assert!(held["held"].as_u64().unwrap() >= 11, "{held}");
+    assert_eq!(request(&r, "GET", "/api/DS/data-sources", None, false).await.status, 401, "the producer's key is needed");
+
+    // The producer switches to the second observer: from now on only its data counts.
+    let switched = request(&r, "POST", "/api/DS/data-sources", Some(&json!({ "use": id_of("Observer 2") })), true).await;
+    assert_eq!(switched.status, 200, "{}", switched.body);
+    second.send(data(kill(1, 6))).await.unwrap();
+    first.send(data(kill(1, 6))).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(show(&r, "DS").await["killfeed"].as_array().map(Vec::len), Some(2));
+    assert_eq!(request(&r, "POST", "/api/DS/data-sources", Some(&json!({ "use": "peer:999" })), true).await.status, 400, "a PC that sent nothing cannot be chosen");
+}
+
+#[tokio::test]
 async fn the_fullscreen_host_shows_one_named_graphic() {
     let r = engine(temp_dir()).await;
     assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-result" })).await.status, 200);
