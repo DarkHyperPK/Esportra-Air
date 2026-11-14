@@ -135,3 +135,22 @@ img.bd-mark{filter:drop-shadow(0 4px 8px rgba(0,0,0,.5))}
 .bd-fbot{position:absolute;left:96px;right:96px;top:850px;display:flex;justify-content:center;align-items:center;gap:28px}
 .bd-fbot .bd-tname b{font-size:40px}
 .bd-fnext{position:absolute;left:0;right:0;bottom:44px;text-align:center;font-size:15px}
+
+/* Map veto and agent select (approved mock, 14 Nov): open steps, lock-in states */
+.bd-map.now{background:repeating-linear-gradient(135deg,rgba(255,255,255,.04) 0 14px,transparent 14px 28px),#17191d;box-shadow:0 10px 22px rgba(0,0,0,.45),inset 0 0 0 3px var(--c,var(--ev));animation:bdNow 1.6s ease-in-out infinite alternate}
+.bd-map.now .mn{font-size:24px;color:var(--c,var(--ev))}
+.bd-map.next{background:transparent;box-shadow:none;border:2px dashed rgba(255,255,255,.18)}
+.bd-map.next::before{display:none}
+.bd-map.next .mn{font-size:20px;color:rgba(255,255,255,.4);text-shadow:none}
+.bd-vcol.next .bd-vlab{opacity:.45}
+.bd-title .acc{font-weight:600}
+.bd-ag .bd-lock{position:absolute;left:8px;top:8px;z-index:2;padding:1px 6px;font-size:11px;font-weight:700;letter-spacing:.14em;background:var(--c);color:#0b0c0e}
+.bd-ag.picking{opacity:1;filter:saturate(.25) brightness(.6)}
+.bd-ag.picking .ul{opacity:.25;box-shadow:none}
+.bd-ag.just{animation:bdLock .9s ease-out 1}
+@keyframes bdNow{from{box-shadow:0 10px 22px rgba(0,0,0,.45),inset 0 0 0 3px var(--c,var(--ev))}to{box-shadow:0 0 34px color-mix(in srgb,var(--c,var(--ev)) 45%,transparent),inset 0 0 0 3px var(--c,var(--ev))}}
+@keyframes bdLock{0%{box-shadow:inset 0 0 0 0 var(--c)}30%{box-shadow:inset 0 0 0 5px var(--c)}100%{box-shadow:inset 0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.bd-map.now{animation:none}}
+
+.bd-map .bd-num{position:absolute;left:12px;top:10px;z-index:1;font-weight:700;font-size:15px;letter-spacing:.14em;color:rgba(255,255,255,.7);text-shadow:0 1px 3px rgba(0,0,0,.7)}
+.bd-veto .bd-map.ban::after{left:-20%;right:-20%;top:50%;width:auto;height:3px;border:0;border-radius:0;background:var(--atk,#e0445e);transform:rotate(-38deg);box-shadow:none;opacity:.85}

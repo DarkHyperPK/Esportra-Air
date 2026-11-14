@@ -38,31 +38,49 @@
     }, play() { sig = ''; } };
   }
 
-  // 1 · Map veto: every ban, pick (with the side the other team chose) and the decider.
+  // 1 · Map veto (approved mock, 14 Nov): the format's steps; done steps show the map, who acted and the
+  // side; the step being chosen is marked in that team's colour; later steps wait as empty slots.
   M.vetoBand = root => band(root, 'bd-veto', s => {
-    const T = s.teams;
-    const tiles = s.veto.map(v => {
+    const T = s.teams, steps = HUD.vetoSteps(s.veto, s.event.bestOf);
+    const tiles = steps.map(v => {
       const team = v.team >= 0 ? T[v.team] : null, other = v.team >= 0 ? T[1 - v.team] : null;
-      const top = v.action === 'pick' && v.side ? `<span class="bd-cap top">${esc(other.tag)} PICKS ${esc(v.side)}</span>` : v.action === 'decider' && v.side ? `<span class="bd-cap top">${esc(v.side)} FIRST</span>` : '';
+      const n = String(v.i + 1).padStart(2, '0');
+      if (v.state !== 'done') {
+        const now = v.state === 'now', word = now ? (team ? `${esc(team.tag)} ${v.action === 'pick' ? 'PICKING' : 'BANNING'}` : 'DECIDER') : 'UP NEXT';
+        const what = v.action === 'decider' ? '<b class="acc">DECIDER</b><span>MAP</span>' : `<b>${esc(team ? team.tag : '')}</b><span>${v.action === 'pick' ? 'PICK' : 'BAN'} MAP</span>`;
+        return `<div class="bd-vcol ${v.state}"><div class="bd-map ${v.state}" style="${team ? `--c:${esc(team.color)}` : ''}"><span class="bd-num">${n}</span><span class="mn">${word}</span></div><div class="bd-vlab ${v.action === 'decider' ? 'dec' : ''}">${what}</div></div>`;
+      }
+      const top = v.action === 'pick' && v.side ? `<span class="bd-cap top">${esc(other.tag)} PICKS ${esc(v.side)}</span>` : v.action === 'decider' && v.side ? `<span class="bd-cap top">${esc(v.side)} FIRST</span>` : `<span class="bd-num">${n}</span>`;
       const label = v.action === 'decider' ? '<b class="acc">DECIDER</b><span>MAP</span>' : `<b>${esc(team ? team.tag : '')}</b><span>${v.action === 'ban' ? 'BAN' : 'PICK'} MAP</span>`;
       return `<div class="bd-vcol">${mapTile(v.map, v.action === 'ban' ? 'ban' : v.action === 'pick' ? 'pick' : 'dec', top)}<div class="bd-vlab ${v.action === 'decider' ? 'dec' : ''}" style="${team && v.action === 'pick' ? `--c:${esc(team.color)}` : ''}">${label}</div></div>`;
     }).join('');
-    return `<div class="bd-head"><span class="bd-title">MAP VETO</span><span class="bd-cap">${esc([s.event.name, s.event.stage, `BO${s.event.bestOf}`].filter(Boolean).join(' · '))}</span><span class="bd-row">${mark(T[0], 40)}<span class="bd-vs">VS</span>${mark(T[1], 40)}</span></div><div class="bd-vgrid" style="--n:${Math.max(1, s.veto.length)}">${tiles}</div>`;
+    const doneN = steps.filter(x => x.state === 'done').length;
+    return `<div class="bd-head"><span class="bd-title">MAP VETO <span class="acc">· ${doneN >= steps.length ? 'COMPLETE' : `STEP ${doneN + 1} OF ${steps.length}`}</span></span><span class="bd-cap">${esc([s.event.name, s.event.stage, `BO${s.event.bestOf}`].filter(Boolean).join(' · '))}</span><span class="bd-row">${mark(T[0], 40)}<span class="bd-vs">VS</span>${mark(T[1], 40)}</span></div><div class="bd-vgrid" style="--n:${Math.max(1, steps.length)}">${tiles}</div>`;
   }, s => [s.veto, s.teams.map(t => [t.tag, t.color, t.logo]), s.event]);
 
-  // 2 · Agent select: both lineups with their agents, the map in the middle.
-  const agentCard = (p, color) => {
+  // 2 · Agent select: both lineups with their agents, the map in the middle. A player still choosing is
+  // dimmed; a lock-in marks the card and flashes it once.
+  const agentCard = (p, color, st, just) => {
     const url = portrait(p.agent), a = HUD.agent(p.agent);
-    return `<div class="bd-ag ${p.agent ? '' : 'picking'}" style="--c:${esc(color)};${url ? `--p:url('${esc(url)}')` : ''}"><div class="who"><b>${esc(p.name)}</b><span>${esc(a ? a.name : 'Picking…')}</span></div><i class="ul"></i></div>`;
+    const line = st === 'locked' ? esc(a ? a.name : '') : st === 'choosing' ? `Choosing · ${esc(a ? a.name : '')}` : 'Choosing';
+    return `<div class="bd-ag ${st === 'locked' ? 'locked' : 'picking'}${just ? ' just' : ''}" style="--c:${esc(color)};${url ? `--p:url('${esc(url)}')` : ''}">${st === 'locked' ? '<span class="bd-lock">LOCKED</span>' : ''}<div class="who"><b>${esc(p.name)}</b><span>${line}</span></div><i class="ul"></i></div>`;
   };
-  M.lineupsBand = root => band(root, 'bd-lineups', s => {
-    const T = s.teams, played = s.series.filter(x => x.winner === 0 || x.winner === 1);
-    const side = i => T[i].side ? `<span class="bd-side ${T[i].side === 'ATK' ? 'atk' : 'def'}">${esc(T[i].side)}</span>` : '';
-    return `<div class="bd-head"><span class="bd-row">${mark(T[0], 44)}<span class="bd-team">${esc(T[0].name)}</span>${side(0)}</span><span class="bd-title acc">AGENT SELECT · MAP ${esc(s.map.number || 1)}</span><span class="bd-row">${side(1)}<span class="bd-team">${esc(T[1].name)}</span>${mark(T[1], 44)}</span></div>
-      <div class="bd-lgrid">${s.players[0].slice(0, 5).map(p => agentCard(p, T[0].color)).join('')}
-        <div class="bd-lmid">${mapTile(s.map.name, 'mid')}<div class="bd-lser"><span class="bd-cap">SERIES</span><b>${T[0].series || 0} – ${T[1].series || 0}</b><span class="bd-cap small">${esc(played.map(x => `${x.map} ${x.score[0]}–${x.score[1]}`).join(' · '))}</span></div></div>
-        ${s.players[1].slice(0, 5).map(p => agentCard(p, T[1].color)).join('')}</div>`;
-  }, s => [s.players.map(t => t.map(p => [p.name, p.agent])), s.teams.map(t => [t.name, t.tag, t.color, t.logo, t.side, t.series]), s.map, s.series]);
+  M.lineupsBand = root => {
+    let was = null;
+    const b = band(root, 'bd-lineups', s => {
+      const T = s.teams, played = s.series.filter(x => x.winner === 0 || x.winner === 1);
+      const now = s.players.map(t => t.slice(0, 5).map(HUD.lockState));
+      const cards = t => s.players[t].slice(0, 5).map((p, j) => agentCard(p, T[t].color, now[t][j], !!(was && was[t] && was[t][j] !== 'locked' && now[t][j] === 'locked'))).join('');
+      const side = i => T[i].side ? `<span class="bd-side ${T[i].side === 'ATK' ? 'atk' : 'def'}">${esc(T[i].side)}</span>` : '';
+      const locked = now.flat().filter(x => x === 'locked').length;
+      was = now;
+      return `<div class="bd-head"><span class="bd-row">${mark(T[0], 44)}<span class="bd-team">${esc(T[0].name)}</span>${side(0)}</span><span class="bd-title acc">AGENT SELECT · MAP ${esc(s.map.number || 1)}<span class="bd-cap small"> ${locked} OF ${now.flat().length} LOCKED</span></span><span class="bd-row">${side(1)}<span class="bd-team">${esc(T[1].name)}</span>${mark(T[1], 44)}</span></div>
+        <div class="bd-lgrid">${cards(0)}
+          <div class="bd-lmid">${mapTile(s.map.name, 'mid')}<div class="bd-lser"><span class="bd-cap">SERIES</span><b>${T[0].series || 0} – ${T[1].series || 0}</b><span class="bd-cap small">${esc(played.map(x => `${x.map} ${x.score[0]}–${x.score[1]}`).join(' · '))}</span></div></div>
+          ${cards(1)}</div>`;
+    }, s => [s.players.map(t => t.map(p => [p.name, p.agent, p.locked])), s.teams.map(t => [t.name, t.tag, t.color, t.logo, t.side, t.series]), s.map, s.series]);
+    return { update: b.update, play() { was = null; b.play(); } };
+  };
 
   // 3 · Match intro: both teams and the format, then each lineup in turn.
   M.introBand = root => {

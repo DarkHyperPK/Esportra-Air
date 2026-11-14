@@ -171,6 +171,29 @@
   const morph = HUD.morph = (parent, html) => { const t = document.createElement('template'); t.innerHTML = html; morphKids(parent, t.content); };
   /** A picture that fails shows its fallback once; the swap is remembered so a redraw does not retry it. */
   const fallbackOnError = root => root.querySelectorAll('img[data-fallback]').forEach(im => { if (im.onerror) return; im.onerror = () => { im.onerror = null; im.dataset.failed = im.getAttribute('src'); im.src = im.dataset.fallback; im.classList.add('fallback'); }; });
+  const escH = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const logoOk = v => typeof v === 'string' && /^(\/air-assets\/[0-9a-f-]{36}|https:\/\/[^\s"'<>]+|\.\.\/[^\s"'<>]+)$/i.test(v);
+  /** A team's logo as markup: its picture, or its tag on its colour. */
+  const teamMark = (T, size) => logoOk(T.logo) ? `<img class="lg" src="${escH(T.logo)}" alt="" style="width:${size}px;height:${size}px">`
+    : `<span class="lg mono-logo" style="width:${size}px;height:${size}px;--c:${escH(T.color)};font-size:${Math.round(size * .34)}px">${escH(T.tag)}</span>`;
+  const eventAccent = s => (/^#[0-9a-f]{6}$/i.test(s.event && s.event.accent || '') ? s.event.accent : '#ffb22e');
+  /**
+   * The veto as the format's steps: done steps from the room's veto, then what comes next. The first
+   * open step is "now" while the veto has started and isn't finished. Teams alternate from the team
+   * that acted first (team A when nothing has happened yet).
+   */
+  const VETO_ORDER = { 1: ['ban', 'ban', 'ban', 'ban', 'ban', 'ban', 'decider'], 3: ['ban', 'ban', 'pick', 'pick', 'ban', 'ban', 'decider'], 5: ['ban', 'ban', 'pick', 'pick', 'pick', 'pick', 'decider'] };
+  const vetoSteps = HUD.vetoSteps = (veto, bestOf) => {
+    const done = Array.isArray(veto) ? veto : [], order = VETO_ORDER[bestOf] || VETO_ORDER[3];
+    const first = done[0] && (done[0].team === 0 || done[0].team === 1) ? done[0].team : 0;
+    const steps = done.map((v, i) => ({ ...v, i, state: 'done' }));
+    for (let i = done.length; i < order.length; i++) {
+      steps.push({ i, action: order[i], team: order[i] === 'decider' ? -1 : (first + i) % 2, state: i === done.length && done.length > 0 ? 'now' : 'next' });
+    }
+    return steps;
+  };
+  /** A player in agent select: no agent yet, choosing (hovering an agent), or locked in. Without the game's flag, an agent counts as locked. */
+  const lockState = HUD.lockState = p => (!p || !p.agent ? 'empty' : p.locked === false ? 'choosing' : 'locked');
   const timeLeft = HUD.timeLeft = r => r.endsAt ? Math.max(0, (r.endsAt - HUD.now()) / 1000) : (r.remaining || 0);
   // Align CSS motion once per plant; the compositor keeps it smooth between HUD ticks.
   const pulseSpike = (el, round) => {
@@ -681,43 +704,77 @@
   };
 
   // ───── full-screen scenes ─────
+  // Map veto (approved mock, 14 Nov): the format's steps in order. Done steps show the map, who acted
+  // and the side; the step being chosen pulses in that team's colour; later steps wait as empty slots.
   M.veto = root => {
     const m = E('div', 'mod on vt', root); const sc = sceneBg(m); chrome(m, 'MAP VETO');
-    E('div', 'title disp hl', m, 'MAP VETO'); const hdr = E('div', 'title-r mono', m); hdr.style.color = '#f0f0f2'; const box = E('div', '', m), cap = E('div', 'cap mono', m); sceneFx(sc);
+    const head = E('div', 'vt-head', m), title = E('div', 'title disp hl', head, 'MAP VETO'), sub = E('div', 'title-r mono', head);
+    const tl = E('div', 'vt-team l', m), tr = E('div', 'vt-team r', m);
+    const box = E('div', 'steps', m), cap = E('div', 'cap mono', m); sceneFx(sc);
+    void title;
     let sig = '';
     return {
       // Coming on air plays every card's entrance once; afterwards only a new card animates.
       play() { sig = ''; box.innerHTML = ''; },
       update(s) {
-        const k = JSON.stringify([s.veto, s.teams.map(t => [t.tag, t.color]), s.series.map(x => x.map)]);
+        const k = JSON.stringify([s.veto, s.teams.map(t => [t.name, t.tag, t.color, t.logo]), s.series.map(x => x.map), s.event.bestOf, s.event.stage, s.event.accent]);
         if (k === sig) return; sig = k;
-        txt(hdr, `VALORANT   /   ${s.teams[0].tag}  VS  ${s.teams[1].tag}`);
-        morph(box, s.veto.map((v, i) => {
-          const M_ = mapA(v.map), T = v.team >= 0 ? s.teams[v.team] : null, col = T ? T.color : '#e0445e';
-          const kind = v.action === 'ban' ? 'ban' : v.action === 'decider' ? 'dec' : 'pick';
-          const stamp = v.action === 'ban' ? ['BANNED', 'color:#e0445e;border:3px solid #e0445e;background:rgba(18,10,13,.9)'] : v.action === 'pick' ? [`PICKED<small>${T.tag}</small>`, `color:#fff;border:3px solid ${col};background:rgba(14,14,16,.85)`] : [`DECIDER<small>MAP ${s.series.findIndex(x => x.map === v.map) + 1 || ''}</small>`, 'color:#fff;border:3px solid #e0445e;background:#e0445e'];
-          return `<div class="card ${kind}" style="left:${167 + i * 230}px;animation:tIn .6s ${.08 * i}s var(--ease) both;transform:translateY(40px);opacity:0"><div class="inner"><img src="${M_ ? M_.tall : ''}">${v.action === 'decider' ? '<div class="tint"></div>' : ''}<div class="sh"></div><div class="idx mono">0${i + 1}</div><div class="mn">${v.map}</div><div class="by mono">${T ? T.tag + ' ' + (v.action === 'ban' ? 'BAN' : 'PICK') : 'DECIDER'}${v.side ? '   /   ' + v.side : ''}</div></div>` +
-            (v.action === 'ban' ? `<svg class="slash" width="212" height="620"><line x1="12" y1="-18" x2="200" y2="638" stroke="#e0445e" stroke-width="3.5"/></svg>` : '') +
-            `<div class="stamp mono" style="${stamp[1]}">${stamp[0]}</div></div>`;
+        m.style.setProperty('--ev', eventAccent(s));
+        txt(sub, [s.event.stage, `BEST OF ${s.event.bestOf}`].filter(Boolean).join('   ·   '));
+        [tl, tr].forEach((el, t) => morph(el, `${teamMark(s.teams[t], 96)}<div><b>${escH(s.teams[t].name)}</b><span class="mono">${escH(s.teams[t].tag)}</span></div>`));
+        const steps = vetoSteps(s.veto, s.event.bestOf);
+        box.style.setProperty('--n', steps.length);
+        morph(box, steps.map(st => {
+          const n = String(st.i + 1).padStart(2, '0'), T = st.team >= 0 ? s.teams[st.team] : null;
+          const label = st.action === 'decider' ? 'DECIDER' : st.action === 'pick' ? 'PICK' : 'BAN';
+          const enter = `animation:tIn .6s ${.06 * st.i}s var(--ease) both;opacity:0;transform:translateY(40px)`;
+          if (st.state !== 'done') {
+            const now = st.state === 'now';
+            const word = now ? (T ? `${escH(T.tag)} ${st.action === 'pick' ? 'PICKING' : 'BANNING'}` : 'DECIDER') : 'UP NEXT';
+            return `<div class="card ${now ? 'now' : 'next'}" style="--c:${T ? escH(T.color) : 'var(--ev)'};${enter}"><div class="hd"><b class="stamp">${label}</b><i class="mono">${n}</i></div><div class="art"><div class="mn">${word}</div></div><div class="ft">${T ? `<div class="by">${teamMark(T, 40)}${escH(T.tag)}</div>` : ''}<div class="nt mono">${now ? 'CHOOSING NOW' : st.action === 'decider' ? 'LAST MAP STANDING' : ''}</div></div></div>`;
+          }
+          const Mm = mapA(st.map), kind = st.action === 'ban' ? 'ban' : st.action === 'decider' ? 'dec' : 'pick';
+          const note = st.side ? (T ? `${escH(s.teams[1 - st.team].tag)} PICKS ${escH(st.side)}` : `${escH(st.side)} FIRST`) : kind === 'ban' ? 'BANNED' : kind === 'dec' ? `MAP ${s.series.findIndex(x => x.map === st.map) + 1 || ''}` : '';
+          return `<div class="card ${kind}" style="--c:${kind === 'pick' && T ? escH(T.color) : kind === 'dec' ? 'var(--ev)' : 'rgba(255,255,255,.14)'};${enter}"><div class="hd"><b class="stamp">${label}</b><i class="mono">${n}</i></div><div class="art">${Mm ? `<img src="${escH(Mm.tall)}" alt="">` : ''}${kind === 'ban' ? '<span class="strike"></span>' : ''}<div class="mn">${escH(st.map)}</div></div><div class="ft">${T ? `<div class="by">${teamMark(T, 40)}${escH(T.tag)}</div>` : '<div class="by dec">DECIDER</div>'}<div class="nt mono">${note}</div></div></div>`;
         }).join(''));
-        const l = s.veto[s.veto.length - 1]; txt(cap, l ? (l.team >= 0 ? `${s.teams[l.team].tag} ${l.action.toUpperCase()}S ${l.map}` : `DECIDER: ${l.map}`) : '');
+        const doneN = steps.filter(x => x.state === 'done').length;
+        txt(cap, doneN >= steps.length ? 'VETO COMPLETE' : `STEP ${doneN + 1} OF ${steps.length}`);
       },
     };
   };
 
+  // Agent select (approved mock, 14 Nov): five players a side facing the map. A player still choosing
+  // is dimmed; a lock-in fills the card and flashes that card once.
   M.lineups = root => {
-    const m = E('div', 'mod on lu', root); const sc = sceneBg(m); chrome(m, 'AGENT SELECT'); const box = E('div', '', m); sceneFx(sc);
-    let sig = '';
+    const m = E('div', 'mod on lu', root); const sc = sceneBg(m); chrome(m, 'AGENT SELECT');
+    const ths = [E('div', 'th l', m), E('div', 'th r', m)], vs = E('div', 'vs', m);
+    const row = E('div', 'lu-row', m), cols = [E('div', 'col l', row), E('div', 'mapc', row), E('div', 'col r', row)], cnt = E('div', 'cnt mono', m); sceneFx(sc);
+    let sig = '', was = null;
     return {
-      // Coming on air plays every card's entrance once; a lock-in afterwards changes only that card.
-      play() { sig = ''; box.innerHTML = ''; },
+      play() { sig = ''; was = null; cols[0].innerHTML = cols[2].innerHTML = ''; },
       update(s) {
-        const k = JSON.stringify([s.players.map(t => t.map(p => [p.name, p.agent])), s.teams.map(t => [t.name, t.color, t.side]), s.map]);
+        const k = JSON.stringify([s.players.map(t => t.map(p => [p.name, p.agent, p.locked])), s.teams.map(t => [t.name, t.tag, t.color, t.logo, t.side, t.series]), s.map, s.series, s.event.accent]);
         if (k === sig) return; sig = k;
-        morph(box, `<div class="vs">vs</div>` + [0, 1].map(i => { const T = s.teams[i];
-          return `<div class="th disp hl ${i ? 'r' : 'l'}">${T.name}<small>${T.side || ''}   /   MAP ${s.map.number} ${s.map.name}</small></div><div class="col ${i ? 'r' : 'l'}" style="--c:${T.color}">` + s.players[i].map((p, j) => { const A = agent(p.agent);
-            return `<div class="pc" style="animation:tIn .6s ${.07 * (i * 5 + j)}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img class="por" src="${A.full}" data-fallback="${A.icon}"><img class="icon" src="${A.icon}">` : '<div class="pending mono">AWAITING PICK</div>'}<div class="sh"></div><div class="pn">${p.name || 'PLAYER ' + (j + 1)}</div><div class="an mono">${A ? A.name : 'AGENT PENDING'}</div><div class="rl mono">${A ? A.role : ''}</div></div>`; }).join('') + '</div>'; }).join(''));
-        fallbackOnError(box);
+        m.style.setProperty('--ev', eventAccent(s));
+        const now = s.players.map(t => t.slice(0, 5).map(lockState));
+        ths.forEach((el, t) => { const T = s.teams[t];
+          morph(el, `${teamMark(T, 84)}<b class="disp">${escH(T.name)}</b>${T.side ? `<span class="side ${T.side === 'ATK' ? 'atk' : 'def'}">${escH(T.side)}</span>` : ''}`); });
+        morph(vs, `<b>AGENT SELECT</b><span class="mono">MAP ${escH(s.map.number || 1)}   ·   ${escH(s.map.name)}</span>`);
+        [0, 1].forEach(t => { const T = s.teams[t];
+          cols[t * 2].style.setProperty('--c', T.color);
+          morph(cols[t * 2], s.players[t].slice(0, 5).map((p, j) => { const A = agent(p.agent), st = now[t][j];
+            const just = was && was[t] && was[t][j] !== 'locked' && st === 'locked';
+            const enter = `animation:tIn .6s ${.06 * (t * 5 + j)}s var(--ease) both;opacity:0;transform:translateY(40px)`;
+            return `<div class="pc ${st}${just ? ' just' : ''}" style="${enter}"><div class="por" style="background:linear-gradient(180deg,#${A && A.grad[0] || '2a2f37'},#121418)">${A ? `<img class="por-i" src="${escH(A.full)}" data-fallback="${escH(A.icon)}" alt="">` : ''}</div>${st === 'locked' ? '<span class="lock mono">LOCKED</span>' : ''}<div class="who"><b>${escH(p.name || 'PLAYER ' + (j + 1))}</b><span class="mono">${st === 'locked' ? `<em>${escH(A.name)}</em>` : 'CHOOSING'}</span></div></div>`;
+          }).join(''));
+        });
+        const Mm = mapA(s.map.name), played = s.series.filter(x => x.winner === 0 || x.winner === 1);
+        const dia = t => Array.from({ length: Math.ceil((s.event.bestOf || 1) / 2) }, (_, i) => `<i class="${i < (s.teams[t].series || 0) ? 'w' : ''}" style="--c:${escH(s.teams[t].color)}"></i>`).join('');
+        morph(cols[1], `<div class="art">${Mm ? `<img src="${escH(Mm.tall)}" alt="">` : ''}<b>${escH(s.map.name)}</b></div><div class="info"><div class="score">${s.teams[0].series || 0} – ${s.teams[1].series || 0}<small class="mono">SERIES   ·   MAP ${escH(s.map.number || 1)}</small></div><div class="dia"><span>${dia(0)}</span><span>${dia(1)}</span></div><div class="played mono">${played.map(x => `${escH(x.map)} ${x.score[0]}–${x.score[1]}`).join('<br>')}</div></div>`);
+        fallbackOnError(row);
+        const locked = now.flat().filter(x => x === 'locked').length;
+        txt(cnt, `${locked} OF ${now.flat().length} LOCKED`);
+        was = now;
       },
     };
   };

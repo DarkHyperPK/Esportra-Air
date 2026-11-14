@@ -212,3 +212,48 @@ test('map veto and agent select change in place: nothing blinks on live data', {
     await browser.close();
   }
 });
+
+// The veto follows the format's steps, and agent select tells a player still choosing from one locked in.
+test('veto steps follow the best-of; a lock-in flashes only that card', { skip: !chromium && 'needs Playwright' }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    await page.goto(`file://${OVERLAYS}/fullscreen.html?preview=1`);
+    await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
+    const steps = await page.evaluate(() => {
+      const f = (window as any).HUD.vetoSteps;
+      const kinds = (bo: number) => f([], bo).map((x: any) => x.action).join(' ');
+      const mid = f([{ team: 1, action: 'ban', map: 'SPLIT' }, { team: 0, action: 'ban', map: 'BIND' }], 3);
+      return { bo1: kinds(1), bo3: kinds(3), bo5: kinds(5), fresh: f([], 3).map((x: any) => x.state), mid: mid.map((x: any) => `${x.state}:${x.action}:${x.team}`) };
+    });
+    assert.equal(steps.bo1, 'ban ban ban ban ban ban decider');
+    assert.equal(steps.bo3, 'ban ban pick pick ban ban decider');
+    assert.equal(steps.bo5, 'ban ban pick pick pick pick decider');
+    assert.ok(steps.fresh.every((x: string) => x === 'next'), 'before the veto starts nothing is "now"');
+    assert.deepEqual(steps.mid.slice(0, 4), ['done:ban:1', 'done:ban:0', 'now:pick:1', 'next:pick:0'], 'teams alternate from the team that acted first');
+    assert.equal(steps.mid.at(-1), 'next:decider:-1');
+
+    const cards = await page.evaluate(() => {
+      const HUD = (window as any).HUD, s = HUD.state;
+      const push = () => HUD.subs.forEach((f: (x: unknown) => void) => f(s));
+      s.airFullscreen = 'agent-select'; s.airFullscreenStyle = null;
+      s.players[0][0].agent = 'JETT'; s.players[0][0].locked = false;
+      s.players[0][1].agent = ''; s.players[0][1].locked = false;
+      push();
+      const cls = () => [...document.querySelectorAll('.lu .pc')].slice(0, 3).map((c) => c.className.replace('pc ', ''));
+      const before = cls();
+      s.players[0][0].locked = true;
+      push();
+      const after = cls();
+      s.players[1][4].k = 99; s.teams[0].score = 5; // unrelated: nothing re-flashes
+      push();
+      return { before, after, later: cls(), count: document.querySelector('.lu .cnt')!.textContent };
+    });
+    assert.deepEqual(cards.before, ['choosing', 'empty', 'locked']);
+    assert.deepEqual(cards.after, ['locked just', 'empty', 'locked']);
+    assert.deepEqual(cards.later, ['locked just', 'empty', 'locked'], 'an unrelated update changes nothing');
+    assert.equal(cards.count, '9 OF 10 LOCKED');
+  } finally {
+    await browser.close();
+  }
+});
