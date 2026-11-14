@@ -45,6 +45,21 @@ const initial = (): ObsStatus => ({
   scenes: [], videoInputs: [], transitions: [], currentTransition: null, transitionActive: false, replayBufferActive: null, slots: {},
 });
 
+const SETTINGS = 'OBS › Tools › WebSocket Server Settings';
+
+/** Why connecting failed, in the producer's words, from what the OBS library reports. */
+export function whyNotConnected(error: unknown, host: string, port: number): { message: string; auth: boolean } {
+  const code = (error as { code?: unknown })?.code;
+  const text = String((error as Error)?.message ?? error ?? '');
+  const where = `${host}, port ${port}`;
+  if (code === 4009 || /auth/i.test(text)) return { auth: true, message: `OBS rejected the password. Copy it from ${SETTINGS} › Show Connect Info.` };
+  if (code === 4010) return { auth: false, message: 'This OBS is too old for Air. Update OBS to version 28 or newer (its WebSocket server is built in).' };
+  if (/ECONNREFUSED/.test(text)) return { auth: false, message: `Nothing is answering on ${where}. Open OBS, then in ${SETTINGS} tick Enable WebSocket server and check the port is ${port}.` };
+  if (/ENOTFOUND|EAI_AGAIN/.test(text)) return { auth: false, message: `No computer called ${host} was found. Use the OBS computer’s IP address (shown in ${SETTINGS} › Show Connect Info).` };
+  if (/ETIMEDOUT|EHOSTUNREACH|ENETUNREACH/.test(text)) return { auth: false, message: `Could not reach ${where}. Check that both PCs are on the same network and that Windows Firewall allows OBS.` };
+  return { auth: false, message: `Could not reach OBS on ${where}. Check that OBS is open and ${SETTINGS} › Enable WebSocket server is ticked.${text ? ` (${text})` : ''}` };
+}
+
 export class ObsLink extends EventEmitter {
   status: ObsStatus = initial();
   private socket: ObsSocket | null = null;
@@ -98,12 +113,9 @@ export class ObsLink extends EventEmitter {
       await socket.connect(`ws://${args.host}:${args.port}`, args.password || undefined, { rpcVersion: 1 });
     } catch (error) {
       this.socket = null;
-      const text = String((error as Error)?.message ?? error);
-      const message = /auth/i.test(text)
-        ? 'OBS rejected the password. Copy it from OBS › Tools › WebSocket Server Settings › Show Connect Info.'
-        : 'Could not reach OBS. Check that OBS is open and its WebSocket server is enabled on this port.';
+      const { message, auth } = whyNotConnected(error, args.host, args.port);
       this.update({ state: 'error', error: message });
-      this.scheduleReconnect(/auth/i.test(text));
+      this.scheduleReconnect(auth);
       throw new Error(message);
     }
     this.listen(socket);

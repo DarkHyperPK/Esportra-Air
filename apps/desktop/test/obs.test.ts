@@ -196,3 +196,22 @@ test('talent cameras fill the desk windows; a new person replaces Air’s old ca
   assert.deepEqual(obs.scenes.get('ESPORTRA · Desk camera 2')!.map((i) => i.sourceName), ['Desk cam 2'], 'the crew’s own source is never removed');
   await assert.rejects(link.build(desk({ kind: 'source', sourceName: 'Missing cam' }, null), owned, () => {}), /no source called “Missing cam”/);
 });
+
+test('a failed OBS connection says why, in the producer’s words', async () => {
+  const { whyNotConnected } = await import('../src/main/obs.ts');
+  const err = (code: number, message: string) => Object.assign(new Error(message), { code });
+  assert.match(whyNotConnected(err(-1, 'connect ECONNREFUSED 127.0.0.1:4455'), '127.0.0.1', 4455).message, /Nothing is answering on 127\.0\.0\.1, port 4455\. Open OBS, then .* tick Enable WebSocket server/);
+  assert.deepEqual(whyNotConnected(err(4009, 'Authentication failed.'), '127.0.0.1', 4455).auth, true);
+  assert.match(whyNotConnected(err(4010, ''), '127.0.0.1', 4455).message, /version 28 or newer/);
+  assert.match(whyNotConnected(err(-1, 'getaddrinfo ENOTFOUND obs-pc'), 'obs-pc', 4455).message, /No computer called obs-pc/);
+  assert.match(whyNotConnected(err(-1, 'connect ETIMEDOUT 192.168.1.9:4455'), '192.168.1.9', 4455).message, /same network .* Firewall/);
+  assert.match(whyNotConnected(err(1006, 'weird'), '127.0.0.1', 4455).message, /\(weird\)$/, 'anything else keeps the library’s words');
+});
+
+test('the real OBS library: nothing listening is reported as such', async () => {
+  const { ObsLink } = await import('../src/main/obs.ts');
+  const { OBSWebSocket } = await import('obs-websocket-js');
+  const link = new ObsLink(() => new OBSWebSocket() as never, { backoffMs: [60_000] });
+  await assert.rejects(link.connect('127.0.0.1', 1, ''), /Nothing is answering on 127\.0\.0\.1, port 1/);
+  await link.disconnect();
+});
