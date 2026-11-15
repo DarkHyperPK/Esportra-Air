@@ -1298,6 +1298,8 @@
       pausePanel.style.visibility = enabled && !asBar ? 'visible' : 'hidden';
       pausePanel.setAttribute('aria-hidden', enabled && !asBar ? 'false' : 'true');
       pauseBar.classList.toggle('on', asBar);
+      // A timeout comes in the buy phase: the bar then takes the round history's place above the economy table.
+      pauseBar.classList.toggle('buy', asBar && s.round.phase === 'buy'); root.classList.toggle('pause-bar-buy', asBar && s.round.phase === 'buy');
       if (!enabled) { barSig = ''; return; }
       // A countdown when Air set the timeout's length, else the time since it began.
       const elapsed = Math.max(0, (HUD.now() - panel.startedAt) / 1000), secs = Number(panel.seconds) || 0;

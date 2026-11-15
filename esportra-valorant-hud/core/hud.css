@@ -820,6 +820,8 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 /* Pause as a bar (approved mock 15 Nov): team, title, score, countdown and sponsor, above the observed player's card. */
 .pause-bar{position:absolute;left:380px;right:380px;bottom:150px;height:132px;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:30px;padding:0 34px 0 14px;background:rgba(12,13,17,.95);border-left:8px solid var(--c);opacity:0;transform:translateY(24px);transition:opacity .4s var(--ease),transform .4s var(--ease);font-family:BarlowC,PSB,sans-serif;z-index:5}
 .pause-bar.on{opacity:1;transform:none}
+.pause-bar.buy{bottom:356px}
+.pause-bar-buy .rh.buy{visibility:hidden}
 .pause-bar .lg,.pause-bar .pb-sym{width:104px;height:104px;object-fit:contain}
 .pause-bar .pb-tx b{display:block;font-family:PXB;font-size:44px;line-height:1.05;text-transform:uppercase}
 .pause-bar .pb-tx span{font-weight:600;font-size:20px;letter-spacing:.24em;color:var(--muted)}
