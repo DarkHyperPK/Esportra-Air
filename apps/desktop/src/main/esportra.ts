@@ -200,7 +200,9 @@ export class EsportraAccount {
       if (status === 401 || status === 403 || status === 409) {
         // Refused: no lease may outlive an explicit refusal.
         // A full device allowance is not a missing plan: say which it is.
-        const reason = status === 409 ? 'Your Air plan’s device allowance is full, so this PC cannot be registered. Remove a PC on Esportra or ask your admin for more.' : null;
+        // Otherwise Esportra's own reason (expired, suspended, this PC revoked), so the producer knows what to ask for.
+        const said = status === 403 && (error as Error).message ? `Esportra says: ${(error as Error).message} Your own events and matches work as normal.` : null;
+        const reason = status === 409 ? 'Your Air plan’s device allowance is full, so this PC cannot be registered. Remove a PC on Esportra or ask your admin for more.' : said;
         saved.access = { checkedAt: this.now(), lastSeenAt: saved.access?.lastSeenAt ?? 0, lease: null, pinnedKey: null, warning: null, denied: true, reason };
         this.online = true;
       } else {
