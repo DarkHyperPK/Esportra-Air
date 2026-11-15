@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { EventEmitter } from 'node:events';
 import {
-  VALORANT_MAPS, holdingMode, nextVetoStep, roomFields, seriesMaps, validEventData, validMatchData, validPrep, validVeto, emptyEventData,
+  VALORANT_MAPS, holdingMode, nextVetoStep, roomFields, seriesMaps, validEventData, validMatchData, validOrder, validPrep, validVeto, emptyEventData,
 } from '../src/shared/match-data.ts';
 
 const ROOT = resolve(import.meta.dirname, '../../..');
@@ -57,6 +57,25 @@ test('the veto makes the series: picks then the decider, with the current map an
   assert.equal((roomFields(md, emptyEventData(), { mapsPlayed: 2, seriesWon: true }).holding as any).mode, 'ending');
   assert.equal(holdingMode('starting', 2, true), 'starting', 'the producer\'s choice wins');
   assert.equal(roomFields(validMatchData({}, 3), emptyEventData(), { mapsPlayed: 0, seriesWon: false }).series, undefined, 'no veto: the series is left as it is');
+});
+
+test('a match\'s own veto order (from Esportra): checked, followed for the next step, and sent to the room', () => {
+  const order = validOrder([{ action: 'ban', team: 1 }, { action: 'ban', team: 0 }, { action: 'pick', team: 1 }, { action: 'pick', team: 0 }, { action: 'ban', team: 1 }, { action: 'ban', team: 0 }, { action: 'decider', team: -1 }])!;
+  assert.deepEqual(nextVetoStep([], 3, order), { action: 'ban', team: 1 }, 'team 2 starts in this order');
+  assert.deepEqual(nextVetoStep(validVeto([{ team: 1, action: 'ban', map: 'BIND' }], 3, [...POOL], order), 3, order), { action: 'ban', team: 0 });
+  assert.throws(() => validOrder([{ action: 'decider' }, { action: 'ban' }]), /decider is the last step/);
+  assert.throws(() => validOrder([{ action: 'side' }]), /bans, picks and a decider/);
+  assert.equal(validOrder(null), null);
+  // A best of 1 with a pick at the end (Esportra's ban-pick style) is valid with its order, not without.
+  const bo1 = validOrder([...Array(5).fill({ action: 'ban', team: 0 }), { action: 'pick', team: 0 }])!;
+  const five = ['ABYSS', 'ASCENT', 'BIND', 'CORRODE', 'HAVEN'].map((map, i) => ({ team: i % 2, action: 'ban', map }));
+  assert.equal(validVeto([...five, { team: 0, action: 'pick', map: 'LOTUS' }], 1, [...POOL], bo1).length, 6);
+  assert.throws(() => validVeto([...five, { team: 0, action: 'pick', map: 'LOTUS' }], 1, [...POOL]), /Step 6 of a best of 1 is a ban/);
+  const md = validMatchData({ mapPool: [...POOL], veto: [], vetoOrder: order, vetoSource: 'esportra' }, 3);
+  const fields = roomFields(md, emptyEventData(), { mapsPlayed: 0, seriesWon: false });
+  assert.equal((fields.vetoOrder as unknown[]).length, 7);
+  assert.deepEqual(fields.series, [], 'a reset Esportra veto clears the series maps');
+  assert.equal(roomFields(validMatchData({ mapPool: [...POOL] }, 3), emptyEventData(), { mapsPlayed: 0, seriesWon: false }).series, undefined, 'a veto of your own that is empty leaves the series alone');
 });
 
 test('event data and player prep are checked', () => {

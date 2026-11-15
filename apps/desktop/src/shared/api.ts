@@ -213,14 +213,14 @@ export interface OutputHealth {
 }
 
 export interface CheckItem {
-  id: 'esportra' | 'match' | 'feed' | 'obs' | 'scenes' | 'sources' | 'talent' | 'art' | 'player-pcs';
+  id: 'esportra' | 'match' | 'feed' | 'obs' | 'scenes' | 'sources' | 'talent' | 'art' | 'player-pcs' | 'match-data';
   title: string;
   detail: string;
   health: Health;
   action?: { id: ActionId; label: string };
 }
 
-export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in' | 'download-art' | 'open-devices';
+export type ActionId = 'connect-obs' | 'install-graphics' | 'start-capture' | 'choose-match' | 'add-casters' | 'open-sources' | 'sign-in' | 'download-art' | 'open-devices' | 'open-match-data';
 
 import type { AutopilotView, Preset, RowInput, RundownRow } from './autopilot.ts';
 import type { CompanionView, ControlMode } from './companion.ts';

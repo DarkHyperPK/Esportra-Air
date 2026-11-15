@@ -17,13 +17,14 @@ import { EditorDrawer, PlayerEditor, Switch, cameraText } from '../components/Ed
 import { LibPlayerEditor, LibTeamEditor } from '../components/TeamEditors.tsx';
 import { TeamFields, imageUrl } from '../components/MatchEditors.tsx';
 import { RehearsePanel } from '../components/Rehearse.tsx';
+import { MatchData } from '../components/MatchData.tsx';
 import { GoLiveDialog } from '../components/GoLive.tsx';
 import { PackWindow } from '../components/PackWindow.tsx';
 import { LIBRARY, inShow, showLink, showPatch } from '../../shared/library.ts';
 import { SCENE_KEYS, SCENES, sourceName } from '../../shared/scenes.ts';
 import { Preview, overlayUrl } from '../components/Preview.tsx';
 
-const STEPS: Array<[MatchStep, string]> = [['ready', 'Overview'], ['teams', 'Teams/Players'], ['talent', 'Talent and sponsors'], ['rundown', 'Rundown'], ['obs', 'OBS'], ['devices', 'Player PCs and cameras'], ['rehearse', 'Rehearse']];
+const STEPS: Array<[MatchStep, string]> = [['ready', 'Overview'], ['teams', 'Teams/Players'], ['talent', 'Talent and sponsors'], ['matchdata', 'Match data'], ['rundown', 'Rundown'], ['obs', 'OBS'], ['devices', 'Player PCs and cameras'], ['rehearse', 'Rehearse']];
 type StepHealth = 'ok' | 'warn' | 'bad' | null;
 
 /** How far each step is: ✓ done, ! needs a look, or just its number. */
@@ -40,6 +41,7 @@ function stepHealth(s: Snapshot, step: MatchStep): StepHealth {
     case 'ready': { const counted = s.checks.filter((c) => !(c.id === 'esportra' && c.health === 'off')); return counted.every((c) => c.health === 'ok') ? 'ok' : null; }
     case 'teams': return m.players.every((l) => l.length >= 5 && l.slice(0, 5).every((p) => p.gameId)) ? 'ok' : 'warn';
     case 'talent': return check('talent');
+    case 'matchdata': return check('match-data');
     case 'rundown': return s.setup.screens.some((x) => x.enabled) ? 'ok' : 'warn';
     case 'obs': return check('obs', 'scenes', 'sources');
     case 'devices': return check('player-pcs');
@@ -301,7 +303,7 @@ function Talent({ s, run, openEvent }: Pick<PageProps, 's' | 'run'> & { openEven
 }
 
 /** The match: its steps, from Overview to Go live. */
-export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, openEvent, focus = null }: Pick<PageProps, 's' | 'run' | 'go'> & {
+export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, openEvent, openFix, focus = null }: Pick<PageProps, 's' | 'run' | 'go' | 'openFix'> & {
   focus?: string | null; step: MatchStep; setStep: (t: MatchStep) => void; act: (id: ActionId) => void; start: () => void; back: () => void; openEvent: (tab: EventView['tab']) => void;
 }) {
   const m = s.match!;
@@ -332,6 +334,7 @@ export function MatchWorkspace({ s, run, go, step, setStep, act, start, back, op
           {step === 'ready' && <Overview s={s} run={run} act={act} back={back} />}
           {step === 'teams' && <Teams key={m.id} s={s} run={run} go={go} />}
           {step === 'talent' && <Talent key={m.id} s={s} run={run} openEvent={openEvent} />}
+          {step === 'matchdata' && <MatchData s={s} run={run} openFix={openFix} />}
           {step === 'rundown' && <Rundown s={s} run={run} />}
           {step === 'obs' && <ObsStep s={s} run={run} go={go} />}
           {step === 'devices' && <DevicesScreen {...page} embedded />}

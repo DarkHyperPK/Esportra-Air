@@ -84,8 +84,26 @@ export function checks(s: Snapshot): CheckItem[] {
       ? { id: 'talent', title: 'Talent and sponsors', detail: `${air.talent.map((t) => t.name).join(', ')}${air.sponsors.length ? ` · ${air.sponsors.length} sponsor${air.sponsors.length > 1 ? 's' : ''}` : ''}`, health: 'ok' }
       : { id: 'talent', title: 'Talent and sponsors', detail: 'Nobody on air for this match. Talent graphics need their names.', health: s.match ? 'warn' : 'off', ...(s.match ? { action: { id: 'add-casters' as const, label: 'Add people' } } : {}) },
   );
+  const data = matchDataCheck(s);
+  if (data) out.push(data);
   out.push(
     artCheck(s.art),
   );
   return out;
+}
+
+/** Match data the selected match's show needs: the veto for Map veto, standings and bracket for theirs. */
+function matchDataCheck(s: Snapshot): CheckItem | null {
+  if (!s.match || !s.matchData) return null;
+  const on = new Set(s.setup.screens.filter((x) => x.enabled).map((x) => x.id));
+  const title = 'Match data';
+  const action = { id: 'open-match-data' as const, label: 'Open Match data' };
+  const needs: string[] = [];
+  const following = s.esportraVeto?.source === 'esportra' && !s.esportraVeto.gone;
+  if (on.has('map-veto') && !s.matchData.veto.length && !following) needs.push('the veto for Map veto');
+  if (on.has('standings') && !s.eventData?.standings.length) needs.push('standings');
+  if (on.has('bracket') && !(s.eventData && (s.eventData.bracket.qf.length || s.eventData.bracket.sf.length || s.eventData.bracket.gf.length))) needs.push('the bracket');
+  if (needs.length) return { id: 'match-data', title, detail: `Your show has graphics without their data yet: ${needs.join(', ')}. They show an empty state until you add it.`, health: 'warn', action };
+  if (on.has('map-veto') && following && !s.matchData.veto.length) return { id: 'match-data', title, detail: 'The veto comes from Esportra as the teams make it.', health: 'ok' };
+  return { id: 'match-data', title, detail: s.matchData.veto.length ? `Veto: ${s.matchData.veto.length} step${s.matchData.veto.length === 1 ? '' : 's'} · show text ${s.matchData.show.mode === 'auto' ? 'follows the series' : 'set by you'}.` : 'Nothing in your show needs it yet.', health: 'ok', action };
 }

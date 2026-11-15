@@ -8,7 +8,7 @@ import type { MatchCommand, MatchStep, PageProps } from '../App.tsx';
 import type { EventView } from './EventsScreen.tsx';
 import { MatchWorkspace } from './MatchWorkspace.tsx';
 
-export function ReadyScreen({ s, run, go, askCapture, openSignIn, start, command, open, setOpen, openEvent }: PageProps & {
+export function ReadyScreen({ s, run, go, askCapture, openSignIn, openFix, start, command, open, setOpen, openEvent }: PageProps & {
   start: () => void; command?: MatchCommand; open: boolean; setOpen: (open: boolean) => void; openEvent: (tab: EventView['tab']) => void;
 }) {
   const [wizard, setWizard] = useState<{ eventId: string | null } | null>(null);
@@ -31,6 +31,7 @@ export function ReadyScreen({ s, run, go, askCapture, openSignIn, start, command
     if (id === 'choose-match') return openEvent('matches');
     if (id === 'add-casters') return setStep('talent');
     if (id === 'open-devices') return setStep('devices');
+    if (id === 'open-match-data') return setStep('matchdata');
     if (id === 'sign-in') return openSignIn();
     if (id === 'install-graphics') void run(() => air.installGraphics());
   };
@@ -52,7 +53,7 @@ export function ReadyScreen({ s, run, go, askCapture, openSignIn, start, command
   }
   return (
     <>
-      <MatchWorkspace s={s} run={run} go={go} focus={focus} step={step} setStep={setStep} act={act} start={start} back={() => openEvent('matches')} openEvent={openEvent} />
+      <MatchWorkspace s={s} run={run} go={go} focus={focus} step={step} setStep={setStep} act={act} start={start} back={() => openEvent('matches')} openEvent={openEvent} openFix={openFix} />
       {wizardEl}
     </>
   );

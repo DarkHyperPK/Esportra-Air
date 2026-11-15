@@ -21,7 +21,7 @@ import { FirstRun } from './components/FirstRun.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
-export type MatchStep = 'ready' | 'teams' | 'talent' | 'rundown' | 'obs' | 'devices' | 'rehearse';
+export type MatchStep = 'ready' | 'teams' | 'talent' | 'matchdata' | 'rundown' | 'obs' | 'devices' | 'rehearse';
 export type MatchCommand = { name: 'new-match' | MatchStep | 'autopilot' | 'myshow'; n: number; eventId?: string | null; screen?: string } | null;
 
 export interface PageProps {
