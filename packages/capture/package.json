@@ -1,0 +1,8 @@
+{
+  "name": "@esportra/capture",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Game capture shared by Esportra Air and Esportra Player: the GEP bridge, the ingest client and the join protocol. No dependencies.",
+  "main": "src/index.ts"
+}

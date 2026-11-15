@@ -2,22 +2,22 @@
 //
 // What each round tests:
 //   R1   Elimination + damage events     HP updates before kills, basic flow
-//   R2   Flawless banner                 PRX wins without losing a player
+//   R2   Flawless banner                 NWL wins without losing a player
 //   R3   Ace banner + ability charges    JUNO 5K, C/Q/E charge updates on observed player
-//   R4   Force-buy round (FORCE label)   FNC ~2200cr; economy panel shows FORCE
-//   R5   Thrifty banner                  PRX eco (800cr) beats FNC full buy (3900cr)
-//   R6   FNC win                         score balance
-//   [Timeout banner — PRX calls timeout]
+//   R4   Force-buy round (FORCE label)   CRF ~2200cr; economy panel shows FORCE
+//   R5   Thrifty banner                  NWL eco (800cr) beats CRF full buy (3900cr)
+//   R6   CRF win                         score balance
+//   [Timeout banner — NWL calls timeout]
 //   R7   Clutch 1v3 + lower third + assist  MIRA 1v3, ECHO assist, lower third callout
-//   R8   FNC win + techpause banner
-//   R9   Team ace banner                 5 distinct PRX killers
-//   R10  Detonation banner               PRX plants + detonates
+//   R8   CRF win + techpause banner
+//   R9   Team ace banner                 5 distinct NWL killers
+//   R10  Detonation banner               NWL plants + detonates
 //   R11  Defuse via $300 inference       no planted_location — adapter infers from money delta
 //   [Scoreboard overlay ~8s]
 //   [Score sync → 11-11]
-//   R12  Match point banner              FNC wins → 12-11
-//   R13  Overtime banner                 PRX wins → 12-12
-//   R14  OT flawless                     PRX wins without loss
+//   R12  Match point banner              CRF wins → 12-11
+//   R13  Overtime banner                 NWL wins → 12-12
+//   R14  OT flawless                     NWL wins without loss
 //
 //   node tools/simulate-valorant.js [MATCH] [SERVER] [--slow]
 'use strict';
@@ -40,16 +40,16 @@ const playerMsg = (i, key, val) => ({ playerId: 'sim-' + i, feature: 'me', info:
 // ─── Roster ───────────────────────────────────────────────────────────────
 const ROSTER = [
   // idx  name           agent (internal)       team
-  ['JUNO #PRX',  'Clay',           0],  // 0  RAZE
-  ['MIRA #PRX',  'Gumshoe',        0],  // 1  CYPHER
-  ['DAX #PRX',   'Breach',         0],  // 2  BREACH
-  ['RIKU #PRX',  'Pandemic',       0],  // 3  VIPER
-  ['ECHO #PRX',  'Guide',          0],  // 4  SKYE
-  ['KAIRO #FNC', 'Wushu',          1],  // 5  JETT
-  ['SOL #FNC',   'Wraith',         1],  // 6  OMEN
-  ['VEX #FNC',   'Hunter',         1],  // 7  SOVA
-  ['NYX #FNC',   'Killjoy',        1],  // 8  KILLJOY
-  ['ZEN #FNC',   'BountyHunter',   1],  // 9  FADE
+  ['JUNO #NWL',  'Clay',           0],  // 0  RAZE
+  ['MIRA #NWL',  'Gumshoe',        0],  // 1  CYPHER
+  ['DAX #NWL',   'Breach',         0],  // 2  BREACH
+  ['RIKU #NWL',  'Pandemic',       0],  // 3  VIPER
+  ['ECHO #NWL',  'Guide',          0],  // 4  SKYE
+  ['KAIRO #CRF', 'Wushu',          1],  // 5  JETT
+  ['SOL #CRF',   'Wraith',         1],  // 6  OMEN
+  ['VEX #CRF',   'Hunter',         1],  // 7  SOVA
+  ['NYX #CRF',   'Killjoy',        1],  // 8  KILLJOY
+  ['ZEN #CRF',   'BountyHunter',   1],  // 9  FADE
 ];
 const N = i => ROSTER[i][0].split(' #')[0];
 
@@ -138,7 +138,7 @@ async function endRound(t0, t1, label) {
   roundCS.fill(0);
   fkThis = null;
   await ingest([info('round_phase', 'end'), info('match_score', { team_0: t0, team_1: t1 })]);
-  console.log(`  🏁  PRX ${t0} – ${t1} FNC   (${label})`);
+  console.log(`  🏁  NWL ${t0} – ${t1} CRF   (${label})`);
   await patch({ teamStats: [{ ...teamStats[0] }, { ...teamStats[1] }] });
   await wait(SLOW ? 4000 : 2500);
 }
@@ -151,7 +151,7 @@ async function fncWinsQuick(round, t0, t1, money) {
   await kill(6, 2, 'TX_Hud_Rifles_Volcano');
   await kill(7, 3, 'TX_Hud_Rifles_Volcano');
   await kill(9, 4, 'TX_Hud_Assault_AR10A2_S');
-  await endRound(t0, t1, 'FNC elimination');
+  await endRound(t0, t1, 'CRF elimination');
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────
@@ -170,8 +170,8 @@ async function fncWinsQuick(round, t0, t1, money) {
   // ── Init: full team objects on every PATCH with teams array ─────────────
   await patch({
     teams: [
-      { name: 'PAPER REX', tag: 'PRX', color: '#4fd3ea', logo: '', score: 0, series: 0, side: 'ATK', timeouts: 2, lossStreak: 0 },
-      { name: 'FNATIC',    tag: 'FNC', color: '#e0445e', logo: '', score: 0, series: 0, side: 'DEF', timeouts: 2, lossStreak: 0 },
+      { name: 'NIGHT OWLS', tag: 'NWL', color: '#4fd3ea', logo: '', score: 0, series: 0, side: 'ATK', timeouts: 2, lossStreak: 0 },
+      { name: 'CRIMSON FIVE',    tag: 'CRF', color: '#e0445e', logo: '', score: 0, series: 0, side: 'DEF', timeouts: 2, lossStreak: 0 },
     ],
     map: { name: 'LOTUS', number: 1 },
     event: { name: 'ESPORTRA INVITATIONAL', stage: 'GRAND FINAL', bestOf: 3 },
@@ -180,7 +180,7 @@ async function fncWinsQuick(round, t0, t1, money) {
                 { plants: 0, defuses: 0, clutches: 0, ecoWins: 0, firstKills: 0 }],
   });
   await ingest([gev('match_start'), info('map', 'Jam'), info('match_score', { team_0: 0, team_1: 0 }), ...allBoards(800)]);
-  console.log('  🎮  Match start — LOTUS — PRX vs FNC\n');
+  console.log('  🎮  Match start — LOTUS — NWL vs CRF\n');
   await wait(800);
 
   // ── R1: Elimination + damage events ──────────────────────────────────────
@@ -206,7 +206,7 @@ async function fncWinsQuick(round, t0, t1, money) {
   await kill(1, 7, 'TX_Hud_Assault_AR10A2_S');
   await kill(2, 6, 'TX_Hud_Rifles_Volcano');
   await kill(0, 5, 'TX_Hud_Sniper_Operater');
-  await endRound(2, 0, 'flawless — all PRX alive');
+  await endRound(2, 0, 'flawless — all NWL alive');
 
   // ── R3: Ace + ability charge demo ────────────────────────────────────────
   console.log('── R3: Ace + ability charges (JUNO observed) ─────────────');
@@ -224,9 +224,9 @@ async function fncWinsQuick(round, t0, t1, money) {
   console.log('  🌟  ACE — JUNO');
   await endRound(3, 0, 'ace (JUNO 5K)');
 
-  // ── R4: Force-buy round — FNC wins ────────────────────────────────────────
+  // ── R4: Force-buy round — CRF wins ────────────────────────────────────────
   // ~2200cr → economy panel shows FORCE label
-  console.log('── R4: Force-buy round — FNC wins ───────────────────────');
+  console.log('── R4: Force-buy round — CRF wins ───────────────────────');
   await buyPhase(4, 2200);
   await combat(9);                               // watching ZEN
   await damage(2, 50);
@@ -236,12 +236,12 @@ async function fncWinsQuick(round, t0, t1, money) {
   await kill(6, 2, 'TX_Hud_Rifles_Volcano');
   await kill(7, 3, 'TX_Hud_Rifles_Volcano');
   await kill(9, 4, 'TX_Hud_Assault_AR10A2_S');
-  await endRound(3, 1, 'FNC force-buy win');
+  await endRound(3, 1, 'CRF force-buy win');
 
   // ── R5: Thrifty → thrifty banner ─────────────────────────────────────────
   console.log('── R5: Thrifty → thrifty banner ─────────────────────────');
   await buyPhase(5, 800);
-  await overrideMoney([5, 6, 7, 8, 9], 3900);   // FNC full buy while PRX is eco
+  await overrideMoney([5, 6, 7, 8, 9], 3900);   // CRF full buy while NWL is eco
   await combat(1);                               // watching MIRA
   await kill(1, 5, 'TX_Hud_Pistol_Sheriff', true);
   await kill(3, 8, 'TX_Hud_Pistol_Classic');
@@ -249,16 +249,16 @@ async function fncWinsQuick(round, t0, t1, money) {
   await kill(2, 6, 'TX_Hud_Pistol_Classic');
   await kill(4, 7, 'TX_Hud_Pistol_Classic');
   teamStats[0].ecoWins++;
-  await endRound(4, 1, 'thrifty — PRX eco beats FNC full buy');
+  await endRound(4, 1, 'thrifty — NWL eco beats CRF full buy');
 
-  // ── R6: FNC wins ─────────────────────────────────────────────────────────
+  // ── R6: CRF wins ─────────────────────────────────────────────────────────
   await fncWinsQuick(6, 4, 2);
 
-  // ── PRX calls timeout ─────────────────────────────────────────────────────
-  console.log('\n── PRX calls timeout ─────────────────────────────────────');
+  // ── NWL calls timeout ─────────────────────────────────────────────────────
+  console.log('\n── NWL calls timeout ─────────────────────────────────────');
   const thold = Math.ceil(8000 / SPD);
   await patch({ banner: { type: 'timeout', team: 0, ts: Date.now(), hold: thold } });
-  console.log('  ⏸   TIMEOUT — PRX');
+  console.log('  ⏸   TIMEOUT — NWL');
   await wait(thold + 800);
 
   // ── R7: Clutch 1v3 + lower third + assist ────────────────────────────────
@@ -291,12 +291,12 @@ async function fncWinsQuick(round, t0, t1, money) {
   await patch({ show: { lowerThird: false } });
   await endRound(5, 2, 'clutch 1v3 — MIRA');
 
-  // ── R8: FNC wins + techpause ──────────────────────────────────────────────
+  // ── R8: CRF wins + techpause ──────────────────────────────────────────────
   await fncWinsQuick(8, 5, 3);
   console.log('\n── Techpause after R8 ────────────────────────────────────');
   const tphold = Math.ceil(8000 / SPD);
   await patch({ banner: { type: 'techpause', team: 1, ts: Date.now(), hold: tphold } });
-  console.log('  🔧  TECHPAUSE — FNC');
+  console.log('  🔧  TECHPAUSE — CRF');
   await wait(tphold + 800);
 
   // ── R9: Team ace → team ace banner ───────────────────────────────────────
@@ -308,7 +308,7 @@ async function fncWinsQuick(round, t0, t1, money) {
   await kill(2, 7, 'TX_Hud_Rifles_Volcano');
   await kill(3, 8, 'TX_Hud_Rifles_Volcano');
   await kill(4, 9, 'TX_Hud_Assault_AR10A2_S');  // ← TEAM ACE
-  console.log('  🌟  TEAM ACE — PRX');
+  console.log('  🌟  TEAM ACE — NWL');
   await endRound(6, 3, 'team ace (5 distinct killers)');
 
   // ── R10: Spike detonation ─────────────────────────────────────────────────
@@ -361,15 +361,15 @@ async function fncWinsQuick(round, t0, t1, money) {
   // Full team objects required — PATCH replaces arrays wholesale
   await patch({
     teams: [
-      { name: 'PAPER REX', tag: 'PRX', color: '#4fd3ea', logo: '', score: 11, series: 0, side: 'ATK', timeouts: 2, lossStreak: 0 },
-      { name: 'FNATIC',    tag: 'FNC', color: '#e0445e', logo: '', score: 11, series: 0, side: 'DEF', timeouts: 2, lossStreak: 0 },
+      { name: 'NIGHT OWLS', tag: 'NWL', color: '#4fd3ea', logo: '', score: 11, series: 0, side: 'ATK', timeouts: 2, lossStreak: 0 },
+      { name: 'CRIMSON FIVE',    tag: 'CRF', color: '#e0445e', logo: '', score: 11, series: 0, side: 'DEF', timeouts: 2, lossStreak: 0 },
     ],
   });
   console.log('  ↗  Score synced to 11-11');
   await wait(1500);
 
-  // ── R12: FNC wins → 11-12 → match point banner ────────────────────────────
-  console.log('── R12: FNC wins → 11-12 → matchpoint banner ────────────');
+  // ── R12: CRF wins → 11-12 → match point banner ────────────────────────────
+  console.log('── R12: CRF wins → 11-12 → matchpoint banner ────────────');
   await buyPhase(12);
   await combat(5);
   await kill(5, 0, 'TX_Hud_Sniper_Operater', true);
@@ -377,10 +377,10 @@ async function fncWinsQuick(round, t0, t1, money) {
   await kill(6, 2, 'TX_Hud_Rifles_Volcano');
   await kill(7, 3, 'TX_Hud_Rifles_Volcano');
   await kill(9, 4, 'TX_Hud_Assault_AR10A2_S');
-  await endRound(11, 12, 'FNC match point — score 12');
+  await endRound(11, 12, 'CRF match point — score 12');
 
-  // ── R13: PRX wins → 12-12 → overtime banner ───────────────────────────────
-  console.log('── R13: PRX wins → 12-12 → overtime banner ──────────────');
+  // ── R13: NWL wins → 12-12 → overtime banner ───────────────────────────────
+  console.log('── R13: NWL wins → 12-12 → overtime banner ──────────────');
   await buyPhase(13);
   await combat(0);
   await kill(0, 5, 'TX_Hud_Rifles_Volcano', true);
@@ -390,8 +390,8 @@ async function fncWinsQuick(round, t0, t1, money) {
   await kill(4, 9, 'TX_Hud_Assault_AR10A2_S');
   await endRound(12, 12, 'OVERTIME');
 
-  // ── R14: OT round — PRX flawless win ──────────────────────────────────────
-  console.log('── R14: OT round — PRX flawless ─────────────────────────');
+  // ── R14: OT round — NWL flawless win ──────────────────────────────────────
+  console.log('── R14: OT round — NWL flawless ─────────────────────────');
   await buyPhase(14);
   await combat(3);                               // watching RIKU
   await kill(0, 9, 'TX_Hud_Rifles_Volcano');
@@ -399,10 +399,10 @@ async function fncWinsQuick(round, t0, t1, money) {
   await kill(2, 7, 'TX_Hud_Rifles_Volcano');
   await kill(3, 6, 'TX_Hud_Rifles_Volcano');
   await kill(4, 5, 'TX_Hud_Assault_AR10A2_S');
-  await endRound(13, 12, 'PRX wins OT — flawless');
+  await endRound(13, 12, 'NWL wins OT — flawless');
 
   await ingest([gev('match_end')]);
-  console.log('\n  🏆  Match end — PRX wins 13:12');
+  console.log('\n  🏆  Match end — NWL wins 13:12');
 
   // ── Final stats summary ───────────────────────────────────────────────────
   console.log('\n  Final player ACS:');

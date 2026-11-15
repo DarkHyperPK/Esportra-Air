@@ -1,0 +1,85 @@
+# Builds and tests Esportra Air on Windows and uploads the installer for hands-on checks.
+name: Air (Windows)
+
+on:
+  push:
+    paths:
+      - engine/**
+      - apps/desktop/**
+      - apps/player/**
+      - packages/**
+      - esportra-valorant-hud/**
+      - .github/workflows/air-windows.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The Rust parser is checked against fixtures recorded from the JS pipeline. A JS change that was
+      # not re-recorded fails here instead of drifting silently.
+      - name: Parser fixtures match the JS pipeline
+        run: node engine/fixtures/record.cjs --check
+
+      - name: HUD adapter test
+        working-directory: esportra-valorant-hud
+        run: node adapters/test-valorant.js
+
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - name: Engine tests
+        working-directory: engine
+        run: cargo test --workspace
+
+      - name: Engine release build
+        working-directory: engine
+        run: cargo build --release
+
+      # The desktop tests load the Companion module, which has its own packages (ws, the Companion SDK).
+      - name: Companion module tests
+        working-directory: packages/companion-module
+        run: |
+          npm ci
+          npm test
+
+      - name: Desktop tests
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Package installer
+        working-directory: apps/desktop
+        run: npm run dist:win
+
+      - name: Player tests
+        working-directory: apps/player
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Package Player installer
+        working-directory: apps/player
+        run: npm run dist:win
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esportra-air-windows
+          path: |
+            apps/desktop/release/*.exe
+            apps/player/release/*.exe
+            engine/target/release/air-engine.exe
+          if-no-files-found: error

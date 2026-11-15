@@ -1,0 +1,23 @@
+[package]
+name = "air-engine"
+description = "Esportra Air graphics engine: match rooms, Valorant ingest and the HUD overlay server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "air-engine"
+path = "src/main.rs"
+
+[dependencies]
+air-state.workspace = true
+air-valorant.workspace = true
+serde_json.workspace = true
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal", "fs", "io-util"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio-tungstenite = "0.26"
+futures-util = "0.3"

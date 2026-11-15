@@ -1,0 +1,53 @@
+{
+  "name": "esportra-air",
+  "productName": "Esportra Air",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Esportra Air: tournament and game data to broadcast graphics",
+  "author": "Esportra",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "overwolf": {
+    "packages": ["gep"]
+  },
+  "scripts": {
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "node build.mjs",
+    "build:renderer": "vite build",
+    "dev:renderer": "vite",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "start": "npm run build && ow-electron . --owepm-package-channel=gep:prod",
+    "dist:win": "npm run build && ow-electron-builder --win --x64"
+  },
+  "dependencies": {
+    "obs-websocket-js": "5.0.8",
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "@overwolf/ow-electron": "42.11.4",
+    "@overwolf/ow-electron-builder": "26.18.0",
+    "@types/node": "22.15.30",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@types/ws": "8.18.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "esbuild": "0.25.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "5.8.3",
+    "vite": "6.0.7"
+  },
+  "build": {
+    "appId": "gg.esportra.air",
+    "productName": "Esportra Air",
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "package.json"],
+    "extraResources": [
+      { "from": "../../engine/target/release/air-engine.exe", "to": "engine/air-engine.exe" },
+      { "from": "../../esportra-valorant-hud", "to": "hud", "filter": ["core/**/*", "overlays/**/*", "stingers/**/*", "control.html"] }
+    ],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "../../assets/icon.ico" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "shortcutName": "Esportra Air", "deleteAppDataOnUninstall": false }
+  }
+}

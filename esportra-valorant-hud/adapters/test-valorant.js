@@ -9,7 +9,9 @@ feed({ events: [{ name: 'match_start', data: '' }] });
 feed({ info: { match_info: { map: 'Jam' } }, feature: 'match_info' });
 const names = [['TroyDarion #6170', 'Gumshoe', 0], ['NoobaHooba #8609', 'Hunter', 0], ['Sh4rgaas #EUNE', 'Pandemic', 0], ['SoloMeo #ESP', 'Thorne', 0], ['BreachMain #EUW', 'Vampire', 0],
   ['zayed2 #EUW', 'Wraith', 1], ['maher #7836', 'Wushu', 1], ['Kubix #5713', 'Thorne', 1], ['kot #8059', 'Phoenix', 1], ['ImJOWY #2905', 'Clay', 1]];
-names.forEach(([n, c, t], i) => feed(sb(i, { name: n, character: c, teammate: t === 0, team: t, alive: true, player_id: 'pid-' + i, shield: 2, weapon: 'TX_Hud_Rifles_Volcano', spike: false, ult_points: 3, ult_max: 8, kills: i, deaths: 2, assists: 1, money: 3900 })));
+// Riot player ids (puuid) are UUIDs; player-PC data is accepted only from those (player-coverage.js).
+const pid = (i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+names.forEach(([n, c, t], i) => feed(sb(i, { name: n, character: c, teammate: t === 0, team: t, alive: true, player_id: pid(i), shield: 2, weapon: 'TX_Hud_Rifles_Volcano', spike: false, ult_points: 3, ult_max: 8, kills: i, deaths: 2, assists: 1, money: 3900 })));
 assert.strictEqual(s.map.name, 'LOTUS'); assert.strictEqual(s.players[0][0].agent, 'CYPHER'); assert.strictEqual(s.players[1][1].agent, 'JETT');
 assert.strictEqual(s.players[0][0].name, 'TROYDARION'); assert.strictEqual(s.players[0][0].armor, 50); assert.strictEqual(s.players[0][0].weapon, 'VANDAL');
 feed({ info: { match_info: { round_number: '1' } }, feature: 'match_info' });
@@ -27,9 +29,11 @@ feed({ events: [{ name: 'spike_defused', data: '' }] }, 60000);
 feed({ feature: 'match_info', key: 'match_score', value: '{"team_0":0,"team_1":1}' }, 60500);
 assert.deepStrictEqual(s.rounds.at(-1), { w: 1, how: 'defuse' }); assert.strictEqual(s.teams[1].score, 1); assert.strictEqual(s.banner.type, 'flawless', 'team1 wins with all alive → flawless banner (not round)'); assert.strictEqual(s.teams[0].lossStreak, 1);
 feed({ feature: 'match_info', key: 'observing', data: 'kot #8059' }); assert.deepStrictEqual(s.observed, [1, 3]);
-feed({ playerId: 'pid-6', feature: 'me', info: { me: { health: '64', abilities: '{"C":true,"Q":false,"E":true,"X":false}' } } });
-assert.strictEqual(s.players[1][1].hp, 64); assert.deepStrictEqual(s.players[1][1].charges, [1, 0, 1]);
-assert.strictEqual(s.players[1][1].chargesKnown, true, 'GEP ability data marks charges as known');
+feed({ playerId: pid(6), feature: 'me', info: { me: { health: '64', abilities: '{"C":true,"Q":false,"E":true,"X":false}' } } });
+// GEP reports each ability as available or not (true/false), not how many charges are left.
+assert.strictEqual(s.players[1][1].hp, 64); assert.deepStrictEqual(s.players[1][1].abilityAvailability, [true, false, true]);
+assert.strictEqual(s.players[1][1].abilitiesKnown, true, 'GEP ability data marks abilities as known');
+assert.strictEqual(s.players[1][1].chargesKnown, false, 'true/false availability is not a charge count');
 // a roster message seen before the scoreboard must not pin a player to the wrong team
 const B = createValorantAdapter(); let s2 = JSON.parse(JSON.stringify(window.HUD_DEFAULT));
 s2 = B.ingest(s2, { info: { match_info: { roster_7: '{"name":"late #1","player_id":"x7","character":"Rift","teammate":true,"locked":true}' } }, feature: 'match_info' }).state;

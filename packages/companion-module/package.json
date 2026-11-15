@@ -1,0 +1,17 @@
+{
+  "name": "esportra-air",
+  "version": "0.1.0",
+  "description": "Bitfocus Companion module for Esportra Air: game events and values in, graphics buttons out.",
+  "main": "main.js",
+  "type": "commonjs",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18.12" },
+  "dependencies": {
+    "@companion-module/base": "1.10.0",
+    "ws": "8.18.3"
+  }
+}

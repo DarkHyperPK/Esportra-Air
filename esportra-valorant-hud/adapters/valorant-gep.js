@@ -67,7 +67,12 @@ function createValorantAdapter(opts = {}) {
   const coverage = new (require('./player-coverage'))();
   const teamOf = opts.teamOf || (g => g);                  // game team (0 always starts on attack) → HUD team index
   const ctx = {
-    slots: new Map(), byName: new Map(), spike: {}, lastScore: null, pendingKills: [],
+    slots: new Map(), byName: new Map(),
+    confirmed: new Set(),
+    mapEnded: false,                // map end already reported (the game can say it three ways)
+    mapAborted: false,              // map abort already reported
+           // player ids seen on the in-game scoreboard (real players, not spectators)
+ spike: {}, lastScore: null, pendingKills: [],
     roundKills: new Map(),          // 'team,idx' → kill count this round (for ace)
     teamKillers: [new Set(), new Set()], // team → set of player indices who got a kill (for team ace)
     clutch: null,                   // { tp:[t,j], against:N } — 1vX state set when outnumbered player detected
@@ -78,9 +83,17 @@ function createValorantAdapter(opts = {}) {
   };
 
   function slot(s, pid, gameTeam, name, authoritative) {
+    if (authoritative) ctx.confirmed.add(pid);
     if (ctx.slots.has(pid)) { const cur = ctx.slots.get(pid); if (!authoritative || cur[0] === teamOf(+gameTeam || 0)) return cur; ctx.slots.delete(pid); }
     const t = teamOf(+gameTeam || 0), used = [...ctx.slots.values()].filter(x => x[0] === t).map(x => x[1]);
-    const j = [0, 1, 2, 3, 4].find(k => !used.includes(k)); if (j === undefined) return null;
+    let j = [0, 1, 2, 3, 4].find(k => !used.includes(k));
+    // A full team on the scoreboard: a seat taken from the agent-select roster by someone never on the
+    // scoreboard (another observer in the lobby) goes to the real player.
+    if (j === undefined && authoritative) {
+      const ghost = [...ctx.slots.entries()].filter(([id, x]) => x[0] === t && !ctx.confirmed.has(id)).sort((a, b) => a[1][1] - b[1][1])[0];
+      if (ghost) { j = ghost[1][1]; ctx.slots.delete(ghost[0]); for (const [k, x] of [...ctx.byName]) if (x[0] === t && x[1] === j) ctx.byName.delete(k); }
+    }
+    if (j === undefined) return null;
     ctx.slots.set(pid, [t, j]); if (name) ctx.byName.set(nameKey(name), [t, j]);
     s.firstSide = [teamOf(0) === 0 ? 'ATK' : 'DEF', teamOf(0) === 0 ? 'DEF' : 'ATK'];
     return [t, j];
@@ -98,6 +111,10 @@ function createValorantAdapter(opts = {}) {
     const t = attackingTeam(s); if (t >= 0) s.teamStats[t].plants++;
     out.push({ type: 'spike.planted' });
   }
+  /** A map end, said once however many ways the game says it (match_end, round phase game_end, match_outcome). */
+  function mapEnd(out) { if (ctx.mapEnded || ctx.mapAborted) return; ctx.mapEnded = true; out.push({ type: 'match.end' }); }
+  /** The map was left before it ended (the game aborted it, or everyone went back to the main menu). */
+  function mapAbort(out) { if (ctx.mapEnded || ctx.mapAborted) return; ctx.mapAborted = true; out.push({ type: 'match.aborted' }); }
   function countFirstKill(s, killer) {
     if (ctx.roundFirstKill) return;
     ctx.roundFirstKill = true;
@@ -163,6 +180,8 @@ function createValorantAdapter(opts = {}) {
         tryReplayKills(s, out, now);
 
       } else if (/^roster_\d+$/.test(key) && v && v.player_id) {
+        // A roster line without a team (an observer in the lobby) never takes a player's seat.
+        if (![0, 1, '0', '1'].includes(v.team) && ![true, false, 'true', 'false'].includes(v.teammate)) continue;
         const team = [0, 1, '0', '1'].includes(v.team) ? Number(v.team) : v.teammate === false || v.teammate === 'false' ? 1 : 0;
         const tp = slot(s, v.player_id, team, v.name), p = P(s, tp); if (!p) continue;
         p.inGameName = typeof v.name === 'string' ? v.name.slice(0,128) : ''; p.name = shortName(v.name) || p.name; p.agent = agentOf(v.character); p.locked = !!v.locked; p.puuid = v.player_id; ctx.byName.set(nameKey(v.name), tp);
@@ -189,6 +208,7 @@ function createValorantAdapter(opts = {}) {
         }
         else if (v === 'end' || v === 'game_end') Object.assign(r, { phase: 'end', endsAt: 0, remaining: 0 });
         out.push({ type: 'round.phase', phase: r.phase, round: r.number });
+        if (v === 'game_end') mapEnd(out);
       } else if (key === 'match_score' && v) {
         const sc = [v.team_0, v.team_1].map(Number), mapped = [0, 1].map(t => sc[[0, 1].find(g => teamOf(g) === t)]);
         if (ctx.lastScore) [0, 1].forEach(t => { if (mapped[t] > ctx.lastScore[t]) {
@@ -203,14 +223,18 @@ function createValorantAdapter(opts = {}) {
           if (ecoWon) s.teamStats[t].ecoWins++;
 
           // ── Banner priority ───────────────────────────────────────────────
+          // The banner's kind is also the round's moment on the round.won event (autopilot rules).
+          let moment = null, momentPlayer = null;
           // Overtime: both teams hit 12+ — fire once, then OT rounds get normal banners
           if (!ctx.overtimeFired && mapped[0] >= 12 && mapped[1] >= 12) {
             ctx.overtimeFired = true;
             s.banner = mkBanner('overtime', t, 0, '', '', now, 5000);
+            moment = 'overtime';
           }
           // Match point: this team hits 12, the other has not (otherwise it would be overtime)
           else if (!ctx.roundBanner && mapped[t] === 12 && mapped[l] < 12) {
             s.banner = mkBanner('matchpoint', t, 0, '', '', now, 4200);
+            moment = 'matchpoint';
           }
           // Ace or team ace already fired from kill event — don't overwrite
           else if (ctx.roundBanner === 'ace' || ctx.roundBanner === 'teamace') {
@@ -219,25 +243,35 @@ function createValorantAdapter(opts = {}) {
           // Flawless: winning team has all 5 players alive at round end
           else if (s.players[t].every(p => p.alive)) {
             s.banner = mkBanner('flawless', t, 0, '', '', now, 4200);
+            moment = 'flawless';
           }
           // Clutch: a solo player won against multiple opponents
           else if (clutchWon) {
             const cp = ctx.clutch;
             s.banner = mkBanner('clutch', cp.tp[0], cp.tp[1], String(cp.against), '', now, 4800);
+            moment = 'clutch';
+            momentPlayer = cp.tp[1];
           }
           // Thrifty: winning team had significantly less economy at combat start
           else if (ecoWon) {
             s.banner = mkBanner('thrifty', t, 0, '', '', now, 4200);
+            moment = 'thrifty';
           }
           // Default: round win
           else {
             s.banner = mkBanner('round', t, 0, '', HOW_LABEL[how], now, 4200);
+            moment = 'round';
           }
 
-          out.push({ type: 'round.won', team: t, how, round: s.rounds.length });
+          out.push({ type: 'round.won', team: t, how, round: s.rounds.length, moment, player: momentPlayer });
         } });
+        // A round won after a reported map end means play went on: the next map end counts again.
+        if (ctx.lastScore && (mapped[0] > ctx.lastScore[0] || mapped[1] > ctx.lastScore[1])) { ctx.mapEnded = false; ctx.mapAborted = false; }
         ctx.lastScore = mapped; s.teams[0].score = mapped[0]; s.teams[1].score = mapped[1];
-      } else if (key === 'map' && MAPS[v]) s.map.name = MAPS[v];
+      } else if (key === 'match_outcome' && ['victory', 'defeat', 'draw'].includes(String(v).toLowerCase())) mapEnd(out);
+      // The map was left before it ended: aborted by the game, or everyone back to the main menu mid-map.
+      else if ((key === 'state' && v === 'Aborted') || (key === 'scene' && v === 'MainMenu' && (s.rounds.length > 0 || s.round.phase === 'live'))) mapAbort(out);
+      else if (key === 'map' && MAPS[v]) s.map.name = MAPS[v];
       else if (key === 'observing') { const tp = ctx.byName.get(nameKey(v)); if (tp) s.observed = tp; }
       else if (key === 'kill_feed' || key === 'planted_location' || key === 'match_start' || key === 'match_end') events.push({ name: key, data: v });
     }
@@ -284,8 +318,8 @@ function createValorantAdapter(opts = {}) {
       } else if (name === 'spike_defused') { if (!ctx.spike.defused) { const t = 1 - attackingTeam(s); if (t >= 0 && t < 2) s.teamStats[t].defuses++; } ctx.spike.defused = true; out.push({ type: 'spike.defused' }); }
       else if (name === 'spike_detonated') { ctx.spike.detonated = true; out.push({ type: 'spike.detonated' }); }
       else if (name === 'planted_location') { countPlant(s, now, out); out.push({ type: 'spike.site', site: d }); }
-      else if (name === 'match_start') { s.rounds = []; ctx.lastScore = [0, 0]; ctx.overtimeFired = false; ctx.roundFirstKill = false; s.teams.forEach(T => { T.score = 0; T.lossStreak = 0; }); s.teamStats.forEach(T => { T.plants = 0; T.defuses = 0; T.clutches = 0; T.ecoWins = 0; T.firstKills = 0; }); s.players.flat().forEach(p => { p.fk = 0; p.acs = null; p.adr = null; p.hs = null; }); out.push({ type: 'match.start' }); }
-      else if (name === 'match_end') out.push({ type: 'match.end' });
+      else if (name === 'match_start') { ctx.mapEnded = false; ctx.mapAborted = false; s.rounds = []; ctx.lastScore = [0, 0]; ctx.overtimeFired = false; ctx.roundFirstKill = false; s.teams.forEach(T => { T.score = 0; T.lossStreak = 0; }); s.teamStats.forEach(T => { T.plants = 0; T.defuses = 0; T.clutches = 0; T.ecoWins = 0; T.firstKills = 0; }); s.players.flat().forEach(p => { p.fk = 0; p.acs = null; p.adr = null; p.hs = null; }); out.push({ type: 'match.start' }); }
+      else if (name === 'match_end') mapEnd(out);
     }
     coverage.apply(s, now);
     return { state: s, events: out };

@@ -1,156 +1,160 @@
-# Esportra Air: local product build
+# Esportra Air — product direction
 
-Latest correction: actual OBS replay-status error 604 no longer blocks sending screens. Connected OBS shows Disconnect; imported templates survive navigation; static screen designs remain visible without sample game data. Official logo/wordmark and platform colors are used. [Evidence and restart/send steps](audits/2026-10-16-obs-template-delivery-and-connections.md): 156 tests / 58 native checks. Actual post-restart send remains pending.
+Agreed 10 November 2026 in product discovery. This document replaces the earlier build log. Earlier handoffs remain in `docs/audits/` and in git history for reference only. They do not describe the direction.
 
-Latest workflow: **Broadcast setup** now opens first, with Prepare / Design / Operate navigation and direct keyboard shortcuts. Charcoal replaces soft slate; preview modes are explicit and HUD switches no longer reload the iframe. [Current flow and evidence](audits/2026-10-16-charcoal-guided-workflow.md): 154 tests, 56 native checks, 179 reference screens. User/live acceptance remains open.
+## Purpose
 
-Latest workflow correction: **Add screen** now lives in Broadcast screens; **HUD controls** is in the sidebar; sample preview has moving isolated data. [Current flow and evidence](audits/2026-10-15-screen-library-and-hud-workflow.md): 154 tests, 54 native checks, 178 reference screens. User/live acceptance is still open.
+Esportra Air connects tournament operations to broadcast production. Esportra tournament data and live game data go in. Broadcast-ready graphics come out. OBS or vMix stays in charge of the show.
 
+Air is not a switcher. It never composites, encodes, streams, records or switches scenes.
 
-Latest visual checkpoint: the user rejected the previous appearance. The actual desktop shell, match workspace, guide and screen editor were refined; visual acceptance remains open. [Changes, screenshots and checks](audits/2026-10-15-workspace-polish.md).
+## Who it is for
 
+One product, three deployment shapes:
 
-## Latest approved plan — 15 October 2026
+| Shape | Machines |
+|---|---|
+| Solo producer (the default experience) | One PC observes Valorant, runs Air and OBS |
+| Small crew | Observer PC and production PC, on the same network or in different locations |
+| Studio | Air as the data and graphics source inside an existing OBS/vMix workflow |
 
-The clearer sidebar workspace and independent account/project path are implemented locally across desktop, backend and web, including match/player/live views, source-backed brackets, walkthrough, offline drafts/access and dedicated Air admin. Current evidence: Air 148 tests/build; backend 149 API/42 Core; web 56 scoped tests/lint/build; native 51 checks; 172 A–Z reference captures. Older counts below describe earlier scope/releases. Original 53-requirement counts have not been reassessed for this extra plan. [Current workflow, evidence and release gates](audits/2026-10-15-workspace-standalone-handoff.md). No new commit, push, deployment or live/independent acceptance.
+Studios with their own in-house graphics teams are out of scope.
 
+## Decisions of 11 November 2026 (supersede the rows below where they conflict)
 
-Updated 15 October 2026. The web planning workspace and local Windows production application are implemented in part. Backend `505f514` and frontend `ba8c37e3` passed staging CI, promotion and executed smoke checks; Air remains local `3012560`, unsigned and not certified against an actual Valorant/Overwolf/OBS/LAN/account rehearsal. The complete original `index.html` PRD is not delivered: the [53-requirement audit](coverage/INDEX-COVERAGE.md) records 23 functionally implemented, 18 partial and 12 missing requirements. These counts are not a percentage of product completion.
+| # | Decision |
+|---|---|
+| R1 | **Graphics only.** Cue / Take / Hold / autopilot control Esportra graphics. Air never switches OBS scenes; it installs its scenes and reads which is on air. (Rework stage 4.) |
+| R2 | **No duplicates of Valorant's own UI**: no killfeed, observer card or minimap frame from Air; the scorebug has no round timer and shows a beating spike when planted. (Rework stage 3.) |
+| R3 | **Game picker.** A match starts with its game. Valorant works; other titles are shown as coming, never faked. |
+| R4 | **App fonts: Archivo** (expanded width for titles and numbers) **+ JetBrains Mono.** HUD overlays keep their own fonts. |
+| R5 | **Settings are about the software** (this PC, OBS connection, Esportra account, other PCs, keyboard, about). **The match is the centre**: teams, players, event, sponsors and graphics belong to it. Tournament is only a heading over its matches. The Layout tab is gone. |
+| R6 | **Graphics control is the producer's choice (12 Nov):** Air (Live, Cued/Take and the screen rundown), Stream Deck / Companion, or both (Settings › Graphics control, asked in first run). The rundown is optional: rows of screens from My show, each with the producer's own rule, using only signals Air already reads. With Companion, Air sends game events and values and takes button actions over a keyed local-network connection; crews build their own triggers in Companion. The in-game HUD runs itself (Auto layers) and is not controlled from Companion. Air never switches scenes; Companion may, if the crew sets it up. Module: `packages/companion-module`. |
+| R7 | **One Rundown per match (13 Nov)** replaces My show and the Autopilot tab. Sections use common broadcast names: Pre-show, Game, Between maps, Post-show. Full-screen rows come up on Take or by themselves; Starting soon / Break / Ending (the Holding screen) and Desk are scene rows the crew switches in OBS; the in-game HUD is one row with its parts as switches. New matches start with only the HUD row; templates (Standard, Results only, Manual) are optional. Only what is in the selected match's Rundown is installed in OBS. **OBS scene names stay** (`ESPORTRA · Break`, Gameplay, Full screen, Replay, Desk): scenes are layouts, not times, so one Full screen scene carries the intro and the champion; the broadcast names live on the Rundown sections. A finished match keeps the teams and players it was played with. |
+| R7a | **OBS: Air's part only (15 Nov).** Air pushes the scenes for the match's selected screens into OBS (as above) and nothing more. Observer scenes, wide shots and other camera scenes are the crew's own: to show the HUD over several observer feeds, they add the same HUD source to each scene (OBS Paste (Reference)) or use it as a vMix overlay input. Air builds no per-observer or wide-shot scenes. One observer PC sends game data at a time (the others stand by). |
+| R8 | **VCT-style graphics (13 Nov).** The scorebug is built around the game's own round timer (we never cover it; the spike countdown fills the window only while the game blanks its timer), coloured by side. Every full-screen graphic that VCT shows over a live shot gets an over-the-game version; each Rundown row picks Full screen or Over the game. Colours are the event's own; no Riot or Champions marks. |
+| R9 | **Graphics templates (13 Nov).** Producers make their own looks in Graphics › Templates: a style editor on Air's graphics (move, scale, layer, hide, opacity, fill, text, font, border, corners, depth, fixed words, entrance), with undo/redo, snapping, Save as copy and export/import. Data stays wired; a template only sets inline styles on listed parts, never code. Each event has a brand kit (Primary = event colour, Secondary, Panel, Text, Attack, Defence) that every graphic and template reads. The Rundown only picks a look per row (built-in or template); the HUD row picks a HUD template, which also lines up the scorebug's timer window. |
+| R10 | **Templates everywhere (13 Nov).** Templates also cover Starting soon / Break / Ending, the Break frame and the Desk, picked on their Rundown rows (Break's look also chooses classic or frame). The editor shows moments on demand (Sample: pause, banner, scoreboard, poll…) and any backdrop, including a screenshot that stays on the PC. HUD parts play their entrance on air when they appear. Built-in looks are listed to start from; the pack window lists each graphic's looks. |
 
-## PC role and single-PC broadcasts
+The rework plan and its stages are in `/root/.claude/plans` for this session and summarised in the status table below.
 
-Choose **production mode** when one PC observes Valorant and runs OBS. It supports local GEP capture alongside production. GEP starts only after **Start capture → Allow and start capture**; it does not auto-start. Match setup exposes **Game capture on this PC** directly. Capture-only mode is for sending game events to another production PC.
+**`docs/SPEC.md` (approved 11 Nov) is the full product specification**: product model (event, talent, sponsors, cameras), the producer's journey, screens, Live, look and feel, language, reliability and game modules. Where this file and the spec differ, the spec wins.
 
-Use **PC role** from production navigation, Capture or pairing to change roles. Before restarting, **Change selection** reopens the choices and **Keep current role** cancels the pending change. Active production/capture and HUD consumers must stop before switching services. [Verified role fix](audits/2026-10-15-pc-role-and-single-pc-capture.md).
+## Focus and parked work (14 November 2026)
 
-## Current broadcast workflow
+The work now is the core: finish it, polish it, test it and fix its bugs, with Valorant as the only game. Everything below is parked. Raise it again only when the core is done.
 
-Use the tournament Broadcast workspace to pair Air, select the existing eligible match and prepare screens/assets/talent/crew. Choose **Send match to Air**. In Air choose **Customize broadcast** to rename/reorder screens, choose a design and position/size the HUD before **Send to OBS**. Air creates the HUD browser sources and attaches the existing video/camera input you select. **Save draft** leaves OBS unchanged. After sending, **Open live controls → Start show flow**; start streaming in OBS. “Show flow” means the screens your audience sees in order.
+| Parked | What it would be |
+|---|---|
+| Results to Esportra | Map results sent for the organiser's review (backend: `/api/air/broadcast/packages/{id}/result-proposals` already exists) |
+| Sponsor proof of play | Time each sponsor was really on air, with a report (backend package events already accept sponsor timing) |
+| Other games | CS2 through GSI, PUBG Mobile's live data API, other stat tools, each as a game module |
+| Your own elements in templates | Built in a lighter form (14 Nov): Your graphics, a finished design from Photoshop with data boxes from verified sources. Still parked: layered PSD import, repeating lists, conditions, drawing tools |
+| Remote and roles | Browser control on the LAN with roles; the Esportra relay for remote crew and observers |
+| Template packs | One file with templates, a brand kit and assets; packs shared in an Esportra organisation |
+| Deep live stats on Esportra | Kill-by-kill match stats from Air shown on Esportra, HLTV-style |
+| Languages, several stages, pitch kit, licences | Graphics in other languages; one Air per stage sharing an event; a branded demo; licence status in Settings |
 
-Verified locally: Air 136 tests/build; native 47 checks/eight captures; web 85 broadcast tests, scoped lint and production checks. The sole reference now has 142 real-component captures across 26 A–Z groups. These synthetic checks do not certify live device/game/staging operation. See [the focused handoff](audits/2026-10-15-template-to-obs-handoff.md).
+## Product decisions
 
-## Open the build
+| Area | Decision |
+|---|---|
+| Switcher boundary | Air installs its own scenes and browser sources in OBS with one click, and reads which scene is on air. Every switch is done in OBS/vMix. |
+| Tournament data | Comes from Esportra. Air adds only a quick match (two teams, logos, best-of) for scrims and showmatches. Air has no team, roster or bracket editors. |
+| Website | The Esportra website has no Air pages. Air talks to the Esportra backend directly, and all broadcast setup lives in Air. |
+| Live role | During play the producer watches health and has four manual actions with hotkeys: pause/timeout panel, caster strap, sponsor read, score/name correction. Everything else runs from data. |
+| Results | One-way in v1 (Esportra → Air). Reporting results back is a later stage. |
+| Games | Valorant only in v1, built as a game module so another title can be added. |
+| Customisation | Curated graphics package, tournament brand, each screen and HUD element on/off, and layout adjustments (move/resize HUD elements, reorder/rename screens). |
+| Transport | **Local** (default): one PC or same-network PCs; game data never leaves the local network. **Remote**: observer and producer in different places; the game feed travels through an Esportra relay and the producer's Air draws the HUD with an adjustable delay. Remote mode has its own consent. |
+| Other PCs | **Esportra Air is standalone production only.** Capture on observer and player PCs is a separate app, Esportra Player (see `docs/PLAYER-CLIENT.md`), that connects to Air with a join code. Air's capture-only mode stays until the Player app has the observer role, then is removed. |
+| Getting in | Producer signs in with an Esportra account. Observer and player PCs join with a short code shown in the producer's Air. |
+| Setup unit | Tournament setup once (graphics, brand, layout, OBS). A short routine for each match. |
+| Checks | Warn, never block. Problems stay visible on air. |
+| Kept from the old app | Player-PC capture (live health and abilities from competitors' PCs). |
+| Parked | Reporting to Esportra (sponsor proof, timeline, VOD chapters, offline queue), crew roles, observer markers. |
+| Retired | Show-runner and autopilot rules, rundowns, take/cut/stinger, replay control, vMix control, independent projects and editors, website pairing and the web broadcast-preparation flow, PC-role screen, result proposals. All remain in git history (last legacy commit `49a0f7d`). |
 
-The unsigned Windows installer is `dist/Esportra Air Setup 0.1.0.exe`. The unpacked application is `dist/win-unpacked/Esportra Air.exe`. Build verification does not install either artifact or change the user's existing Air configuration.
+## Experience
 
-The single active UI reference is [the implemented A–Z screen folder](../design/implemented/index.html), generated from real current components with synthetic API/IPC data. Original `index.html` and its linked images remain the product brief. Older three design variants are preserved only in the hash-verified history archive at `docs/archive/retired-uiux-2026-10-14.zip`. Prior [product smoke screenshots](audits/product-smoke/index.html) remain test evidence, not a competing UI reference; their white preview/program frames are a one-pixel OBS fixture rather than video.
-
-For source development, run `npm start` in this repository. Web pages belong to the existing `D:/frag-and-book-main` application; use its staging deployment with the appropriate organization. Backend changes belong to `D:/esportra-backend`. See [the staging rehearsal guide](STAGING-TEST.md). The current local implementation includes new setup and production features. The existing installer and staging releases predate these changes; use npm start for current Air source.
-
-## Plan on the web
-
-1. Open `/broadcast/home`. Open Shows to create a show, or Get started to prepare an existing show. Creation opens guided setup.
-2. Follow eight preparation steps: connect desktop, choose an eligible match, preview its HUD, select templates/screens, optional sponsors, talent, crew, and review/send. Existing tournament and match data is reused. Sidebar progress and the selected match stay visible; phone planning uses the step selector.
-3. Generate a temporary desktop pairing code. Enter it on the workstation. A registered node and a recent heartbeat are separate checks; the web monitor does not claim local OBS or game-feed readiness.
-4. Edit segment duration, notes and order in the show plan. Reorder is atomic. Send configuration when the plan is ready. A successful send means the server sent configuration, not that a workstation is ready to broadcast.
-
-Title changes are blocked while the platform show is live. Tournament links must belong to the organization, and existing match slots must be compatible. Marking the platform show live or ended changes platform state; it does not switch or stop OBS.
-
-Crew invites support producer, technical director, observer, replay operator and monitor. Accepted crew open `/broadcast/crew/shows` for their role brief, match codes and planned rundown. Crew workspace access does not grant organization editing rights or remote OBS control. Source credentials are not shown in the web crew workspace.
-
-## Additional platform operations — 14 October 2026
-
-Tournament management now includes **Run → Broadcast** at `/organizer/tournament/:slug?tab=broadcast`. Create a tournament-bound show, pair that show's organization, preview current tournament/match/veto data and send it to Air. Match selection now selects the corresponding veto and map pool in the existing HUD. Send remains explicit and active production defers application. Details: `D:/frag-and-book-main/docs/tournament-air-bridge.md`. Latest evidence is Core 246, web 84, Air 43 tests, browser 18 and native 11 fixture checks; unsigned installer rebuilt and verified.
-
-Show settings now edit planned start in your browser timezone, store UTC and allow explicit clearing. Shows can duplicate planning into a fresh draft without crew or runtime history. Delete is available for unstarted shows without history; completed/live shows remain for reports. The node monitor confirms platform access revocation. Recorded activity shows acknowledged metadata with cursor pagination. Resolved teams/best-of and platform status labels distinguish the planned match and lifecycle.
-
-Latest platform evidence: Core 243, API event guard 27 and frontend 64 tests passed; 13 browser fixture workflows/screenshots and production build passed. The earlier table below records the initial product checkpoint. Latest developer guide: `D:/frag-and-book-main/docs/broadcast-air-platform.md`. Database/live rehearsal and independent acceptance remain pending.
-
-## Run on the desktop
-
-1. Choose **Production** for the OBS desk or **Capture only** for a game observer, then pair. Role changes require a restart and are blocked while local capture, connected relay consumers or a rundown are active.
-2. On Readiness, verify the loaded show and select the configured match code. Sending a new plan while capture or rundown is active defers it; stop the activity and explicitly apply the pending plan. An idle configuration load does not start a rundown.
-3. In Producer, connect to OBS WebSocket using its actual host, port and password. Enable OBS Studio Mode. Prepare ESA scenes; existing scenes are preserved. The application reads tally and obtains actual preview/program screenshots from OBS.
-4. In Outputs, save names for existing HUD overlays and match codes. Copy a localhost URL for OBS on this machine, or a LAN URL for another machine. Preview opens the existing overlay. Removing a saved output removes the Air bookmark; it does not delete an OBS browser source.
-5. Start the loaded rundown from Readiness. Preview the required scene and use Take/F8 to put it on program. Stop rundown clears local timers and segments while leaving OBS program unchanged. Reload the saved plan before restarting.
-
-The HUD implementation remains `esportra-valorant-hud/`. Air uses that server, capture adapter and overlay catalogue. `assets/` contains the company application icon; preview artwork and static screens are not a second Valorant HUD.
-
-## Connect observer capture
-
-Both production and observer nodes use the organization's pairing workflow. Use the match code provided by the loaded show. On each observer, explicitly start capture only after reading and confirming the privacy notice. Start is never automatic. Cancel leaves capture stopped.
-
-Copy the observer pairing key on the observer computer. On the production desk, enter `host:port=key` in Observer machines; separate multiple addresses with commas. Existing addresses can omit a saved key. Keys are stored in the operating system credential vault. Restart applies target changes when no protected local activity is running.
-
-Raw observed player/game data travels locally or over the authenticated LAN relay. It is not queued to Esportra's cloud event endpoint. Browser-origin relay connections and unauthorized external consumers are rejected. Scoped packets must match the selected show and match code. Healthy game-feed status requires recent accepted packets; a running child process alone is insufficient.
-
-LAN access requires the computers' existing network/firewall configuration to permit the HUD/relay ports (5300/5301 by default). This build does not change firewall settings. Overwolf/game operation and applicable distribution approval must be validated before release.
-
-## Corrections and offline operation
-
-Review a score correction before applying it. The local HUD update preserves team identities and other maps. The correction queues an audit record for its originating show; it does not overwrite an official bracket result.
-
-Cached show configuration remains available offline. Contracted production events and corrections have durable identities, signed queue records and acknowledged batch delivery. Records appended during delivery survive rewriting. Events from separate shows are never mixed into the same request. Rejections stay queued. Historical records without a trustworthy originating show remain queued rather than being assigned to the current show.
-
-## Verification evidence
-
-| Area | Evidence | Limit |
-| --- | --- | --- |
-| Air | 41 Node tests passed; renderer build passed | Includes real local HUD HTTP/WS tests, not a live game |
-| Desktop | 11 native Electron interaction checks passed | Synthetic local platform and OBS protocol fixtures; native keytar module loads, credential methods are isolated |
-| Web | 25 focused tests passed; 8 browser/layout checks and 8 screenshots passed | Actual components/hooks with local API/DB fixtures |
-| Web build | Vite production build, chunk, button and JSX checks passed | Global strict TypeScript check still fails outside the affected broadcast code; no broadcast diagnostics in the final run |
-| Backend | API tests project builds with zero errors; prior Core 227 and event guard 27 tests passed | Four existing fake-ADO nullability warnings; new PostgreSQL integration tests compiled but could not run without Docker/PostgreSQL |
-| Windows package | Unsigned NSIS installer built; packaged native/runtime dependencies loaded; capture SDK included; protected file checks passed | Installer not installed, signed, published or live-game certified |
-
-Repeat Air tests with `npm test`. Run `node tools/product-desktop-smoke.cjs` for the isolated desktop fixture. Build the web app before running `node tools/product-web-smoke.cjs` from the frontend repository. These fixtures use temporary data and must not be treated as independent acceptance.
-
-The verified package command uses the installed Electron/native modules:
-
-```powershell
-$env:ELECTRON_BUILDER_CACHE = Join-Path $env:TEMP 'air-electron-build-cache'
-$env:npm_config_cache = Join-Path $env:TEMP 'air-build-npm-cache'
-npx electron-builder --win --x64 --config.electronDist=node_modules/electron/dist --config.npmRebuild=false
-node tools/verify-product-package.cjs
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Community Cup ▾          1 Match    2 Check    3 Live       ⚙ │
+├──────────────────────────────────────────────────────────────┤
+│                     (current stage)                          │
+├──────────────────────────────────────────────────────────────┤
+│ ● Game feed   ● Graphics   ● OBS   ● Esportra                │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-Run `npm run build:renderer` first after source changes. Normal `npm run build:win` also builds the renderer and can rebuild native dependencies, which may require the usual build tools/network. The package report records the tested artifact's SHA-256 in `audits/product-smoke/package-result.json`.
+- **Tournament setup** (from the tournament name, done once): Graphics, Brand, Layout, OBS. "Install graphics in OBS" adds one Air scene per screen. Each output also has a URL for vMix or manual use.
+- **1 Match:** pick a scheduled match or create a quick match; see both lineups and casters.
+- **2 Check:** a self-verifying checklist (lineups, graphics in OBS, graphics rendering, game feed, Esportra) with in-place fixes, capture consent, and a test round that plays sample data through the real outputs.
+- **3 Live:** health tiles, a compact match readout, and the four manual actions. "Next match" returns to Match with setup intact.
+- **Status strip:** every indicator opens its problem and fix.
 
-## Outstanding release evidence
+Clickable prototype: https://claude.ai/artifact/1VrfQuDRMRyi9ajSSkosiC (private until shared). The built app replaces the prototype's placeholder “packages” with the HUD's four real banner themes, and its Layout tab edits screen order, names and placement plus the minimap frame (overlay elements themselves have fixed positions today).
 
-Run the new database integration suite in its PostgreSQL/Docker fixture, followed by one real web-to-node configuration, observer relay, OBS take, correction and offline reconnect rehearsal. Obtain independent runtime QA and the existing acceptance decision. Signing and deployment need their own authorized release work.
+## Architecture
 
-The earlier implementation checkpoint was saved and read back through Obsidian MCP on 13 October. MCP was initially unavailable on 14 October, then returned during the backend/frontend continuation. Final product and platform findings are now saved and read back in `08-Sessions/2026-10-14-PROJ-061-Backend-Frontend-Implementation.md`, curated product/domain notes, Current-Work and Session-Index. [The original local handoff](audits/2026-10-14-product-handoff.md) retains that outage history. No filesystem write bypassed the vault boundary; no commit, push or deployment was performed.
+```
+ow-electron app (one Electron runtime)        Rust graphics engine (separate process)
+  main: GEP listener, engine supervisor,  ──▶   Valorant parser → match state
+        OBS setup/status, sign-in               rooms, merge-patch, persistence
+  renderer: React + TypeScript UI         ──▶   serves overlays to OBS (HTTP + WebSocket)
+                                                corrections, triggers, test round, transport
+```
 
-## 14 October setup simplification
+- **Why Rust:** reliability on air. The engine runs separately from the window, so a UI crash or restart never takes graphics off air. The window re-attaches to a running engine.
+- **Why ow-electron for the whole app:** Overwolf Game Events (GEP) are only available in the ow-electron main process. Running the whole app on ow-electron replaces today's two runtimes (stock Electron plus a hidden ow-electron capture child) with one.
+- **Compatibility:** the engine keeps the existing HUD WebSocket/HTTP protocol, so all overlays in `esportra-valorant-hud/overlays/` run unchanged.
+- **Remote relay:** a pass-through in the Esportra backend that forwards frames between members of a production and stores nothing. Parsing always happens on the producer's engine.
 
-Preparation now follows eight steps in the tournament Broadcast workspace: connect Air, choose an eligible match, preview HUD, choose screens, optionally add sponsors, assign talent, assign crew and review. Desktop receives that match/flow, checks local systems and runs production. Shortcuts are editable and checked for conflicts. This redesign is local source only; it is not the previous staging release or installer. See [the current handoff](audits/2026-10-14-setup-uiux-handoff.md) for verification and pending database/live/Obsidian work.
+## Build stages
 
+| Stage | Outcome |
+|---|---|
+| 0 | Clickable prototype approved; this document and `CLAUDE.md` updated |
+| 1 | Rust engine (parity with today's HUD server and parser), ow-electron shell, OBS install/status, the Match/Check/Live interface — on custom matches, local mode |
+| 2 | Esportra sign-in and tournaments, using the existing `/api/air/*` endpoints. Pilot milestone |
+| 3 | Same-network observer PCs, join codes and remote mode, player-PC capture. **v1** |
+| 4 | Remove the legacy app (`src/`, capture child) and the Air pages on the Esportra website |
 
-## Partial requirements follow-up — 14 October 2026
+Outside the build: Overwolf app approval (developer account exists, app not yet approved) and Windows code signing (`sign.md`).
 
-The user authorized completion of the existing 38 partial requirements and reserved the 13 missing requirements for a later selection. The first production batch closes five functional scopes locally: OBS discovery/connection inspection (E2.1), replay playback/return (E2.5), Take/Cut/Stinger controls (E4.1), current/next/coming-up (E4.2), and the game data strip with combined event log (E4.6). Current audit: 7 implemented / 33 partial / 13 missing. The complete product remains unfinished.
+## Current code
 
-Scene mappings, missing-scene start guards, independent team timeout, actual parsed-event graphics rules, persistent graphics timings and expanded shortcuts improve other partial requirements. Web/phone controls, node assignment and graphic layers remain dependent on the user's missing-feature selection. No missing requirement is claimed implemented.
+| Part | Where | Status |
+|---|---|---|
+| Graphics engine (Rust) | `engine/` | Stage 1 built. Golden parity with the JS parser on three recorded fixtures; 14 overlays render pixel-identical to the JS server; test round; feed-paused tag; control API. |
+| Desktop app (ow-electron, React + TypeScript) | `apps/desktop/` | Stage 1 built on quick matches: Match → Check → Live, production setup, OBS install/status, GEP capture with consent, triggers, engine supervision and re-attach. Walkthrough passes in Chromium against the real engine with a simulated game and in-memory OBS. |
+| OBS link (S2, reduced in rework stage 4) | `apps/desktop/src/main/{obs,scene-build}.ts` | Connection with status from OBS events (program scene, Studio Mode state, transitions, replay buffer), screenshots for the Live monitors, Save replay (F3, buffer only), automatic reconnect. Builds the scene model: Holding, Gameplay (with the full-screen host over the game), Fullscreen, Replay, Casters, with empty slots for the game feed and caster cams that read "Add your source" until OBS reports a source. **Never switches scenes** (no Take, Cut, Stinger, Preview or Studio Mode calls; a test checks the link has no such methods) and never starts the stream, recording or replay buffer. Tested against an in-memory OBS only. |
+| Console graphics (S3) | `engine/.../{layers,actions}.rs`, `apps/desktop/src/{main/production.ts,renderer/screens/ConsoleScreen.tsx}` | Layer modes On / Auto / Off in `state.airLayers` (engine writes `show.*`; legacy writes become manual overrides), hotkeys 1–8, Q–I, A–J, rules (multi-kill callout, overrides clear at next match), named actions at `POST /control/action`, F1–F8 incl. toast and poll forms and HUD stinger, lower thirds and player spotlight, live data strip, event log (read-only `observe` WS role). Full-screen layer toggles are wired to OBS scene visibility. Pixel parity with JS overlays holds (14/14). Not verified on real OBS. |
+| Autopilot (S4, graphics since rework stage 4) | `apps/desktop/src/main/autopilot/{show-runner,rundown,autopilot}.ts`, `renderer/components/Autopilot.tsx` | Off by default and never restored after a restart. Steps per match (Bo1/3/5: match intro, then per map back to the game when a round goes live, halftime after round 12, map result, series, then the winner). Each step shows a full-screen graphic in the host (or goes back to the game), optionally for N seconds, by cut or behind the HUD stinger. Presets: Standard, Results only, Manual. Matches › Autopilot explains how it works and shows every step as a sentence with its graphic, trigger, hold, time and transition. Steps arm on game events (match start, round live, halftime, round end, spike planted/defused, map end, delay), open a visible hold window, then show the graphic. Hold (H), Skip (S), Take now (Space). Nothing takes during a tech pause or timeout, and a cancelled take is never replayed. Tested with a fake clock and with the real engine; not verified with a live game. |
+| Capture and player cams (S5) | `apps/desktop/src/main/capture-stats.ts`, `renderer/{screens/CaptureScreen,components/Cameras}.tsx`, engine `cams.set` + test-round `speed`/`seek`, HUD `playercams` + `camgrid` modules, `overlays/cam-grid.html` | Capture page: source, last data, messages/s, gaps; a feature table (Live / Quiet / Waiting / Player PC) with 60 s sparklines; live state; Simulate with speed (0.5–8×) and scrub. Cameras by link: Air makes an unguessable VDO.Ninja link per player, the player opens it, the HUD puts the stream in that player's frame (In-game) or a 5-up / 10-up wall (Full screen layer K), with a delay (VDO.Ninja `buffer`). The connected dot comes from the overlay page's VDO.Ninja iframe messages. The simulator does not feed the capture stats. **Unverified:** VDO.Ninja inside OBS's browser source, its `api` message names, and the delay limits all need your Windows PC; the sandbox cannot reach vdo.ninja. Player-PC capture waits for Stage 3. |
+| Esportra account (Stage 2) | `apps/desktop/src/main/{esportra,esportra-lease}.ts`, `shared/esportra.ts`, `dev/fake-esportra.ts`, renderer Sign-in dialog, Readiness picker, Sync page | Email + password sign-in against the existing backend (`/api/auth/desktop-login`, `/api/air/{session,devices,access,auth/refresh}`), this PC registered as a production device, tokens in the OS-encrypted secrets file, signed 72 h offline lease verified locally (tamper, wrong PC, clock rollback and expiry are refused; an explicit refusal removes the lease). The producer's scheduled matches (`/api/air/broadcast/matches`, roster) are listed on Readiness and Sync; choosing one creates or updates the match on this PC with teams, tags, logos, best-of, tournament name (shown as the event name on air) and lineups. Quick matches never need an account. One-way: nothing about the show is sent back. Default host `https://api-staging.esportra.com` (override `ESPORTRA_API_URL`). **Not done:** Esportra-driven autopilot triggers (veto, check-in, series decided: the match list only carries a status), hosted camera links (needs a backend page and relay), result reporting, bracket/standings data. **Verified only against a stand-in backend** that mirrors the real handlers' shapes; never run against the real one. |
+| Observer and player PCs (Stage 3, same network) | `engine/crates/air-engine/src/join.rs`, `apps/desktop/src/main/join.ts`, `renderer/components/Join.tsx` | The producer switches "Allow other PCs on this network to join" on (Capture page); Air makes a 6-character join code and the engine opens a **separate** port (default 5301) that serves only `/join` and `/join/hello`. A capture-only PC (Setup › This PC › Capture-only) enters the producer's address and code, then sends its GEP data there; it follows the producer's current match, can only add game data (never read state or change graphics), and a player PC may only send messages tagged with its own player id. Wrong codes are rate limited (5 per minute per address), a new code or switching off drops every joined PC, 12 PCs at most, 400 messages/s each. The code is kept in the encrypted secrets; the port exists only while joining is on. **Not done: remote mode** (producer and observer in different places through an Esportra relay): it needs a relay service in the Esportra backend, which is a separate repository. **Unverified on Windows:** firewall prompt behaviour, two real PCs, real GEP from a player PC. |
+| Esportra Player (step 1) | `apps/player/`, `packages/capture/` | A separate small ow-electron app with its own installer for player and observer PCs (see `docs/PLAYER-CLIENT.md`). Step 1 is built: the GEP bridge, ingest client, join protocol, link and secrets moved into `packages/capture` (no dependencies) and are shared with Air; the Player app connects to a production PC with its address and join code, remembers it across restarts, runs in the tray, and starts capture only after consent each run. Tested against a stand-in production PC (2 tests) and in the browser against its dev host. **Not yet:** the tracker, tournament-mode reports, the observer marker and auto-replay. Not run on Windows or with real GEP. Air's capture-only mode stays until the Player app's observer role is proven. |
+| Rework stage 1 (11 Nov) | `apps/desktop/src/renderer/{styles.css,screens/SettingsScreen.tsx,components/Chrome.tsx}`, `shared/{api,games}.ts`, `main/{store,production,art-check}.ts` | Archivo + JetBrains Mono bundled (Inter and Poppins removed from the app), livelier surfaces. Rail: Live · Matches · Scenes · Outputs · Capture · Settings. Settings holds only software settings. Match v2: game, lineups (display name, real name, Riot ID, photo), event and sponsors per match, migrated from older saves; a new match starts with the event and sponsors of the latest match of its tournament. Readiness "Internet" row replaced by a real agent-and-map-art reachability check. |
+| Rework stage 2 (11 Nov) | `engine/crates/air-engine/src/roster.rs`, `apps/desktop/src/renderer/{components/NewMatch.tsx,components/MatchEditors.tsx,screens/ReadyScreen.tsx}`, `main/production.ts` (`createMatch`, `uploadImage`) | Matches page: new match, Esportra schedule, matches on this PC, and a match workspace (hero with logos and colours; Readiness, Teams and players, Talent and event, Graphics). New match wizard: game (Valorant; CS2, LoL and Dota 2 shown as coming), format, teams (name, tag, colour, logo), lineups (photo, display name, Riot ID, real name), talent, event and sponsors. Logos and photos are stored in the engine's asset store as PNG (converted and capped at 512 px wide by Electron in the app; the dev host accepts PNG only). The engine matches each player's in-game name to the lineup's Riot ID and shows the display name and photo (player profile and roster cards use the photo). Not verified with real Riot IDs from a live game. |
+| Rework stage 3 (11 Nov) | `apps/desktop/src/renderer/screens/LibraryScreen.tsx`, `components/Preview.tsx`, `shared/library.ts`, `esportra-valorant-hud/{core/hud.js,overlays/fullscreen.html}`, engine `fullscreen.show` | HUD library (rail › Library): every graphic grouped (over the game, between rounds, full screen, holding and talent), each a live preview scaled over a gameplay-like backdrop, using a sample room seeded with the selected match's teams, logos, players and event; Play a sample round runs the test round there at 2×; a detail view says what it is, when it shows and where it lives in OBS. Banner styles are previewed side by side and chosen per match (also step 5 of the wizard). Full-screen graphics now live in one host page driven by `state.airFullscreen`; the Fullscreen scene holds one source and Air never toggles OBS items for them (rebuild removes the old per-graphic sources). Killfeed, observer card and minimap are off and gone from the console (Valorant draws them). The scorebug shows the round number instead of a timer and a beating spike when planted (the blank was reproduced only with incomplete team data; the planted state renders correctly). |
+| Rework stage 4 (11 Nov) | `apps/desktop/src/renderer/screens/ConsoleScreen.tsx`, `components/{Preview,Autopilot}.tsx`, `screens/ReadyScreen.tsx`, `main/{production,obs}.ts`, `main/autopilot/*` | Live is graphics only. Two monitors render Esportra graphics (in-game HUD plus full-screen host) over the latest OBS program frame, or a sample backdrop: **Cued** (an ephemeral engine room `__ESA_SIM_CUE_<code>`: the live state with the cued changes) and **On air**. Layers, full-screen graphics, lower thirds, toasts, polls and sponsor reads are cued; one change per slot (a later cue replaces an earlier one, going back to the on-air value uncues it); layer rows show on-air → cued. **Take** (Space) applies the cue, **Cut** the same, **Stinger** (F7) plays the HUD wipe and lands the cue behind it; Clear cue; cueing can be switched off so changes go straight on air. Pauses, autopilot and the camera layout always go straight on air. OBS Take / Cut / Stinger, the scene chips, Studio Mode, replay playback with scene switching and the Segment → Scene table are removed. Not verified on real OBS or with a live game. |
+| Rework stage 5 (11 Nov) | `apps/desktop/src/main/rehearsal.ts`, `shared/rehearsal.ts`, `renderer/components/Rehearse.tsx`, `NewMatch.tsx` (step 6), `ReadyScreen.tsx` (Rehearse tab), engine `Room::mutate` | **Rehearse**, private inside Air (an ephemeral room `__ESA_SIM_REH_<code>`, never an OBS output). The room is seeded as map 1 of the match (teams, logos, colours, players, photos, event, banner style) and the sample game's ten players are mapped by position to the match's lineup, so every graphic shows the producer's own names and photos. A scripted show at 1×, 2× or 4×: match start, rounds 1–3 from the test round (kills, plants, economy), a jump to halftime (12 rounds), the second half, map end, then series and winner. The match's own autopilot steps run against it (its preset and edits), with "Take manual steps for me" for the intro and winner; the beat timeline says what fired in each beat. Wizard step 6 ("Create match and rehearse") and a Rehearse tab on the match page; Autopilot tab links to it. Refused while live game data flows; switching match stops it. Engine: a sample room may change graphics during its test round, and the change carries into the state the round returns to (match rooms still refuse). Found by rehearsing: the map result printed "null" for ACS/ADR/HS, which GEP does not provide; it now ranks by kills and shows a dash, like the scoreboard. |
+| Art on this PC (11 Nov) | `apps/desktop/src/main/art-cache.ts`, engine `GET /art/<path>` and `core/catalog.js` rewrite, `core/hud.js` | All 279 agent, ability, weapon and map pictures named in the HUD catalogue are downloaded in the background when Air starts (6 at a time, PNG only, at most 5 MB each, written atomically) into `<engine data>/art/`, and retried every minute while any are missing. The engine serves them at `/art/...` and rewrites the catalogue's `media.valorant-api.com` URLs to `/art/` as it serves `catalog.js`, so OBS sources, Library previews and the Live monitors use the copies on this PC and work offline. Only pictures are fetched; no game data is sent. They are fetched at runtime into the user's data folder, not bundled in the installer. Readiness: "All 279 … on this PC", "Downloading n of 279", or a warning with Download now. The HUD asks for a picture that failed at most once a minute (it used to retry on every redraw). Not verified with a real internet connection or in OBS on Windows. |
+| Interface pass (11 Nov) | `apps/desktop/src/renderer/{styles.css,App.tsx,components/Chrome.tsx,components/Global.tsx}` and every screen | One consolidated stylesheet with real tokens (type scale, 4-point spacing, shape, elevation, layers) in place of three stacked override layers; dead rules removed. One top bar: product, where you are (page / match · event), the health of game data, OBS, Esportra and the engine (a word and a dot each; healthy ones shorten on smaller screens), search and the clock. Every page opens with the same header (what it is, one line on what you do there, its actions). Scenes and Outputs are one OBS section with two tabs, and its copy now says plainly that Air never switches scenes. Errors arrive as toasts that stay long enough to read; Ctrl+K searches pages, matches and actions; ? lists every shortcut; status drawers show the facts behind each connection. Laid out and checked at 1280 × 800 as well as 1600 × 1000. Found on the way: editing a match during a test round raised an error; the edit now reaches the engine when the round ends. |
+| Look and feel | `apps/desktop/src/renderer/styles.css` | Soft geometry (radius tokens `--r-*`, pill status chips, layered surfaces, sentence-case Inter buttons) replaces the PRD's square corners at the producer's request; the colour rules (rose = on air only, amber = cued) are unchanged. |
+| HUD overlays | `esportra-valorant-hud/` | Unchanged. |
+| Legacy app | removed | The old Electron app (`src/`), its tests, the Overwolf capture child (`esportra-valorant-hud/capture/`, replaced by `apps/desktop/src/main/gep.ts` and `ingest.ts`), root `package.json` and `electron-builder.yml`, and six legacy smoke scripts in `tools/` were removed in Stage 4. Git history keeps them. The Esportra website has no Air pages (decision, 10 Nov); removing any that still exist there is a separate change in the website repo. |
+| Windows build | `.github/workflows/air-windows.yml` | Tests, engine build and installer packaging on a Windows runner. Not yet run. |
 
-Air passes 70 automated tests, its renderer build and 18 native Electron fixture checks. The reference has 103 current component captures across 26 A–Z groups. These checks use synthetic OBS/platform data; live hardware/game/latency acceptance remains pending. Staging and the installer still predate this work. This batch does not change backend source and does not resolve the earlier Docker/PostgreSQL test blocker.
+### Stage 1 exit check (needs a Windows PC with Overwolf, Valorant and OBS)
 
-The full original-partial register, missing-selection numbers, evidence and continuation are in D:/Esportra-Air/docs/audits/2026-10-14-partial-completion.md. Obsidian MCP is unavailable; this is a pending local handoff, not a successful vault update. Reconcile shared notes through MCP when it becomes available.
+The full, current list is `docs/WINDOWS-CHECKS.md`; the Overwolf submission facts are in `docs/OVERWOLF-SUBMISSION.md`. The steps below are the original Stage 1 check.
 
+1. Install from the workflow's `esportra-air-windows` artifact and open Air.
+2. Create a quick match. Setup › OBS: connect, choose the game capture as gameplay source, Install graphics in OBS.
+3. Open each Air scene in OBS once; Check should show every check except Esportra as ready apart from the game feed.
+4. Start game capture, accept the notice, join a Valorant custom game as observer. The in-game scene should show live data.
+5. Close Air while OBS shows the in-game scene and choose “Keep graphics on air”: the HUD must keep updating. Reopen Air: the status note should read “reconnected”.
 
-### E1.6 correction — 14 October 2026
-
-Player-PC health/ability support already has GEP capture-agent and HUD-adapter hooks. The normal Air launcher does not expose or pass player identity, and per-player coverage/live verification is unfinished. E1.6 is corrected from missing to partial; no duplicate GEP implementation is needed. Current audit is 7 implemented / 34 partial / 12 missing. This correction delivers no new runtime functionality. The full evidence is in D:/Esportra-Air/docs/audits/2026-10-14-partial-completion.md. Obsidian sync is pending because MCP is unavailable.
-
-
-### Continuing partial requirements — 14 October 2026
-
-Latest local audit: **12 implemented / 29 partial / 12 missing**. This supersedes the earlier 7/34/12 checkpoint. Newly closed scopes: pairing recovery (E1.1), stale-feed warning chain (E1.4), packaged isolated rehearsal (E1.5), owned OBS collection/source slots (E2.2), round chapters (E8.4). Player GEP, observer recovery, stable output aliases, inline graphics and durable sponsor-proof delivery advance other partials without claiming numerical ability charges, one-way latency, automatic proof visibility, official result integration or user-reserved missing capabilities.
-
-Air 94 automated tests/build, 26 native local fixture checks, PostgreSQL broadcast 117 tests plus subsequent lifecycle 3/pairing 2, Core targeted 7, frontend health 3/scoped lint/full production build passed. Native polling now awaits actual IPC states. Original index.html is preserved; one implemented A–Z reference remains. Latest export/format verification passed. Sources and all remaining scope: D:/Esportra-Air/docs/audits/2026-10-14-partial-completion.md and docs/coverage/index-coverage.json.
-
-Obsidian MCP is restored and pending findings have been consolidated/read back. Current work remains uncommitted, undeployed and unaccepted; previous staging/installer state remains separate. Next: continue remaining partials, preserving existing missing-feature selection numbers and live/independent acceptance gates.
-
-
-Latest verified invitation checkpoint: **13 implemented / 28 partial / 12 missing** after closing E7.2 locally. All 122 PostgreSQL broadcast API tests, email recipient/inbox guards, frontend binding compatibility 2 tests and scoped lint pass. Production frontend build passes. Implemented reference has 117 real-component fixture captures across 26 A–Z groups; renderer/overflow/gallery checks pass. No actual external email, new deployment or acceptance. Account-bound invites disappear if the bound account is deleted, rather than reopening to another account. Continue the remaining partials, next timeline/incident visibility.
-
-
-Latest timeline/incident continuation: **15 implemented / 26 partial / 12 missing**, closing E6.4/E6.5 locally. Air 101 tests/build, native 27, PostgreSQL broadcast 125, web build/scoped lint and 119 A–Z reference captures pass. Actor categories are source/operation labels, not certified employee identity; only confirmed OBS takes count in new records. Demo rooms/timers and cached-feed/pairing races were hardened. Current work is uncommitted, undeployed and independently unaccepted. Full evidence/remaining scope: Air docs/audits/2026-10-14-partial-completion.md. Continue publication/templates, holds and tournament data/branding without silently implementing reserved missing capabilities.
-
-## Correction and official-result review — 15 October 2026
-
-Local source now covers Air-only or Air-plus-official-review map corrections, team/player display names, scores, sides, series wins and observed-player fixes. Overrides preserve source GEP, have round/clear lifetimes, and support audited current-session Undo. Undo changes the overlay only; it does not withdraw a delivered proposal or reverse an approved result.
-
-An official proposal persists in the original-pairing/show/match/team disk queue. Web show and assigned-crew workspaces show current versus proposed scores and require explicit approval/rejection. Only active crew with can_submit_result can review, including the organization owner. Stale official scores, changed teams/format and finalized/closed matches are guarded. Atomic map/series/audit writes and idempotent review prevent partial approvals. Completed-match final scores reach the HUD without returning played matches to the picker or switching OBS. Automatic GEP verified results, Riot checks and the full dispute/advancement loop remain unfinished.
-
-Evidence: Air 132 tests/build, native 43 checks/seven captures; backend all 139 broadcast API tests; web 85 tests in the scoped 16-suite run plus final result-review 3, scoped lint and production build. No broadcast TypeScript diagnostics were found; global errors remain outside broadcast. The sole reference has 136 A-Z captures and passed renderer/overflow/gallery checks. No new commits, deployment or live/independent acceptance. Full detail: [result review handoff](audits/2026-10-15-result-review-handoff.md).
+Known limits to verify there: whether GEP can be enabled when Valorant was already running before consent; ow-electron packaging and Overwolf terms for the whole app; real OBS behaviour.

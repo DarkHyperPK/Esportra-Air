@@ -33,3 +33,6 @@ esportra-valorant-hud/server/data/
 .vscode/
 .idea/
 *.user
+
+# Rust build output
+engine/target/

@@ -141,7 +141,7 @@ so a server restart picks up where it left off and a match can be replayed.
   map, observed player, and, from player PCs, health and ability charges. It was written from Overwolf's public docs.
 - `npm test` replays documented message shapes through it.
 - `node tools/simulate-valorant.js GF1` streams a scripted round through the server, so you can test everything without the game.
-- `capture/overwolf-valorant/` is the starter for the observer-PC app that feeds real matches in. See its README for what
+- Game capture now lives in the desktop app (`apps/desktop/src/main/gep.ts`); the old `capture/overwolf-valorant/` starter was removed.
   Valorant's feed does not provide (spike-plant timing, round timer, other players' health) and how the HUD covers it.
 
 ## Customizing

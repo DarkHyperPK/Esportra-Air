@@ -12,6 +12,28 @@
   const EMPTY_PREVIEW = PREVIEW && Q.get('empty') === '1';
   const SAMPLE_MOTION = PREVIEW && !EMPTY_PREVIEW && Q.get('sampleMotion') === '1';
   let previewPatch = {};
+  // A template being edited or previewed in Air ({ template, brand }); never on an OBS output.
+  let tplDraft = null;
+  // A moment the template editor asks to see (a banner, the scoreboard, Break…); preview pages only.
+  let tplSample = null;
+  const SAMPLES = {
+    live: v => { v.round = { ...v.round, phase: 'live' }; },
+    spike: v => { v.round = { ...v.round, phase: 'planted', endsAt: Date.now() + 26000 }; v.show = { ...v.show, spikeTimer: true }; },
+    pause: v => { v.airPause = { kind: 'technical', startedAt: Date.now() - 134000 }; },
+    timeout: v => { v.airPause = { kind: 'timeout', team: 0, startedAt: Date.now() - 21000 }; },
+    banner: v => { v.banner = { ...v.banner, type: 'ace', team: 1, player: 0, ts: Date.now() - 100, hold: 3600000 }; },
+    poll: v => { v.show = { ...v.show, poll: true }; },
+    scoreboard: v => { v.show = { ...v.show, scoreboard: true }; },
+    economy: v => { v.show = { ...v.show, economy: true }; v.round = { ...v.round, phase: 'buy' }; },
+    recap: v => { v.show = { ...v.show, roundRecap: true }; v.round = { ...v.round, phase: 'end' }; },
+    duel: v => { v.show = { ...v.show, duel: true }; },
+    compare: v => { v.show = { ...v.show, teamCompare: true }; },
+    lowerthird: v => { v.show = { ...v.show, lowerThird: true }; v.lowerThird = { ...v.lowerThird, kind: 'caster' }; },
+    sponsor: v => { v.show = { ...v.show, lowerThird: true }; v.lowerThird = { kind: 'generic', title: (v.sponsors && v.sponsors[0] && v.sponsors[0].name) || 'SPONSOR', sub: 'Presented by', team: -1, player: 0 }; },
+    starting: v => { v.holding = { ...v.holding, mode: 'starting' }; },
+    brb: v => { v.holding = { ...v.holding, mode: 'brb' }; },
+    ending: v => { v.holding = { ...v.holding, mode: 'ending' }; },
+  };
   try { if(Q.has('hudSettings'))previewPatch=window.AirHudSettings.validate(JSON.parse(Q.get('hudSettings'))); } catch (_) { /* Invalid preview settings never enter the match state. */ }
   const previewSettings = state => {
     const view=merge(clone(state),previewPatch),modules=(document.body.dataset.modules||'').split(',').map(name=>name.trim()).filter(Boolean);
@@ -21,9 +43,25 @@
       const gate=gates[modules[0]];
       if(gate){view.show={...view.show,scoreboard:false,teamCompare:false,duel:false,roundRecap:false,economy:false,[gate]:true};}
     }
+    // Air's Adjust preview (never an OBS output): the scorebug and pause looks being edited, and a sample pause.
+    if(!OUTPUT&&Q.get('screen')==='1'){
+      try{const look=JSON.parse(Q.get('look')||'null');const t=look&&look.timer;const n=(v,lo,hi)=>Number.isFinite(+v)?Math.max(lo,Math.min(hi,+v)):undefined;
+        if(t)view.layout={...view.layout,timerWindow:{dx:n(t.dx,-200,200)??0,width:n(t.width,100,240)??160,plate:/^#[0-9a-f]{6}$/i.test(t.plate||'')?t.plate:'#17181e'}};
+        if(look&&(look.pause==='box'||look.pause==='panel'||look.pause==='bar'))view.layout={...view.layout,pauseStyle:look.pause};}catch(_){/* ignore a malformed preview look */}
+      if(Q.get('samplePause')==='1')view.airPause={kind:'technical',startedAt:Date.now()-134000};
+    }
+    if(!OUTPUT&&PREVIEW&&tplSample&&SAMPLES[tplSample])SAMPLES[tplSample](view);
+    // A HUD template's timer window, while it is previewed.
+    const tw=tplDraft&&tplDraft.template&&tplDraft.template.timer;
+    if(!OUTPUT&&tw&&typeof tw==='object')view.layout={...view.layout,timerWindow:tw};
+    // A brand kit being previewed: its Primary is the event colour the graphics use.
+    const pb=tplDraft&&tplDraft.brand&&tplDraft.brand.primary;
+    if(!OUTPUT&&/^#[0-9a-f]{6}$/i.test(pb||''))view.event={...view.event,accent:pb};
     return view;
   };
   const OUTPUT = /^\/o\/([0-9a-f-]{36})$/i.exec(location.pathname)?.[1] || null;
+  if (!OUTPUT && SAMPLES[Q.get('sample')]) tplSample = Q.get('sample');
+  try { if (!OUTPUT && Q.has('template')) tplDraft = { template: JSON.parse(Q.get('template')), brand: JSON.parse(Q.get('brand') || 'null') }; } catch (_) { tplDraft = null; }
   const MATCH = PREVIEW ? null : Q.get('match') || (OUTPUT ? 'MAIN' : null); // previews are isolated from live rooms and browser storage
   const previewNow = Date.now();
   const HUD = window.HUD = { subs: [], mods: [], events: [], now: PREVIEW && !SAMPLE_MOTION ? () => previewNow : () => Date.now(), preview: PREVIEW, demo: !PREVIEW && Q.has('demo'), live: !PREVIEW && !Q.has('demo') && !MATCH, match: MATCH };
@@ -100,8 +138,86 @@
   const fmt = HUD.fmt = sec => { sec = Math.max(0, Math.ceil(sec)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
   const fmtHundredths = sec => { const value = Math.max(0, Math.ceil(Math.round(sec * 1000) / 10)); return `${String(Math.floor(value / 100)).padStart(2, '0')}:${String(value % 100).padStart(2, '0')}`; };
   const money = n => Number(n || 0).toLocaleString('en-US');
-  const setImg = (im, url) => { if (!url) { im.style.visibility = 'hidden'; return; } im.style.visibility = ''; if (im.dataset.u !== url) { im.dataset.u = url; im.src = url; } };
+  // A picture that failed to load is not asked for again for a minute, so a missing file is not
+  // requested on every redraw (Air serves agent and map art from this PC at /art/).
+  const failedArt = new Map();
+  document.addEventListener('error', e => { const t = e.target; if (t && t.tagName === 'IMG' && t.src) failedArt.set(t.src, Date.now()); }, true);
+  const artFailed = url => { const at = failedArt.get(new URL(url, location.href).href); return at !== undefined && Date.now() - at < 60000; };
+  const setImg = (im, url) => { if (!url || artFailed(url)) { im.style.visibility = 'hidden'; return; } im.style.visibility = ''; if (im.dataset.u !== url) { im.dataset.u = url; im.src = url; } };
+  // A player photo from the producer's lineup (served by Air's engine). Only its own asset paths are trusted.
+  const photoOk = HUD.photoOk = v => typeof v === 'string' && /^\/air-assets\/[0-9a-f-]{36}$/i.test(v);
   const txt = (e, v) => { v = String(v); if (e.textContent !== v) e.textContent = v; };
+  // Updates `parent` to match `html` in place: unchanged nodes (and their pictures and running
+  // animations) are kept, only what differs is changed. Graphics that redraw on live data use this so
+  // nothing blinks or replays its entrance when an unrelated value changes. A picture that failed and
+  // fell back keeps its fallback until its source really changes.
+  const morphAttrs = (a, b) => {
+    if (a.tagName === 'IMG' && a.dataset.failed && a.dataset.failed === b.getAttribute('src')) return;
+    for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
+    for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+  };
+  const morphKids = (a, b) => {
+    const an = [...a.childNodes], bn = [...b.childNodes];
+    bn.forEach((y, i) => {
+      const x = an[i];
+      if (!x) { a.appendChild(y); return; }
+      if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y, x); return; }
+      if (y.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; return; }
+      morphAttrs(x, y);
+      if (x.innerHTML !== y.innerHTML) morphKids(x, y);
+    });
+    for (let i = an.length - 1; i >= bn.length; i--) a.removeChild(an[i]);
+  };
+  const morph = HUD.morph = (parent, html) => { const t = document.createElement('template'); t.innerHTML = html; morphKids(parent, t.content); };
+  /** A picture that fails shows its fallback once; the swap is remembered so a redraw does not retry it. */
+  const fallbackOnError = root => root.querySelectorAll('img[data-fallback]').forEach(im => { if (im.onerror) return; im.onerror = () => { im.onerror = null; im.dataset.failed = im.getAttribute('src'); im.src = im.dataset.fallback; im.classList.add('fallback'); }; });
+  const escH = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const logoOk = v => typeof v === 'string' && /^(\/air-assets\/[0-9a-f-]{36}|https:\/\/[^\s"'<>]+|\.\.\/[^\s"'<>]+)$/i.test(v);
+  /** A team's logo as markup: its picture, or its tag on its colour. */
+  const teamMark = (T, size) => logoOk(T.logo) ? `<img class="lg" src="${escH(T.logo)}" alt="" style="width:${size}px;height:${size}px">`
+    : `<span class="lg mono-logo" style="width:${size}px;height:${size}px;--c:${escH(T.color)};font-size:${Math.round(size * .34)}px">${escH(T.tag)}</span>`;
+  const eventAccent = s => (/^#[0-9a-f]{6}$/i.test(s.event && s.event.accent || '') ? s.event.accent : '#ffb22e');
+  /**
+   * The veto as the format's steps: done steps from the room's veto, then what comes next. The first
+   * open step is "now" while the veto has started and isn't finished. Teams alternate from the team
+   * that acted first (team A when nothing has happened yet).
+   */
+  const VETO_ORDER = { 1: ['ban', 'ban', 'ban', 'ban', 'ban', 'ban', 'decider'], 3: ['ban', 'ban', 'pick', 'pick', 'ban', 'ban', 'decider'], 5: ['ban', 'ban', 'pick', 'pick', 'pick', 'pick', 'decider'] };
+  /**
+   * The veto's steps in order: done ones, then the ones still to come. `order` is the order this match's veto
+   * follows (Esportra's custom order, [{action, team}]); without it, the best-of's usual order. `turn`
+   * ({team, action, endsAt}) says whose turn it is; without it the first open step is "now" only mid-veto.
+   * While a team chooses the side of a picked map, that pick carries `sideBy`.
+   */
+  const vetoSteps = HUD.vetoSteps = (veto, bestOf, order, turn) => {
+    const done = Array.isArray(veto) ? veto : [];
+    const custom = Array.isArray(order) && order.length >= done.length && order.length > 0 && order.every(o => o && ['ban', 'pick', 'decider'].includes(o.action));
+    const seq = custom ? order : (VETO_ORDER[bestOf] || VETO_ORDER[3]).map(action => ({ action }));
+    const first = done[0] && (done[0].team === 0 || done[0].team === 1) ? done[0].team : 0;
+    const choosingSide = turn && turn.action === 'pick_side' && (turn.team === 0 || turn.team === 1);
+    const steps = done.map((v, i) => ({ ...v, i, state: 'done' }));
+    const last = steps[steps.length - 1];
+    if (choosingSide && last && last.action === 'pick' && !last.side) last.sideBy = turn.team;
+    for (let i = done.length; i < seq.length; i++) {
+      const o = seq[i], team = o.action === 'decider' ? -1 : (o.team === 0 || o.team === 1 ? o.team : (first + i) % 2);
+      const now = i === done.length && (turn ? !(choosingSide && last && last.sideBy !== undefined) : done.length > 0);
+      steps.push({ i, action: o.action, team, state: now ? 'now' : 'next' });
+    }
+    return steps;
+  };
+  /** The veto's caption: the coin toss, the step being made and its time left, or complete. */
+  const vetoCaption = HUD.vetoCaption = (s, steps, clock = true) => {
+    const toss = s.vetoToss;
+    if (toss && toss.pending) return toss.winner === 0 || toss.winner === 1 ? `COIN TOSS   ·   ${s.teams[toss.winner].tag} WON` : 'COIN TOSS';
+    const doneN = steps.filter(x => x.state === 'done').length;
+    if (doneN >= steps.length) return 'VETO COMPLETE';
+    const t = s.vetoTurn, left = clock && t && t.endsAt ? Math.max(0, Math.ceil((t.endsAt - HUD.now()) / 1000)) : null;
+    const side = steps.find(x => x.sideBy !== undefined);
+    const what = side ? `${s.teams[side.sideBy].tag} CHOOSING SIDE ON ${side.map}` : `STEP ${doneN + 1} OF ${steps.length}`;
+    return left === null ? what : `${what}   ·   ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+  };
+  /** A player in agent select: no agent yet, choosing (hovering an agent), or locked in. Without the game's flag, an agent counts as locked. */
+  const lockState = HUD.lockState = p => (!p || !p.agent ? 'empty' : p.locked === false ? 'choosing' : 'locked');
   const timeLeft = HUD.timeLeft = r => r.endsAt ? Math.max(0, (r.endsAt - HUD.now()) / 1000) : (r.remaining || 0);
   // Align CSS motion once per plant; the compositor keeps it smooth between HUD ticks.
   const pulseSpike = (el, round) => {
@@ -161,6 +277,24 @@
     return sc;
   }
   function sceneFx(sc) { E('div', 'lines', sc); E('div', 'vig', sc); }
+  // Shared with core/postgame.js so its scenes use the same backdrop and frame.
+  HUD.sceneBg = sceneBg; HUD.chrome = chrome; HUD.sceneFx = sceneFx;
+  /** The map record Air sent (state.airRecord: the map the producer picked), applied over the room's live data,
+      so Map result and Map breakdown can show map 1 while map 2 is live. Without a record the live data stays. */
+  const withRecord = s => {
+    const R = s.airRecord;
+    if (!R || !Array.isArray(R.players) || !Array.isArray(R.teams) || !(R.map > 0)) return s;
+    const v = { ...s, map: { ...s.map, number: R.map, name: R.name || s.map.name },
+      teams: s.teams.map((t, i) => ({ ...t, ...(R.teams[i] || {}), score: R.score[i] })),
+      players: s.players.map((ps, i) => (R.players[i] || []).map((p, j) => ({ ...(ps[j] || {}), ...p, acs: null, hs: p.hsPct }))),
+      teamStats: (R.perf || []).map(x => ({ firstKills: x.firstKills, clutches: x.clutches, plants: x.plants, defuses: x.defuses })) };
+    if (Array.isArray(R.rounds)) { v.rounds = R.rounds; if (Array.isArray(R.firstSide)) v.firstSide = R.firstSide; }
+    return v;
+  };
+  /** "Presented by" for a sponsor space (Air's sponsor spaces), bottom right of a full-screen scene. */
+  const presented = (root) => { const el = E('div', 'presented mono', root);
+    return (s, space) => { const x = s.airSpaces && s.airSpaces[space]; el.style.display = x && x.name ? '' : 'none'; if (!x || !x.name) return;
+      el.innerHTML = `PRESENTED BY ${logoOk(x.logo) ? `<img src="${escH(x.logo)}" alt="${escH(x.name)}">` : `<b>${escH(x.name)}</b>`}`; }; };
   function toggle(el, on) { el.classList.toggle('on', !!on); }
   // scenes only rebuild when the data they show changes (score edits etc. don't replay entrances)
   const same = (o, s) => { const k = JSON.stringify([s.event, s.teams, s.players.map(t => t.map(p => [p.name, p.agent, p.k, p.d, p.a, p.acs, p.adr, p.hs])), s.registeredRoster, s.map, s.series, s.veto, s.bracket, s.standings, s.casters, s.schedule, s.holding, s.rounds, s.firstSide, s.teamStats, s.champion, Q.get('mode')]);
@@ -169,66 +303,103 @@
   // ───── modules ─────
   const M = HUD.modules = {};
 
+  // Scorebug (approved mock, 13 Nov): one flat charcoal plate built around the game's own round timer.
+  // The centre is an open window over the timer Valorant draws at the top; while the spike is planted the
+  // game blanks its timer and the window shows the beating spike and our countdown. Each half carries its
+  // side's colour (teal defence, crimson attack) in a slanted panel behind the score. Map wins are
+  // diamonds in small tabs. layout.timerWindow { dx, width, plate } lines the window up with the game.
+  const SB_SIDE = { DEF: [22, 150, 132], ATK: [200, 52, 82] };
+  const sbRgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const sbShade = (hex, f) => { const h = String(hex || '#17181e').replace('#', ''); const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16) || 0x17181e;
+    return '#' + [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(v * f)))).map(v => v.toString(16).padStart(2, '0')).join(''); };
+  const sbWindow = s => { const w = (s.layout && s.layout.timerWindow) || {}; const num = (v, lo, hi, d) => Number.isFinite(+v) ? Math.max(lo, Math.min(hi, +v)) : d;
+    // The side colours come from the event's brand kit (state.airBrand), teal and crimson by default.
+    const rgb = v => /^#[0-9a-f]{6}$/i.test(v || '') ? [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16)) : null, kit = s.airBrand || {};
+    return { dx: num(w.dx, -200, 200, 0), hw: num(w.width, 100, 240, 160) / 2, plate: /^#[0-9a-f]{6}$/i.test(w.plate || '') ? w.plate : '#17181e', def: rgb(kit.def) || SB_SIDE.DEF, atk: rgb(kit.atk) || SB_SIDE.ATK }; };
+  function sbPlate(sl, sr, planted, wins, needed, win) {
+    const SIDE = { DEF: win.def, ATK: win.atk }, L = SIDE[sl] || win.def, R = SIDE[sr] || win.atk, cx = 380, l = cx - win.hw, r = cx + win.hw, lb = l + 14, rb = r - 14;
+    const top = sbShade(win.plate, 1.1), mid = win.plate, bot = sbShade(win.plate, .86);
+    const dia = (x, on) => `<path d="M${x} 77 l5 5 l-5 5 l-5 -5 Z" fill="${on ? '#fff' : 'none'}" stroke="#fff" stroke-width="1.6"/>`;
+    const dias = (from, won) => needed > 1 ? Array.from({ length: needed }, (_, i) => dia(from + i * 18 - (needed - 2) * 9, i < won)).join('') : '';
+    return `<svg viewBox="0 0 760 112" aria-hidden="true">
+      <defs>
+        <linearGradient id="vsbGL" x1="0" x2="1"><stop offset="0" stop-color="${sbRgba(L, 0)}"/><stop offset=".45" stop-color="${sbRgba(L, .38)}"/><stop offset="1" stop-color="${sbRgba(L, .92)}"/></linearGradient>
+        <linearGradient id="vsbGR" x1="1" x2="0"><stop offset="0" stop-color="${sbRgba(R, 0)}"/><stop offset=".45" stop-color="${sbRgba(R, .38)}"/><stop offset="1" stop-color="${sbRgba(R, .92)}"/></linearGradient>
+        <linearGradient id="vsbBL" x1="0" x2="1"><stop offset="0" stop-color="${sbRgba(L, 0)}"/><stop offset="1" stop-color="${sbRgba(L, 1)}"/></linearGradient>
+        <linearGradient id="vsbBR" x1="1" x2="0"><stop offset="0" stop-color="${sbRgba(R, 0)}"/><stop offset="1" stop-color="${sbRgba(R, 1)}"/></linearGradient>
+        <linearGradient id="vsbPL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset=".5" stop-color="${mid}"/><stop offset="1" stop-color="${bot}"/></linearGradient>
+        <linearGradient id="vsbLIT" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(255,255,255,.20)"/><stop offset=".42" stop-color="rgba(255,255,255,0)"/><stop offset="1" stop-color="rgba(0,0,0,.32)"/></linearGradient>
+        <linearGradient id="vsbSPK" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8e1f35"/><stop offset="1" stop-color="#3a0b16"/></linearGradient>
+        <radialGradient id="vsbRL" cx=".5" cy=".55" r=".5"><stop offset="0" stop-color="${sbRgba(L, .85)}"/><stop offset="1" stop-color="${sbRgba(L, 0)}"/></radialGradient>
+        <radialGradient id="vsbRR" cx=".5" cy=".55" r=".5"><stop offset="0" stop-color="${sbRgba(R, .85)}"/><stop offset="1" stop-color="${sbRgba(R, 0)}"/></radialGradient>
+        <filter id="vsbDrop" x="-10%" y="-40%" width="120%" height="200%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".55"/><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#000" flood-opacity=".5"/></filter>
+        <filter id="vsbSoft" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur stdDeviation="6"/></filter>
+        <filter id="vsbGlint" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.4"/></filter>
+        <clipPath id="vsbCL"><path d="M0 0 H${l} L${lb} 74 H18 L0 56 Z"/></clipPath>
+        <clipPath id="vsbCR"><path d="M${r} 0 H760 V56 L742 74 H${rb} Z"/></clipPath>
+      </defs>
+      <g filter="url(#vsbDrop)">
+        <path d="M0 0 H${l} L${lb} 74 H18 L0 56 Z" fill="url(#vsbPL)"/>
+        <path d="M${r} 0 H760 V56 L742 74 H${rb} Z" fill="url(#vsbPL)"/>
+        ${needed > 1 ? `<path d="M${l - 104} 74 H${l - 32} L${l - 40} 92 H${l - 96} Z" fill="url(#vsbPL)"/><path d="M${r + 32} 74 H${r + 104} L${r + 96} 92 H${r + 40} Z" fill="url(#vsbPL)"/>` : ''}
+        <path d="M${lb + 8} 74 H${rb - 8} L${rb - 18} 96 H${lb + 18} Z" fill="url(#vsbPL)"/>
+        ${planted ? `<path d="M${l} 0 H${r} L${rb} 74 H${lb} Z" fill="url(#vsbSPK)"/>` : ''}
+      </g>
+      <g clip-path="url(#vsbCL)"><ellipse cx="${l - 68}" cy="38" rx="96" ry="44" fill="url(#vsbRL)" opacity=".7" filter="url(#vsbSoft)"/>
+        <path d="M${l - 150} 0 H${l} L${lb} 74 H${l - 136} Z" fill="url(#vsbGL)"/><path d="M${l - 150} 0 H${l} L${lb} 74 H${l - 136} Z" fill="url(#vsbLIT)"/>
+        <g stroke="rgba(255,255,255,.10)" fill="none"><path d="M${l - 94} 0 L${l - 62} 74"/><path d="M${l - 64} 74 L${l - 24} 6"/></g>
+        <g fill="rgba(255,255,255,.06)"><path d="M${l - 50} 0 H${l - 16} L${l - 32} 26 Z"/><path d="M${l - 102} 74 L${l - 78} 38 L${l - 66} 74 Z"/></g></g>
+      <g clip-path="url(#vsbCR)"><ellipse cx="${r + 68}" cy="38" rx="96" ry="44" fill="url(#vsbRR)" opacity=".7" filter="url(#vsbSoft)"/>
+        <path d="M${r + 150} 0 H${r} L${rb} 74 H${r + 136} Z" fill="url(#vsbGR)"/><path d="M${r + 150} 0 H${r} L${rb} 74 H${r + 136} Z" fill="url(#vsbLIT)"/>
+        <g stroke="rgba(255,255,255,.10)" fill="none"><path d="M${r + 94} 0 L${r + 62} 74"/><path d="M${r + 64} 74 L${r + 24} 6"/></g>
+        <g fill="rgba(255,255,255,.06)"><path d="M${r + 50} 0 H${r + 16} L${r + 32} 26 Z"/><path d="M${r + 102} 74 L${r + 78} 38 L${r + 66} 74 Z"/></g></g>
+      <g fill="none"><path d="M${l} 0 L${lb} 74" stroke="#05090e" stroke-width="4"/><path d="M${l + 3} 0 L${lb + 3} 74" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
+        <path d="M${r} 0 L${rb} 74" stroke="#05090e" stroke-width="4"/><path d="M${r - 3} 0 L${rb - 3} 74" stroke="rgba(255,255,255,.22)" stroke-width="1"/></g>
+      <g stroke="#fff" stroke-linecap="round"><path d="M${l + 1} 1 L${l + 4} 16" stroke-width="2.4" filter="url(#vsbGlint)"/><path d="M${l + 1} 1 L${l + 3} 12" stroke-width="1.2"/>
+        <path d="M${r - 1} 1 L${r - 4} 16" stroke-width="2.4" filter="url(#vsbGlint)"/><path d="M${r - 1} 1 L${r - 3} 12" stroke-width="1.2"/></g>
+      <path d="M1 .8 H${l - 1} M${r + 1} .8 H759" stroke="rgba(255,255,255,.10)"/>
+      <path d="M18 73.5 H${lb - 2} M${rb + 2} 73.5 H742" stroke="rgba(0,0,0,.6)"/>
+      <g filter="url(#vsbSoft)" opacity=".8"><path d="M${l - 190} 72 H${lb - 2}" stroke="url(#vsbBL)" stroke-width="6"/><path d="M${rb + 2} 72 H${r + 190}" stroke="url(#vsbBR)" stroke-width="6"/></g>
+      <path d="M18 72.5 H${lb - 2}" stroke="url(#vsbBL)" stroke-width="2"/><path d="M${rb + 2} 72.5 H742" stroke="url(#vsbBR)" stroke-width="2"/>
+      ${dias(l - 77, wins[0])}${dias(r + 59, wins[1])}
+    </svg>`;
+  }
+
   M.scorebug = root => {
-    const m = E('div', 'mod scorebug-layer', root), sb = E('div', 'sb fx-wipe', m), row = E('div', 'sb-row', sb);
-    const side = i => { const n = E('div', 'sb-name ' + (i ? 'r' : 'l'), row); const sd = E('div', 'sb-side mono', n); return { n, sd }; };
-    const A = side(0); const sA = E('div', 'sb-score l', row); const mid = E('div', 'sb-mid notch-b', row); const sB = E('div', 'sb-score r', row); const B = side(1);
-    const top = E('div', 'top mono', mid), tm = E('div', 'tm', mid), bot = E('div', 'bot mono', mid);
-    let timerCells = null;
-    // Rajdhani's digits have different advances even with tabular-nums enabled.
-    // Keep each urgent digit in a fixed slot and update only its text.
-    function renderTimer(label, urgent) {
-      if (!urgent) {
-        if (timerCells) { tm.textContent = label; timerCells = null; }
-        else txt(tm, label);
-        return;
-      }
-      if (!timerCells) {
-        tm.textContent = '';
-        timerCells = Array.from({length:5}, (_, i) => E('span', i === 2 ? 'tm-separator' : 'tm-digit', tm));
-      }
-      timerCells.forEach((cell, i) => txt(cell, label[i]));
-    }
-    const pips = [E('div', 'sb-pips l', sb), E('div', 'sb-pips r', sb)], heads = [E('div', 'sb-heads l', sb), E('div', 'sb-heads r', sb)];
-    const tag = E('div', 'sb-tag mono', sb); let last = [null, null], sig = '';
-    function build(s) {
-      [A, B].forEach((o, i) => { o.n.querySelectorAll('.lg,.nm,.bar').forEach(x => x.remove()); tv(o.n, s, i);
-        const nm = E('div', 'nm', null, s.teams[i].name); const lg = logo(s.teams[i], 44, null);
-        if (i) { o.n.appendChild(nm); o.n.appendChild(lg); } else { o.n.appendChild(lg); o.n.appendChild(nm); } E('div', 'bar', o.n); });
-      heads.forEach((h, i) => { h.innerHTML = ''; tv(h, s, i); s.players[i].forEach(p => { const d = E('div', '', h); const im = E('img', '', d); setImg(im, agent(p.agent) && agent(p.agent).icon); }); });
-    }
+    const m = E('div', 'mod scorebug-layer', root), sb = E('div', 'vsb fx-wipe', m);
+    const plateBox = E('div', 'vsb-plate', sb);
+    const team = i => { const t = E('div', 'vsb-team ' + (i ? 'r' : 'l'), sb); const lg = E('div', 'vsb-logo', t); const tx = E('div', 'vsb-tx', t); return { t, lg, tag: E('div', 'vsb-tag', tx), sub: E('div', 'vsb-sub', tx) }; };
+    const A = team(0), B = team(1), sA = E('div', 'vsb-score l', sb), sB = E('div', 'vsb-score r', sb);
+    const spike = E('div', 'vsb-spike', sb), spk = E('i', 'vsb-spk', spike), spkT = E('span', '', spike);
+    const round = E('div', 'vsb-round', sb), tag = E('div', 'vsb-status', sb);
+    const heads = [E('div', 'vsb-heads l', sb), E('div', 'vsb-heads r', sb)];
+    let last = [null, null], sig = '', plateSig = '', headSig = '';
+    const sideOf = (s, i) => (s.teams[i].side === 'ATK' || s.teams[i].side === 'DEF') ? s.teams[i].side : (i ? 'ATK' : 'DEF');
     return { update(s) {
       toggle(m, s.show.scorebug);
-      const k = JSON.stringify([s.teams.map(t => [t.name, t.tag, t.color, t.logo]), s.players.map(t => t.map(p => p.agent))]);
-      if (k !== sig) { sig = k; build(s); }
-      [sA, sB].forEach((e, i) => { tv(e, s, i); const v = s.teams[i].score; if (last[i] !== null && last[i] !== v) { e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop'); } last[i] = v; txt(e, v); });
-      [A, B].forEach((o, i) => txt(o.sd, s.teams[i].side || ''));
-      pips.forEach((p, i) => { tv(p, s, i); p.innerHTML = ''; for (let j = 0; j < need(s); j++) E('i', j < s.teams[i].series ? 'w' : '', p); p.style.display = s.event.bestOf > 1 ? '' : 'none'; });
-      heads.forEach((h, i) => [...h.children].forEach((d, j) => d.classList.toggle('dead', !s.players[i][j].alive)));
+      const win = sbWindow(s);
+      sb.style.setProperty('--vsb-dx', win.dx + 'px'); sb.style.setProperty('--vsb-hw', win.hw + 'px');
+      const k = JSON.stringify(s.teams.map(t => [t.name, t.tag, t.color, t.logo]));
+      if (k !== sig) { sig = k; [A, B].forEach((o, i) => { o.lg.innerHTML = ''; logo(s.teams[i], 46, o.lg); }); }
+      [A, B].forEach((o, i) => { txt(o.tag, s.teams[i].tag || s.teams[i].name); txt(o.sub, s.teams[i].name && s.teams[i].tag ? s.teams[i].name : sideOf(s, i)); });
+      [sA, sB].forEach((e, i) => { const v = s.teams[i].score; if (last[i] !== null && last[i] !== v) { e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop'); } last[i] = v; txt(e, v); });
+      const planted = s.round.phase === 'planted', wins = [0, 1].map(i => s.teams[i].series || 0);
+      const ps = JSON.stringify([sideOf(s, 0), sideOf(s, 1), planted, wins, need(s), win]);
+      if (ps !== plateSig) { plateSig = ps; plateBox.innerHTML = sbPlate(sideOf(s, 0), sideOf(s, 1), planted, wins, need(s), win); }
+      const hs = JSON.stringify(s.players.map(t => t.map(p => p.agent)));
+      if (hs !== headSig) { headSig = hs; heads.forEach((h, i) => { h.innerHTML = ''; s.players[i].forEach(p => { const d = E('div', '', h); d.style.setProperty('--c', s.teams[i].color); const im = E('img', '', d); setImg(im, agent(p.agent) && agent(p.agent).icon); }); }); }
+      heads.forEach((h, i) => [...h.children].forEach((d, j) => d.classList.toggle('dead', !(s.players[i][j] || {}).alive)));
       heads.forEach(h => h.style.display = vis.players(s) ? 'none' : '');
-      txt(top, `ROUND ${s.round.number}`); txt(bot, `MAP ${s.map.number}  /  ${s.map.name}`);
       const st = HUD.status(s); tag.classList.toggle('show', !!st);
-      if (st) { txt(tag, st.text); tag.style.background = st.team >= 0 ? s.teams[st.team].color : 'var(--red)'; tag.style.color = st.team >= 0 ? ink(s.teams[st.team].color) : '#fff'; }
+      if (st) { txt(tag, st.text); tag.style.setProperty('--c', st.team >= 0 ? s.teams[st.team].color : 'var(--red)'); }
       this.tick(s);
     }, tick(s) {
-      const r = s.round, t = timeLeft(r); let cls = '', label = fmt(t);
-      if (r.phase === 'planted') {
-        cls = 'planted'; label = '';
-        pulseSpike(tm, r);
-      } else {
-        tm.style.removeProperty('--spike-delay'); delete tm.dataset.spikeDeadline;
-        if (r.phase === 'buy') { cls = 'buy'; }
-        else if (r.phase === 'paused') { cls = 'paused'; label = 'PAUSE'; }
-        else if (r.phase === 'end') label = '0:00';
-      }
-      const urgent = r.phase === 'live' && t <= 15;
-      if (urgent) { cls += ' urgent'; label = fmtHundredths(t); }
-      renderTimer(label, urgent);
-      const timerClass = 'tm ' + cls;
-      if (tm.className !== timerClass) tm.className = timerClass;
-    }, frame(s) {
-      const r = s.round;
-      if (r.endsAt && r.phase === 'live' && timeLeft(r) <= 15) this.tick(s);
+      // The game draws the round timer; only the planted spike (when the game's timer is blank) is ours.
+      const r = s.round, planted = r.phase === 'planted';
+      sb.classList.toggle('planted', planted);
+      if (planted) { pulseSpike(spk, r); txt(spkT, fmt(timeLeft(r))); }
+      else { spk.style.removeProperty('--spike-delay'); delete spk.dataset.spikeDeadline; }
+      txt(round, r.phase === 'paused' ? 'PAUSED' : `ROUND ${r.number || 1}`);
     } };
   };
 
@@ -343,24 +514,88 @@
     } };
   };
 
+  // ── Player cameras ────────────────────────────────────────────────────────────────────────────
+  // A camera is a VDO.Ninja view (a push link the player opens) named in state.airCams.slots[team][slot].
+  // Nothing is drawn or loaded for a slot with no link, so pages without cameras are unchanged.
+  const camFrames = new Set();
+  let camBeat = null;
+  const camUrl = (id, ms) => 'https://vdo.ninja/?view=' + encodeURIComponent(id) + '&solo&noaudio&cleanoutput&api=esportra-air' + (ms > 0 ? '&buffer=' + ms : '');
+  window.addEventListener('message', ev => {
+    const d = ev.data; if (!d || typeof d !== 'object') return;
+    camFrames.forEach(c => { if (c.iframe && c.iframe.contentWindow === ev.source) c.heard(d); });
+  });
+  const camReport = c => { if (c.id) HUD.send({ type: 'cam', team: c.team, slot: c.slot, connected: c.connected }); };
+  // One camera window: shows the stream for its slot, and tells the engine whether it is connected.
+  function camWindow(parent, team, slot) {
+    const c = { team, slot, id: '', ms: 0, connected: false, iframe: null, parent };
+    c.heard = d => {
+      const on = d.action === 'view-connection' ? !!d.value : ['video-loaded', 'track-added', 'peer-connected'].includes(d.action) ? true : ['end-view-connection', 'view-connection-lost', 'peer-disconnected'].includes(d.action) ? false : null;
+      if (on !== null && on !== c.connected) { c.connected = on; parent.classList.toggle('live', on); camReport(c); }
+    };
+    c.set = (id, ms) => {
+      id = id || ''; ms = +ms || 0;
+      if (id === c.id && ms === c.ms) return;
+      c.id = id; c.ms = ms; c.connected = false; parent.classList.remove('live');
+      if (c.iframe) { c.iframe.remove(); c.iframe = null; }
+      if (id) { const f = document.createElement('iframe'); f.className = 'camview'; f.allow = 'autoplay'; f.setAttribute('scrolling', 'no'); f.src = camUrl(id, ms); parent.insertBefore(f, parent.firstChild); c.iframe = f; }
+      if (!camBeat) camBeat = setInterval(() => camFrames.forEach(camReport), 5000);
+    };
+    camFrames.add(c);
+    return c;
+  }
+
   M.playercams = root => {
     const m = E('div', 'mod', root);
     const teams = [0, 1].map(team => {
       const column = E('div', 'player-cams ' + (team ? 'r fx-right' : 'l fx-left'), m);
-      const frames = Array.from({length:5}, () => {
+      const frames = Array.from({length:5}, (_, slot) => {
         const frame = E('div', 'cam', column), name = E('span', 'name mono', frame);
-        return {frame, name};
+        return {frame, name, cam: camWindow(frame, team, slot)};
       });
       return {column, frames};
     });
     return {update(s) {
-      toggle(m, s.show.playerCams && vis.players(s));
+      const cams = s.airCams, ingame = !cams || cams.layout === 'ingame';
+      toggle(m, s.show.playerCams && vis.players(s) && ingame);
       teams.forEach((team, i) => {
         tv(team.column, s, i);
-        team.frames.forEach(({frame, name}, j) => {
+        team.frames.forEach(({frame, name, cam}, j) => {
           const player = s.players[i][j]; frame.style.visibility = player ? '' : 'hidden';
           txt(name, player?.name || 'PLAYER ' + (j + 1));
           frame.classList.toggle('observed', s.observed[0] === i && s.observed[1] === j);
+          cam.set(ingame && cams?.slots?.[i]?.[j], cams?.delayMs);
+        });
+      });
+    }};
+  };
+
+  // Full-screen camera wall: the observed team's five (5-up) or both teams' ten (10-up).
+  M.camgrid = root => {
+    const m = E('div', 'mod', root), wall = E('div', 'camwall fx-rise', m);
+    E('div', 'camwall-title mono', wall, 'PLAYER CAMS');
+    const rows = [0, 1].map(team => {
+      const row = E('div', 'camrow', wall);
+      const frames = Array.from({length:5}, (_, slot) => {
+        const frame = E('div', 'cam', row), name = E('span', 'name mono', frame);
+        return {frame, name, cam: camWindow(frame, team, slot)};
+      });
+      return {row, frames};
+    });
+    return {update(s) {
+      // Previews (library, editor, rehearsal) show the full wall; on air it follows the producer's layout.
+      const cams = s.airCams, layout = cams?.layout || (PREVIEW ? 'grid10' : null), wanted = layout === 'grid5' || layout === 'grid10';
+      toggle(m, wanted);
+      wall.classList.toggle('one', layout === 'grid5');
+      const first = s.observed && s.observed[0] === 1 ? 1 : 0;
+      rows.forEach((r, i) => {
+        r.row.style.display = layout === 'grid5' && i !== first ? 'none' : '';
+        tv(r.row, s, i);
+        r.frames.forEach(({frame, name, cam}, j) => {
+          const player = s.players[i][j];
+          txt(name, player?.name || 'PLAYER ' + (j + 1));
+          frame.classList.toggle('observed', s.observed[0] === i && s.observed[1] === j);
+          const shown = wanted && (layout === 'grid10' || i === first);
+          cam.set(shown && cams?.slots?.[i]?.[j], cams?.delayMs);
         });
       });
     }};
@@ -511,30 +746,81 @@
   };
 
   // ───── full-screen scenes ─────
+  // Map veto (approved mock, 14 Nov): the format's steps in order. Done steps show the map, who acted
+  // and the side; the step being chosen pulses in that team's colour; later steps wait as empty slots.
   M.veto = root => {
-    const m = E('div', 'mod on vt', root); const sc = sceneBg(m); const ch = chrome(m, 'MAP VETO');
-    const title = E('div', 'title disp hl', m, 'MAP VETO'), hdr = E('div', 'title-r mono', m); hdr.style.color = '#f0f0f2'; const box = E('div', '', m), cap = E('div', 'cap mono', m); sceneFx(sc);
-    return { update(s) { if (same(this, s)) return;
-      txt(hdr, `VALORANT   /   ${s.teams[0].tag}  VS  ${s.teams[1].tag}`); box.innerHTML = '';
-      s.veto.forEach((v, i) => { const M_ = mapA(v.map); const c = E('div', 'card ' + (v.action === 'ban' ? 'ban' : v.action === 'decider' ? 'dec' : 'pick'), box); c.style.left = (167 + i * 230) + 'px';
-        c.style.animation = `tIn .6s ${.08 * i}s var(--ease) both`; c.style.transform = 'translateY(40px)'; c.style.opacity = 0;
-        const T = v.team >= 0 ? s.teams[v.team] : null; const inner = E('div', 'inner', c);
-        inner.innerHTML = `<img src="${M_ ? M_.tall : ''}">${v.action === 'decider' ? '<div class="tint"></div>' : ''}<div class="sh"></div><div class="idx mono">0${i + 1}</div><div class="mn">${v.map}</div><div class="by mono">${T ? T.tag + ' ' + (v.action === 'ban' ? 'BAN' : 'PICK') : 'DECIDER'}${v.side ? '   /   ' + v.side : ''}</div>`;
-        if (v.action === 'ban') c.insertAdjacentHTML('beforeend', `<svg class="slash" width="212" height="620"><line x1="12" y1="-18" x2="200" y2="638" stroke="#e0445e" stroke-width="3.5"/></svg>`);
-        const col = T ? T.color : '#e0445e';
-        const stp = E('div', 'stamp mono', c, v.action === 'ban' ? 'BANNED' : v.action === 'pick' ? `PICKED<small>${T.tag}</small>` : `DECIDER<small>MAP ${s.series.findIndex(x => x.map === v.map) + 1 || ''}</small>`);
-        stp.style.cssText += v.action === 'ban' ? ';color:#e0445e;border:3px solid #e0445e;background:rgba(18,10,13,.9)' : v.action === 'pick' ? `;color:#fff;border:3px solid ${col};background:rgba(14,14,16,.85)` : ';color:#fff;border:3px solid #e0445e;background:#e0445e'; });
-      const l = s.veto[s.veto.length - 1]; txt(cap, l ? (l.team >= 0 ? `${s.teams[l.team].tag} ${l.action.toUpperCase()}S ${l.map}` : `DECIDER: ${l.map}`) : '');
-    } };
+    const m = E('div', 'mod on vt', root); const sc = sceneBg(m); chrome(m, 'MAP VETO');
+    const head = E('div', 'vt-head', m), title = E('div', 'title disp hl', head, 'MAP VETO'), sub = E('div', 'title-r mono', head);
+    const tl = E('div', 'vt-team l', m), tr = E('div', 'vt-team r', m);
+    const box = E('div', 'steps', m), cap = E('div', 'cap mono', m); sceneFx(sc);
+    void title;
+    let sig = '', cur = null;
+    return {
+      // Coming on air plays every card's entrance once; afterwards only a new card animates.
+      play() { sig = ''; box.innerHTML = ''; },
+      update(s) {
+        const k = JSON.stringify([s.veto, s.vetoOrder, s.vetoTurn, s.vetoToss, s.teams.map(t => [t.name, t.tag, t.color, t.logo]), s.series.map(x => x.map), s.event.bestOf, s.event.stage, s.event.accent]);
+        if (k === sig) return; sig = k;
+        m.style.setProperty('--ev', eventAccent(s));
+        txt(sub, [s.event.stage, `BEST OF ${s.event.bestOf}`].filter(Boolean).join('   ·   '));
+        [tl, tr].forEach((el, t) => morph(el, `${teamMark(s.teams[t], 96)}<div><b>${escH(s.teams[t].name)}</b><span class="mono">${escH(s.teams[t].tag)}</span></div>`));
+        const steps = cur = vetoSteps(s.veto, s.event.bestOf, s.vetoOrder, s.vetoTurn);
+        box.style.setProperty('--n', steps.length);
+        morph(box, steps.map(st => {
+          const n = String(st.i + 1).padStart(2, '0'), T = st.team >= 0 ? s.teams[st.team] : null;
+          const label = st.action === 'decider' ? 'DECIDER' : st.action === 'pick' ? 'PICK' : 'BAN';
+          const enter = `animation:tIn .6s ${.06 * st.i}s var(--ease) both;opacity:0;transform:translateY(40px)`;
+          if (st.state !== 'done') {
+            const now = st.state === 'now';
+            const word = now ? (T ? `${escH(T.tag)} ${st.action === 'pick' ? 'PICKING' : 'BANNING'}` : 'DECIDER') : 'UP NEXT';
+            return `<div class="card ${now ? 'now' : 'next'}" style="--c:${T ? escH(T.color) : 'var(--ev)'};${enter}"><div class="hd"><b class="stamp">${label}</b><i class="mono">${n}</i></div><div class="art"><div class="mn">${word}</div></div><div class="ft">${T ? `<div class="by">${teamMark(T, 40)}${escH(T.tag)}</div>` : ''}<div class="nt mono">${now ? 'CHOOSING NOW' : st.action === 'decider' ? 'LAST MAP STANDING' : ''}</div></div></div>`;
+          }
+          const Mm = mapA(st.map), kind = st.action === 'ban' ? 'ban' : st.action === 'decider' ? 'dec' : 'pick';
+          const by = st.sideTeam === 0 || st.sideTeam === 1 ? s.teams[st.sideTeam] : T ? s.teams[1 - st.team] : null;
+          const note = st.side ? (by ? `${escH(by.tag)} PICKS ${escH(st.side)}` : `${escH(st.side)} FIRST`) : st.sideBy !== undefined ? `${escH(s.teams[st.sideBy].tag)} CHOOSING SIDE` : kind === 'ban' ? 'BANNED' : kind === 'dec' ? `MAP ${s.series.findIndex(x => x.map === st.map) + 1 || ''}` : '';
+          return `<div class="card ${kind}" style="--c:${kind === 'pick' && T ? escH(T.color) : kind === 'dec' ? 'var(--ev)' : 'rgba(255,255,255,.14)'};${enter}"><div class="hd"><b class="stamp">${label}</b><i class="mono">${n}</i></div><div class="art">${Mm ? `<img src="${escH(Mm.tall)}" alt="">` : ''}${kind === 'ban' ? '<span class="strike"></span>' : ''}<div class="mn">${escH(st.map)}</div></div><div class="ft">${T ? `<div class="by">${teamMark(T, 40)}${escH(T.tag)}</div>` : '<div class="by dec">DECIDER</div>'}<div class="nt mono">${note}</div></div></div>`;
+        }).join(''));
+        txt(cap, vetoCaption(s, steps));
+      },
+      // The turn's time left counts down between updates.
+      tick(s) { if (cur && s.vetoTurn && s.vetoTurn.endsAt) txt(cap, vetoCaption(s, cur)); },
+    };
   };
 
+  // Agent select (approved mock, 14 Nov): five players a side facing the map. A player still choosing
+  // is dimmed; a lock-in fills the card and flashes that card once.
   M.lineups = root => {
-    const m = E('div', 'mod on lu', root); const sc = sceneBg(m); chrome(m, 'AGENT SELECT'); const box = E('div', '', m); sceneFx(sc);
-    return { update(s) { if (same(this, s)) return; box.innerHTML = `<div class="vs">vs</div>` + [0, 1].map(i => { const T = s.teams[i];
-      return `<div class="th disp hl ${i ? 'r' : 'l'}">${T.name}<small>${T.side || ''}   /   MAP ${s.map.number} ${s.map.name}</small></div><div class="col ${i ? 'r' : 'l'}" style="--c:${T.color}">` + s.players[i].map((p, j) => { const A = agent(p.agent);
-        return `<div class="pc" style="animation:tIn .6s ${.07 * (i * 5 + j)}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img class="por" src="${A.full}" data-fallback="${A.icon}"><img class="icon" src="${A.icon}">` : '<div class="pending mono">AWAITING PICK</div>'}<div class="sh"></div><div class="pn">${p.name || 'PLAYER ' + (j + 1)}</div><div class="an mono">${A ? A.name : 'AGENT PENDING'}</div><div class="rl mono">${A ? A.role : ''}</div></div>`; }).join('') + '</div>'; }).join('');
-      box.querySelectorAll('.pc img.por').forEach(im => { im.onerror = () => { im.onerror = null; im.src = im.dataset.fallback; im.classList.add('fallback'); }; });
-    } };
+    const m = E('div', 'mod on lu', root); const sc = sceneBg(m); chrome(m, 'AGENT SELECT');
+    const ths = [E('div', 'th l', m), E('div', 'th r', m)], vs = E('div', 'vs', m);
+    const row = E('div', 'lu-row', m), cols = [E('div', 'col l', row), E('div', 'mapc', row), E('div', 'col r', row)], cnt = E('div', 'cnt mono', m); sceneFx(sc);
+    let sig = '', was = null;
+    return {
+      play() { sig = ''; was = null; cols[0].innerHTML = cols[2].innerHTML = ''; },
+      update(s) {
+        const k = JSON.stringify([s.players.map(t => t.map(p => [p.name, p.agent, p.locked])), s.teams.map(t => [t.name, t.tag, t.color, t.logo, t.side, t.series]), s.map, s.series, s.event.accent]);
+        if (k === sig) return; sig = k;
+        m.style.setProperty('--ev', eventAccent(s));
+        const now = s.players.map(t => t.slice(0, 5).map(lockState));
+        ths.forEach((el, t) => { const T = s.teams[t];
+          morph(el, `${teamMark(T, 84)}<b class="disp">${escH(T.name)}</b>${T.side ? `<span class="side ${T.side === 'ATK' ? 'atk' : 'def'}">${escH(T.side)}</span>` : ''}`); });
+        morph(vs, `<b>AGENT SELECT</b><span class="mono">MAP ${escH(s.map.number || 1)}   ·   ${escH(s.map.name)}</span>`);
+        [0, 1].forEach(t => { const T = s.teams[t];
+          cols[t * 2].style.setProperty('--c', T.color);
+          morph(cols[t * 2], s.players[t].slice(0, 5).map((p, j) => { const A = agent(p.agent), st = now[t][j];
+            const just = was && was[t] && was[t][j] !== 'locked' && st === 'locked';
+            const enter = `animation:tIn .6s ${.06 * (t * 5 + j)}s var(--ease) both;opacity:0;transform:translateY(40px)`;
+            return `<div class="pc ${st}${just ? ' just' : ''}" style="${enter}"><div class="por" style="background:linear-gradient(180deg,#${A && A.grad[0] || '2a2f37'},#121418)">${A ? `<img class="por-i" src="${escH(A.full)}" data-fallback="${escH(A.icon)}" alt="">` : ''}</div>${st === 'locked' ? '<span class="lock mono">LOCKED</span>' : ''}<div class="who"><b>${escH(p.name || 'PLAYER ' + (j + 1))}</b><span class="mono">${st === 'locked' ? `<em>${escH(A.name)}</em>` : 'CHOOSING'}</span></div></div>`;
+          }).join(''));
+        });
+        const Mm = mapA(s.map.name), played = s.series.filter(x => x.winner === 0 || x.winner === 1);
+        const dia = t => Array.from({ length: Math.ceil((s.event.bestOf || 1) / 2) }, (_, i) => `<i class="${i < (s.teams[t].series || 0) ? 'w' : ''}" style="--c:${escH(s.teams[t].color)}"></i>`).join('');
+        morph(cols[1], `<div class="art">${Mm ? `<img src="${escH(Mm.tall)}" alt="">` : ''}<b>${escH(s.map.name)}</b></div><div class="info"><div class="score">${s.teams[0].series || 0} – ${s.teams[1].series || 0}<small class="mono">SERIES   ·   MAP ${escH(s.map.number || 1)}</small></div><div class="dia"><span>${dia(0)}</span><span>${dia(1)}</span></div><div class="played mono">${played.map(x => `${escH(x.map)} ${x.score[0]}–${x.score[1]}`).join('<br>')}</div></div>`);
+        fallbackOnError(row);
+        const locked = now.flat().filter(x => x === 'locked').length;
+        txt(cnt, `${locked} OF ${now.flat().length} LOCKED`);
+        was = now;
+      },
+    };
   };
 
   M.intro = root => {
@@ -549,15 +835,18 @@
   };
 
   M.mapresult = root => {
-    const m = E('div', 'mod on mr', root); const sc = sceneBg(m); const bgm = E('img', 'bgm', sc); chrome(m, 'MAP RESULT'); const box = E('div', '', m); sceneFx(sc);
-    return { update(s) { if (same(this, s)) return;
+    const m = E('div', 'mod on mr', root); const sc = sceneBg(m); const bgm = E('img', 'bgm', sc); chrome(m, 'MAP RESULT'); const box = E('div', '', m); sceneFx(sc); const pres = presented(m);
+    return { update(s) { s = withRecord(s); pres(s, 'victory'); if (same(this, s)) return;
       const Mm = mapA(s.map.name); if (Mm) setImg(bgm, Mm.splash);
       const [a, b] = s.teams.map(t => t.score), w = a === b ? 1 : a > b ? 0 : 1, T = s.teams[w];
-      const all = s.players.flatMap((ps, i) => ps.map(p => ({ ...p, t: i }))).sort((x, y) => y.acs - x.acs); const mvp = all[0], A = agent(mvp.agent);
+      // GEP gives no ACS, ADR or headshot %: rank by kills then, and show a dash instead of a number.
+      const flat = s.players.flatMap((ps, i) => ps.map(p => ({ ...p, t: i }))), hasAcs = flat.some(p => Number(p.acs) > 0);
+      const stat = (v, suffix = '') => (Number(v) > 0 ? `${v}${suffix}` : '—');
+      const all = flat.sort((x, y) => +(hasAcs ? y.acs : y.k) - +(hasAcs ? x.acs : x.k)); const mvp = all[0], A = agent(mvp.agent);
       box.innerHTML = `<div class="sc" style="--c:${T.color}"><div class="w mono">MAP ${s.map.number}   /   ${s.map.name}</div><div class="big disp hl">${Math.max(a, b)}<span>–</span>${Math.min(a, b)}</div><div class="tn">${T.name} WIN</div></div>` +
         `<div class="mvp" style="--c:${s.teams[mvp.t].color}">${A ? `<img src="${A.full}">` : ''}<div class="k mono">MATCH MVP</div><div class="n disp hl">${mvp.name}</div><div class="a mono">${s.teams[mvp.t].tag}   /   ${A ? A.name : ''}</div>` +
-        `<div class="sts"><div>${mvp.acs}<small>ACS</small></div><div>${mvp.k}/${mvp.d}/${mvp.a}<small>K / D / A</small></div><div>${mvp.adr}<small>ADR</small></div><div>${mvp.hs}%<small>HEADSHOT</small></div></div></div>` +
-        `<div class="tp"><div class="h mono">TOP PERFORMERS</div>` + all.slice(1, 5).map(p => { const Ap = agent(p.agent); return `<div class="r" style="--c:${s.teams[p.t].color}">${Ap ? `<img src="${Ap.icon}">` : ''}<div class="n">${p.name}</div><div class="v mono">${s.teams[p.t].tag}   /   ${p.acs} ACS   /   ${p.k}–${p.d}–${p.a}</div></div>`; }).join('') + '</div>';
+        `<div class="sts"><div>${stat(mvp.acs)}<small>ACS</small></div><div>${mvp.k}/${mvp.d}/${mvp.a}<small>K / D / A</small></div><div>${stat(mvp.adr)}<small>ADR</small></div><div>${stat(mvp.hs, '%')}<small>HEADSHOT</small></div></div></div>` +
+        `<div class="tp"><div class="h mono">TOP PERFORMERS</div>` + all.slice(1, 5).map(p => { const Ap = agent(p.agent); return `<div class="r" style="--c:${s.teams[p.t].color}">${Ap ? `<img src="${Ap.icon}">` : ''}<div class="n">${p.name}</div><div class="v mono">${s.teams[p.t].tag}   /   ${hasAcs ? `${stat(p.acs)} ACS   /   ` : ''}${p.k}–${p.d}–${p.a}</div></div>`; }).join('') + '</div>';
     } };
   };
 
@@ -575,7 +864,7 @@
   M.bracket = root => {
     const m = E('div', 'mod on bk', root); const sc = sceneBg(m); chrome(m, 'PLAYOFFS'); const box = E('div', '', m); sceneFx(sc);
     return { update(s) { if (same(this, s)) return;
-      const B = s.bracket, qy = i => 230 + i * 88, sfy = k => (qy(2 * k) + qy(2 * k + 1)) / 2, gfy = k => (sfy(2 * k) + sfy(2 * k + 1)) / 2, chy = (gfy(0) + gfy(1)) / 2;
+      const B = { qf: s.bracket.qf || [], sf: s.bracket.sf || [], gf: s.bracket.gf || [] }, qy = i => 230 + i * 88, sfy = k => (qy(2 * k) + qy(2 * k + 1)) / 2, gfy = k => (sfy(2 * k) + sfy(2 * k + 1)) / 2, chy = (gfy(0) + gfy(1)) / 2;
       let h = [['QUARTERFINALS', 200], ['SEMIFINALS', 700], ['GRAND FINAL', 1150], ['CHAMPION', 1580]].map(([t, x], i) => `<div class="hd mono" style="left:${x}px;${i === 3 ? 'color:#e0445e' : ''}">${t}</div>`).join('');
       let lines = '';
       const row = (x, y, w, n, sc_, win, done) => `<div class="rw ${done ? (win ? 'w' : 'l') : ''}" style="left:${x}px;top:${y}px;width:${w}px"><span class="n">${n}</span><span class="s num">${sc_}</span></div>`;
@@ -585,7 +874,7 @@
         h += row(200, qy(i), 330, mt[j * 2], mt[j * 2 + 1], won, done); con(530, qy(i), 700, sfy(k), won && done); }));
       B.sf.forEach((mt, k) => [0, 1].forEach(j => { const i = 2 * k + j, won = mt[j * 2 + 1] > mt[(1 - j) * 2 + 1], done = Math.max(mt[1], mt[3]) >= need_('sf');
         h += row(700, sfy(i), 310, mt[j * 2], mt[j * 2 + 1], won, done); con(1010, sfy(i), 1150, gfy(k), won && done); }));
-      const g = B.gf[0], gd = Math.max(g[1], g[3]) >= need(s);
+      const g = B.gf[0] || ['', 0, '', 0], gd = !!(g[0] && g[2]) && Math.max(g[1], g[3]) >= need(s);
       [0, 1].forEach(j => { const won = g[j * 2 + 1] > g[(1 - j) * 2 + 1]; h += row(1150, gfy(j), 310, g[j * 2], g[j * 2 + 1], won, gd); con(1460, gfy(j), 1580, chy, won && gd); });
       h += `<div class="champ" style="left:1580px;top:${chy - 8}px;width:300px;${gd ? '' : 'background:rgba(255,255,255,.05);box-shadow:none;color:#77777c;font-size:26px;padding-top:20px'}">${gd ? (g[1] > g[3] ? g[0] : g[2]) : 'TO BE DECIDED'}</div>`;
       box.innerHTML = `<div class="title disp hl">PLAYOFFS</div><svg width="1920" height="1080" style="position:absolute;left:0;top:0">${lines}</svg>` + h;
@@ -675,11 +964,13 @@
 
   // ═════════ EXTENDED LIBRARY ═════════
   const HOW = { elim: 'ELIMINATION', boom: 'SPIKE DETONATED', defuse: 'SPIKE DEFUSED', time: 'TIME EXPIRED' };
-  const RIC = (how, c = '#fff', z = 14) => ({
-    elim: `<svg width="${z}" height="${z}" viewBox="0 0 14 14"><path d="M2.5 2.5L11.5 11.5M11.5 2.5L2.5 11.5" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/></svg>`,
-    boom: `<svg width="${z}" height="${z}" viewBox="0 0 14 14"><path d="M7 0L8.6 4.8L13.6 3.4L10.2 7L13.6 10.6L8.6 9.2L7 14L5.4 9.2L.4 10.6L3.8 7L.4 3.4L5.4 4.8Z" fill="${c}"/></svg>`,
-    defuse: `<svg width="${z}" height="${z}" viewBox="0 0 14 14"><path d="M7 1L12.5 4V10L7 13L1.5 10V4Z" fill="none" stroke="${c}" stroke-width="1.8"/><path d="M4.6 7.2L6.4 9L9.6 5.2" fill="none" stroke="${c}" stroke-width="1.8"/></svg>`,
-    time: `<svg width="${z}" height="${z}" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.6" fill="none" stroke="${c}" stroke-width="1.8"/><path d="M7 3.8V7L9.3 8.4" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/></svg>` }[how] || '');
+  // The game's own round-win icons (white), as the in-game round history uses. On a light colour (c dark) they turn black.
+  const WIN_ICON = { elim: 'kills', boom: 'detonated', defuse: 'defused', time: 'timeout' };
+  const RIC = (how, c = '#fff', z = 14) => {
+    if (!WIN_ICON[how]) return '';
+    const h = /^#([0-9a-f]{6})$/i.exec(c), lum = h ? [0, 2, 4].map(i => parseInt(h[1].slice(i, i + 2), 16)).reduce((a, v, i) => a + v * [.299, .587, .114][i], 0) : 255;
+    return `<img class="win-ic" src="../core/assets/roundWinReason/${WIN_ICON[how]}.webp" alt="" width="${z}" height="${z}"${lum < 128 ? ' style="filter:brightness(0)"' : ''}>`;
+  };
   HUD.roundIcon = RIC;
   const sideOf = (s, t, r) => { const f = (s.firstSide || ['ATK', 'DEF'])[t], o = f === 'ATK' ? 'DEF' : 'ATK'; return r <= 12 ? f : r <= 24 ? o : ((r - 25) % 2 ? o : f); };
   HUD.sideOf = sideOf;
@@ -693,12 +984,7 @@
 
   M.roundhistory = root => {
     const m = E('div', 'mod', root), rh = E('div', 'rh fx-rise', m);
-    const RHMAP = {
-      elim:   '../core/assets/roundWinReason/kills.webp',
-      boom:   '../core/assets/roundWinReason/detonated.webp',
-      defuse: '../core/assets/roundWinReason/defused.webp',
-      time:   '../core/assets/roundWinReason/timeout.webp',
-    };
+    const RHMAP = Object.fromEntries(Object.entries(WIN_ICON).map(([k, f]) => [k, `../core/assets/roundWinReason/${f}.webp`]));
     return { update(s) {
       toggle(m, (s.show.roundHistory || s.round.phase === 'buy') && !s.show.scoreboard);
       rh.classList.toggle('buy', s.round.phase === 'buy' && vis.economy(s));
@@ -759,15 +1045,17 @@
     return { update(s) { toggle(m, s.show.moments && !vis.focused(s) && !vis.economy(s)); this.tick(s); }, tick(s) { const it = items(s), k = it.map(x => x.id).join('|'); if (k === sig) return; sig = k;
       mo.innerHTML = it.map(x => { const A = agent(x.p.agent), c = s.teams[x.t].color; return `<div class="m" style="--c:${c};--ci:${ink(c)}"><div class="k">${x.k}</div>${A ? `<img src="${A.icon}">` : ''}<div class="t">${x.p.name}</div><div class="s mono">${x.sub}</div></div>`; }).join(''); } }; };
 
-  M.toast = root => { const m = E('div', 'mod', root), ts = E('div', 'ts', m); E('div', 'k mono', ts, 'UPDATE'); const t = E('div', 't', ts);
-    return { update(s) { txt(t, s.toast.text || ''); }, tick(s) { ts.classList.toggle('on', !!(s.toast.ts && HUD.now() - s.toast.ts < 7000) || Q.get('toast') === '1'); } }; };
+  M.toast = root => { const m = E('div', 'mod', root), ts = E('div', 'ts', m); E('div', 'k mono', ts, 'UPDATE'); const t = E('div', 't', ts), sp = E('div', 'ts-sp mono', ts);
+    return { update(s) { txt(t, s.toast.text || ''); HUD.morph(sp, spaceOf(s, 'toast')); }, tick(s) { ts.classList.toggle('on', !!(s.toast.ts && HUD.now() - s.toast.ts < 7000) || Q.get('toast') === '1'); } }; };
 
   M.sponsor = root => { const m = E('div', 'mod', root), sp = E('div', 'spn fx-rise', m); E('div', 'k mono', sp, 'PRESENTED BY'); const v = E('div', 'v', sp); let cur = -1, signature = '';
     return { update(s) { toggle(m, s.show.sponsor && s.sponsors.length && vis.players(s)); const next = JSON.stringify([s.sponsors, s.layout?.sponsorRotation, s.layout?.sponsorSeconds]); if (signature !== next) { signature = next; cur = -1; } this.tick(s); }, tick(s) { if (!s.sponsors.length) return; const seconds = Number.isInteger(s.layout?.sponsorSeconds) && s.layout.sponsorSeconds >= 5 && s.layout.sponsorSeconds <= 120 ? s.layout.sponsorSeconds : 8; const i = s.layout?.sponsorRotation === false ? 0 : Math.floor(HUD.now() / (seconds * 1000)) % s.sponsors.length; if (i === cur) return; cur = i; const x = s.sponsors[i];
       v.style.animation = 'none'; void v.offsetWidth; v.style.animation = ''; v.innerHTML = x.logo ? `<img src="${x.logo}"><span class="mono">${x.line || ''}</span>` : `<b>${x.name}</b><span class="mono">${x.line || ''}</span>`; } }; };
 
+  /** The sponsor bought for a space (Air's sponsor spaces), as "BY <logo or name>"; '' when none. */
+  const spaceOf = HUD.spaceOf = (s, space) => { const x = s.airSpaces && s.airSpaces[space]; return x && x.name ? `BY ${logoOk(x.logo) ? `<img src="${escH(x.logo)}" alt="${escH(x.name)}">` : escH(x.name)}` : ''; };
   M.eventbug = root => { const m = E('div', 'mod', root), eb = E('div', 'eb fx-rise', m); const im = E('img', '', eb); im.src = '../core/brand/mark-44.png'; const a = E('div', 'a mono', eb);
-    return { update(s) { toggle(m, s.show.eventBug); a.innerHTML = `${s.event.name}<b>${s.event.stage}</b>`; } }; };
+    return { update(s) { toggle(m, s.show.eventBug); const sp = spaceOf(s, 'event-bug'); a.innerHTML = `${escH(s.event.name)}<b>${escH(s.event.stage)}</b>${sp ? `<i class="eb-sp">${sp}</i>` : ''}`; } }; };
 
   M.poll = root => { const m = E('div', 'mod', root), pq = E('div', 'pq fx-rise', m);
     return { update(s) { toggle(m, s.show.poll); const tc = l => (s.teams.find(t => t.tag === l) || {}).color || 'var(--red)';
@@ -813,7 +1101,7 @@
   M.profile = root => { const m = E('div', 'mod on pp', root); const sc = sceneBg(m); const wash = E('div', 'wash', sc); chrome(m, 'PLAYER SPOTLIGHT'); const box = E('div', '', m); sceneFx(sc);
     return { update(s) { if (same(this, s) && this._sp === JSON.stringify(s.spotlight)) return; this._sp = JSON.stringify(s.spotlight); const sp = s.spotlight, p = P(s, [sp.team, sp.player]); if (!p) return; const A = agent(p.agent), T = s.teams[sp.team], se = sp.season || {};
       wash.style.background = `radial-gradient(ellipse at 60% 40%,#${A && A.grad[0] || '444'},transparent 65%)`;
-      box.innerHTML = `${A ? `<img class="por" src="${A.full}">` : ''}<div class="k mono" style="--c:${T.color}">${T.name}   /   ${A ? A.role : ''}</div><div class="n disp hl">${p.name}</div><div class="a mono">${A ? A.name : ''}   /   ${s.event.stage}</div>` +
+      box.innerHTML = `${photoOk(p.photo) ? `<img class="por photo" src="${p.photo}">` : A ? `<img class="por" src="${A.full}">` : ''}<div class="k mono" style="--c:${T.color}">${T.name}   /   ${A ? A.role : ''}</div><div class="n disp hl">${p.name}</div><div class="a mono">${A ? A.name : ''}   /   ${s.event.stage}</div>` +
         `<div class="grid">${[[p.acs, 'ACS THIS MAP'], [`${p.k}/${p.d}/${p.a}`, 'K / D / A'], [p.adr, 'ADR'], [se.rating, 'EVENT RATING'], [se.kpr, 'KILLS PER ROUND'], [se.clutches, 'CLUTCHES WON']].map(([v, l]) => `<div>${v ?? '–'}<small>${l}</small></div>`).join('')}</div>${sp.quote ? `<div class="q">“${sp.quote}”</div>` : ''}`;
       box.querySelector('.k').style.color = T.color; } }; };
 
@@ -823,16 +1111,16 @@
       const players = live || !registered.length ? s.players[t] : registered;
       const text = value => String(value || '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
       box.innerHTML = `<div class="head" style="--c:${T.color}"><div class="lgx"></div><div><div class="t disp hl">${T.name}</div><div class="s mono">${s.event.name}   /   ${s.event.stage}</div></div></div><div class="cards" style="--c:${T.color}">` +
-        players.map((p, j) => { const A = agent(p.agent); return `<div class="cd" style="animation:tIn .6s ${.08 * j}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="n">${text(p.name)}</div><div class="a mono">${A ? A.name + '  /  ' + A.role : ''}</div><div class="s mono">${live ? `${p.acs} ACS   ${p.k}/${p.d}/${p.a}` : 'REGISTERED LINEUP · WAITING FOR GAME DATA'}</div></div>`; }).join('') + '</div>';
+        players.map((p, j) => { const A = agent(p.agent); return `<div class="cd" style="animation:tIn .6s ${.08 * j}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${photoOk(p.photo) ? `<img class="photo" src="${p.photo}">` : A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="n">${text(p.name)}</div><div class="a mono">${A ? A.name + '  /  ' + A.role : ''}</div><div class="s mono">${live ? `${p.acs} ACS   ${p.k}/${p.d}/${p.a}` : 'REGISTERED LINEUP · WAITING FOR GAME DATA'}</div></div>`; }).join('') + '</div>';
       const l = logo(T, 120, box.querySelector('.lgx')); l.style.position = 'relative'; } }; };
 
-  const mapBreak = half => root => { const m = E('div', 'mod on mb', root); const sc = sceneBg(m); chrome(m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const title = E('div', 'title disp hl', m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const box = E('div', '', m); sceneFx(sc);
-    return { update(s) { if (same(this, s) && this._r === s.rounds.length) return; this._r = s.rounds.length; const R = half ? s.rounds.slice(0, 12) : s.rounds;
+  const mapBreak = half => root => { const m = E('div', 'mod on mb', root); const sc = sceneBg(m); chrome(m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const title = E('div', 'title disp hl', m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const box = E('div', '', m); const pres = presented(m); sceneFx(sc);
+    return { update(s) { if (!half) { s = withRecord(s); pres(s, 'breakdown'); } if (same(this, s) && this._r === s.rounds.length) return; this._r = s.rounds.length; const R = half ? s.rounds.slice(0, 12) : s.rounds;
       const won = (t, a, b) => R.slice(a, b).filter(r => r.w === t).length, sc_ = t => R.filter(r => r.w === t).length;
       const sides = t => [0, 1].map(h => sideOf(s, t, h ? 13 : 1));
       let h = `<div class="score">${s.teams.map((T, t) => `<div class="t" style="color:${T.color}">${T.tag}</div>`).join(`<div class="v disp hl">${sc_(0)}–${sc_(1)}</div>`)}</div>`;
       h += `<div class="halves"><div class="row h"><div>TEAM</div><div>FIRST HALF</div><div>SECOND HALF</div><div>OVERTIME</div></div>` + s.teams.map((T, t) => `<div class="row"><div class="n" style="color:${T.color}">${T.name}</div><div class="v">${won(t, 0, 12)}<small class="mono" style="font-size:11px;color:#8a8a90;margin-left:8px">${sides(t)[0]}</small></div><div class="v">${half ? '–' : won(t, 12, 24)}${half ? '' : `<small class="mono" style="font-size:11px;color:#8a8a90;margin-left:8px">${sides(t)[1]}</small>`}</div><div class="v">${R.length > 24 ? won(t, 24, 99) : '–'}</div></div>`).join('') + '</div>';
-      h += `<div class="tl"><div class="k mono">ROUND BY ROUND</div><div class="strip">` + R.map((r, i) => (i === 12 ? '<div class="half"></div>' : '') + `<div class="c w" style="--c:${s.teams[r.w].color}"><em>${i + 1}</em>${RIC(r.how, '#fff', 18)}</div>`).join('') + '</div></div>';
+      h += `<div class="tl"><div class="k mono">ROUND BY ROUND</div><div class="strip">` + R.map((r, i) => (i === 12 ? '<div class="half"></div>' : '') + `<div class="c w" style="--c:${s.teams[r.w].color}"><em>${i + 1}</em>${RIC(r.how, '#fff', 26)}</div>`).join('') + '</div></div>';
       const S = s.teamStats || [{}, {}];
       if (half) { const T0 = s.teams[0], T1 = s.teams[1]; h += `<div class="note">SIDES SWITCH<small>${T0.tag} TO ${sides(0)[1]}   /   ${T1.tag} TO ${sides(1)[1]}</small></div>`; }
       h += `<div class="side">${[['ATTACK ROUNDS WON', t => R.filter((r, i) => r.w === t && sideOf(s, t, i + 1) === 'ATK').length], ['DEFENSE ROUNDS WON', t => R.filter((r, i) => r.w === t && sideOf(s, t, i + 1) === 'DEF').length], ['SPIKE PLANTS', t => S[t].plants], ['CLUTCHES', t => S[t].clutches]].map(([l, f]) => `<div class="r"><b style="color:${s.teams[0].color}">${f(0) ?? '–'}</b><span>${l}</span><b style="color:${s.teams[1].color}">${f(1) ?? '–'}</b></div>`).join('')}</div>`;
@@ -842,9 +1130,9 @@
   M.champion = root => { const m = E('div', 'mod on ch', root); const sc = sceneBg(m);
     const sv = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); sv.setAttribute('class', 'rays'); sv.setAttribute('viewBox', '0 0 1920 1080');
     let r = ''; for (let i = 0; i < 36; i++) { const a = i / 36 * Math.PI * 2; r += `<line x1="960" y1="260" x2="${960 + Math.cos(a) * 1400}" y2="${260 + Math.sin(a) * 1400}" stroke="rgba(224,68,94,${i % 2 ? .05 : .11})" stroke-width="${i % 3 ? 1 : 2}"/>`; } sv.innerHTML = r; sc.appendChild(sv);
-    chrome(m, 'CHAMPIONS'); const box = E('div', '', m); sceneFx(sc);
+    chrome(m, 'CHAMPIONS'); const box = E('div', '', m); sceneFx(sc); const pres = presented(m);
     const TROPHY = c => `<svg class="tro" viewBox="0 0 300 330"><path d="M70 20H230V120C230 175 195 210 150 215C105 210 70 175 70 120Z" fill="none" stroke="${c}" stroke-width="6"/><path d="M70 45H28C28 105 52 130 80 140M230 45H272C272 105 248 130 220 140" fill="none" stroke="${c}" stroke-width="6"/><path d="M150 215V265M100 300H200L185 265H115Z" fill="none" stroke="${c}" stroke-width="6"/><path d="M150 55L172 95L150 120L128 95Z" fill="${c}"/><path d="M95 300H205V318H95Z" fill="${c}"/></svg>`;
-    return { update(s) { if (same(this, s)) return; let w = s.champion && s.champion.team >= 0 ? s.champion.team : s.teams[0].series === s.teams[1].series ? (s.teams[0].score >= s.teams[1].score ? 0 : 1) : (s.teams[0].series > s.teams[1].series ? 0 : 1); const T = s.teams[w], L = s.teams[1 - w];
+    return { update(s) { pres(s, 'victory'); if (same(this, s)) return; let w = s.champion && s.champion.team >= 0 ? s.champion.team : s.teams[0].series === s.teams[1].series ? (s.teams[0].score >= s.teams[1].score ? 0 : 1) : (s.teams[0].series > s.teams[1].series ? 0 : 1); const T = s.teams[w], L = s.teams[1 - w];
       box.innerHTML = TROPHY('#f2cf6b') + `<div class="k mono">${s.event.name}   /   CHAMPIONS</div><div class="t disp hl">${T.name}</div><div class="s mono">DEFEAT ${L.name} ${Math.max(T.series, need(s))}–${Math.min(L.series, need(s) - 1)} IN THE ${s.event.stage}</div><div class="roster" style="--c:${T.color}">` +
         s.players[w].map(p => { const A = agent(p.agent); return `<div>${A ? `<img src="${A.icon}">` : ''}${p.name}</div>`; }).join('') + '</div>'; } }; };
 
@@ -877,6 +1165,48 @@
       toggle(m, s.show.seriesMaps !== false);
       sm.innerHTML = s.series.map((x, i) => buildTile(s, x, i)).join('');
     } };
+  };
+
+  // Full-screen host: one browser source that shows the graphic named in state.airFullscreen
+  // (set by Esportra Air), so switching full-screen graphics never touches OBS.
+  const OVER_ONLY = Q.get('over') === '1';
+  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'map-breakdown': 'mapbreakdown', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup' };
+  M.fullscreen = root => {
+    const slots = {};
+    let shown = null, fsSp = null;
+    // airFullscreenStyle 'band' shows the over-the-game version (core/bands.js) where there is one.
+    const slot = key => {
+      if (!slots[key]) { const [id, style] = key.split('|'); const el = E('div', 'fs-slot', root); el.style.display = 'none'; slots[key] = { el, part: style === 'own' ? M.ownslot(el, id.slice(4)) : M[style === 'band' ? HUD.BANDS[id] : FULLSCREEN[id]](el) }; }
+      return slots[key];
+    };
+    return {
+      update(s, opts) {
+        const band = s.airFullscreenStyle === 'band' && HUD.BANDS && HUD.BANDS[s.airFullscreen] && M[HUD.BANDS[s.airFullscreen]];
+        // The producer's own graphics (core/own.js) are `own:<id>`, defined in state.airOwn.
+        const own = typeof s.airFullscreen === 'string' && s.airFullscreen.startsWith('own:') && M.ownslot && HUD.OWN.find(s, s.airFullscreen.slice(4));
+        let want = own ? s.airFullscreen + '|own' : FULLSCREEN[s.airFullscreen] ? s.airFullscreen + (band ? '|band' : '|full') : null;
+        // The copies over the game and over the desk (?over=1) show only over-the-game versions: a
+        // full-screen graphic covers the whole picture, so it lives in the Full screen scene the crew switches to.
+        if (OVER_ONLY && want && !(want.endsWith('|band') || (own && own.style === 'band'))) want = null;
+        if (want !== shown) {
+          // An own graphic plays its exit (fade or slide) before it is hidden.
+          if (shown && slots[shown].part.leave) { const was = shown; slots[was].part.leave(s, () => { if (shown !== was) slots[was].el.style.display = 'none'; }); }
+          else if (shown) slots[shown].el.style.display = 'none';
+          if (want && slots[want] && slots[want].part.play) slots[want].part.play(s);
+          if (want) { const sl = slot(want); sl.el.style.display = ''; }
+          shown = want;
+          HUD.fsShown = shown ? { el: slots[shown].el, key: shown, fresh: true } : null;
+        }
+        if (shown) slots[shown].part.update(s, opts);
+        // The sponsor bought for this graphic's space (post-game graphics place their own).
+        const space = { 'map-veto': 'map-veto', 'agent-select': 'agent-select' }[shown], sp = space ? spaceOf(s, space) : '';
+        if (!fsSp) fsSp = E('div', 'fs-sp', root);
+        if (sp) HUD.morph(fsSp, sp.replace(/^BY /, 'PRESENTED BY '));
+        fsSp.classList.toggle('on', !!sp);
+      },
+      tick(s) { if (shown && slots[shown].part.tick) slots[shown].part.tick(s); },
+      frame(s) { if (shown && slots[shown].part.frame) slots[shown].part.frame(s); },
+    };
   };
 
   M.ingame = root => { const parts = ['minimap', 'eventbug', 'seriesmaps', 'scorebug', 'winprob', 'roundhistory', 'toast', 'killfeed', 'moments', 'poll', 'players', 'playercams', 'observed', 'sponsor', 'roundrecap', 'economy', 'duel', 'teamcompare', 'scoreboard', 'banner', 'replay', 'lowerthird', 'stinger'].map(k => M[k](root)); return { update(s, opts) { parts.forEach(p => p.update(s, opts)); }, tick(s) { parts.forEach(p => p.tick && p.tick(s)); }, frame(s) { parts.forEach(p => p.frame && p.frame(s)); } }; };
@@ -928,7 +1258,12 @@
   function fit(el) { const k = Math.min(innerWidth / 1920, innerHeight / 1080); el.style.transform = `scale(${k})`; }
   function boot() {
     const root = document.getElementById('hud'); if(MATCH&&root&&!receivedMatch){root.style.visibility='hidden';const waiting=document.createElement('p');waiting.id='waiting-match-data';waiting.textContent='Waiting for match data';Object.assign(waiting.style,{color:'#afbdd0',font:'24px Arial',padding:'48px'});document.body.appendChild(waiting);} if (!root) { window.HUD_READY = true; return; } fit(root); addEventListener('resize', () => fit(root));
-    if (Q.has('bg')) { const u = Q.get('bg'); document.body.style.background = `#1a1a1d url(${u && u !== '1' ? u : (mapA(HUD.state.map.name) || {}).splash}) center/cover`; }
+    // ?bg=1 shows the map behind a preview; until (or unless) its picture loads, a studio-like backdrop.
+    const DESK = 'radial-gradient(60% 70% at 50% 30%, #3a3448, #15131c 70%), #15131c';
+    if (Q.has('bg')) { const u = Q.get('bg'), url = u && u !== '1' ? u : (mapA(HUD.state.map.name) || {}).splash; document.body.style.background = DESK;
+      if (url) { const im = new Image(); im.onload = () => { document.body.style.background = `#1a1a1d url(${url}) center/cover`; }; im.src = url; } }
+    // ?clear=1: no backdrop of its own (Air's editor draws the desk, your picture or a checkerboard behind it).
+    if (!OUTPUT && Q.get('clear') === '1') document.body.classList.add('hud-clear');
     if(Q.get('canvas')==='1')document.body.classList.add('hud-editor-canvas');
     const list = (document.body.dataset.modules || '').split(',').map(x => x.trim()).filter(Boolean);
     const missing = list.filter(k => typeof M[k] !== 'function');
@@ -955,6 +1290,8 @@
       E('strong', '', empty, 'Game data hidden');
       E('span', '', empty, 'Choose Sample data or Received match data to preview this screen.');
     }
+    // A stand-in for the game's own round timer behind the scorebug (Air's Adjust preview only).
+    if (!OUTPUT && Q.get('gameTimer') === '1') { const gt = E('div', 'game-timer-standin', root); E('span', '', gt, '1:34'); }
     const mods = hideEmpty ? [] : list.map(k => M[k](root)); HUD.mods = mods;
     const feedTag = E('div', 'feed-paused-tag mono', root, 'FEED PAUSED · LAST RECEIVED DATA');
     feedTag.style.cssText = 'position:absolute;top:16px;left:50%;transform:translateX(-50%);padding:6px 12px;background:#1b1410;color:#fbbf24;font-size:12px;z-index:99;display:none';
@@ -965,27 +1302,128 @@
     HUD.on(updateRehearsalTag);
     const pausePanel = E('div', 'pause', root), pauseCrest = E('div', 'pause-crest', pausePanel), pauseSymbol = E('img', 'pause-symbol', pauseCrest), pauseTitle = E('div', 'a', pausePanel), pauseTime = E('div', 'b mono', pausePanel);
     E('div', 'pause-wing l', pausePanel); E('div', 'pause-wing r', pausePanel);
+    // layout.pauseStyle 'box': a VCT-style box (top left, clear of the player cards) with both teams and the score.
+    const pauseScore = E('div', 'pause-score', pausePanel); let pauseSig = '';
+    // layout.pauseStyle 'bar' (approved mock 15 Nov): a bar along the bottom with the team, the score, its sponsor and a countdown.
+    const pauseBar = E('div', 'pause-bar', root); let barSig = '';
     const updateAirPause = s => {
-      const panel = s.airPause, enabled = !PREVIEW && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);
-      pausePanel.classList.toggle('on', !!enabled);
-      pausePanel.style.visibility = enabled ? 'visible' : 'hidden';
-      pausePanel.setAttribute('aria-hidden', enabled ? 'false' : 'true');
-      if (!enabled) return;
+      const panel = s.airPause, enabled = (!PREVIEW || tplSample === 'pause' || tplSample === 'timeout') && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);
+      const asBar = !!enabled && s.layout && s.layout.pauseStyle === 'bar';
+      pausePanel.classList.toggle('on', !!enabled && !asBar);
+      pausePanel.style.visibility = enabled && !asBar ? 'visible' : 'hidden';
+      pausePanel.setAttribute('aria-hidden', enabled && !asBar ? 'false' : 'true');
+      pauseBar.classList.toggle('on', asBar);
+      // A timeout comes in the buy phase: the bar then takes the round history's place above the economy table.
+      pauseBar.classList.toggle('buy', asBar && s.round.phase === 'buy'); root.classList.toggle('pause-bar-buy', asBar && s.round.phase === 'buy');
+      if (!enabled) { barSig = ''; return; }
+      // A countdown when Air set the timeout's length, else the time since it began.
+      const elapsed = Math.max(0, (HUD.now() - panel.startedAt) / 1000), secs = Number(panel.seconds) || 0;
+      const clock = secs ? fmt(Math.max(0, secs - elapsed)) : fmt(elapsed);
+      if (asBar) {
+        const technical = panel.kind === 'technical', team = panel.team === 0 || panel.team === 1 ? s.teams[panel.team] : null, sp = s.airSpaces && s.airSpaces.timeout;
+        const k = JSON.stringify([panel.id, panel.kind, panel.team, s.teams.map(t => [t.tag, t.name, t.color, t.logo, t.score]), s.round.number, s.map, sp]);
+        pauseBar.style.setProperty('--c', technical ? 'var(--red)' : team ? team.color : 'var(--amber, #fbbf24)');
+        if (k !== barSig) { barSig = k;
+          pauseBar.innerHTML = `${sp && sp.name ? `<span class="pb-pres">PRESENTED BY ${logoOk(sp.logo) ? `<img src="${escH(sp.logo)}" alt="${escH(sp.name)}">` : escH(sp.name)}</span>` : ''}${team ? teamMark(team, 104) : `<img class="pb-sym" src="../core/assets/banners/${technical ? 'technical-pause' : 'timeout'}.svg" alt="">`}`
+            + `<div class="pb-tx"><b>${technical ? 'Technical pause' : 'Tactical timeout'}</b><span>${escH([team ? team.name : '', `ROUND ${s.round.number || 1}`].filter(Boolean).join(' · ').toUpperCase())}</span></div>`
+            + `<div class="pb-sc">${s.teams[0].score} – ${s.teams[1].score}<small>${escH(`MAP ${s.map.number || 1} · ${s.map.name || ''}`)}</small></div><div class="pb-ck"></div><div class="pb-pg"><i></i></div>`; }
+        txt(pauseBar.querySelector('.pb-ck'), clock);
+        pauseBar.querySelector('.pb-pg i').style.width = secs ? `${Math.max(0, Math.min(100, (1 - elapsed / secs) * 100))}%` : '100%';
+        return;
+      }
       const technical = panel.kind === 'technical'; pausePanel.style.setProperty('--c', technical ? 'var(--red)' : 'var(--amber, #fbbf24)');
       setImg(pauseSymbol, '../core/assets/banners/' + (technical ? 'technical-pause' : 'timeout') + '.svg');
       txt(pauseTitle, technical ? 'TECHNICAL PAUSE' : 'TEAM TIMEOUT');
-      txt(pauseTime, 'ELAPSED ' + fmt(Math.max(0, (HUD.now() - panel.startedAt) / 1000)));
+      txt(pauseTime, (secs ? 'LEFT ' : 'ELAPSED ') + clock);
+      const box = s.layout && s.layout.pauseStyle === 'box'; pausePanel.classList.toggle('as-box', box);
+      if (box) { const team = panel.team === 0 || panel.team === 1 ? s.teams[panel.team] : null; txt(pauseTitle, technical ? 'TECH PAUSE' : team ? 'TIMEOUT · ' + team.name : 'TIMEOUT');
+        const k = JSON.stringify(s.teams.map(t => [t.tag, t.color, t.logo, t.score]));
+        if (k !== pauseSig) { pauseSig = k; pauseScore.innerHTML = ''; [0, 1].forEach(i => { if (i) E('b', 'num', pauseScore, `${s.teams[0].score}–${s.teams[1].score}`); logo(s.teams[i], 52, pauseScore); }); } }
     };
     HUD.on(updateAirPause);
     HUD.subs.push(updateFeedTag); updateFeedTag(HUD.state);
     HUD.subs.push((s, opts) => mods.forEach(m => m.update(s, opts))); mods.forEach(m => m.update(HUD.state, {snapshot:true}));
+    templates(root, list);
     let lastT = 0; (function loop(t) { if (t - lastT > 90) { lastT = t; updateAirPause(HUD.state); mods.forEach(m => m.tick && m.tick(HUD.state)); } mods.forEach(m => m.frame && m.frame(HUD.state)); requestAnimationFrame(loop); })(0);
     if (HUD.demo || SAMPLE_MOTION) demo();
     window.HUD_READY = true;
     if(window.parent!==window)window.parent.postMessage({type:'AIR_HUD_PREVIEW_READY'},'*');
   }
+  // Templates (core/templates.js): the event's brand kit as CSS variables, and the active template's
+  // styles on the parts of the graphic this page shows. Re-applied whenever a graphic redraws.
+  function templates(root, list) {
+    const T = window.AirTemplates; if (!T) return;
+    const byModule = {}; Object.entries(FULLSCREEN).forEach(([id, m]) => { byModule[m] = id + '|full'; }); Object.entries(HUD.BANDS || {}).forEach(([id, m]) => { byModule[m] = id + '|band'; });
+    byModule.holding = 'holding|full'; byModule.casters = 'casters|full';
+    const host = list.includes('fullscreen'), page = list.length === 1 && byModule[list[0]] ? byModule[list[0]] : 'hud';
+    const find = (s, id) => (Array.isArray(s.airTemplates) ? s.airTemplates : []).find(t => t && t.id === id) || null;
+    let queued = false, entered = false, first = true;
+    const run = () => {
+      queued = false; const s = HUD.state;
+      T.brand(document, tplDraft && tplDraft.brand || s.airBrand, s.teams);
+      if (host) {
+        const fs = HUD.fsShown; if (!fs) return;
+        const g = fs.key, tpl = tplDraft ? tplDraft.template : find(s, s.airFullscreenTemplate);
+        T.apply(fs.el, tpl, g);
+        if (fs.fresh) { fs.fresh = false; T.enter(fs.el, tpl, g); }
+      } else {
+        // The HUD's look, or the look the Rundown gave this page (Break, Desk…).
+        const tpl = tplDraft ? tplDraft.template : find(s, page === 'hud' ? s.airHudTemplate : (s.airPageTemplates || {})[page]);
+        T.apply(root, tpl, page);
+        if (page !== 'hud' && !entered && tpl) { entered = true; T.enter(root, tpl, page); }
+        // Parts that come and go (banners, the pause box, the scoreboard) play their entrance each time they appear.
+        if (page === 'hud') { T.appear(root, tpl, page, first); first = false; }
+      }
+    };
+    const queue = () => { if (!queued) { queued = true; requestAnimationFrame(run); } };
+    HUD.subs.push(queue); run();
+    new MutationObserver(queue).observe(root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+    // Air's editor: the parts and where they are on the 1920×1080 canvas.
+    HUD.templateRects = () => {
+      const scope = host ? HUD.fsShown && HUD.fsShown.el : root, g = host ? HUD.fsShown && HUD.fsShown.key : page; if (!scope) return { graphic: g, parts: {} };
+      const box = root.getBoundingClientRect(), k = box.width / 1920 || 1, parts = {};
+      // Only what is really on screen: hidden or fully transparent parts get no box.
+      const seen = el => (el.checkVisibility ? el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : getComputedStyle(el).visibility !== 'hidden');
+      T.partsOf(g).forEach(([id, , sel]) => { const r = [...scope.querySelectorAll(sel)].filter(seen).map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.height > 0)
+        .map(r => [r.left - box.left, r.top - box.top, r.width, r.height].map(v => Math.round(v / k))); if (r.length) parts[id] = r; });
+      return { graphic: g, parts };
+    };
+    HUD.templatePlay = () => { const s = HUD.state, scope = host ? HUD.fsShown && HUD.fsShown.el : root, g = host ? HUD.fsShown && HUD.fsShown.key : page;
+      if (scope) T.enter(scope, tplDraft ? tplDraft.template : null, g); };
+    HUD.templateRefresh = () => { HUD.state = previewSettings(sourceState); HUD.subs.forEach(fn => fn(HUD.state, {snapshot:true})); run(); };
+  }
+  // Air's editor draws a box over each part. Parts that animate in (rise, slide) are measured once they
+  // have landed: positions are sent after a change and again whenever animations on the page settle.
+  let rectsTimer = 0, watching = false;
+  const sendRects = (id) => requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (HUD.templateRects) window.parent.postMessage({ type: 'AIR_TEMPLATE_RECTS', id, ...HUD.templateRects() }, '*');
+    clearTimeout(rectsTimer);
+    rectsTimer = setTimeout(() => {
+      const running = (document.getAnimations ? document.getAnimations() : []).filter(a => a.playState === 'running' && a.effect && a.effect.getTiming().iterations !== Infinity);
+      Promise.race([Promise.all(running.map(a => a.finished.catch(() => {}))), new Promise(r => setTimeout(r, 2500))])
+        .then(() => HUD.templateRects && window.parent.postMessage({ type: 'AIR_TEMPLATE_RECTS', id, ...HUD.templateRects() }, '*'));
+    }, 60);
+  }));
+  const watchRects = () => {
+    if (watching) return; watching = true;
+    let t = 0; const later = () => { clearTimeout(t); t = setTimeout(() => sendRects(null), 120); };
+    addEventListener('animationend', later, true); addEventListener('transitionend', later, true); addEventListener('resize', later);
+    // Agent portraits and logos arrive after the first measure and can change where things sit.
+    addEventListener('load', later, true); addEventListener('error', later, true);
+    if (document.fonts) document.fonts.ready.then(later);
+  };
   addEventListener('message', event => {
     if (event.source !== window.parent || window.parent === window) return;
+    // Air's template editor (preview pages only): a draft to show, its entrance, and where the parts are.
+    // Air's app page is a file, so its origin is not usable: the parent and a one-off key in the URL are checked.
+    if (/^AIR_TEMPLATE_/.test(event.data?.type || '') && !OUTPUT && PREVIEW && Q.get('editorKey') && event.data.key === Q.get('editorKey')) {
+      const d = event.data;
+      if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template || null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
+      if (d.type === 'AIR_TEMPLATE_PLAY' && HUD.templatePlay) HUD.templatePlay();
+      if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); }
+      if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS' || d.type === 'AIR_TEMPLATE_SAMPLE') && HUD.templateRects) { sendRects(d.id); watchRects(); }
+      return;
+    }
     if (event.data?.type === 'AIR_HUD_PREVIEW_PROBE' && window.HUD_READY)
       window.parent.postMessage({type:'AIR_HUD_PREVIEW_READY'}, '*');
     // Read-only editor views only. OBS outputs cannot accept draft commands.
