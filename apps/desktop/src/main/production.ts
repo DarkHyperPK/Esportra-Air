@@ -955,7 +955,13 @@ export class Production extends EventEmitter {
   templateSave(input: unknown) { return this.looks.save(input); }
   templateDelete(id: string) { return this.looks.delete(id); }
   private breakLook() { return this.looks.breakLook(); }
-  private slotWanted(id: string) { return this.looks.slotWanted(id); }
+  /** Holders Air adds: Break's windows only with the frame look; a desk camera holder only for talent with a camera. */
+  private slotWanted(id: string) {
+    if (!this.looks.slotWanted(id)) return false;
+    if (id !== 'cam1' && id !== 'cam2') return true;
+    const cams = this.match ? onAir(this.match, this.eventOf(this.match)).talent.filter((t) => t.camera.kind !== 'none').length : 0;
+    return cams >= (id === 'cam1' ? 1 : 2);
+  }
   private templateUse() { return this.looks.use(); }
   private hudTemplate() { return this.looks.hud(); }
   /** templateState(match) still decides the brand from the given match (sample rooms pass theirs). */

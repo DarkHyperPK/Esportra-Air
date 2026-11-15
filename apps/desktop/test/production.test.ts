@@ -167,7 +167,8 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await production.updateSetup({ look: { break: 'classic', timer: { dx: 0, width: 160, plate: '#17181e' } } });
     assert.ok(Array.isArray((await engine.client.get<any>(`/api/${match.code}`)).state.schedule), "today's schedule is in the room");
     assert.deepEqual(snap.obs.scenes.map((x) => [x.key, x.inObs]), [['holding', true], ['gameplay', true], ['fullscreen', true], ['replay', true], ['casters', true]]);
-    assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'casters')!.slots.map((x) => [x.id, x.source]), [['cam1', null], ['cam2', null]], 'slots wait for the crew’s sources');
+    assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'casters')!.slots, [], 'no talent has a camera, so no empty camera holders are added');
+    assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'gameplay')!.slots.map((x) => [x.id, x.source]), [['game', null]], 'Game feed waits for the crew’s capture');
     await production.useSlotSource('game', 'Game Capture');
     assert.equal(production.snapshot().obs.scenes.find((x) => x.key === 'gameplay')!.slots[0]!.source, 'Game Capture');
 

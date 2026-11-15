@@ -29,6 +29,28 @@ export interface SceneDef {
   exclusive: boolean;
 }
 
+/** What each holder is for, shown in Air's OBS step (a holder looks empty in OBS until it is filled). */
+export const SLOT_NOTE: Record<SlotId, string> = {
+  game: 'Your game capture (the observer feed). Gameplay and Replay show it under the graphics.',
+  cam1: 'The first talent camera. Filled from Talent and sponsors, or pick a source.',
+  cam2: 'The second talent camera. Filled from Talent and sponsors, or pick a source.',
+  break1: 'Left window of the Break frame: a video or camera.',
+  break2: 'Right window of the Break frame: a video or camera.',
+};
+
+/** What each of Air's browser sources shows, and why it can look empty in OBS. */
+export const SOURCE_NOTE: Record<string, string> = {
+  'in-game': 'The HUD over the game.',
+  stinger: 'Plays only during a Take with a stinger; see-through otherwise.',
+  fullscreen: 'The full-screen graphic you take (veto, agent select, results…). Blank until one is on air; switch OBS to this scene to show it.',
+  'fullscreen-over-game': 'Overlay bar graphics over the game. See-through until one is on air.',
+  'fullscreen-over-desk': 'Overlay bar graphics over the desk. See-through until one is on air.',
+  holding: 'Starting soon, Break and Ending.',
+  ticker: 'The scrolling ticker.',
+  'replay-bug': 'The replay tag over a replay.',
+  casters: 'The desk graphic with windows for the cameras.',
+};
+
 /** Every scene and source Air adds to OBS starts with this, so a crew can tell them apart at a glance. */
 export const PREFIX = 'ESPORTRA · ';
 /** The prefix before 12 November 2026. Air renames its own scenes and sources from it in place. */
