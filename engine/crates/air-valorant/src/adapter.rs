@@ -54,6 +54,8 @@ struct Clutch {
 pub struct ValorantAdapter {
     slots: HashMap<String, Slot>,
     by_name: HashMap<String, Slot>,
+    /// Player ids seen on the in-game scoreboard (real players, not spectators in the lobby).
+    confirmed: HashSet<String>,
     spike: Spike,
     last_score: Option<[f64; 2]>,
     pending_kills: Vec<(Value, f64)>,
@@ -115,6 +117,16 @@ fn game_team(v: &Value) -> usize {
             _ => 0,
         },
     }
+}
+/// `[0, 1, '0', '1'].includes(v.team) || [true, false, 'true', 'false'].includes(v.teammate)`
+fn team_known(v: &Value) -> bool {
+    let team = match v.get("team") {
+        Some(Value::Number(n)) => n.as_f64() == Some(0.0) || n.as_f64() == Some(1.0),
+        Some(Value::String(x)) => x == "0" || x == "1",
+        _ => false,
+    };
+    team || matches!(v.get("teammate"), Some(Value::Bool(_)))
+        || matches!(v.get("teammate"), Some(Value::String(x)) if x == "true" || x == "false")
 }
 /// `x++` on an object property.
 fn increment(map: &mut Map<String, Value>, key: &str) {
@@ -268,6 +280,7 @@ impl ValorantAdapter {
         Self {
             slots: HashMap::new(),
             by_name: HashMap::new(),
+            confirmed: HashSet::new(),
             spike: Spike::default(),
             last_score: None,
             pending_kills: Vec::new(),
@@ -370,6 +383,9 @@ impl ValorantAdapter {
         name: Option<&Value>,
         authoritative: bool,
     ) -> Option<Slot> {
+        if authoritative {
+            self.confirmed.insert(pid.to_string());
+        }
         if let Some(cur) = self.slots.get(pid).copied() {
             if !authoritative || cur.0 == game_team {
                 return Some(cur);
@@ -383,7 +399,23 @@ impl ValorantAdapter {
             .filter(|x| x.0 == t)
             .map(|x| x.1)
             .collect();
-        let j = (0..5).find(|k| !used.contains(k))?;
+        let mut j = (0..5).find(|k| !used.contains(k));
+        // A full team on the scoreboard: a seat taken from the agent-select roster by someone never on
+        // the scoreboard (another observer in the lobby) goes to the real player.
+        if j.is_none() && authoritative {
+            let ghost = self
+                .slots
+                .iter()
+                .filter(|(id, x)| x.0 == t && !self.confirmed.contains(*id))
+                .map(|(id, x)| (id.clone(), *x))
+                .min_by_key(|(_, x)| x.1);
+            if let Some((id, x)) = ghost {
+                self.slots.remove(&id);
+                self.by_name.retain(|_, y| *y != x);
+                j = Some(x.1);
+            }
+        }
+        let j = j?;
         self.slots.insert(pid.to_string(), (t, j));
         if truthy(name) {
             self.by_name.insert(name_key(name), (t, j));
@@ -724,6 +756,10 @@ impl ValorantAdapter {
         now: f64,
         out: &mut Vec<Value>,
     ) -> Result<(), IngestError> {
+        // A roster line without a team (an observer in the lobby) never takes a player's seat.
+        if !team_known(v) {
+            return Ok(());
+        }
         let pid = self.map_key(v.get("player_id"));
         let Some(tp) = self.slot(s, &pid, game_team(v), v.get("name"), false) else {
             return Ok(());

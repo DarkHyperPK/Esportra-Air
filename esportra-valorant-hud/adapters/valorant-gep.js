@@ -67,7 +67,9 @@ function createValorantAdapter(opts = {}) {
   const coverage = new (require('./player-coverage'))();
   const teamOf = opts.teamOf || (g => g);                  // game team (0 always starts on attack) → HUD team index
   const ctx = {
-    slots: new Map(), byName: new Map(), spike: {}, lastScore: null, pendingKills: [],
+    slots: new Map(), byName: new Map(),
+    confirmed: new Set(),           // player ids seen on the in-game scoreboard (real players, not spectators)
+ spike: {}, lastScore: null, pendingKills: [],
     roundKills: new Map(),          // 'team,idx' → kill count this round (for ace)
     teamKillers: [new Set(), new Set()], // team → set of player indices who got a kill (for team ace)
     clutch: null,                   // { tp:[t,j], against:N } — 1vX state set when outnumbered player detected
@@ -78,9 +80,17 @@ function createValorantAdapter(opts = {}) {
   };
 
   function slot(s, pid, gameTeam, name, authoritative) {
+    if (authoritative) ctx.confirmed.add(pid);
     if (ctx.slots.has(pid)) { const cur = ctx.slots.get(pid); if (!authoritative || cur[0] === teamOf(+gameTeam || 0)) return cur; ctx.slots.delete(pid); }
     const t = teamOf(+gameTeam || 0), used = [...ctx.slots.values()].filter(x => x[0] === t).map(x => x[1]);
-    const j = [0, 1, 2, 3, 4].find(k => !used.includes(k)); if (j === undefined) return null;
+    let j = [0, 1, 2, 3, 4].find(k => !used.includes(k));
+    // A full team on the scoreboard: a seat taken from the agent-select roster by someone never on the
+    // scoreboard (another observer in the lobby) goes to the real player.
+    if (j === undefined && authoritative) {
+      const ghost = [...ctx.slots.entries()].filter(([id, x]) => x[0] === t && !ctx.confirmed.has(id)).sort((a, b) => a[1][1] - b[1][1])[0];
+      if (ghost) { j = ghost[1][1]; ctx.slots.delete(ghost[0]); for (const [k, x] of [...ctx.byName]) if (x[0] === t && x[1] === j) ctx.byName.delete(k); }
+    }
+    if (j === undefined) return null;
     ctx.slots.set(pid, [t, j]); if (name) ctx.byName.set(nameKey(name), [t, j]);
     s.firstSide = [teamOf(0) === 0 ? 'ATK' : 'DEF', teamOf(0) === 0 ? 'DEF' : 'ATK'];
     return [t, j];
@@ -163,6 +173,8 @@ function createValorantAdapter(opts = {}) {
         tryReplayKills(s, out, now);
 
       } else if (/^roster_\d+$/.test(key) && v && v.player_id) {
+        // A roster line without a team (an observer in the lobby) never takes a player's seat.
+        if (![0, 1, '0', '1'].includes(v.team) && ![true, false, 'true', 'false'].includes(v.teammate)) continue;
         const team = [0, 1, '0', '1'].includes(v.team) ? Number(v.team) : v.teammate === false || v.teammate === 'false' ? 1 : 0;
         const tp = slot(s, v.player_id, team, v.name), p = P(s, tp); if (!p) continue;
         p.inGameName = typeof v.name === 'string' ? v.name.slice(0,128) : ''; p.name = shortName(v.name) || p.name; p.agent = agentOf(v.character); p.locked = !!v.locked; p.puuid = v.player_id; ctx.byName.set(nameKey(v.name), tp);

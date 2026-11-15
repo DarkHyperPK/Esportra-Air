@@ -84,6 +84,8 @@ test('a best of 3 with a remake, an engine crash and an early series win: every 
     production.autopilotStart();
     await production.autopilotTake(); // the intro waits for Take
     await wait(() => view().now?.id === 'intro', 'intro on air');
+    // The map starts straight after; under load the room watcher could miss the intro's moment on air.
+    await wait(() => aired.includes('match-intro'), 'the watcher saw the intro');
 
     // Map 1: live, halftime at 12 rounds, 13–9, the result and then the series.
     await newMap();

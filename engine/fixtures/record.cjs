@@ -222,6 +222,45 @@ function recordEdgeCases() {
   writeFixture('edge-cases', initial, steps);
 }
 
+// ── Fixture 4: observers in the lobby (14 Nov fix) ──
+// With two or more observers in a custom game, agent select lists them on the roster. They must never
+// take a player's seat, so the real players are all seated once the scoreboard arrives.
+function recordSpectators() {
+  const adapter = createValorantAdapter();
+  let state = clone(CLEAN);
+  const initial = clone(state), steps = [];
+  const uuid = (i) => `00000000-0000-4000-8000-0000000000${String(i).padStart(2, '0')}`;
+  const info = (k, v) => ({ info: { match_info: { [k]: typeof v === 'string' ? v : JSON.stringify(v) } }, feature: 'match_info' });
+  const roster = (i, extra) => info('roster_' + i, { name: `P${i} #TAG`, player_id: uuid(i), character: '', locked: false, ...extra });
+  const sb = (i) => ({ feature: 'match_info', key: 'scoreboard_' + i, data: JSON.stringify({
+    player_id: uuid(i), name: `P${i} #TAG`, character: ['Clay', 'Sarge', 'Rift', 'Iris', 'Wushu'][i % 5] + '_PC_C',
+    team: i < 5 ? '0' : '1', alive: true, ult_points: '0', ult_max: '7', kills: 0, deaths: 0, assists: 0, money: 800, shield: 0, weapon: 'TX_Hud_Pistol_Classic' }) });
+  const ev = (name, data = '') => ({ events: [{ name, data: typeof data === 'string' ? data : JSON.stringify(data) }] });
+  const script = [
+    [0, ev('match_start')],
+    // Agent select: three observers are listed first. Two carry no team; one looks like team A.
+    [10, roster(20, {})],
+    [11, roster(21, { teammate: '' })],
+    [12, roster(22, { teammate: true })],
+    ...Array.from({ length: 10 }, (_, i) => [20 + i, roster(i, { teammate: i < 5 })]),
+    // The game starts: the scoreboard lists only the ten players.
+    ...Array.from({ length: 10 }, (_, i) => [100 + i, sb(i)]),
+    [200, info('round_number', '1')],
+    [210, info('round_phase', 'combat')],
+    [220, ev('kill_feed', { attacker: 'P4 #TAG', victim: 'P9 #TAG', weapon: 'TX_Hud_Pistol_Classic', headshot: false })],
+  ];
+  const warn = console.warn; console.warn = () => {};
+  script.forEach(([t, msg], step) => {
+    const out = adapter.ingest(clone(state), clone(msg), t);
+    state = out.state;
+    steps.push({ step, kind: 'ingest', t, input: [msg], events: out.events, state: clone(state) });
+  });
+  console.warn = warn;
+  const seated = state.players.flat().filter((p) => /^P\d #TAG$/.test(p.inGameName || '')).length;
+  if (seated !== 10) throw new Error(`spectators: only ${seated} of 10 players seated`);
+  writeFixture('spectators', initial, steps);
+}
+
 // The engine embeds the HUD's default states; they are JavaScript files, so export them as JSON.
 function exportDefaults() {
   const file = path.resolve(__dirname, '../crates/air-engine/defaults.json');
@@ -233,5 +272,6 @@ function exportDefaults() {
   exportDefaults();
   recordAdapterShapes();
   recordEdgeCases();
+  recordSpectators();
   await recordSimulator();
 })().catch((error) => { console.error(error); process.exit(1); });

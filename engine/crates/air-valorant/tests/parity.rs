@@ -101,6 +101,11 @@ fn edge_cases() {
 }
 
 #[test]
+fn spectators_in_the_lobby_never_take_a_seat() {
+    replay("spectators");
+}
+
+#[test]
 fn simulated_match() {
     replay("simulated-match");
 }
