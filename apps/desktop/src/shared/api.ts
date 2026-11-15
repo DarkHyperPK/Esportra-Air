@@ -351,6 +351,8 @@ export interface Snapshot {
   esportraResults: import('./esportra-package.ts').EsportraResultsView | null;
   /** The selected Esportra match's veto: followed or entered here, its status on Esportra, warnings. */
   esportraVeto: import('./esportra-package.ts').EsportraVetoView | null;
+  /** The selected match's map records, and which one the post-game graphics show. */
+  mapRecords: { maps: Array<{ map: number; name: string; score: [number, number]; winner: 0 | 1 | -1; how: 'game' | 'producer' | 'closed'; partial: boolean }>; shown: number | 'series' | null } | null;
   mode: PcMode;
   join: JoinView;
   /** Keys rebound on this PC (overrides only) and the moments on Live. */
@@ -547,6 +549,11 @@ export interface AirApi {
   esportraReview(proposalId: string, decision: 'apply' | 'reject'): Promise<Snapshot>;
   /** Hands the veto back to Esportra after it was entered here. */
   vetoFollowEsportra(): Promise<Snapshot>;
+  /** Which map record (or the whole series) the post-game graphics show. */
+  recordShow(choice: number | 'series'): Promise<Snapshot>;
+  recordRemove(map: number): Promise<Snapshot>;
+  /** Keeps the map being played as it stands, without counting it in the series. */
+  closeMap(): Promise<Snapshot>;
   camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }): Promise<Snapshot>;
   camCreate(team: number, slot: number): Promise<Snapshot>;
   camRemove(team: number, slot: number): Promise<Snapshot>;

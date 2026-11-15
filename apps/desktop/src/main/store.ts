@@ -32,6 +32,9 @@ export interface Saved {
   autopilotProgress?: Record<string, { states: Record<string, 'done' | 'on_air'>; savedAt: number }>;
   /** The signed-in Esportra account (tokens are kept separately, encrypted). */
   esportra?: SavedEsportra;
+  /** Each match's map records (src/shared/map-records.ts) and which one the post-game graphics show. */
+  mapRecords?: Record<string, import('../shared/map-records.ts').MapRecord[]>;
+  recordShown?: Record<string, number | 'series'>;
   /** Map results sent (or waiting to be sent) to Esportra for review, per match (src/main/esportra-sync.ts). */
   esportraResults?: Record<string, import('./esportra-sync.ts').SavedResults>;
   /** This PC's id with Esportra (stable across sign-ins). */
@@ -90,6 +93,12 @@ export const DEFAULT_SCREENS: Screen[] = [
   hosted('standings', 'standings', 'Standings'),
   hosted('schedule', 'schedule', 'Today\'s schedule'),
   hosted('bracket', 'bracket', 'Bracket'),
+  hosted('breakdown', 'breakdown', 'Breakdown · Scoreboard'),
+  hosted('team-performance', 'team-performance', 'Team performance'),
+  hosted('victory-map', 'victory-map', 'Victory · Map'),
+  hosted('victory-series', 'victory-series', 'Victory · Series'),
+  hosted('postgame-player', 'postgame-player', 'Post-game player'),
+  hosted('postgame-matchup', 'postgame-matchup', 'Post-game matchup'),
   hosted('player-profile', 'player-profile', 'Player profile'),
   hosted('champion', 'champion', 'Champion'),
   hosted('cam-grid', 'cam-grid', 'Player cams'),

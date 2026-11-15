@@ -48,8 +48,8 @@ export const SECTION_LABEL: Record<Section, string> = { pre: 'Pre-show', game: '
 export const SECTION_SCREENS: Record<Section, Array<string | null>> = {
   pre: ['holding', 'schedule', 'bracket', 'standings', 'match-intro', 'map-veto', 'agent-select', 'casters'],
   game: ['in-game', null],
-  between: ['halftime', 'map-result', 'series', 'standings', 'bracket', 'schedule', 'player-profile', 'cam-grid', 'holding', 'casters'],
-  post: ['champion', 'schedule', 'casters', 'holding'],
+  between: ['halftime', 'map-result', 'victory-map', 'breakdown', 'team-performance', 'postgame-player', 'postgame-matchup', 'series', 'standings', 'bracket', 'schedule', 'player-profile', 'cam-grid', 'holding', 'casters'],
+  post: ['champion', 'victory-series', 'breakdown', 'team-performance', 'postgame-player', 'postgame-matchup', 'schedule', 'casters', 'holding'],
 };
 /** Screens in their own OBS scene: the producer switches to them in OBS, so they have no trigger. */
 export const SCENE_ROWS = new Set(['holding', 'casters']);

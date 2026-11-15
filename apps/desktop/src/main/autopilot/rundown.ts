@@ -22,7 +22,7 @@ interface LegacyEdits {
   preset?: Exclude<Preset, 'empty'>;
 }
 
-const FULLSCREEN_IDS = new Set(['match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'standings', 'player-profile', 'champion', 'cam-grid', 'schedule', 'bracket']);
+const FULLSCREEN_IDS = new Set(['match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'standings', 'player-profile', 'champion', 'cam-grid', 'schedule', 'bracket', 'breakdown', 'team-performance', 'victory-map', 'victory-series', 'postgame-player', 'postgame-matchup']);
 
 const TITLE: Record<string, string> = { 'match-intro': 'Match intro', 'map-veto': 'Map veto', 'agent-select': 'Agent select', 'map-result': 'Map result', series: 'Series', halftime: 'Halftime', standings: 'Standings', 'player-profile': 'Player profile', champion: 'Champion', 'cam-grid': 'Player cams', schedule: 'Today\'s schedule' };
 export const screenTitle = (id: string | null) => (id === null ? 'Back to the game' : TITLE[id] ?? id);

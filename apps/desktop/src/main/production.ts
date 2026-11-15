@@ -45,6 +45,7 @@ import { presetRows, rowsForScreens, ruleOf, rundownScreens } from './autopilot/
 import { COLORS, tagFor, tagsFor } from './team-tags.ts';
 import { EsportraMatches } from './esportra-matches.ts';
 import { EsportraSync } from './esportra-sync.ts';
+import { MapRecords, type RecordChoice } from './map-records.ts';
 import { MatchDataService } from './match-data.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
@@ -224,6 +225,10 @@ export class Production extends EventEmitter {
       save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('changed'), now: () => (deps.now ?? Date.now)(),
     });
     if (deps.esportra) this.esportraSync.start();
+    this.mapRecords = new MapRecords({
+      store: deps.store, match: () => this.match, save: () => this.save(), log: (text) => this.log.add(text), now: () => (deps.now ?? Date.now)(),
+      patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
+    });
     this.looks = new Looks({
       store: deps.store, setup: () => this.setup, rows: () => this.autopilot.rows(), save: () => this.save(),
       publish: async () => { if (this.match) await this.syncEngine(); },
@@ -484,6 +489,8 @@ export class Production extends EventEmitter {
     await this.client.patch(`/api/${code}`, { schedule: this.scheduleOf(match) });
     // Match data: veto, maps, holding text, champion, standings, ticker, bracket.
     await this.client.patch(`/api/${code}`, this.matchData.room() ?? {});
+    // Map records: what the post-game graphics show.
+    await this.client.patch(`/api/${code}`, this.mapRecords.room() ?? {});
     // The lineups: the engine puts display names and photos on the players the game reports.
     await this.client.patch(`/api/${code}`, { airRoster: match.players.map((team) => team.map((p) => ({ gameId: p.gameId, name: p.name, photo: p.photo }))) });
     // Setup decides where each layer starts; after that the console owns them for the match.
@@ -732,6 +739,7 @@ export class Production extends EventEmitter {
       event = withScores(raw, state?.teams);
     }
     if (event.type === 'round.won') this.mapEndSeen = null;
+    if (match && !this.testRoundRunning(match)) this.mapRecords.onEvent(event as Record<string, unknown>);
     this.autopilot.onGameEvent(event);
     this.companion.onEngineEvent(event);
     if (match && event.type === 'match.end' && state && this.mapEndSeen !== match.id) await this.countMap(match, state, event).catch((e) => this.log.add(`Map result not counted · ${(e as Error).message}`));
@@ -797,6 +805,8 @@ export class Production extends EventEmitter {
     await fix('map_result', scores.map((score) => ({ mapIndex: map, score })));
     await fix('series', wins);
     this.log.add(`Map ${map} · ${match.teams[winner]?.name ?? 'Team'} win ${label} · series ${wins[0]}–${wins[1]}`);
+    // The map's final data for the post-game graphics.
+    await this.mapRecords.close(match, state, map, scores, winner, how === 'from the game' ? 'game' : 'producer').catch((e) => this.log.add(`Map record not kept · ${(e as Error).message}`));
     // An Esportra match: the result goes to the organizer for review (Air never writes scores).
     await this.esportraSync.propose(match, map, scores, how).catch((e) => this.log.add(`Result not queued for Esportra · ${(e as Error).message}`));
     this.roomV = -1;
@@ -1333,6 +1343,21 @@ export class Production extends EventEmitter {
   esportraRefresh() { return this.esportraMatches.refresh(); }
   useEsportraMatch(matchId: string) { return this.esportraMatches.use(matchId); }
   readonly esportraSync: EsportraSync;
+
+  // ── map records: src/main/map-records.ts ──
+  readonly mapRecords: MapRecords;
+  recordShow(choice: RecordChoice) { return this.mapRecords.show(choice); }
+  recordRemove(map: number) { return this.mapRecords.remove(map); }
+  /** Keeps the map being played as it stands, without counting it in the series (the game did not end it properly). */
+  async closeMap() {
+    const match = this.requireMatch();
+    const state = await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`).then((d) => d.state);
+    const wins = [0, 1].map((i) => Number(state?.teams?.[i]?.series) || 0);
+    const scores = [0, 1].map((i) => Number(state?.teams?.[i]?.score) || 0) as [number, number];
+    const map = Math.min(wins[0]! + wins[1]! + 1, match.bestOf);
+    await this.mapRecords.close(match, state, map, scores, scores[0] === scores[1] ? -1 : scores[0] > scores[1] ? 0 : 1, 'closed');
+    this.emit('changed');
+  }
   esportraReview(proposalId: string, decision: 'apply' | 'reject') { return this.esportraSync.review(proposalId, decision); }
   async vetoFollowEsportra() {
     await this.matchData.followEsportra();
@@ -1650,6 +1675,7 @@ export class Production extends EventEmitter {
       esportra: this.deps.esportra?.view() ?? signedOut(),
       esportraResults: this.esportraSync.view(this.match),
       esportraVeto: this.esportraSync.vetoView(this.match),
+      mapRecords: this.mapRecords.view(this.match),
       mode: this.mode,
       join: this.joinHost.view(),
       devices: devicesView({ lineup: this.match?.players ?? null, roomPlayers: Array.isArray(this.room?.players) ? this.room.players : null, peers: this.joinHost.view().peers, sources: this.joinHost.view().dataSources, now: Date.now() }),

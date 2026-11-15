@@ -84,6 +84,18 @@ test('an Esportra match end to end: package, lineup Riot ids, live veto, bracket
     backend.failProposals = 1;
     const state = await room();
     await (production as any).recordMap(match, state, [13, 9], 0, 'from the game');
+    // The map's record is kept for the post-game graphics.
+    const kept = (await room()).airRecord;
+    assert.deepEqual([kept.map, kept.score, kept.winner, kept.how], [1, [13, 9], 0, 'game']);
+    assert.equal(kept.players[0].length, 5);
+    assert.deepEqual(production.snapshot().mapRecords!.maps.map((m) => m.map), [1]);
+    await production.closeMap();
+    assert.deepEqual(production.snapshot().mapRecords!.maps.map((m) => [m.map, m.how]), [[1, 'game'], [2, 'closed']], 'Close map keeps map 2 without counting it');
+    await production.recordShow('series');
+    assert.equal((await room()).airRecord.name, 'SERIES');
+    await production.recordShow(1);
+    await production.recordRemove(2);
+    assert.deepEqual(production.snapshot().mapRecords!.maps.map((m) => m.map), [1]);
     let results = production.snapshot().esportraResults!;
     assert.deepEqual(results.items.map((i) => [i.map, i.scores, i.state]), [[1, [13, 9], 'queued']]);
     assert.match(results.items[0]!.error!, /unavailable/);

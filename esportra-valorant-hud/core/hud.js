@@ -1153,7 +1153,7 @@
   // Full-screen host: one browser source that shows the graphic named in state.airFullscreen
   // (set by Esportra Air), so switching full-screen graphics never touches OBS.
   const OVER_ONLY = Q.get('over') === '1';
-  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket' };
+  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'breakdown': 'breakdown', 'team-performance': 'performance', 'victory-map': 'victoryMap', 'victory-series': 'victorySeries', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup' };
   M.fullscreen = root => {
     const slots = {};
     let shown = null;
