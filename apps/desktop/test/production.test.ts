@@ -371,7 +371,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.deepEqual(['scorebug', 'economy', 'scoreboard', 'spikeTimer'].map((id) => row(id).mode), ['on', 'auto', 'off', 'auto']);
     assert.equal(rows.filter((x) => x.group === 'ingame').length, 5);
     assert.equal(rows.filter((x) => x.group === 'between').length, 8);
-    assert.equal(rows.filter((x) => x.group === 'fullscreen').length, 18, 'every full-screen graphic can be taken by hand, the post-game set and Map veto included');
+    assert.equal(rows.filter((x) => x.group === 'fullscreen').length, 15, 'every full-screen graphic can be taken by hand, the post-game graphics and Map veto included');
     await production.setLayer('economy', 'off');
     assert.equal(row('economy').manual, true);
     assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.show.economy, false);

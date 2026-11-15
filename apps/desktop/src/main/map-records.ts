@@ -1,6 +1,6 @@
 // Map records (approved mock, 15 Nov): Air counts each map's kill events as they come (first deaths,
 // multi-kills, aces, headshots) and, when the map is counted or closed by hand, keeps that map's final
-// data. The post-game graphics read the record the producer picks (`airRecord`), so Breakdown can show
+// data. The post-game graphics read the record the producer picks (`airRecord`), so Map breakdown can show
 // map 1 while map 2 is live. Production gives it a small context; the record itself is src/shared/map-records.ts.
 import type { Match } from '../shared/api.ts';
 import { MapTallyCounter, buildRecord, seriesRecord, type MapRecord } from '../shared/map-records.ts';

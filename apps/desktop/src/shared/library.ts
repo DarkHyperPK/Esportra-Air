@@ -53,12 +53,9 @@ export const LIBRARY: Record<GameId, LibraryItem[]> = {
     { overlay: 'standings', title: 'Standings', group: 'fullscreen', what: 'The table.', when: 'Between matches.', scene: 'Fullscreen' },
     { overlay: 'bracket', title: 'Bracket', group: 'fullscreen', what: 'The playoff bracket: quarter-finals, semi-finals and the grand final.', when: 'Before and between matches.', scene: 'Fullscreen' },
     { overlay: 'schedule', title: 'Today’s schedule', group: 'fullscreen', what: 'The event’s matches today, with results.', when: 'Before and between matches.', scene: 'Fullscreen' },
-    { overlay: 'breakdown', title: 'Breakdown · Scoreboard', group: 'fullscreen', what: 'The closed map’s scoreboard: agents, K / D / A and first kills (ADR with player PCs).', when: 'After a map, or for any earlier map.', scene: 'Fullscreen' },
-    { overlay: 'team-performance', title: 'Team performance', group: 'fullscreen', what: 'First kills, multi-kills, clutches, aces, rounds on attack and defence, pistols, plants and defuses.', when: 'After a map, or for the whole series.', scene: 'Fullscreen' },
-    { overlay: 'victory-map', title: 'Victory · Map', group: 'fullscreen', what: 'The team that won the map, with the score.', when: 'When a map ends.', scene: 'Fullscreen' },
-    { overlay: 'victory-series', title: 'Victory · Series', group: 'fullscreen', what: 'The team that won the series, with the series score.', when: 'When the series is won.', scene: 'Fullscreen' },
-    { overlay: 'postgame-player', title: 'Post-game player', group: 'fullscreen', what: 'One player from the map’s record, with the stats you tick.', when: 'After a map.', scene: 'Fullscreen' },
-    { overlay: 'postgame-matchup', title: 'Post-game matchup', group: 'fullscreen', what: 'Two players side by side; the better number is marked.', when: 'After a map.', scene: 'Fullscreen' },
+    { overlay: 'map-breakdown', title: 'Map breakdown', group: 'fullscreen', what: 'The map by halves, rounds on attack and defence, plants and every round won.', when: 'After a map, or for any earlier map.', scene: 'Fullscreen' },
+    { overlay: 'postgame-player', title: 'Player of the map', group: 'fullscreen', what: 'One player from the map’s record, with the stats you tick.', when: 'After a map.', scene: 'Fullscreen' },
+    { overlay: 'postgame-matchup', title: 'Matchup', group: 'fullscreen', what: 'Two players side by side; the better number is marked.', when: 'After a map.', scene: 'Fullscreen' },
     { overlay: 'champion', title: 'Champion', group: 'fullscreen', what: 'The winning team.', when: 'After the final.', scene: 'Fullscreen' },
     { overlay: 'cam-grid', title: 'Player cams', group: 'fullscreen', what: 'Five or ten player cameras.', when: 'When you show the cam wall (K).', scene: 'Fullscreen' },
     { overlay: 'holding', title: 'Holding', group: 'show', what: 'Starting soon, break and ending, with the next match. Or a frame with two see-through windows (Look in the Rundown).', when: 'Before, between and after.', scene: 'Holding' },
@@ -76,7 +73,7 @@ export const LIBRARY: Record<GameId, LibraryItem[]> = {
 export type ShowLink = { kind: 'screen'; overlay: string } | { kind: 'hud'; key: string } | { kind: 'always' };
 
 /** Graphics that are their own OBS source (matched to `Setup.screens` by overlay). */
-const SCREEN_OVERLAYS = new Set(['holding', 'ticker', 'match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'player-profile', 'standings', 'schedule', 'bracket', 'champion', 'cam-grid', 'replay', 'casters', 'breakdown', 'team-performance', 'victory-map', 'victory-series', 'postgame-player', 'postgame-matchup']);
+const SCREEN_OVERLAYS = new Set(['holding', 'ticker', 'match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'player-profile', 'standings', 'schedule', 'bracket', 'champion', 'cam-grid', 'replay', 'casters', 'map-breakdown', 'postgame-player', 'postgame-matchup']);
 /** Elements inside the in-game HUD that can be switched off (`Setup.hud` keys). */
 const HUD_KEYS: Record<string, string> = { scorebug: 'scorebug', 'player-cards': 'players', 'win-probability': 'winProb' };
 

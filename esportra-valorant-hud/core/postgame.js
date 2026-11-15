@@ -1,8 +1,9 @@
-/* Post-game graphics (approved mock, 15 Nov): Breakdown (scoreboard), Team performance, Victory (map and
-   series), Post-game player and Post-game matchup. They read the map record Air kept when a map ended
+/* Post-game player and Post-game matchup. They read the map record Air kept when a map ended
    (state.airRecord: one map, or the whole series added up), so map 1 can be shown while map 2 is live.
    Only what the game's data has: ACS is never shown; ADR and HS% only when the record has them.
-   Load after hud.js; each is a module like the ones in hud.js, shown by the full-screen host or its own page. */
+   Load after hud.js; each is a module like the ones in hud.js, shown by the full-screen host or its own page.
+   They use the same backdrop and frame as the other full-screen scenes (HUD.sceneBg, HUD.chrome). The map's
+   result, breakdown and the champion are hud.js's own Map result, Map breakdown and Champion. */
 (function () {
   const HUD = window.HUD, M = HUD.modules, E = HUD.el;
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -10,9 +11,6 @@
   const accent = s => (/^#[0-9a-f]{6}$/i.test(s.event && s.event.accent || '') ? s.event.accent : '#8b7cf6');
   const num = v => (v === null || v === undefined || v === '' ? '—' : esc(v));
   const kd = p => (p.d ? (p.k / p.d).toFixed(2) : p.k ? p.k.toFixed(2) : '—');
-  const mark = (team, size) => assetOk(team.logo)
-    ? `<img class="pg-mark" src="${esc(team.logo)}" alt="" style="width:${size}px;height:${size}px">`
-    : `<span class="pg-mark tile" style="width:${size}px;height:${size}px;--c:${esc(team.color || '#888')};font-size:${Math.round(size * .34)}px">${esc(team.tag)}</span>`;
   const mapTitle = r => (r.map ? `MAP ${r.map} · ${esc(r.name)}` : 'THE SERIES');
   /** The sponsor bought for this graphic's space (Air's sponsor spaces), if any. */
   const sponsor = (s, space) => {
@@ -35,9 +33,11 @@
   };
   const sampleRoom = () => HUD.preview || !HUD.match || /^__ESA_SIM/.test(String(HUD.match));
 
-  /** A full-screen post-game graphic: map art behind, redrawn only when its data changes. */
-  function scene(root, cls, render, keyOf) {
-    const m = E('div', 'mod on pg ' + cls, root), bg = E('div', 'pg-bg', m), box = E('div', 'pg-box', m);
+  /** A full-screen post-game scene: the house backdrop and frame with the map's art, redrawn only when its data changes. */
+  function scene(root, cls, label, render, keyOf) {
+    const m = E('div', 'mod on pg ' + cls, root), sc = HUD.sceneBg(m), bg = E('img', 'pg-map', sc);
+    HUD.chrome(m, label); HUD.sceneFx(sc);
+    const box = E('div', 'pg-box', m);
     let sig = '';
     return { update(s) {
       m.style.setProperty('--ev', accent(s));
@@ -47,49 +47,12 @@
       if (k === sig) return;
       const first = !sig; sig = k;
       const Mm = r && r.map ? HUD.mapA(r.name) : null;
-      bg.style.backgroundImage = Mm && Mm.splash ? `url('${Mm.splash}')` : '';
+      if (Mm && Mm.splash) { if (bg.getAttribute('src') !== Mm.splash) bg.src = Mm.splash; bg.style.display = ''; } else bg.style.display = 'none';
       const html = render(s, r);
       if (first) { box.innerHTML = html; box.classList.remove('pg-in'); void box.offsetWidth; box.classList.add('pg-in'); }
       else HUD.morph(box, html);
     }, play() { sig = ''; } };
   }
-
-  const head = (r, mid) => `<div class="pg-head">${[0, 1].map(t => `<div class="pg-team ${t ? 'r' : ''}">${mark(r.teams[t], 96)}<div><b>${esc(r.teams[t].name)}</b>${r.winner === t ? '<span class="res w">WIN</span>' : r.winner === 1 - t ? '<span class="res l">LOSS</span>' : ''}</div></div>`).join(`<div class="pg-mid">${mid}</div>`)}</div>`;
-
-  // Breakdown · Scoreboard: agents, K / D / A and first kills; ADR only when the record has it.
-  M.breakdown = root => scene(root, 'pg-board', (s, r) => {
-    if (!r) return empty('BREAKDOWN');
-    const adr = all(r).some(p => p.adr !== null);
-    const best = topFrag(r);
-    const table = t => `<div class="pg-tab" style="--c:${esc(r.teams[t].color)}"><div class="th"><span></span><span>PLAYER</span><span>K</span><span>D</span><span>A</span><span>FK</span>${adr ? '<span>ADR</span>' : ''}</div>${r.players[t].map((p, i) => {
-      const A = HUD.agent(p.agent), top = best && best.t === t && best.i === i;
-      return `<div class="tr ${top ? 'mvp' : ''}"><span class="ag">${A && A.icon ? `<img src="${A.icon}" alt="">` : ''}</span><span class="nm">${esc(p.name)}<small>${esc(A ? A.name : p.agent)}${top ? ' · TOP FRAG' : ''}</small></span><span>${p.k}</span><span>${p.d}</span><span>${p.a}</span><span>${p.fk}</span>${adr ? `<span>${num(p.adr)}</span>` : ''}</div>`;
-    }).join('')}</div>`;
-    return head(r, `<b>${r.score[0]} – ${r.score[1]}</b><span>${mapTitle(r)} · BREAKDOWN</span>`) + `<div class="pg-tables" style="--cols:${adr ? 7 : 6}">${table(0)}${table(1)}</div>` + foot(s, 'breakdown');
-  });
-
-  // Team performance: first kills, multi-kills, clutches, aces, rounds on attack and defence, pistols, plants and defuses.
-  M.performance = root => scene(root, 'pg-perf', (s, r) => {
-    if (!r) return empty('TEAM PERFORMANCE');
-    const [a, b] = r.perf, frac = x => `${x[0]}/${x[1]}`;
-    const rows = [['FIRST KILLS', a.firstKills, b.firstKills], ['MULTI-KILLS', a.multi, b.multi], ['CLUTCHES', a.clutches, b.clutches], ['ACES', a.aces, b.aces],
-      ['ATTACK ROUNDS', frac(a.attack), frac(b.attack)], ['DEFENCE ROUNDS', frac(a.defence), frac(b.defence)], ['PISTOL ROUNDS', frac(a.pistols), frac(b.pistols)], ['PLANTS · DEFUSES', `${a.plants} · ${a.defuses}`, `${b.plants} · ${b.defuses}`]];
-    const better = (x, y) => { const v = String(x).split('/')[0], w = String(y).split('/')[0]; return +v > +w; };
-    return head(r, `<b class="t">TEAM PERFORMANCE</b><span>${mapTitle(r)} · ${r.score[0]} – ${r.score[1]}</span>`) +
-      `<div class="pg-rows">${rows.map(([l, x, y]) => `<div class="r"><span class="a ${better(x, y) ? 'hi' : ''}" style="--c:${esc(r.teams[0].color)}">${num(x)}</span><span class="l">${l}</span><span class="b ${better(y, x) ? 'hi' : ''}" style="--c:${esc(r.teams[1].color)}">${num(y)}</span></div>`).join('')}</div>` + foot(s, 'breakdown');
-  });
-
-  // Victory: the winner of the map (or of the series) with the score.
-  const victory = series => root => scene(root, 'pg-victory', (s, r) => {
-    const wins = s.teams.map(t => Number(t.series) || 0), need = Math.ceil((s.event.bestOf || 1) / 2);
-    const w = series ? (wins[0] >= need ? 0 : wins[1] >= need ? 1 : wins[0] === wins[1] ? -1 : wins[0] > wins[1] ? 0 : 1) : r ? r.winner : -1;
-    if (w !== 0 && w !== 1) return empty(series ? 'SERIES VICTORY' : 'MAP VICTORY');
-    const T = series ? s.teams[w] : r.teams[w];
-    const line = series ? `SERIES ${wins[0]} – ${wins[1]}` : `${r.score[0]} – ${r.score[1]} · SERIES ${wins[0]} – ${wins[1]}`;
-    return `<div class="pg-wash" style="--c:${esc(T.color)}"></div><div class="pg-win">${mark(T, 220)}<div class="k">${series ? 'THE SERIES' : mapTitle(r)}</div><div class="t">${esc(T.name)} win${series && wins[w] >= need ? ' the series' : ''}</div><div class="s">${line}</div></div><div class="pg-foot end">${sponsor(s, 'victory')}</div>`;
-  }, s => [s.teams.map(t => t.series), s.event.bestOf]);
-  M.victoryMap = victory(false);
-  M.victorySeries = victory(true);
 
   /** A player picked in Air ([team, slot]), or the record's top fragger. */
   const chosen = (r, pick, fallback) => (Array.isArray(pick) && r.players[pick[0]] && r.players[pick[0]][pick[1]] ? { ...r.players[pick[0]][pick[1]], t: pick[0], i: pick[1] } : fallback);
@@ -98,15 +61,15 @@
   const statList = s => (Array.isArray(s.airPostStats) && s.airPostStats.length ? s.airPostStats : ['k', 'd', 'a', 'fk', 'kd']).filter(k => STATS[k]).slice(0, 6);
 
   // Post-game player: one player and the stats ticked in Air.
-  M.pgplayer = root => scene(root, 'pg-player', (s, r) => {
+  M.pgplayer = root => scene(root, 'pg-player', 'PLAYER OF THE MAP', (s, r) => {
     if (!r) return empty('POST-GAME PLAYER');
     const top = topFrag(r), p = chosen(r, s.airPostPlayer, top);
     if (!p) return empty('POST-GAME PLAYER');
-    return `<div class="pg-head"><div></div><div class="pg-mid"><b class="t">${p === top ? 'TOP FRAGGER' : 'PLAYER'}</b><span>${mapTitle(r)}</span></div><div></div></div><div class="pg-one">${card(r, p)}<div class="pg-stats">${statList(s).map(k => `<div><b>${num(STATS[k][1](p))}</b><span>${STATS[k][0]}</span></div>`).join('')}</div></div>` + foot(s, 'breakdown');
+    return `<div class="pg-head"><div></div><div class="pg-mid"><b class="t disp hl">${p === top ? 'TOP FRAGGER' : 'PLAYER'}</b><span>${mapTitle(r)}</span></div><div></div></div><div class="pg-one">${card(r, p)}<div class="pg-stats">${statList(s).map(k => `<div><b>${num(STATS[k][1](p))}</b><span>${STATS[k][0]}</span></div>`).join('')}</div></div>` + foot(s, 'breakdown');
   }, s => [s.airPostPlayer, s.airPostStats]);
 
   // Post-game matchup: any two players and the stats ticked in Air; the better number is marked.
-  M.matchup = root => scene(root, 'pg-matchup', (s, r) => {
+  M.matchup = root => scene(root, 'pg-matchup', 'MATCHUP', (s, r) => {
     if (!r) return empty('MATCHUP');
     const tops = [0, 1].map(t => r.players[t].map((p, i) => ({ ...p, t, i })).sort((x, y) => y.k - x.k)[0]);
     const pick = Array.isArray(s.airMatchup) ? s.airMatchup : [];
@@ -116,6 +79,6 @@
     const rows = statList(s).map(k => { const x = STATS[k][1](a), y = STATS[k][1](b), nx = parseFloat(x), ny = parseFloat(y);
       const ha = Number.isFinite(nx) && Number.isFinite(ny) && nx !== ny && (lower[k] ? nx < ny : nx > ny), hb = Number.isFinite(nx) && Number.isFinite(ny) && nx !== ny && !ha;
       return `<div><b class="${ha ? 'hi' : ''}">${num(x)}</b><span>${STATS[k][0]}</span><b class="${hb ? 'hi' : ''}">${num(y)}</b></div>`; }).join('');
-    return `<div class="pg-head"><div></div><div class="pg-mid"><b class="t">MATCHUP</b><span>${mapTitle(r)}</span></div><div></div></div><div class="pg-mu">${card(r, a)}<div class="pg-vs">${rows}</div>${card(r, b, true)}</div>` + foot(s, 'breakdown');
+    return `<div class="pg-head"><div></div><div class="pg-mid"><b class="t disp hl">MATCHUP</b><span>${mapTitle(r)}</span></div><div></div></div><div class="pg-mu">${card(r, a)}<div class="pg-vs">${rows}</div>${card(r, b, true)}</div>` + foot(s, 'breakdown');
   }, s => [s.airMatchup, s.airPostStats]);
 })();

@@ -61,7 +61,8 @@ function sampleState(marks) {
   s.round = { ...s.round, number: 21, phase: 'live', endsAt: Date.now() + 61000, remaining: 61 };
   const rec = (t) => s.players[t].map((p) => ({ name: p.name, agent: p.agent, gameId: '', k: p.k, d: p.d, a: p.a, fk: p.fk, fd: 2, multi: 1, aces: 0, hsPct: 24, adr: null }));
   s.airRecord = { map: 1, name: 'HAVEN', score: [13, 10], winner: 0, teams: s.teams.map((t) => ({ name: t.name, tag: t.tag, color: t.color, logo: t.logo })), players: [rec(0), rec(1)],
-    perf: [{ firstKills: 13, multi: 6, aces: 1, clutches: 3, plants: 9, defuses: 3, attack: [7, 12], defence: [6, 11], pistols: [2, 2] }, { firstKills: 10, multi: 4, aces: 0, clutches: 1, plants: 7, defuses: 2, attack: [5, 11], defence: [5, 12], pistols: [0, 2] }], how: 'game', closedAt: Date.now(), partial: false };
+    perf: [{ firstKills: 13, multi: 6, aces: 1, clutches: 3, plants: 9, defuses: 3, attack: [7, 12], defence: [6, 11], pistols: [2, 2] }, { firstKills: 10, multi: 4, aces: 0, clutches: 1, plants: 7, defuses: 2, attack: [5, 11], defence: [5, 12], pistols: [0, 2] }], how: 'game', closedAt: Date.now(), partial: false,
+    rounds: [0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0].map((w, i) => ({ w, how: ['elim', 'defuse', 'boom', 'time'][i % 4] })), firstSide: ['ATK', 'DEF'] };
   s.airSpaces = { breakdown: { name: 'NORTHWIND ENERGY', logo: '' }, victory: { name: 'NORTHWIND ENERGY', logo: '' }, timeout: { name: 'NORTHWIND ENERGY', logo: '' }, 'map-veto': { name: 'NORTHWIND ENERGY', logo: '' } };
   s.layout = { ...s.layout, pauseStyle: 'bar' };
   s.sponsors = [{ name: 'NORTHWIND ENERGY', logo: '', line: 'POWERING THE GRAND FINAL' }];
@@ -109,9 +110,11 @@ function sampleState(marks) {
   await shot('hud-clear', 'ingame', {}, false, true);
   await shot('veto', 'map-veto');
   await shot('agents', 'agent-select', { round: { ...base.round, phase: 'buy' } });
-  await shot('breakdown', 'breakdown');
-  await shot('performance', 'team-performance');
-  await shot('victory', 'victory-map');
+  await shot('map-result', 'map-result');
+  await shot('map-breakdown', 'map-breakdown');
+  await shot('champion', 'champion');
+  await shot('player', 'postgame-player');
+  await shot('matchup', 'postgame-matchup');
   await shot('timeout', 'ingame', { airPause: { id: '00000000-0000-4000-8000-000000000000', kind: 'timeout', team: 1, seconds: 60, startedAt: Date.now() - 23000 }, round: { ...base.round, phase: 'buy' } }, true);
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });

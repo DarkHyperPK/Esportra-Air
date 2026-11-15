@@ -22,7 +22,7 @@ interface LegacyEdits {
   preset?: Exclude<Preset, 'empty'>;
 }
 
-const FULLSCREEN_IDS = new Set(['match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'standings', 'player-profile', 'champion', 'cam-grid', 'schedule', 'bracket', 'breakdown', 'team-performance', 'victory-map', 'victory-series', 'postgame-player', 'postgame-matchup']);
+const FULLSCREEN_IDS = new Set(['match-intro', 'map-veto', 'agent-select', 'map-result', 'series', 'halftime', 'standings', 'player-profile', 'champion', 'cam-grid', 'schedule', 'bracket', 'map-breakdown', 'postgame-player', 'postgame-matchup']);
 
 const TITLE: Record<string, string> = { 'match-intro': 'Match intro', 'map-veto': 'Map veto', 'agent-select': 'Agent select', 'map-result': 'Map result', series: 'Series', halftime: 'Halftime', standings: 'Standings', 'player-profile': 'Player profile', champion: 'Champion', 'cam-grid': 'Player cams', schedule: 'Today\'s schedule' };
 export const screenTitle = (id: string | null) => (id === null ? 'Back to the game' : TITLE[id] ?? id);
@@ -142,9 +142,27 @@ export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens
 }
 
 /** A save from before rows existed becomes rows: the standard rows, or the old steps one map at a time. */
+/** Post-game graphics retired on 16 Nov: copies of graphics Air already had. Saved rows move to the one kept. */
+export const RETIRED_SCREENS: Record<string, string> = { 'victory-map': 'map-result', 'victory-series': 'champion', breakdown: 'map-breakdown', 'team-performance': 'map-breakdown' };
+
+/** Rows that name a retired graphic show its kept twin; a second row for the same graphic, section and map is dropped. */
+function renameRetired(rows: RundownRow[]): RundownRow[] {
+  if (!rows.some((r) => r.show && RETIRED_SCREENS[r.show])) return rows;
+  const seen = new Set<string>();
+  return rows.flatMap((r) => {
+    const show = r.show && RETIRED_SCREENS[r.show] ? RETIRED_SCREENS[r.show]! : r.show;
+    const key = `${show}|${r.section ?? ''}|${r.map}`;
+    if (show !== r.show && seen.has(key)) return [];
+    seen.add(key);
+    return [show === r.show ? r : { ...r, show }];
+  });
+}
+
 export function migrate(saved: SavedRundown | LegacyEdits | undefined, bestOf: 1 | 3 | 5, myShow: string[] = []): SavedRundown {
   if (saved && 'rows' in saved && Array.isArray(saved.rows)) {
-    const done = saved as SavedRundown;
+    const renamed = renameRetired((saved as SavedRundown).rows);
+    const done = renamed === (saved as SavedRundown).rows ? saved as SavedRundown : { ...(saved as SavedRundown), rows: renamed };
+    myShow = myShow.map((x) => RETIRED_SCREENS[x] ?? x);
     if (done.rows.every((r) => r.section)) return done;
     // Rows from before sections (12 Nov): each goes in its usual section; the HUD row and the full-screen
     // graphics switched on in the old My show are added, so nothing that was in the show goes missing.

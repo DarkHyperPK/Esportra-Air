@@ -6,7 +6,7 @@ import type { Template } from '../../shared/templates.ts';
 import type { Match, Screen } from '../../shared/api.ts';
 import type { AutopilotPause, AutopilotView, Preset, RowInput, RundownRow, Segment } from '../../shared/autopilot.ts';
 import type { Store } from '../store.ts';
-import { buildRundown, migrate, presetRows, screenTitle, sortRows, validPreset, validRow, type SavedRundown } from './rundown.ts';
+import { buildRundown, migrate, presetRows, RETIRED_SCREENS, screenTitle, sortRows, validPreset, validRow, type SavedRundown } from './rundown.ts';
 import { randomUUID } from 'node:crypto';
 import { realClock, ShowRunner, type Clock, type GameEvent, type RunnerLog, type TakeOutcome } from './show-runner.ts';
 
@@ -70,7 +70,7 @@ export class Autopilot {
     const current = all[match.id];
     // A new match starts with only the in-game HUD row; the producer adds their screens (or a template).
     if (!current) all[match.id] = { rows: presetRows('empty', match.bestOf), startedFrom: 'empty' };
-    else if (!('rows' in current) || (current as SavedRundown).rows.some((r) => !r.section)) {
+    else if (!('rows' in current) || (current as SavedRundown).rows.some((r) => !r.section || (r.show && RETIRED_SCREENS[r.show]))) {
       // Older saves: the full-screen graphics that were switched on in My show stay in the show.
       const myShow = this.deps.screens().filter((x) => x.enabled && x.hosted).map((x) => x.id);
       all[match.id] = migrate(current as never, match.bestOf, myShow);

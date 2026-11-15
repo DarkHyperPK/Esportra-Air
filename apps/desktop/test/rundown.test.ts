@@ -117,3 +117,17 @@ test('a design of your own takes the rule of the screen it stands for', async ()
   assert.equal(ruleOf('', 'standard', 3).trigger, 'manual', '"Anything" waits for Take');
   assert.equal(ruleOf('halftime', 'minimal', 3).trigger, 'manual', 'Results only: only the result comes up by itself');
 });
+
+test('rows for the retired post-game copies show the graphic Air kept; a second row for the same graphic is dropped', () => {
+  const rows = presetRows('standard', 3);
+  const between = rows.find((r) => r.section === 'between')!;
+  const saved = { rows: [...rows, { ...between, id: 'v', show: 'victory-map' }, { ...between, id: 'b', show: 'breakdown' }, { ...between, id: 'p', show: 'team-performance' }, { ...rows.at(-1)!, id: 'vs', show: 'victory-series' }], startedFrom: 'standard' };
+  const m = migrate(saved as never, 3);
+  const shows = m.rows.map((r) => r.show);
+  for (const gone of ['victory-map', 'victory-series', 'breakdown', 'team-performance']) assert.ok(!shows.includes(gone), gone);
+  assert.equal(m.rows.filter((r) => r.show === 'map-breakdown').length, 1, 'Breakdown and Team performance on the same map become one Map breakdown row');
+  assert.equal(m.rows.filter((r) => r.show === 'map-result').length, 1, 'Standard already shows Map result after each map: Victory · Map is not added twice');
+  assert.equal(m.rows.filter((r) => r.show === 'champion').length, 1);
+  const alone = migrate({ rows: [hudRow(), { ...rows.at(-1)!, id: 'vs', show: 'victory-series' }], startedFrom: 'empty' } as never, 3);
+  assert.ok(alone.rows.some((r) => r.id === 'vs' && r.show === 'champion'), 'on its own, Victory · Series becomes Champion');
+});

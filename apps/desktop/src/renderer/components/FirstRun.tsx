@@ -62,21 +62,6 @@ export function StageLight() {
   return <canvas ref={ref} className="stagelight" aria-hidden="true" />;
 }
 
-/** What goes on air, drawn as the graphics look (placeholder teams and talent). */
-function OnAirPreview() {
-  return (
-    <div className="fr-preview" aria-label="Example graphics: a scorebug and a talent lower third">
-      <div className="fr-bug">
-        <span className="t"><i style={{ background: '#22d3ee' }} />NIGHT OWLS</span>
-        <span className="mid"><b>7 – 5</b>ROUND 13 · MAP 2</span>
-        <span className="t r">CRIMSON FIVE<i style={{ background: '#f43f5e' }} /></span>
-      </div>
-      <div className="fr-l3"><span className="ph" /><span><b>Sara Malik</b><small>PLAY-BY-PLAY</small></span></div>
-      <span className="muted" style={{ fontSize: 12.5 }}>What goes on air: your teams, your talent, the live match.</span>
-    </div>
-  );
-}
-
 function Fact({ title, children }: { title: string; children: ReactNode }) {
   return <div className="fr-fact"><span className="fr-tick" aria-hidden="true" /><div><b>{title}</b><span>{children}</span></div></div>;
 }
@@ -151,16 +136,6 @@ export function FirstRun({ s, run }: { s: Snapshot; run: Run }) {
           )}
           {step === 'obs' && <ConnectObs s={s} run={run} back={() => setStep('setup')} />}
         </section>
-        <aside className="fr-right">
-          <StageLight />
-          <div className="fr-right-body">
-            {step === 'welcome' && <OnAirPreview />}
-            {step === 'account' && <AccountCompare />}
-            {step === 'game' && <GameDetails id={game} />}
-            {step === 'setup' && <SetupDiagram s={s} profile={profile} />}
-            {step === 'obs' && <ObsPromise />}
-          </div>
-        </aside>
       </div>
     </div>
   );
@@ -169,11 +144,11 @@ export function FirstRun({ s, run }: { s: Snapshot; run: Run }) {
 function Welcome({ next }: { next: () => void }) {
   return (
     <>
-      <h1 className="fr-title">Run a professional broadcast from one place.</h1>
-      <p className="lead">Your tournament, your teams and the live game, turned into graphics on your stream.</p>
+      <h1 className="fr-title">Broadcast graphics for your tournament.</h1>
+      <p className="lead">Air connects your Esportra tournament and the live game to graphics in OBS.</p>
       <div className="fr-facts">
         <Fact title="Works with your OBS">Air adds its own scenes. Your scenes, transitions and stream stay yours.</Fact>
-        <Fact title="Follows the match by itself">Scores, rounds and big moments go on air as they happen.</Fact>
+        <Fact title="Follows the match by itself">Graphics change as the match goes on, with your teams, talent and sponsors.</Fact>
         <Fact title="Your data stays with you">Game data stays on your network.</Fact>
       </div>
       <div className="fr-actions"><button className="btn primary big" onClick={next}>Get started</button><span className="muted">About two minutes.</span></div>
@@ -252,61 +227,5 @@ function ConnectObs({ s, run, back }: { s: Snapshot; run: Run; back: () => void 
         <button className="btn quiet" onClick={back}>Back</button>
       </div>
     </>
-  );
-}
-
-function AccountCompare() {
-  const rows: Array<[string, boolean]> = [['Tonight’s matches, ready to open', true], ['Teams, logos and lineups filled in', true], ['Event branding and sponsors', true], ['Quick matches by hand', false], ['Graphics, autopilot and rehearsal', false]];
-  return (
-    <div className="stack" style={{ width: 380, gap: 10 }}>
-      <b>With an Esportra account</b>
-      <div className="fr-list">{rows.map(([t, only]) => <div key={t}><span>{t}</span><span className="faint">{only ? 'Signed in' : 'Everyone'}</span></div>)}</div>
-    </div>
-  );
-}
-
-function GameDetails({ id }: { id: GameId | null }) {
-  const g = GAMES.find((x) => x.id === id);
-  if (!g) return <p className="muted" style={{ maxWidth: '30ch', textAlign: 'center' }}>Pick a game to see what Air shows for it.</p>;
-  return (
-    <div className="stack" style={{ width: 400, gap: 10 }}>
-      <b>What Air shows for {g.name}</b>
-      <div className="fr-list wide">
-        <div><span className="faint">From the match</span><span>{g.matchData}</span></div>
-        {g.playerPcData && <div><span className="faint">From player PCs</span><span>{g.playerPcData}</span></div>}
-        <div><span className="faint">Graphics pack</span><span>{g.pack}</span></div>
-      </div>
-    </div>
-  );
-}
-
-function SetupDiagram({ s, profile }: { s: Snapshot; profile: Profile | null }) {
-  const box = (x: number, y: number, title: string, sub: string, strong = false) => (
-    <g>
-      <rect x={x} y={y} width="150" height="52" rx="6" fill="#0b0b0d" stroke={strong ? 'var(--text-2)' : 'var(--hair-strong)'} />
-      <text x={x + 14} y={y + 22} fill="var(--text)" fontWeight="600" fontSize="13">{title}</text>
-      <text x={x + 14} y={y + 40} fill="var(--text-3)" fontSize="11.5">{sub}</text>
-    </g>
-  );
-  const sources = profile === 'one-pc' ? [] : profile === 'player-pcs' ? [['Observer PC', 'the match'], ['10 player PCs', 'each player’s own data']] : [['Observer PC', 'the match']];
-  return (
-    <svg width="440" height="230" viewBox="0 0 440 230" role="img" aria-label="Which PCs send what to your PC">
-      {sources.map(([t, sub], i) => {
-        const y = sources.length === 1 ? 89 : i ? 144 : 34;
-        return <g key={t}><path d={`M160 ${y + 26} C 220 ${y + 26}, 220 115, 280 115`} fill="none" stroke="var(--hair-strong)" strokeWidth="1.5" />{box(10, y, t!, sub!)}</g>;
-      })}
-      {box(280, 89, 'Your PC', profile === 'one-pc' ? `${s.game?.name ?? 'The game'}, Air and OBS` : 'Air and OBS', true)}
-    </svg>
-  );
-}
-
-function ObsPromise() {
-  return (
-    <div className="stack" style={{ width: 360, gap: 8 }}>
-      <b>Air will</b>
-      <span className="muted">Add its own scenes, named ESPORTRA · …, for the graphics you choose. Read which scene is on air. Save the replay buffer when you ask.</span>
-      <b style={{ marginTop: 8 }}>Air never</b>
-      <span className="muted">Switches your scenes, starts the stream or records, or touches your own scenes.</span>
-    </div>
   );
 }

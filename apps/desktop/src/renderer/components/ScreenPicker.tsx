@@ -23,11 +23,9 @@ export const SCREEN_GROUPS: Array<{ label: string; hint: string; screens: PickSc
   { label: 'Between maps', hint: 'Autopilot puts these up on the moment (halftime, map end)', screens: [
     { id: 'halftime', overlay: 'halftime', title: 'Halftime', when: 'After round 12' },
     { id: 'map-result', overlay: 'map-result', title: 'Map result', when: 'When a map ends' },
-    { id: 'victory-map', overlay: 'victory-map', title: 'Victory · Map', when: 'When a map ends' },
-    { id: 'breakdown', overlay: 'breakdown', title: 'Breakdown', when: 'After a map' },
-    { id: 'team-performance', overlay: 'team-performance', title: 'Team performance', when: 'After a map' },
-    { id: 'postgame-player', overlay: 'postgame-player', title: 'Post-game player', when: 'On Take' },
-    { id: 'postgame-matchup', overlay: 'postgame-matchup', title: 'Post-game matchup', when: 'On Take' },
+    { id: 'map-breakdown', overlay: 'map-breakdown', title: 'Map breakdown', when: 'After a map' },
+    { id: 'postgame-player', overlay: 'postgame-player', title: 'Player of the map', when: 'On Take' },
+    { id: 'postgame-matchup', overlay: 'postgame-matchup', title: 'Matchup', when: 'On Take' },
     { id: 'series', overlay: 'series', title: 'Series', when: 'Between maps' },
     { id: 'standings', overlay: 'standings', title: 'Standings', when: 'On Take' },
     { id: 'player-profile', overlay: 'player-profile', title: 'Player profile', when: 'On Take' },
@@ -36,7 +34,6 @@ export const SCREEN_GROUPS: Array<{ label: string; hint: string; screens: PickSc
   ] },
   { label: 'After the series', hint: '', screens: [
     { id: 'champion', overlay: 'champion', title: 'Winner', when: 'When a team wins the series' },
-    { id: 'victory-series', overlay: 'victory-series', title: 'Victory · Series', when: 'When a team wins the series' },
   ] },
 ];
 

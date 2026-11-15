@@ -38,6 +38,9 @@ export interface MapRecord {
   how: 'game' | 'producer' | 'closed';
   closedAt: number;
   partial: boolean;
+  /** The map's rounds and starting sides, for Map breakdown (absent on records kept before 16 Nov and on the series). */
+  rounds?: Array<{ w: 0 | 1; how: string }>;
+  firstSide?: ['ATK' | 'DEF', 'ATK' | 'DEF'];
 }
 export interface RecordTeam { name: string; tag: string; color: string; logo: string }
 
@@ -83,7 +86,10 @@ export function buildRecord(state: any, map: number, scores: [number, number], w
       pistols: won((r) => r === 1 || r === 13),
     } as TeamPerf;
   }) as [TeamPerf, TeamPerf];
-  return { map, name: str(state?.map?.name, 20), score: scores, winner, teams, players, perf, how, closedAt: now, partial };
+  const fs = state?.firstSide;
+  const firstSide = Array.isArray(fs) && ['ATK', 'DEF'].includes(fs[0]) && ['ATK', 'DEF'].includes(fs[1]) ? [fs[0], fs[1]] as ['ATK' | 'DEF', 'ATK' | 'DEF'] : undefined;
+  const kept = rounds.slice(0, 60).filter((x) => x?.w === 0 || x?.w === 1).map((x: any) => ({ w: x.w as 0 | 1, how: str(x.how, 10) }));
+  return { map, name: str(state?.map?.name, 20), score: scores, winner, teams, players, perf, how, closedAt: now, partial, rounds: kept, ...(firstSide ? { firstSide } : {}) };
 }
 
 const add = (a: number | null, b: number | null) => (a === null || b === null ? null : a + b);

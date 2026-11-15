@@ -28,16 +28,16 @@ export interface Item {
 
 const PRE = new Set(SECTION_SCREENS.pre.filter((x): x is string => !!x));
 /** The screens whose data comes from a map record. */
-export const POST_RECORD = new Set(['breakdown', 'team-performance', 'victory-map', 'postgame-player', 'postgame-matchup']);
+export const POST_RECORD = new Set(['map-result', 'map-breakdown', 'postgame-player', 'postgame-matchup']);
 /** Which sponsor space a full-screen graphic shows. */
-const SPACE_OF: Record<string, SponsorSpace> = { 'map-veto': 'map-veto', 'agent-select': 'agent-select', breakdown: 'breakdown', 'team-performance': 'breakdown', 'postgame-player': 'breakdown', 'postgame-matchup': 'breakdown', 'victory-map': 'victory', 'victory-series': 'victory' };
+const SPACE_OF: Record<string, SponsorSpace> = { 'map-veto': 'map-veto', 'agent-select': 'agent-select', 'map-breakdown': 'breakdown', 'postgame-player': 'breakdown', 'postgame-matchup': 'breakdown', 'map-result': 'victory', champion: 'victory' };
 
 /** Everything the panel lists, by phase. */
 export function panelItems(s: Snapshot, run: Run, openForm: (f: 'toast' | 'poll') => void): Item[] {
   const rowState = (r: LayerRow): Item['state'] => (r.cued ? 'cued' : r.mode === 'on' ? 'onair' : r.mode === 'auto' ? 'auto' : 'off');
   const items: Item[] = s.layers.map((row) => {
     const screen = row.id.startsWith('fs:') ? row.id.slice(3) : null;
-    const phase: Phase = !screen ? 'ingame' : PRE.has(screen) && !POST_RECORD.has(screen) && !['map-result', 'series', 'halftime', 'champion', 'victory-series'].includes(screen) ? 'pre' : 'post';
+    const phase: Phase = !screen ? 'ingame' : PRE.has(screen) && !POST_RECORD.has(screen) && !['map-result', 'series', 'halftime', 'champion'].includes(screen) ? 'pre' : 'post';
     return { id: row.id, label: row.label, phase, state: rowState(row), row, available: row.available };
   });
   const talent = s.match ? onAir(s.match, s.event).talent : [];

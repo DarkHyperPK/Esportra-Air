@@ -40,12 +40,9 @@ export const LAYER_DEFS: LayerDef[] = [
   { id: 'fs:map-veto', label: 'Map veto', group: 'fullscreen', hotkey: 'V' },
   { id: 'fs:schedule', label: 'Today’s schedule', group: 'fullscreen', hotkey: 'O' },
   { id: 'fs:bracket', label: 'Bracket', group: 'fullscreen', hotkey: 'B' },
-  { id: 'fs:victory-map', label: 'Victory · Map', group: 'fullscreen', hotkey: 'Shift+V' },
-  { id: 'fs:victory-series', label: 'Victory · Series', group: 'fullscreen', hotkey: 'C' },
-  { id: 'fs:breakdown', label: 'Breakdown', group: 'fullscreen', hotkey: 'N' },
-  { id: 'fs:team-performance', label: 'Team performance', group: 'fullscreen', hotkey: 'P' },
-  { id: 'fs:postgame-player', label: 'Post-game player', group: 'fullscreen', hotkey: 'L' },
-  { id: 'fs:postgame-matchup', label: 'Post-game matchup', group: 'fullscreen', hotkey: 'X' },
+  { id: 'fs:map-breakdown', label: 'Map breakdown', group: 'fullscreen', hotkey: 'N' },
+  { id: 'fs:postgame-player', label: 'Player of the map', group: 'fullscreen', hotkey: 'L' },
+  { id: 'fs:postgame-matchup', label: 'Matchup', group: 'fullscreen', hotkey: 'X' },
 ];
 
 /** Layers where Auto means something (rules or the HUD decide until the producer overrides). */

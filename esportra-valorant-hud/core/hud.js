@@ -277,6 +277,24 @@
     return sc;
   }
   function sceneFx(sc) { E('div', 'lines', sc); E('div', 'vig', sc); }
+  // Shared with core/postgame.js so its scenes use the same backdrop and frame.
+  HUD.sceneBg = sceneBg; HUD.chrome = chrome; HUD.sceneFx = sceneFx;
+  /** The map record Air sent (state.airRecord: the map the producer picked), applied over the room's live data,
+      so Map result and Map breakdown can show map 1 while map 2 is live. Without a record the live data stays. */
+  const withRecord = s => {
+    const R = s.airRecord;
+    if (!R || !Array.isArray(R.players) || !Array.isArray(R.teams) || !(R.map > 0)) return s;
+    const v = { ...s, map: { ...s.map, number: R.map, name: R.name || s.map.name },
+      teams: s.teams.map((t, i) => ({ ...t, ...(R.teams[i] || {}), score: R.score[i] })),
+      players: s.players.map((ps, i) => (R.players[i] || []).map((p, j) => ({ ...(ps[j] || {}), ...p, acs: null, hs: p.hsPct }))),
+      teamStats: (R.perf || []).map(x => ({ firstKills: x.firstKills, clutches: x.clutches, plants: x.plants, defuses: x.defuses })) };
+    if (Array.isArray(R.rounds)) { v.rounds = R.rounds; if (Array.isArray(R.firstSide)) v.firstSide = R.firstSide; }
+    return v;
+  };
+  /** "Presented by" for a sponsor space (Air's sponsor spaces), bottom right of a full-screen scene. */
+  const presented = (root) => { const el = E('div', 'presented mono', root);
+    return (s, space) => { const x = s.airSpaces && s.airSpaces[space]; el.style.display = x && x.name ? '' : 'none'; if (!x || !x.name) return;
+      el.innerHTML = `PRESENTED BY ${logoOk(x.logo) ? `<img src="${escH(x.logo)}" alt="${escH(x.name)}">` : `<b>${escH(x.name)}</b>`}`; }; };
   function toggle(el, on) { el.classList.toggle('on', !!on); }
   // scenes only rebuild when the data they show changes (score edits etc. don't replay entrances)
   const same = (o, s) => { const k = JSON.stringify([s.event, s.teams, s.players.map(t => t.map(p => [p.name, p.agent, p.k, p.d, p.a, p.acs, p.adr, p.hs])), s.registeredRoster, s.map, s.series, s.veto, s.bracket, s.standings, s.casters, s.schedule, s.holding, s.rounds, s.firstSide, s.teamStats, s.champion, Q.get('mode')]);
@@ -817,8 +835,8 @@
   };
 
   M.mapresult = root => {
-    const m = E('div', 'mod on mr', root); const sc = sceneBg(m); const bgm = E('img', 'bgm', sc); chrome(m, 'MAP RESULT'); const box = E('div', '', m); sceneFx(sc);
-    return { update(s) { if (same(this, s)) return;
+    const m = E('div', 'mod on mr', root); const sc = sceneBg(m); const bgm = E('img', 'bgm', sc); chrome(m, 'MAP RESULT'); const box = E('div', '', m); sceneFx(sc); const pres = presented(m);
+    return { update(s) { s = withRecord(s); pres(s, 'victory'); if (same(this, s)) return;
       const Mm = mapA(s.map.name); if (Mm) setImg(bgm, Mm.splash);
       const [a, b] = s.teams.map(t => t.score), w = a === b ? 1 : a > b ? 0 : 1, T = s.teams[w];
       // GEP gives no ACS, ADR or headshot %: rank by kills then, and show a dash instead of a number.
@@ -1099,8 +1117,8 @@
         players.map((p, j) => { const A = agent(p.agent); return `<div class="cd" style="animation:tIn .6s ${.08 * j}s var(--ease) both;opacity:0;transform:translateY(40px)"><div class="bgc" style="background:linear-gradient(180deg,#${A && A.grad[0] || '333'},transparent)"></div>${photoOk(p.photo) ? `<img class="photo" src="${p.photo}">` : A ? `<img src="${A.full}">` : ''}<div class="sh"></div><div class="n">${text(p.name)}</div><div class="a mono">${A ? A.name + '  /  ' + A.role : ''}</div><div class="s mono">${live ? `${p.acs} ACS   ${p.k}/${p.d}/${p.a}` : 'REGISTERED LINEUP · WAITING FOR GAME DATA'}</div></div>`; }).join('') + '</div>';
       const l = logo(T, 120, box.querySelector('.lgx')); l.style.position = 'relative'; } }; };
 
-  const mapBreak = half => root => { const m = E('div', 'mod on mb', root); const sc = sceneBg(m); chrome(m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const title = E('div', 'title disp hl', m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const box = E('div', '', m); sceneFx(sc);
-    return { update(s) { if (same(this, s) && this._r === s.rounds.length) return; this._r = s.rounds.length; const R = half ? s.rounds.slice(0, 12) : s.rounds;
+  const mapBreak = half => root => { const m = E('div', 'mod on mb', root); const sc = sceneBg(m); chrome(m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const title = E('div', 'title disp hl', m, half ? 'HALFTIME' : 'MAP BREAKDOWN'); const box = E('div', '', m); const pres = presented(m); sceneFx(sc);
+    return { update(s) { if (!half) { s = withRecord(s); pres(s, 'breakdown'); } if (same(this, s) && this._r === s.rounds.length) return; this._r = s.rounds.length; const R = half ? s.rounds.slice(0, 12) : s.rounds;
       const won = (t, a, b) => R.slice(a, b).filter(r => r.w === t).length, sc_ = t => R.filter(r => r.w === t).length;
       const sides = t => [0, 1].map(h => sideOf(s, t, h ? 13 : 1));
       let h = `<div class="score">${s.teams.map((T, t) => `<div class="t" style="color:${T.color}">${T.tag}</div>`).join(`<div class="v disp hl">${sc_(0)}–${sc_(1)}</div>`)}</div>`;
@@ -1115,9 +1133,9 @@
   M.champion = root => { const m = E('div', 'mod on ch', root); const sc = sceneBg(m);
     const sv = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); sv.setAttribute('class', 'rays'); sv.setAttribute('viewBox', '0 0 1920 1080');
     let r = ''; for (let i = 0; i < 36; i++) { const a = i / 36 * Math.PI * 2; r += `<line x1="960" y1="260" x2="${960 + Math.cos(a) * 1400}" y2="${260 + Math.sin(a) * 1400}" stroke="rgba(224,68,94,${i % 2 ? .05 : .11})" stroke-width="${i % 3 ? 1 : 2}"/>`; } sv.innerHTML = r; sc.appendChild(sv);
-    chrome(m, 'CHAMPIONS'); const box = E('div', '', m); sceneFx(sc);
+    chrome(m, 'CHAMPIONS'); const box = E('div', '', m); sceneFx(sc); const pres = presented(m);
     const TROPHY = c => `<svg class="tro" viewBox="0 0 300 330"><path d="M70 20H230V120C230 175 195 210 150 215C105 210 70 175 70 120Z" fill="none" stroke="${c}" stroke-width="6"/><path d="M70 45H28C28 105 52 130 80 140M230 45H272C272 105 248 130 220 140" fill="none" stroke="${c}" stroke-width="6"/><path d="M150 215V265M100 300H200L185 265H115Z" fill="none" stroke="${c}" stroke-width="6"/><path d="M150 55L172 95L150 120L128 95Z" fill="${c}"/><path d="M95 300H205V318H95Z" fill="${c}"/></svg>`;
-    return { update(s) { if (same(this, s)) return; let w = s.champion && s.champion.team >= 0 ? s.champion.team : s.teams[0].series === s.teams[1].series ? (s.teams[0].score >= s.teams[1].score ? 0 : 1) : (s.teams[0].series > s.teams[1].series ? 0 : 1); const T = s.teams[w], L = s.teams[1 - w];
+    return { update(s) { pres(s, 'victory'); if (same(this, s)) return; let w = s.champion && s.champion.team >= 0 ? s.champion.team : s.teams[0].series === s.teams[1].series ? (s.teams[0].score >= s.teams[1].score ? 0 : 1) : (s.teams[0].series > s.teams[1].series ? 0 : 1); const T = s.teams[w], L = s.teams[1 - w];
       box.innerHTML = TROPHY('#f2cf6b') + `<div class="k mono">${s.event.name}   /   CHAMPIONS</div><div class="t disp hl">${T.name}</div><div class="s mono">DEFEAT ${L.name} ${Math.max(T.series, need(s))}–${Math.min(L.series, need(s) - 1)} IN THE ${s.event.stage}</div><div class="roster" style="--c:${T.color}">` +
         s.players[w].map(p => { const A = agent(p.agent); return `<div>${A ? `<img src="${A.icon}">` : ''}${p.name}</div>`; }).join('') + '</div>'; } }; };
 
@@ -1155,7 +1173,7 @@
   // Full-screen host: one browser source that shows the graphic named in state.airFullscreen
   // (set by Esportra Air), so switching full-screen graphics never touches OBS.
   const OVER_ONLY = Q.get('over') === '1';
-  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'breakdown': 'breakdown', 'team-performance': 'performance', 'victory-map': 'victoryMap', 'victory-series': 'victorySeries', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup' };
+  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'map-breakdown': 'mapbreakdown', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup' };
   M.fullscreen = root => {
     const slots = {};
     let shown = null, fsSp = null;
