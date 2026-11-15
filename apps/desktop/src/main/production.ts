@@ -46,11 +46,12 @@ import { COLORS, tagFor, tagsFor } from './team-tags.ts';
 import { EsportraMatches } from './esportra-matches.ts';
 import { EsportraSync } from './esportra-sync.ts';
 import { MapRecords, type RecordChoice } from './map-records.ts';
+import { PauseHint } from './pause-hint.ts';
 import { MatchDataService } from './match-data.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
-import { ROLE_NAME } from '../shared/model.ts';
+import { ROLE_NAME, SPONSOR_SPACES, spaceSponsors, spacesOf, type SponsorSpace } from '../shared/model.ts';
 import { HEX, IMAGE, text } from './validate.ts';
 import { checks } from './readiness.ts';
 import { CueDeck, type GraphicAction } from './cue-deck.ts';
@@ -489,6 +490,8 @@ export class Production extends EventEmitter {
     await this.client.patch(`/api/${code}`, { schedule: this.scheduleOf(match) });
     // Match data: veto, maps, holding text, champion, standings, ticker, bracket.
     await this.client.patch(`/api/${code}`, this.matchData.room() ?? {});
+    // Sponsor spaces: the sponsor each graphic's space shows.
+    await this.client.patch(`/api/${code}`, { airSpaces: this.spacesOf(match) });
     // Map records: what the post-game graphics show.
     await this.client.patch(`/api/${code}`, this.mapRecords.room() ?? {});
     // The lineups: the engine puts display names and photos on the players the game reports.
@@ -740,6 +743,7 @@ export class Production extends EventEmitter {
     }
     if (event.type === 'round.won') this.mapEndSeen = null;
     if (match && !this.testRoundRunning(match)) this.mapRecords.onEvent(event as Record<string, unknown>);
+    if (event.type === 'round.phase') this.pauseHint.phase(String(event.phase ?? ''));
     this.autopilot.onGameEvent(event);
     this.companion.onEngineEvent(event);
     if (match && event.type === 'match.end' && state && this.mapEndSeen !== match.id) await this.countMap(match, state, event).catch((e) => this.log.add(`Map result not counted · ${(e as Error).message}`));
@@ -1039,6 +1043,36 @@ export class Production extends EventEmitter {
     await this.putEvent(upsertSponsor(this.requireEvent(eventId), input ?? {}));
   }
 
+  /** The sponsor each single space shows for a match (its own choice over the event's). */
+  spacesOf(match: Match) {
+    const event = this.eventOf(match);
+    return spaceSponsors(onAir(match, event).sponsors, event?.spaceActive, match.spaceActive);
+  }
+
+  /** The event's active sponsor in a space (null: the first that bought it). */
+  async sponsorSpaceSet(eventId: string, space: SponsorSpace, sponsorId: string | null) {
+    const event = this.requireEvent(eventId);
+    if (!SPONSOR_SPACES.includes(space) || space === 'rotator') throw new Error('Choose a sponsor space.');
+    if (sponsorId !== null && !event.sponsors.some((x) => x.id === sponsorId && spacesOf(x).includes(space))) throw new Error('That sponsor has not bought this space.');
+    const spaceActive = { ...(event.spaceActive ?? {}) };
+    if (sponsorId) spaceActive[space] = sponsorId; else delete spaceActive[space];
+    await this.putEvent({ ...event, spaceActive });
+  }
+
+  /** This match's own sponsor in a space: a sponsor id, null for none in this match, or undefined to follow the event. */
+  async matchSpaceSet(space: SponsorSpace, sponsorId: string | null | undefined) {
+    const match = this.requireMatch();
+    if (!SPONSOR_SPACES.includes(space) || space === 'rotator') throw new Error('Choose a sponsor space.');
+    const event = this.eventOf(match);
+    if (sponsorId && !event?.sponsors.some((x) => x.id === sponsorId && spacesOf(x).includes(space))) throw new Error('That sponsor has not bought this space.');
+    const next = { ...(match.spaceActive ?? {}) };
+    if (sponsorId === undefined) delete next[space]; else next[space] = sponsorId;
+    match.spaceActive = next;
+    this.save();
+    await this.client.patch(`/api/${encodeURIComponent(match.code)}`, { airSpaces: this.spacesOf(match) });
+    this.emit('changed');
+  }
+
   async removeSponsor(eventId: string, sponsorId: string) {
     const event = this.requireEvent(eventId);
     if (!event.sponsors.some((s) => s.id === sponsorId)) throw new Error('That sponsor is no longer in this event.');
@@ -1264,15 +1298,22 @@ export class Production extends EventEmitter {
     await this.readRoom();
   }
 
-  async pause(kind: 'technical' | 'timeout' | null) {
+  /**
+   * Tech pause or timeout on air (or off with null). A timeout counts down from `seconds` (default 60;
+   * Settings keeps the producer's length) and can name the team that called it.
+   */
+  async pause(kind: 'technical' | 'timeout' | null, options: { team?: 0 | 1 | null; seconds?: number | null } = {}) {
     const match = this.requireMatch();
     const path = `/api/${encodeURIComponent(match.code)}/pause-panel`;
     const current = this.room?.airPause?.id;
     if (current) await this.client.post(path, { action: 'clear', id: current });
     if (kind) {
       const id = randomUUID();
-      await this.client.post(path, { action: 'show', panel: { kind, id, startedAt: Date.now(), scope: { showId: this.setup.id, matchId: match.id } } });
-      this.log.add(kind === 'technical' ? 'Tech pause on' : 'Timeout on');
+      const seconds = kind === 'timeout' ? Math.min(600, Math.max(10, Math.round(options.seconds ?? this.deps.store.data.timeoutSeconds ?? 60))) : null;
+      const team = options.team === 0 || options.team === 1 ? options.team : null;
+      await this.client.post(path, { action: 'show', panel: { kind, id, startedAt: Date.now(), scope: { showId: this.setup.id, matchId: match.id }, ...(team !== null ? { team } : {}), ...(seconds ? { seconds } : {}) } });
+      this.pauseHint.dismiss();
+      this.log.add(kind === 'technical' ? 'Tech pause on' : `Timeout on${team !== null ? ` · ${match.teams[team]?.name ?? 'Team'}` : ''}${seconds ? ` · ${seconds} s` : ''}`);
     } else if (current) {
       this.log.add('Pause cleared');
     }
@@ -1343,6 +1384,9 @@ export class Production extends EventEmitter {
   esportraRefresh() { return this.esportraMatches.refresh(); }
   useEsportraMatch(matchId: string) { return this.esportraMatches.use(matchId); }
   readonly esportraSync: EsportraSync;
+
+  /** The buy phase running long: maybe a timeout nobody announced (approved mock 15 Nov). */
+  readonly pauseHint = new PauseHint(() => this.emit('changed'));
 
   // ── map records: src/main/map-records.ts ──
   readonly mapRecords: MapRecords;
@@ -1676,6 +1720,7 @@ export class Production extends EventEmitter {
       esportraResults: this.esportraSync.view(this.match),
       esportraVeto: this.esportraSync.vetoView(this.match),
       mapRecords: this.mapRecords.view(this.match),
+      pauseHint: this.room?.airPause ? null : this.pauseHint.view(),
       mode: this.mode,
       join: this.joinHost.view(),
       devices: devicesView({ lineup: this.match?.players ?? null, roomPlayers: Array.isArray(this.room?.players) ? this.room.players : null, peers: this.joinHost.view().peers, sources: this.joinHost.view().dataSources, now: Date.now() }),

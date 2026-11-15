@@ -515,8 +515,15 @@ fn pause_panel(room: &crate::engine::Room, input: &Value) -> Response {
         return error(StatusCode::CONFLICT, "Match context changed.");
     }
     let mut next = inner.state.clone();
-    next["airPause"] =
-        json!({ "id": panel["id"], "kind": panel["kind"], "startedAt": panel["startedAt"] });
+    let mut shown = json!({ "id": panel["id"], "kind": panel["kind"], "startedAt": panel["startedAt"] });
+    // Optional: the team that called it, and a countdown in seconds (a timeout's length).
+    if let Some(t) = panel.get("team").and_then(Value::as_u64).filter(|t| *t <= 1) {
+        shown["team"] = json!(t);
+    }
+    if let Some(s) = panel.get("seconds").and_then(Value::as_u64).filter(|s| (10..=600).contains(s)) {
+        shown["seconds"] = json!(s);
+    }
+    next["airPause"] = shown;
     let v = room
         .apply(&mut inner, next, "air:pause-show")
         .unwrap_or(inner.v);

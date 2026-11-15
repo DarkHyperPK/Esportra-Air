@@ -55,6 +55,8 @@ export interface Library {
 }
 
 export interface Match {
+  /** This match's own choice of sponsor per space (null: none in this match), over the event's. */
+  spaceActive?: Partial<Record<import('./model.ts').SponsorSpace, string | null>>;
   id: string;
   /** Room code on the engine; outputs follow the selected match's room. */
   code: string;
@@ -352,6 +354,8 @@ export interface Snapshot {
   /** The selected Esportra match's veto: followed or entered here, its status on Esportra, warnings. */
   esportraVeto: import('./esportra-package.ts').EsportraVetoView | null;
   /** The selected match's map records, and which one the post-game graphics show. */
+  /** The buy phase has run long: maybe a timeout. Null when not, or while a pause is on air. */
+  pauseHint: { seconds: number } | null;
   mapRecords: { maps: Array<{ map: number; name: string; score: [number, number]; winner: 0 | 1 | -1; how: 'game' | 'producer' | 'closed'; partial: boolean }>; shown: number | 'series' | null } | null;
   mode: PcMode;
   join: JoinView;
@@ -507,6 +511,10 @@ export interface AirApi {
   /** A new camera link for this person; the old one stops working. */
   renewTalentLink(eventId: string, talentId: string): Promise<Snapshot>;
   saveSponsor(eventId: string, input: SponsorInput): Promise<Snapshot>;
+  /** The event's active sponsor in a sponsor space (null: the first that bought it). */
+  sponsorSpaceSet(eventId: string, space: import('./model.ts').SponsorSpace, sponsorId: string | null): Promise<Snapshot>;
+  /** This match's own sponsor in a space (null: none in this match; 'event': follow the event). */
+  matchSpaceSet(space: import('./model.ts').SponsorSpace, sponsorId: string | null): Promise<Snapshot>;
   removeSponsor(eventId: string, sponsorId: string): Promise<Snapshot>;
   /** Seeds the HUD library's sample room with this match's teams (or sample teams) and the given banner style. */
   librarySeed(): Promise<Snapshot>;
@@ -557,7 +565,7 @@ export interface AirApi {
   camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }): Promise<Snapshot>;
   camCreate(team: number, slot: number): Promise<Snapshot>;
   camRemove(team: number, slot: number): Promise<Snapshot>;
-  pause(kind: 'technical' | 'timeout' | null): Promise<Snapshot>;
+  pause(kind: 'technical' | 'timeout' | null, options?: { team?: 0 | 1 | null; seconds?: number | null }): Promise<Snapshot>;
   casterStrap(on: boolean): Promise<Snapshot>;
   /** The "presented by" lower third for one of the match's sponsors (by id), or off. */
   sponsorRead(sponsorId: string | null): Promise<Snapshot>;

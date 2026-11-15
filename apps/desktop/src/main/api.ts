@@ -86,6 +86,8 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'saveTalent': await p.saveTalent(String(a[0]), (a[1] ?? {}) as TalentInput); break;
     case 'removeTalent': await p.removeTalent(String(a[0]), String(a[1])); break;
     case 'renewTalentLink': await p.renewTalentLink(String(a[0]), String(a[1])); break;
+    case 'sponsorSpaceSet': await p.sponsorSpaceSet(String(a[0]), String(a[1]) as never, a[2] === null || a[2] === undefined ? null : String(a[2])); break;
+    case 'matchSpaceSet': await p.matchSpaceSet(String(a[0]) as never, a[1] === 'event' || a[1] === undefined ? undefined : a[1] === null ? null : String(a[1])); break;
     case 'saveSponsor': await p.saveSponsor(String(a[0]), (a[1] ?? {}) as SponsorInput); break;
     case 'removeSponsor': await p.removeSponsor(String(a[0]), String(a[1])); break;
     case 'updateSetup': await p.updateSetup(a[0] ?? {}); break;
@@ -147,7 +149,11 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'camsSet': await p.camsSet(a[0] ?? {}); break;
     case 'camCreate': await p.camCreate(Number(a[0]), Number(a[1])); break;
     case 'camRemove': await p.camRemove(Number(a[0]), Number(a[1])); break;
-    case 'pause': await p.pause(a[0] === 'technical' || a[0] === 'timeout' ? a[0] : null); break;
+    case 'pause': {
+      const o = (a[1] ?? {}) as { team?: unknown; seconds?: unknown };
+      await p.pause(a[0] === 'technical' || a[0] === 'timeout' ? a[0] : null, { team: o.team === 0 || o.team === 1 ? o.team : null, seconds: Number.isFinite(Number(o.seconds)) ? Number(o.seconds) : null });
+      break;
+    }
     case 'casterStrap': await p.casterStrap(a[0] === true); break;
     case 'sponsorRead': await p.sponsorRead(typeof a[0] === 'string' ? a[0] : null); break;
     case 'correct': await p.correct(a[0]); break;

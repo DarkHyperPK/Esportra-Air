@@ -1162,3 +1162,8 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .md-game .cell { height: 30px; font-size: var(--t-sm); }
 .md-game .md-score { width: 52px; flex: none; text-align: center; }
 .card .body-pad { padding: 0 16px 16px; }
+/* Sponsor spaces (approved mock 15 Nov) */
+.sp-spaces { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.sp-space { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 52px; padding: 6px 10px; border: 1px solid var(--hair); border-radius: var(--r-md); }
+.sp-space.on { background: var(--raised); border-color: var(--hair-strong); }
+.sp-active { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }

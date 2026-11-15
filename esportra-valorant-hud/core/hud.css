@@ -817,3 +817,24 @@ body.hud-preview{background:repeating-conic-gradient(#20242b 0% 25%,#252a32 0% 5
 /* Air's Adjust preview: where Valorant draws its round timer (1920×1080) */
 .game-timer-standin{position:absolute;left:886px;top:0;width:148px;height:74px;background:rgb(23,24,30);display:grid;place-items:center;z-index:0}
 .game-timer-standin span{font-family:BarlowC,sans-serif;font-weight:700;font-size:42px;color:rgba(236,236,238,.92)}
+/* Pause as a bar (approved mock 15 Nov): team, title, score, countdown and sponsor, above the observed player's card. */
+.pause-bar{position:absolute;left:380px;right:380px;bottom:150px;height:132px;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:30px;padding:0 34px 0 14px;background:rgba(12,13,17,.95);border-left:8px solid var(--c);opacity:0;transform:translateY(24px);transition:opacity .4s var(--ease),transform .4s var(--ease);font-family:BarlowC,PSB,sans-serif;z-index:5}
+.pause-bar.on{opacity:1;transform:none}
+.pause-bar .lg,.pause-bar .pb-sym{width:104px;height:104px;object-fit:contain}
+.pause-bar .pb-tx b{display:block;font-family:PXB;font-size:44px;line-height:1.05;text-transform:uppercase}
+.pause-bar .pb-tx span{font-weight:600;font-size:20px;letter-spacing:.24em;color:var(--muted)}
+.pause-bar .pb-sc{font-weight:700;font-size:48px;text-align:right;line-height:1}
+.pause-bar .pb-sc small{display:block;font-weight:600;font-size:16px;letter-spacing:.2em;color:var(--muted);margin-top:6px}
+.pause-bar .pb-ck{font-family:BarlowC,PSB,sans-serif;font-weight:700;font-size:64px;line-height:1;min-width:140px;text-align:right;color:var(--c);letter-spacing:.02em}
+.pause-bar .pb-pg{position:absolute;left:0;right:0;bottom:0;height:5px;background:rgba(255,255,255,.08)}
+.pause-bar .pb-pg i{display:block;height:100%;background:var(--c);transition:width .2s linear}
+.pause-bar .pb-pres{position:absolute;right:0;bottom:100%;display:flex;align-items:center;gap:12px;padding:6px 14px;background:rgba(12,13,17,.95);font-weight:600;font-size:15px;letter-spacing:.24em;color:var(--muted)}
+.pause-bar .pb-pres img{height:22px;max-width:180px;object-fit:contain}
+/* Sponsor spaces (approved mock 15 Nov): a sponsor on the event bug, toast and full-screen graphics. */
+.eb .eb-sp{display:flex;align-items:center;gap:8px;font-style:normal;color:var(--muted);margin-top:2px}
+.eb .eb-sp img,.ts-sp img,.fs-sp img{height:18px;max-width:140px;object-fit:contain}
+.ts-sp{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.24em;color:var(--muted)}
+.ts-sp:empty{display:none}
+.fs-sp{position:absolute;right:64px;bottom:40px;z-index:30;display:flex;align-items:center;gap:12px;padding:8px 16px;background:rgba(12,13,17,.88);font-family:BarlowC,PSB,sans-serif;font-weight:600;font-size:16px;letter-spacing:.24em;color:var(--muted);opacity:0;transition:opacity .4s var(--ease)}
+.fs-sp.on{opacity:1}
+.fs-sp img{height:26px;max-width:200px}

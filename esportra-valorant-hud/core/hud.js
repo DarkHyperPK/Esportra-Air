@@ -47,7 +47,7 @@
     if(!OUTPUT&&Q.get('screen')==='1'){
       try{const look=JSON.parse(Q.get('look')||'null');const t=look&&look.timer;const n=(v,lo,hi)=>Number.isFinite(+v)?Math.max(lo,Math.min(hi,+v)):undefined;
         if(t)view.layout={...view.layout,timerWindow:{dx:n(t.dx,-200,200)??0,width:n(t.width,100,240)??160,plate:/^#[0-9a-f]{6}$/i.test(t.plate||'')?t.plate:'#17181e'}};
-        if(look&&(look.pause==='box'||look.pause==='panel'))view.layout={...view.layout,pauseStyle:look.pause};}catch(_){/* ignore a malformed preview look */}
+        if(look&&(look.pause==='box'||look.pause==='panel'||look.pause==='bar'))view.layout={...view.layout,pauseStyle:look.pause};}catch(_){/* ignore a malformed preview look */}
       if(Q.get('samplePause')==='1')view.airPause={kind:'technical',startedAt:Date.now()-134000};
     }
     if(!OUTPUT&&PREVIEW&&tplSample&&SAMPLES[tplSample])SAMPLES[tplSample](view);
@@ -1030,15 +1030,17 @@
     return { update(s) { toggle(m, s.show.moments && !vis.focused(s) && !vis.economy(s)); this.tick(s); }, tick(s) { const it = items(s), k = it.map(x => x.id).join('|'); if (k === sig) return; sig = k;
       mo.innerHTML = it.map(x => { const A = agent(x.p.agent), c = s.teams[x.t].color; return `<div class="m" style="--c:${c};--ci:${ink(c)}"><div class="k">${x.k}</div>${A ? `<img src="${A.icon}">` : ''}<div class="t">${x.p.name}</div><div class="s mono">${x.sub}</div></div>`; }).join(''); } }; };
 
-  M.toast = root => { const m = E('div', 'mod', root), ts = E('div', 'ts', m); E('div', 'k mono', ts, 'UPDATE'); const t = E('div', 't', ts);
-    return { update(s) { txt(t, s.toast.text || ''); }, tick(s) { ts.classList.toggle('on', !!(s.toast.ts && HUD.now() - s.toast.ts < 7000) || Q.get('toast') === '1'); } }; };
+  M.toast = root => { const m = E('div', 'mod', root), ts = E('div', 'ts', m); E('div', 'k mono', ts, 'UPDATE'); const t = E('div', 't', ts), sp = E('div', 'ts-sp mono', ts);
+    return { update(s) { txt(t, s.toast.text || ''); HUD.morph(sp, spaceOf(s, 'toast')); }, tick(s) { ts.classList.toggle('on', !!(s.toast.ts && HUD.now() - s.toast.ts < 7000) || Q.get('toast') === '1'); } }; };
 
   M.sponsor = root => { const m = E('div', 'mod', root), sp = E('div', 'spn fx-rise', m); E('div', 'k mono', sp, 'PRESENTED BY'); const v = E('div', 'v', sp); let cur = -1, signature = '';
     return { update(s) { toggle(m, s.show.sponsor && s.sponsors.length && vis.players(s)); const next = JSON.stringify([s.sponsors, s.layout?.sponsorRotation, s.layout?.sponsorSeconds]); if (signature !== next) { signature = next; cur = -1; } this.tick(s); }, tick(s) { if (!s.sponsors.length) return; const seconds = Number.isInteger(s.layout?.sponsorSeconds) && s.layout.sponsorSeconds >= 5 && s.layout.sponsorSeconds <= 120 ? s.layout.sponsorSeconds : 8; const i = s.layout?.sponsorRotation === false ? 0 : Math.floor(HUD.now() / (seconds * 1000)) % s.sponsors.length; if (i === cur) return; cur = i; const x = s.sponsors[i];
       v.style.animation = 'none'; void v.offsetWidth; v.style.animation = ''; v.innerHTML = x.logo ? `<img src="${x.logo}"><span class="mono">${x.line || ''}</span>` : `<b>${x.name}</b><span class="mono">${x.line || ''}</span>`; } }; };
 
+  /** The sponsor bought for a space (Air's sponsor spaces), as "BY <logo or name>"; '' when none. */
+  const spaceOf = HUD.spaceOf = (s, space) => { const x = s.airSpaces && s.airSpaces[space]; return x && x.name ? `BY ${logoOk(x.logo) ? `<img src="${escH(x.logo)}" alt="${escH(x.name)}">` : escH(x.name)}` : ''; };
   M.eventbug = root => { const m = E('div', 'mod', root), eb = E('div', 'eb fx-rise', m); const im = E('img', '', eb); im.src = '../core/brand/mark-44.png'; const a = E('div', 'a mono', eb);
-    return { update(s) { toggle(m, s.show.eventBug); a.innerHTML = `${s.event.name}<b>${s.event.stage}</b>`; } }; };
+    return { update(s) { toggle(m, s.show.eventBug); const sp = spaceOf(s, 'event-bug'); a.innerHTML = `${escH(s.event.name)}<b>${escH(s.event.stage)}</b>${sp ? `<i class="eb-sp">${sp}</i>` : ''}`; } }; };
 
   M.poll = root => { const m = E('div', 'mod', root), pq = E('div', 'pq fx-rise', m);
     return { update(s) { toggle(m, s.show.poll); const tc = l => (s.teams.find(t => t.tag === l) || {}).color || 'var(--red)';
@@ -1156,7 +1158,7 @@
   const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'breakdown': 'breakdown', 'team-performance': 'performance', 'victory-map': 'victoryMap', 'victory-series': 'victorySeries', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup' };
   M.fullscreen = root => {
     const slots = {};
-    let shown = null;
+    let shown = null, fsSp = null;
     // airFullscreenStyle 'band' shows the over-the-game version (core/bands.js) where there is one.
     const slot = key => {
       if (!slots[key]) { const [id, style] = key.split('|'); const el = E('div', 'fs-slot', root); el.style.display = 'none'; slots[key] = { el, part: style === 'own' ? M.ownslot(el, id.slice(4)) : M[style === 'band' ? HUD.BANDS[id] : FULLSCREEN[id]](el) }; }
@@ -1181,6 +1183,11 @@
           HUD.fsShown = shown ? { el: slots[shown].el, key: shown, fresh: true } : null;
         }
         if (shown) slots[shown].part.update(s, opts);
+        // The sponsor bought for this graphic's space (post-game graphics place their own).
+        const space = { 'map-veto': 'map-veto', 'agent-select': 'agent-select' }[shown], sp = space ? spaceOf(s, space) : '';
+        if (!fsSp) fsSp = E('div', 'fs-sp', root);
+        if (sp) HUD.morph(fsSp, sp.replace(/^BY /, 'PRESENTED BY '));
+        fsSp.classList.toggle('on', !!sp);
       },
       tick(s) { if (shown && slots[shown].part.tick) slots[shown].part.tick(s); },
       frame(s) { if (shown && slots[shown].part.frame) slots[shown].part.frame(s); },
@@ -1282,16 +1289,35 @@
     E('div', 'pause-wing l', pausePanel); E('div', 'pause-wing r', pausePanel);
     // layout.pauseStyle 'box': a VCT-style box (top left, clear of the player cards) with both teams and the score.
     const pauseScore = E('div', 'pause-score', pausePanel); let pauseSig = '';
+    // layout.pauseStyle 'bar' (approved mock 15 Nov): a bar along the bottom with the team, the score, its sponsor and a countdown.
+    const pauseBar = E('div', 'pause-bar', root); let barSig = '';
     const updateAirPause = s => {
       const panel = s.airPause, enabled = (!PREVIEW || tplSample === 'pause' || tplSample === 'timeout') && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);
-      pausePanel.classList.toggle('on', !!enabled);
-      pausePanel.style.visibility = enabled ? 'visible' : 'hidden';
-      pausePanel.setAttribute('aria-hidden', enabled ? 'false' : 'true');
-      if (!enabled) return;
+      const asBar = !!enabled && s.layout && s.layout.pauseStyle === 'bar';
+      pausePanel.classList.toggle('on', !!enabled && !asBar);
+      pausePanel.style.visibility = enabled && !asBar ? 'visible' : 'hidden';
+      pausePanel.setAttribute('aria-hidden', enabled && !asBar ? 'false' : 'true');
+      pauseBar.classList.toggle('on', asBar);
+      if (!enabled) { barSig = ''; return; }
+      // A countdown when Air set the timeout's length, else the time since it began.
+      const elapsed = Math.max(0, (HUD.now() - panel.startedAt) / 1000), secs = Number(panel.seconds) || 0;
+      const clock = secs ? fmt(Math.max(0, secs - elapsed)) : fmt(elapsed);
+      if (asBar) {
+        const technical = panel.kind === 'technical', team = panel.team === 0 || panel.team === 1 ? s.teams[panel.team] : null, sp = s.airSpaces && s.airSpaces.timeout;
+        const k = JSON.stringify([panel.id, panel.kind, panel.team, s.teams.map(t => [t.tag, t.name, t.color, t.logo, t.score]), s.round.number, s.map, sp]);
+        pauseBar.style.setProperty('--c', technical ? 'var(--red)' : team ? team.color : 'var(--amber, #fbbf24)');
+        if (k !== barSig) { barSig = k;
+          pauseBar.innerHTML = `${sp && sp.name ? `<span class="pb-pres">PRESENTED BY ${logoOk(sp.logo) ? `<img src="${escH(sp.logo)}" alt="${escH(sp.name)}">` : escH(sp.name)}</span>` : ''}${team ? teamMark(team, 104) : `<img class="pb-sym" src="../core/assets/banners/${technical ? 'technical-pause' : 'timeout'}.svg" alt="">`}`
+            + `<div class="pb-tx"><b>${technical ? 'Technical pause' : 'Tactical timeout'}</b><span>${escH([team ? team.name : '', `ROUND ${s.round.number || 1}`].filter(Boolean).join(' · ').toUpperCase())}</span></div>`
+            + `<div class="pb-sc">${s.teams[0].score} – ${s.teams[1].score}<small>${escH(`MAP ${s.map.number || 1} · ${s.map.name || ''}`)}</small></div><div class="pb-ck"></div><div class="pb-pg"><i></i></div>`; }
+        txt(pauseBar.querySelector('.pb-ck'), clock);
+        pauseBar.querySelector('.pb-pg i').style.width = secs ? `${Math.max(0, Math.min(100, (1 - elapsed / secs) * 100))}%` : '100%';
+        return;
+      }
       const technical = panel.kind === 'technical'; pausePanel.style.setProperty('--c', technical ? 'var(--red)' : 'var(--amber, #fbbf24)');
       setImg(pauseSymbol, '../core/assets/banners/' + (technical ? 'technical-pause' : 'timeout') + '.svg');
       txt(pauseTitle, technical ? 'TECHNICAL PAUSE' : 'TEAM TIMEOUT');
-      txt(pauseTime, 'ELAPSED ' + fmt(Math.max(0, (HUD.now() - panel.startedAt) / 1000)));
+      txt(pauseTime, (secs ? 'LEFT ' : 'ELAPSED ') + clock);
       const box = s.layout && s.layout.pauseStyle === 'box'; pausePanel.classList.toggle('as-box', box);
       if (box) { const team = panel.team === 0 || panel.team === 1 ? s.teams[panel.team] : null; txt(pauseTitle, technical ? 'TECH PAUSE' : team ? 'TIMEOUT · ' + team.name : 'TIMEOUT');
         const k = JSON.stringify(s.teams.map(t => [t.tag, t.color, t.logo, t.score]));

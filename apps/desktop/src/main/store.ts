@@ -32,6 +32,8 @@ export interface Saved {
   autopilotProgress?: Record<string, { states: Record<string, 'done' | 'on_air'>; savedAt: number }>;
   /** The signed-in Esportra account (tokens are kept separately, encrypted). */
   esportra?: SavedEsportra;
+  /** How long a timeout counts down, in seconds (absent: 60). */
+  timeoutSeconds?: number;
   /** Each match's map records (src/shared/map-records.ts) and which one the post-game graphics show. */
   mapRecords?: Record<string, import('../shared/map-records.ts').MapRecord[]>;
   recordShown?: Record<string, number | 'series'>;

@@ -4,7 +4,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Match } from '../shared/api.ts';
 import {
-  NO_CAMERA, SPONSOR_TIERS, onAir, TALENT_ROLES, TIER_WEIGHT,
+  NO_CAMERA, SPACE_NAME, SPONSOR_SPACES, SPONSOR_TIERS, onAir, spacesOf, TALENT_ROLES, TIER_WEIGHT, type SponsorSpace,
   type Camera, type EventInfo, type EventPatch, type Sponsor, type SponsorInput, type Talent, type TalentInput,
 } from '../shared/model.ts';
 import { HEX, UUID, image, optionalText, text } from './validate.ts';
@@ -93,9 +93,22 @@ export function upsertSponsor(event: EventInfo, input: SponsorInput): EventInfo 
     tier,
     video: input.video !== undefined ? optionalText(input.video, 400, 'Sponsor video') : base.video,
     read: input.read !== undefined ? optionalText(input.read, 120, 'Sponsor read') : base.read,
+    ...(input.spaces !== undefined ? { spaces: validSpaces(input.spaces) } : base.spaces ? { spaces: base.spaces } : {}),
   };
   const sponsors = existing ? event.sponsors.map((s) => (s.id === sponsor.id ? sponsor : s)) : [...event.sponsors, sponsor];
   return { ...event, sponsors };
+}
+
+/** The spaces a sponsor bought, each with an image Air can serve or '' for the main logo. */
+export function validSpaces(input: unknown): NonNullable<Sponsor['spaces']> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Choose the sponsor\'s spaces again.');
+  const out: NonNullable<Sponsor['spaces']> = {};
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (!(SPONSOR_SPACES as readonly string[]).includes(k)) throw new Error('Choose the sponsor\'s spaces again.');
+    if (v === null || v === undefined || v === false) continue;
+    out[k as SponsorSpace] = { logo: image((v as { logo?: unknown }).logo ?? '', `${SPACE_NAME[k as SponsorSpace]} logo`) };
+  }
+  return out;
 }
 
 /** Switch lists for a match: ids that are off. Unknown ids are dropped. */
@@ -134,7 +147,7 @@ export function engineConfig(match: Match, event: EventInfo | null, fallbackName
   return {
     event: { name: event?.name || match.source?.tournament || fallbackName, stage: match.stage, bestOf: match.bestOf, logo: event?.logo ?? '', accent: event?.accent ?? DEFAULT_ACCENT },
     casters,
-    sponsors: sponsorRotation(air.sponsors),
+    sponsors: sponsorRotation(air.sponsors.filter((s) => spacesOf(s).includes('rotator'))),
   };
 }
 

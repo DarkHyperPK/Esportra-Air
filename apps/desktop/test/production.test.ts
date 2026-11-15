@@ -156,7 +156,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.ok(!obsServer.scenes.has('ESPORTRA · Break window 1'), 'classic break: no Break windows are added to OBS');
     assert.ok(!snap.obs.scenes.find((x) => x.key === 'holding')!.slots.length, 'classic break: the windows ask for nothing');
     await assert.rejects(production.updateSetup({ look: { timer: { dx: 999, width: 160, plate: '#17181e' } } }), /up to 200 pixels/);
-    await assert.rejects(production.updateSetup({ look: { pause: 'sideways' as never } }), /pause panel or the box/);
+    await assert.rejects(production.updateSetup({ look: { pause: 'sideways' as never } }), /pause panel, the box or the bar/);
     await production.updateSetup({ look: { break: 'frame', timer: { dx: 6, width: 150, plate: '#1a1b20' } } });
     assert.equal(production.setup.screens.find((x) => x.id === 'holding')!.overlay, 'break-frame', 'the Break screen shows the frame');
     assert.equal(production.snapshot().obs.scenes.find((x) => x.key === 'holding')!.slots.length, 2, 'frame: both windows want a source');

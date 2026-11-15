@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import type { PlayerInfo, Snapshot } from '../../shared/api.ts';
 import { gameOf } from '../../shared/games.ts';
-import { ROLE_NAME, SPONSOR_TIERS, TALENT_ROLES, TIER_NAME, cameraLinkUrl, type CameraKind, type EventInfo, type Sponsor, type Talent } from '../../shared/model.ts';
+import { ROLE_NAME, SPACE_NAME, SPONSOR_SPACES, SPONSOR_TIERS, TALENT_ROLES, TIER_NAME, cameraLinkUrl, type CameraKind, type EventInfo, type Sponsor, type SponsorSpace, type Talent } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { useEscape } from './Dialogs.tsx';
@@ -91,7 +91,8 @@ export function PersonEditor({ s, run, event, person, close }: { s: Snapshot; ru
 }
 
 export function SponsorEditor({ s, run, event, sponsor, close }: { s: Snapshot; run: Run; event: EventInfo; sponsor: Sponsor | null; close: () => void }) {
-  const [d, setD] = useState({ name: sponsor?.name ?? '', tier: sponsor?.tier ?? 'partner', logo: sponsor?.logo ?? '', logoLight: sponsor?.logoLight ?? '', read: sponsor?.read ?? '', video: sponsor?.video ?? '' });
+  const [d, setD] = useState({ name: sponsor?.name ?? '', tier: sponsor?.tier ?? 'partner', logo: sponsor?.logo ?? '', logoLight: sponsor?.logoLight ?? '', read: sponsor?.read ?? '', video: sponsor?.video ?? '', spaces: sponsor ? (sponsor.spaces ?? { rotator: { logo: '' } }) : { rotator: { logo: '' } } as NonNullable<Sponsor['spaces']> });
+  const setSpace = (k: SponsorSpace, on: boolean, logo = '') => setD((x) => { const spaces = { ...x.spaces }; if (on) spaces[k] = { logo }; else delete spaces[k]; return { ...x, spaces }; });
   return (
     <EditorDrawer
       title={sponsor ? sponsor.name : 'Add a sponsor'} close={close}
@@ -120,6 +121,21 @@ export function SponsorEditor({ s, run, event, sponsor, close }: { s: Snapshot; 
         </div>
       </div>
       <span className="faint t-xs" style={{ marginTop: -8 }}>A file on this PC. Air adds it to the break scene in OBS when you go live.</span>
+      <div className="stack" style={{ gap: 8 }}>
+        <span className="field-label">Spaces they bought</span>
+        <span className="faint t-xs">Tick each one. A space can have its own logo; otherwise the main logo is used. The rotator rotates every sponsor that bought it.</span>
+        <div className="sp-spaces">
+          {SPONSOR_SPACES.map((k) => {
+            const on = !!d.spaces[k];
+            return (
+              <div key={k} className={`sp-space ${on ? 'on' : ''}`}>
+                <label className="row-gap t-sm"><input type="checkbox" checked={on} onChange={(e) => setSpace(k, e.target.checked)} />{SPACE_NAME[k]}</label>
+                {on && <span className="row-gap"><ImagePick s={s} value={d.spaces[k]!.logo} size={40} label={`${SPACE_NAME[k]} logo`} onChange={(logo) => setSpace(k, true, logo)} fallback="Main" />{d.spaces[k]!.logo ? <button type="button" className="btn quiet small" onClick={() => setSpace(k, true, '')}>Use main</button> : <span className="faint t-xs">Main logo</span>}</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </EditorDrawer>
   );
 }

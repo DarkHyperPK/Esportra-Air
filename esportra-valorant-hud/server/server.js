@@ -130,6 +130,8 @@ async function start({ port, key, root, dataDir, host = '127.0.0.1', onGep, onSt
           if (input.action !== 'show' || !panel || !['technical', 'timeout'].includes(panel.kind) || typeof panel.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(panel.id) || !Number.isFinite(panel.startedAt) || Math.abs(panel.startedAt - Date.now()) > 10000) return send(res, 400, { error: 'Invalid pause panel.' });
           if (panel.scope?.showId !== r.state.airContext?.showId || panel.scope?.matchId !== r.state.airContext?.matchId) return send(res, 409, { error: 'Match context changed.' });
           next.airPause = { id: panel.id, kind: panel.kind, startedAt: panel.startedAt };
+          if (panel.team === 0 || panel.team === 1) next.airPause.team = panel.team;
+          if (Number.isInteger(panel.seconds) && panel.seconds >= 10 && panel.seconds <= 600) next.airPause.seconds = panel.seconds;
           return send(res, 200, { v: apply(r, next, 'air:pause-show') || r.v });
         }
         if (parts[2] === 'display-fixes' && req.method === 'GET') return send(res, 200, r.fixes.status(r.state));

@@ -51,7 +51,7 @@ function HudLook({ s, run, row }: { s: Snapshot; run: Run; row: RundownRow }) {
         <div className="hud-adjust-body">
           <span className="t-sm">Pause and timeout</span>
           <span className="rb-chips" role="radiogroup" aria-label="Pause style">
-            {([['box', 'Box at the top left'], ['panel', 'Centred panel']] as const).map(([v, label]) => <button key={v} type="button" role="radio" aria-checked={look.pause === v} className="rb-chip" onClick={() => void run(() => air.updateSetup({ look: { pause: v } }))}>{label}</button>)}
+            {([['box', 'Box at the top left'], ['panel', 'Centred panel'], ['bar', 'Bar with countdown']] as const).map(([v, label]) => <button key={v} type="button" role="radio" aria-checked={look.pause === v} className="rb-chip" onClick={() => void run(() => air.updateSetup({ look: { pause: v } }))}>{label}</button>)}
           </span>
         </div>
       </div>

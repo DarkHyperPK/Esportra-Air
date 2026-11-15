@@ -1,7 +1,7 @@
 // An event's Branding (logo, accent, stages) and Talent and sponsors tabs (approved mock, 12 Nov):
 // what every match of the event uses. Matches switch individual people and sponsors off.
 import { useEffect, useState } from 'react';
-import { ROLE_NAME, TIER_NAME, rotationShare, type EventInfo, type Sponsor, type Talent } from '../../shared/model.ts';
+import { ROLE_NAME, SPACE_NAME, SPONSOR_SPACES, TIER_NAME, rotationShare, spacesOf, type EventInfo, type Sponsor, type Talent } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
 import type { PageProps } from '../App.tsx';
 import { PersonEditor, SponsorEditor, cameraText } from '../components/Editors.tsx';
@@ -97,13 +97,32 @@ export function EventTalent({ s, run, event }: Pick<PageProps, 's' | 'run'> & { 
             <div className="li sponsor-row" key={x.id}>
               {x.logo ? <img className="spon-logo" src={imageUrl(s, x.logo)} alt="" /> : <b className="spon-name">{x.name}</b>}
               <span className="muted t-sm">{TIER_NAME[x.tier]}{x.logo ? ` · ${x.name}` : ''}</span>
-              <span className="faint t-xs">{x.video ? 'Video loop' : 'Logo only'}</span>
+              <span className="faint t-xs">{spacesOf(x).map((k) => SPACE_NAME[k]).join(' · ') || 'No spaces'}</span>
               <span className="faint t-xs">{shareText(share[x.id] ?? 0)}</span>
               <button className="btn quiet small" onClick={() => setSponsor(x)}>Edit</button>
             </div>
           ))}
         </div>
       </section>
+      {event.sponsors.length > 0 && (
+        <section className="card" aria-label="Active sponsor in each space">
+          <div className="card-head"><b>Active sponsor in each space</b><span className="faint t-xs">A match can choose its own in Live</span></div>
+          <div className="sp-active body-pad">
+            {SPONSOR_SPACES.filter((k) => k !== 'rotator').map((k) => {
+              const bought = event.sponsors.filter((x) => spacesOf(x).includes(k));
+              const active = event.spaceActive?.[k] && bought.some((x) => x.id === event.spaceActive![k]) ? event.spaceActive![k]! : '';
+              return (
+                <label key={k} className="field"><span>{SPACE_NAME[k]}</span>
+                  <select value={active} disabled={!bought.length} onChange={(e) => void run(() => air.sponsorSpaceSet(event.id, k, e.target.value || null))}>
+                    <option value="">{bought.length ? `Automatic · ${bought[0]!.name}` : 'Nobody bought this space'}</option>
+                    {bought.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      )}
       {person && <PersonEditor s={s} run={run} event={event} person={person === 'new' ? null : event.talent.find((t) => t.id === person.id) ?? person} close={() => setPerson(null)} />}
       {sponsor && <SponsorEditor s={s} run={run} event={event} sponsor={sponsor === 'new' ? null : sponsor} close={() => setSponsor(null)} />}
     </div>

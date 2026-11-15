@@ -12,8 +12,8 @@ export interface TimerWindow {
 
 export interface Look {
   timer: TimerWindow;
-  /** Tech pause and timeout: the centred panel, or a box at the top left. */
-  pause: 'panel' | 'box';
+  /** Tech pause and timeout: the centred panel, a box at the top left, or a bar along the bottom (approved mock 15 Nov). */
+  pause: 'panel' | 'box' | 'bar';
   /** Starting soon, Break and Ending: the classic screen, or a frame with two see-through windows. */
   break: 'classic' | 'frame';
 }
@@ -36,7 +36,7 @@ export function validLook(input: Partial<Look>, current: Look): Look {
   if (!Number.isInteger(t.dx) || t.dx < -200 || t.dx > 200) throw new Error('Move the timer window by up to 200 pixels.');
   if (!Number.isInteger(t.width) || t.width < 100 || t.width > 240) throw new Error('Keep the timer window 100–240 pixels wide.');
   if (!/^#[0-9a-f]{6}$/i.test(t.plate)) throw new Error('Choose a colour like #17181e.');
-  if (next.pause !== 'panel' && next.pause !== 'box') throw new Error('Choose the pause panel or the box.');
+  if (next.pause !== 'panel' && next.pause !== 'box' && next.pause !== 'bar') throw new Error('Choose the pause panel, the box or the bar.');
   if (next.break !== 'classic' && next.break !== 'frame') throw new Error('Choose the classic break or the frame.');
   return next;
 }

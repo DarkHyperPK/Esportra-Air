@@ -37,8 +37,15 @@ export const TIER_NAME: Record<SponsorTier, string> = { title: 'Title sponsor', 
 /** How many slots of the HUD's sponsor rotation each tier gets, relative to the others. */
 export const TIER_WEIGHT: Record<SponsorTier, number> = { title: 3, partner: 2, supporter: 1 };
 
+/** Where a sponsor can appear (approved mock 15 Nov). The rotator rotates every sponsor that bought it; each other space shows one sponsor. */
+export const SPONSOR_SPACES = ['rotator', 'event-bug', 'map-veto', 'agent-select', 'breakdown', 'victory', 'timeout', 'toast'] as const;
+export type SponsorSpace = (typeof SPONSOR_SPACES)[number];
+export const SPACE_NAME: Record<SponsorSpace, string> = { rotator: 'Rotator', 'event-bug': 'Event bug', 'map-veto': 'Map veto', 'agent-select': 'Agent select', breakdown: 'Breakdown', victory: 'Victory', timeout: 'Timeout', toast: 'Toast' };
+
 export interface Sponsor {
   id: string;
+  /** The spaces this sponsor bought, each with its own logo or '' for the main one. Absent: the rotator only (sponsors from before spaces). */
+  spaces?: Partial<Record<SponsorSpace, { logo: string }>>;
   name: string;
   /** Logo for dark backgrounds (the default), and an optional version for light ones. */
   logo: string;
@@ -50,9 +57,30 @@ export interface Sponsor {
   read: string;
 }
 
+/** The spaces a sponsor shows in: the ones it bought, or the rotator for a sponsor from before spaces. */
+export const spacesOf = (s: Sponsor): SponsorSpace[] => (s.spaces ? SPONSOR_SPACES.filter((k) => s.spaces![k]) : ['rotator']);
+
+/**
+ * The sponsor shown in each single space: the match's choice, else the event's, else the first sponsor on air
+ * that bought it. A space nobody bought shows nothing. Logos: the space's own, else the sponsor's main one.
+ */
+export function spaceSponsors(sponsors: Sponsor[], eventActive: Partial<Record<SponsorSpace, string>> | undefined, matchActive: Partial<Record<SponsorSpace, string | null>> | undefined) {
+  const out: Partial<Record<SponsorSpace, { name: string; logo: string } | null>> = {};
+  for (const space of SPONSOR_SPACES) {
+    if (space === 'rotator') continue;
+    const bought = sponsors.filter((s) => spacesOf(s).includes(space));
+    const want = matchActive && space in matchActive ? matchActive[space] : eventActive?.[space];
+    const pick = want === null ? null : bought.find((s) => s.id === want) ?? bought[0] ?? null;
+    out[space] = pick ? { name: pick.name.toUpperCase(), logo: pick.spaces?.[space]?.logo || pick.logo } : null;
+  }
+  return out;
+}
+
 /** A tournament or show series. Matches take their branding, talent and sponsors from it. */
 export interface EventInfo {
   id: string;
+  /** The active sponsor of each single space (sponsor id). */
+  spaceActive?: Partial<Record<SponsorSpace, string>>;
   name: string;
   /** Stage names offered to its matches, e.g. "Groups", "Playoffs". */
   stages: string[];
