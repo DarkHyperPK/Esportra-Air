@@ -62,6 +62,14 @@ export class MapRecords {
     return record;
   }
 
+  /** Keeps the map being played as the room has it, without counting it (the game did not end it properly). */
+  async closeCurrent(match: Match, state: any) {
+    const wins = [0, 1].map((i) => Number(state?.teams?.[i]?.series) || 0);
+    const scores = [0, 1].map((i) => Number(state?.teams?.[i]?.score) || 0) as [number, number];
+    const map = Math.min(wins[0]! + wins[1]! + 1, match.bestOf);
+    return this.close(match, state, map, scores, scores[0] === scores[1] ? -1 : scores[0] > scores[1] ? 0 : 1, 'closed');
+  }
+
   /** The record the post-game graphics show. */
   async show(choice: RecordChoice) {
     const match = this.ctx.match();

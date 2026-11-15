@@ -51,7 +51,8 @@ import { MatchDataService } from './match-data.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
-import { ROLE_NAME, SPONSOR_SPACES, spaceSponsors, spacesOf, type SponsorSpace } from '../shared/model.ts';
+import { ROLE_NAME, type SponsorSpace } from '../shared/model.ts';
+import { SponsorSpaces } from './sponsor-spaces.ts';
 import { HEX, IMAGE, text } from './validate.ts';
 import { checks } from './readiness.ts';
 import { CueDeck, type GraphicAction } from './cue-deck.ts';
@@ -223,9 +224,14 @@ export class Production extends EventEmitter {
       storeImage: (bytes, type) => this.storeImage(bytes, type),
       patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
       reprepare: async (matchId) => { await deps.esportra?.refreshMatches(); await this.esportraMatches.use(matchId); },
-      save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('changed'), now: () => (deps.now ?? Date.now)(),
+      save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('change'), now: () => (deps.now ?? Date.now)(),
     });
     if (deps.esportra) this.esportraSync.start();
+    this.spaces = new SponsorSpaces({
+      match: () => this.match, eventOf: (m) => this.eventOf(m), requireEvent: (id) => this.requireEvent(id), putEvent: (e) => this.putEvent(e),
+      patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
+      save: () => this.save(), changed: () => this.emit('change'),
+    });
     this.mapRecords = new MapRecords({
       store: deps.store, match: () => this.match, save: () => this.save(), log: (text) => this.log.add(text), now: () => (deps.now ?? Date.now)(),
       patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
@@ -753,7 +759,7 @@ export class Production extends EventEmitter {
       this.stopped = { matchId: match.id, map: wins[0]! + wins[1]! + 1, scores };
       this.log.add(`Map ${this.stopped.map} left at ${scores[0]}–${scores[1]} · waiting for you`);
       this.emit('notice', `The game left map ${this.stopped.map} at ${scores[0]}–${scores[1]}. Choose in Live whether it counts.`);
-      this.emit('changed');
+      this.emit('change');
     }
   }
 
@@ -771,7 +777,7 @@ export class Production extends EventEmitter {
       const state = await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`).then((d) => d.state);
       await this.recordMap(match, state, stopped.scores, choice === 'team0' ? 0 : 1, 'Counted by the producer');
     } else this.log.add(choice === 'remade' ? `Map ${stopped.map} remade · not counted` : `Map ${stopped.map} stop ignored`);
-    this.emit('changed');
+    this.emit('change');
   }
 
   /** A finished map counts in the series from the game: its result on the series graphics, one more win. */
@@ -786,7 +792,7 @@ export class Production extends EventEmitter {
       this.stopped = { matchId: match.id, map: wins[0]! + wins[1]! + 1, scores };
       this.log.add(`Map ended at ${label} · not counted as a result`);
       this.emit('notice', `The map ended at ${label}, so Air did not count it. Choose in Live whether it counts.`);
-      this.emit('changed');
+      this.emit('change');
       return;
     }
     // The game can report a map end twice; it counts once until a round of the next map is won.
@@ -1043,35 +1049,11 @@ export class Production extends EventEmitter {
     await this.putEvent(upsertSponsor(this.requireEvent(eventId), input ?? {}));
   }
 
-  /** The sponsor each single space shows for a match (its own choice over the event's). */
-  spacesOf(match: Match) {
-    const event = this.eventOf(match);
-    return spaceSponsors(onAir(match, event).sponsors, event?.spaceActive, match.spaceActive);
-  }
-
-  /** The event's active sponsor in a space (null: the first that bought it). */
-  async sponsorSpaceSet(eventId: string, space: SponsorSpace, sponsorId: string | null) {
-    const event = this.requireEvent(eventId);
-    if (!SPONSOR_SPACES.includes(space) || space === 'rotator') throw new Error('Choose a sponsor space.');
-    if (sponsorId !== null && !event.sponsors.some((x) => x.id === sponsorId && spacesOf(x).includes(space))) throw new Error('That sponsor has not bought this space.');
-    const spaceActive = { ...(event.spaceActive ?? {}) };
-    if (sponsorId) spaceActive[space] = sponsorId; else delete spaceActive[space];
-    await this.putEvent({ ...event, spaceActive });
-  }
-
-  /** This match's own sponsor in a space: a sponsor id, null for none in this match, or undefined to follow the event. */
-  async matchSpaceSet(space: SponsorSpace, sponsorId: string | null | undefined) {
-    const match = this.requireMatch();
-    if (!SPONSOR_SPACES.includes(space) || space === 'rotator') throw new Error('Choose a sponsor space.');
-    const event = this.eventOf(match);
-    if (sponsorId && !event?.sponsors.some((x) => x.id === sponsorId && spacesOf(x).includes(space))) throw new Error('That sponsor has not bought this space.');
-    const next = { ...(match.spaceActive ?? {}) };
-    if (sponsorId === undefined) delete next[space]; else next[space] = sponsorId;
-    match.spaceActive = next;
-    this.save();
-    await this.client.patch(`/api/${encodeURIComponent(match.code)}`, { airSpaces: this.spacesOf(match) });
-    this.emit('changed');
-  }
+  // ── sponsor spaces: src/main/sponsor-spaces.ts ──
+  readonly spaces: SponsorSpaces;
+  spacesOf(match: Match) { return this.spaces.of(match); }
+  sponsorSpaceSet(eventId: string, space: SponsorSpace, sponsorId: string | null) { return this.spaces.setForEvent(eventId, space, sponsorId); }
+  matchSpaceSet(space: SponsorSpace, sponsorId: string | null | undefined) { return this.spaces.setForMatch(space, sponsorId); }
 
   async removeSponsor(eventId: string, sponsorId: string) {
     const event = this.requireEvent(eventId);
@@ -1386,7 +1368,7 @@ export class Production extends EventEmitter {
   readonly esportraSync: EsportraSync;
 
   /** The buy phase running long: maybe a timeout nobody announced (approved mock 15 Nov). */
-  readonly pauseHint = new PauseHint(() => this.emit('changed'));
+  readonly pauseHint = new PauseHint(() => this.emit('change'));
 
   // ── map records: src/main/map-records.ts ──
   readonly mapRecords: MapRecords;
@@ -1396,12 +1378,8 @@ export class Production extends EventEmitter {
   /** Keeps the map being played as it stands, without counting it in the series (the game did not end it properly). */
   async closeMap() {
     const match = this.requireMatch();
-    const state = await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`).then((d) => d.state);
-    const wins = [0, 1].map((i) => Number(state?.teams?.[i]?.series) || 0);
-    const scores = [0, 1].map((i) => Number(state?.teams?.[i]?.score) || 0) as [number, number];
-    const map = Math.min(wins[0]! + wins[1]! + 1, match.bestOf);
-    await this.mapRecords.close(match, state, map, scores, scores[0] === scores[1] ? -1 : scores[0] > scores[1] ? 0 : 1, 'closed');
-    this.emit('changed');
+    await this.mapRecords.closeCurrent(match, await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`).then((d) => d.state));
+    this.emit('change');
   }
   esportraReview(proposalId: string, decision: 'apply' | 'reject') { return this.esportraSync.review(proposalId, decision); }
   async vetoFollowEsportra() {

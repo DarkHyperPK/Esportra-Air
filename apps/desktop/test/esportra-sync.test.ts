@@ -189,8 +189,11 @@ test('the Esportra veto as it happens: custom order, coin toss, turn, decider, r
     st = await room();
     assert.equal(st.vetoTurn.team, 1);
     assert.ok(st.vetoTurn.endsAt > Date.now() + 30_000 && st.vetoTurn.endsAt <= Date.now() + 45_000);
+    let pushed = 0;
+    production.on('change', () => pushed++);
     v.steps.push({ team: 1, action: 'ban', map: 'Bind', side: null }, { team: 0, action: 'ban', map: 'Dust2', side: null });
     await production.esportraSync.pollVeto(match);
+    assert.ok(pushed > 0, 'a veto step from Esportra reaches the interface (the main process pushes on "change")');
     assert.deepEqual((await room()).veto.map((x: any) => x.map), ['BIND'], 'a map Air does not know is left out');
     assert.deepEqual(production.snapshot().esportraVeto!.unknownMaps, ['Dust2']);
     v.steps[1] = { team: 0, action: 'ban', map: 'Abyss', side: null };
