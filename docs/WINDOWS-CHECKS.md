@@ -43,7 +43,7 @@ Go through this list once on a Windows PC with OBS 30 or later, Overwolf and Val
 
 ## Esportra match
 
-Needs the backend's live veto route on staging (esportra-backend PR #6). Until it is merged and deployed, the veto lines below cannot pass.
+Uses Esportra staging (`https://api-staging.esportra.com`), which has the live veto route since 15 Nov (esportra-backend PR #6).
 
 - [ ] Events › an Esportra tournament › Use this match. Both lineups arrive; players with a verified Riot ID are seated before the game lists them.
 - [ ] Run the veto on the Esportra website. Each ban and pick shows in Map veto within about 2 s, with whose turn it is and the countdown.
