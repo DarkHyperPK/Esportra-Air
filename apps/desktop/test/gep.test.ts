@@ -18,7 +18,8 @@ function fakeOverwolf() {
 test('nothing is asked for or forwarded before the producer consents', async () => {
   const { packages, gep } = fakeOverwolf();
   const sent: unknown[] = [];
-  const bridge = new GepBridge({ packages, send: (m) => sent.push(m) });
+  const tapped: unknown[] = [];
+  const bridge = new GepBridge({ packages, send: (m) => sent.push(m), tap: (_kind, m) => tapped.push(m) });
   packages.emit('ready', {}, 'gep', '1.0');
   let enabled = 0;
   gep.emit('game-detected', { enable: () => { enabled += 1; } }, 21640, 'VALORANT');
@@ -27,6 +28,7 @@ test('nothing is asked for or forwarded before the producer consents', async () 
   assert.equal(enabled, 1, 'Overwolf may attach to the game, as its own apps do');
   assert.deepEqual(gep.calls, [], 'but no game data is asked for before consent');
   assert.deepEqual(sent, []);
+  assert.deepEqual(tapped, [], 'Record game data sees nothing before consent either');
   assert.equal(bridge.state, 'off');
   assert.match(bridge.reason ?? '', /Valorant is open on this PC\. Nothing is read/, 'the PC shows that it sees the game');
 
@@ -52,6 +54,7 @@ test('nothing is asked for or forwarded before the producer consents', async () 
   bridge.stop();
   gep.emit('new-info-update', {}, 21640, { info: { match_info: { round_number: '2' } } });
   assert.equal(sent.length, 4, 'stopping capture stops forwarding');
+  assert.equal(tapped.length, 4, 'Record game data saw every raw Valorant message while capturing, the repeated kill included, and nothing after');
   assert.equal(bridge.state, 'off');
 });
 

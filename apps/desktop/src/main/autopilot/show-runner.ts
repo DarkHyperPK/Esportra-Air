@@ -476,7 +476,7 @@ export function mapComplete(scores: [number, number]): boolean {
 
 /** Adds the room's scores to a round or map event (Air reads them when the event arrives). */
 export function withScores(event: GameEvent, teams: Array<{ score?: unknown }> | undefined): GameEvent {
-  if (event.type !== 'round.won' && event.type !== 'match.end') return event;
+  if (event.type !== 'round.won' && event.type !== 'match.end' && event.type !== 'match.aborted') return event;
   const scores = (teams ?? []).slice(0, 2).map((t) => Number(t?.score));
   if (scores.length !== 2 || !scores.every((n) => Number.isInteger(n) && n >= 0)) return event;
   return { ...event, scores };

@@ -130,7 +130,7 @@ export function validRow(input: RowInput, id: string, bestOf: 1 | 3 | 5, screens
   if (input.holdMode !== 'window' && input.holdMode !== 'manual') throw new Error('Choose the hold.');
   if (input.holdMode === 'window' && !int(input.holdSeconds, 0, 60)) throw new Error('A hold is 0–60 seconds.');
   const manual = input.trigger === 'manual';
-  if (input.style !== undefined && input.style !== 'full' && input.style !== 'band') throw new Error('Choose full screen or over the game.');
+  if (input.style !== undefined && input.style !== 'full' && input.style !== 'band') throw new Error('Choose full screen or overlay bar.');
   const style = template ? graphicStyle(template.graphic) : input.style === 'band' && input.show && BAND_SCREENS.has(input.show) ? 'band' as const : 'full' as const;
   return {
     id, section, show: input.show, style, ...(template ? { template: template.id } : {}), trigger: input.trigger, map, forSeconds: input.show === null ? 0 : input.forSeconds,

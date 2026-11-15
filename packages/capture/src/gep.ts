@@ -110,6 +110,8 @@ export interface GepBridgeOptions {
   playerId?: string;
   pollMs?: number;
   log?: (message: string) => void;
+  /** Sees every raw game message once capture is on (Record game data). Nothing is tapped before consent. */
+  tap?: (kind: 'info' | 'event', message: unknown) => void;
 }
 
 export class GepBridge extends EventEmitter {
@@ -191,11 +193,13 @@ export class GepBridge extends EventEmitter {
     });
     gep.on('new-info-update', (_e: unknown, gameId: number, ...args: any[]) => {
       if (!isValorant(gameId)) return;
+      if (this.consented) for (const message of args) this.options.tap?.('info', message);
       for (const message of args) if (!this.repeatedKill(message?.key, message?.value ?? message?.data)) this.forward(message);
     });
     // ow-electron sends game events flat, like info updates: { gameId, feature, key, value }.
     gep.on('new-game-event', (_e: unknown, gameId: number, ...args: any[]) => {
       if (!isValorant(gameId)) return;
+      if (this.consented) for (const message of args) this.options.tap?.('event', message);
       for (const message of args) {
         if (message?.events) { this.forward(message); continue; }
         const name = message?.name ?? message?.key;

@@ -261,6 +261,59 @@ function recordSpectators() {
   writeFixture('spectators', initial, steps);
 }
 
+// ── Fixture 5: map end and abort (15 Nov) ──
+// The game says a map ended up to three ways (round phase game_end, match_outcome, the match_end event):
+// one map end is reported. A map left mid-way (back to the main menu, or Aborted) is one abort.
+function recordMapEnd() {
+  const adapter = createValorantAdapter();
+  let state = clone(CLEAN);
+  const initial = clone(state), steps = [];
+  const info = (k, v) => ({ info: { match_info: { [k]: typeof v === 'string' ? v : JSON.stringify(v) } }, feature: 'match_info' });
+  const game = (k, v) => ({ info: { game_info: { [k]: v } }, feature: 'game_info' });
+  const ev = (name, data = '') => ({ events: [{ name, data }] });
+  const script = [
+    [0, ev('match_start')],
+    [10, info('round_number', '1')],
+    [20, info('round_phase', 'combat')],
+    [30, info('match_score', { team_0: 1, team_1: 0 })],
+    [40, info('match_score', { team_0: 13, team_1: 9 })],
+    [50, info('round_phase', 'game_end')],
+    [60, info('match_outcome', 'victory')],
+    [70, ev('match_end')],
+    [80, game('scene', 'MainMenu')],
+    // Map 2 is left after two rounds.
+    [1000, ev('match_start')],
+    [1010, info('round_number', '1')],
+    [1020, info('round_phase', 'combat')],
+    [1030, info('match_score', { team_0: 1, team_1: 1 })],
+    [1040, game('scene', 'MainMenu')],
+    [1050, game('state', 'Aborted')],
+    [1060, ev('match_end')],
+    // A false early end: play goes on, so the real end later counts.
+    [1500, ev('match_start')],
+    [1510, info('match_score', { team_0: 2, team_1: 1 })],
+    [1520, ev('match_end')],
+    [1530, info('match_score', { team_0: 3, team_1: 1 })],
+    [1540, info('match_score', { team_0: 13, team_1: 1 })],
+    [1550, ev('match_end')],
+    // Map 3 ends only by match_outcome.
+    [2000, ev('match_start')],
+    [2010, info('match_score', { team_0: 9, team_1: 13 })],
+    [2020, info('match_outcome', 'Defeat')],
+  ];
+  const warn = console.warn; console.warn = () => {};
+  const kinds = [];
+  script.forEach(([t, msg], step) => {
+    const out = adapter.ingest(clone(state), clone(msg), t);
+    state = out.state;
+    kinds.push(...out.events.map((e) => e.type).filter((x) => x === 'match.end' || x === 'match.aborted'));
+    steps.push({ step, kind: 'ingest', t, input: [msg], events: out.events, state: clone(state) });
+  });
+  console.warn = warn;
+  if (kinds.join(',') !== 'match.end,match.aborted,match.end,match.end,match.end') throw new Error(`map end: got ${kinds.join(',')}`);
+  writeFixture('map-end', initial, steps);
+}
+
 // The engine embeds the HUD's default states; they are JavaScript files, so export them as JSON.
 function exportDefaults() {
   const file = path.resolve(__dirname, '../crates/air-engine/defaults.json');
@@ -273,5 +326,6 @@ function exportDefaults() {
   recordAdapterShapes();
   recordEdgeCases();
   recordSpectators();
+  recordMapEnd();
   await recordSimulator();
 })().catch((error) => { console.error(error); process.exit(1); });

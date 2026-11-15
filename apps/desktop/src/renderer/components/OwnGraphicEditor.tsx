@@ -124,7 +124,7 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
         <header className="tpl-bar">
           <div className="tpl-name">
             <input aria-label="Graphic name" value={g.name} maxLength={60} placeholder="Name this graphic" onChange={(e) => change({ name: e.target.value })} />
-            <span className="faint t-xs">Your graphic · {g.style === 'band' ? 'over the game' : 'full screen'} · {g.boxes.length} box{g.boxes.length === 1 ? '' : 'es'}</span>
+            <span className="faint t-xs">Your graphic · {g.style === 'band' ? 'overlay bar' : 'full screen'} · {g.boxes.length} box{g.boxes.length === 1 ? '' : 'es'}</span>
           </div>
           {dirty ? <span className="tpl-dirty">Not saved</span> : <span className="faint t-xs">Saved</span>}
           <span className="spacer" />
@@ -161,7 +161,7 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
               <span className="faint t-xs" style={{ marginTop: -8 }}>Decides its place in the Rundown and its moment. “Anything” is only taken by hand.</span>
               <div className="field"><span>How it shows</span><div className="seg" role="group" aria-label="How it shows">
                 <button aria-pressed={g.style === 'full'} onClick={() => change({ style: 'full' })}>Full screen</button>
-                <button aria-pressed={g.style === 'band'} onClick={() => change({ style: 'band' })}>Over the game</button>
+                <button aria-pressed={g.style === 'band'} onClick={() => change({ style: 'band' })}>Overlay bar</button>
               </div></div>
               <ul className="own-checks">
                 <li className={g.image ? 'ok' : ''}>{g.image ? '✓' : '·'} 1920 × 1080 PNG, up to 16 MB</li>

@@ -320,6 +320,8 @@ export interface Snapshot {
   ownGraphics: import('./own-graphics.ts').OwnGraphic[];
   /** Ids of templates and own graphics on air right now: editing one changes what viewers see at once. */
   onAirLooks: string[];
+  /** The game left this map before it ended; Live asks what it was. */
+  mapStopped: { map: number; scores: [number, number] } | null;
   /** How many saved match rundowns use each template. */
   templateUse: Record<string, number>;
   /** Teams/Players. */
@@ -454,6 +456,7 @@ export interface AirApi {
   deleteEvent(id: string): Promise<Snapshot>;
   /** Marks a match finished (it stops following Teams/Players), or reopens it. */
   markFinished(id: string, finished: boolean): Promise<Snapshot>;
+  mapStoppedResolve(choice: 'team0' | 'team1' | 'remade' | 'ignore'): Promise<Snapshot>;
   /** Deletes a match from this PC (an Esportra match stays in Esportra). Refused while it is live. */
   deleteMatch(id: string): Promise<Snapshot>;
   updateEvent(id: string, patch: EventPatch): Promise<Snapshot>;

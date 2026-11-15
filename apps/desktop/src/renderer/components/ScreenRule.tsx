@@ -90,7 +90,7 @@ export function ScreenRule({ s, run, row, section, close }: { s: Snapshot; run: 
           <span className="rb-k">Look</span>
           <div className="stack" style={{ gap: 8 }}>
             <LookPicker s={s} screen={d.show} value={{ style: d.style ?? 'full', ...(d.template ? { template: d.template } : {}) }} onPick={(look) => set({ style: look.style, template: look.template })} />
-            <span className="faint t-xs">{d.style === 'band' ? 'A band over the game feed or the desk camera; the game stays on screen.' : 'Covers the whole screen, so it shows only in the ESPORTRA · Full screen scene: switch OBS to it. Over the game, only over-the-game looks show.'} Make your own look in Graphics › Templates.</span>
+            <span className="faint t-xs">{d.style === 'band' ? 'An overlay bar over the game feed or the desk camera; the game stays on screen.' : 'Covers the whole screen, so it shows only in the ESPORTRA · Full screen scene: switch OBS to it. Over the game, only overlay bars show.'} Make your own look in Graphics › Templates.</span>
           </div>
         </>)}
 

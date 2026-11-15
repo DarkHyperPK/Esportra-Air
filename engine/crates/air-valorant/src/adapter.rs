@@ -66,6 +66,10 @@ pub struct ValorantAdapter {
     round_banner: Option<&'static str>,
     round_first_kill: bool,
     overtime_fired: bool,
+    /// Map end already reported (the game can say it three ways).
+    map_ended: bool,
+    /// Map abort already reported.
+    map_aborted: bool,
     prev_money: Option<HashMap<String, f64>>,
     coverage: PlayerCoverage,
     unknown_codenames: HashSet<String>,
@@ -127,6 +131,12 @@ fn team_known(v: &Value) -> bool {
     };
     team || matches!(v.get("teammate"), Some(Value::Bool(_)))
         || matches!(v.get("teammate"), Some(Value::String(x)) if x == "true" || x == "false")
+}
+/// `s.rounds.length > 0 || s.round.phase === 'live'`: a map is being played.
+fn mid_map(s: &Value) -> bool {
+    let rounds = s.get("rounds").and_then(Value::as_array);
+    let phase = get(s.get("round"), "phase").and_then(Value::as_str);
+    rounds.is_some_and(|r| !r.is_empty()) || phase == Some("live")
 }
 /// `x++` on an object property.
 fn increment(map: &mut Map<String, Value>, key: &str) {
@@ -291,6 +301,8 @@ impl ValorantAdapter {
             round_banner: None,
             round_first_kill: false,
             overtime_fired: false,
+            map_ended: false,
+            map_aborted: false,
             prev_money: None,
             coverage: PlayerCoverage::default(),
             unknown_codenames: HashSet::new(),
@@ -600,6 +612,17 @@ impl ValorantAdapter {
                 self.round_phase(s, v, now, &mut out)?;
             } else if info.key_is("match_score") && truthy(v) {
                 self.match_score(s, v.expect("checked"), now, &mut out)?;
+            } else if info.key_is("match_outcome")
+                && ["victory", "defeat", "draw"].contains(&to_js_string(v).to_lowercase().as_str())
+            {
+                self.map_end(&mut out);
+            } else if (info.key_is("state") && v.and_then(Value::as_str) == Some("Aborted"))
+                || (info.key_is("scene")
+                    && v.and_then(Value::as_str) == Some("MainMenu")
+                    && mid_map(s))
+            {
+                // The map was left before it ended: aborted by the game, or back to the main menu mid-map.
+                self.map_abort(&mut out);
             } else if info.key_is("map") && tables::map(&to_js_string(v)).is_some() {
                 let name = tables::map(&to_js_string(v)).expect("checked");
                 obj_mut(s, "map")?.insert("name".into(), json!(name));
@@ -657,7 +680,7 @@ impl ValorantAdapter {
                 self.match_start(s)?;
                 out.push(json!({ "type": "match.start" }));
             } else if event.is("match_end") {
-                out.push(json!({ "type": "match.end" }));
+                self.map_end(&mut out);
             }
         }
         self.coverage.apply(s, now);
@@ -892,7 +915,28 @@ impl ValorantAdapter {
             event.insert("round".into(), number.clone());
         }
         out.push(Value::Object(event));
+        if v.and_then(Value::as_str) == Some("game_end") {
+            self.map_end(out);
+        }
         Ok(())
+    }
+
+    /// A map end, said once however many ways the game says it (match_end, round phase game_end, match_outcome).
+    fn map_end(&mut self, out: &mut Vec<Value>) {
+        if self.map_ended || self.map_aborted {
+            return;
+        }
+        self.map_ended = true;
+        out.push(json!({ "type": "match.end" }));
+    }
+
+    /// The map was left before it ended (the game aborted it, or everyone went back to the main menu).
+    fn map_abort(&mut self, out: &mut Vec<Value>) {
+        if self.map_ended || self.map_aborted {
+            return;
+        }
+        self.map_aborted = true;
+        out.push(json!({ "type": "match.aborted" }));
     }
 
     fn match_score(
@@ -908,6 +952,11 @@ impl ValorantAdapter {
                 if mapped[t] > last[t] {
                     self.round_won(s, t, mapped, now, out)?;
                 }
+            }
+            // A round won after a reported map end means play went on: the next map end counts again.
+            if mapped[0] > last[0] || mapped[1] > last[1] {
+                self.map_ended = false;
+                self.map_aborted = false;
             }
         }
         self.last_score = Some(mapped);
@@ -1036,6 +1085,8 @@ impl ValorantAdapter {
     }
 
     fn match_start(&mut self, s: &mut Value) -> Result<(), IngestError> {
+        self.map_ended = false;
+        self.map_aborted = false;
         let Value::Object(state) = s else {
             return Err(IngestError("state"));
         };

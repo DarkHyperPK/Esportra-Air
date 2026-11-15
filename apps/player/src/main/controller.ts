@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import type { IngestClient } from '../../../../packages/capture/src/ingest.ts';
 import { LinkClient } from '../../../../packages/capture/src/link.ts';
 import type { PcRole } from '../../../../packages/capture/src/protocol.ts';
+import type { GameRecorder } from '../../../../packages/capture/src/recorder.ts';
 import type { PlayerSnapshot } from '../shared/api.ts';
 import type { PlayerStore } from './store.ts';
 
@@ -24,6 +25,8 @@ export interface ControllerDeps {
   name: string;
   version: string;
   fetch?: typeof fetch;
+  /** Record game data; absent in tests that do not need it. */
+  recorder?: GameRecorder;
 }
 
 export class PlayerController extends EventEmitter {
@@ -51,7 +54,7 @@ export class PlayerController extends EventEmitter {
 
   snapshot(): PlayerSnapshot {
     const { capture, name, version } = this.d;
-    return { version, name, role: capture.role, link: this.link.view(), feed: { state: capture.state, reason: capture.reason } };
+    return { version, name, role: capture.role, link: this.link.view(), feed: { state: capture.state, reason: capture.reason }, recording: this.d.recorder?.view() ?? { on: false, file: null, lines: 0, stopped: null } };
   }
 
   async connect(input: { address: string; code: string; role: PcRole }) {
@@ -76,5 +79,15 @@ export class PlayerController extends EventEmitter {
 
   stopCapture() {
     this.d.capture.stop();
+    this.d.recorder?.stop();
+  }
+
+  /** Record game data: only while capture has consent, written to this PC only. */
+  setRecording(on: boolean) {
+    const recorder = this.d.recorder;
+    if (!recorder) throw new Error('Recording is not available here.');
+    if (!on) { recorder.stop(); return; }
+    if (this.d.capture.state !== 'live' && this.d.capture.state !== 'waiting') throw new Error('Start game capture first; recording only keeps what capture reads.');
+    recorder.start();
   }
 }

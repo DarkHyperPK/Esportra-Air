@@ -123,7 +123,7 @@ export function validOwn(input: unknown): OwnGraphic {
   const name = words(g.name, 60, 'Name');
   if (!name) throw new Error('Give the graphic a name.');
   if (!OWN_PURPOSES.some(([id]) => id === g.purpose)) throw new Error('Choose what the graphic is for.');
-  if (g.style !== 'full' && g.style !== 'band') throw new Error('Choose full screen or over the game.');
+  if (g.style !== 'full' && g.style !== 'band') throw new Error('Choose full screen or overlay bar.');
   if (typeof g.image !== 'string' || !ASSET.test(g.image)) throw new Error('Import the design as a PNG first.');
   if (!Array.isArray(g.fonts) || g.fonts.length > 8) throw new Error('Up to 8 fonts.');
   const fonts = g.fonts.map((f) => {

@@ -291,7 +291,7 @@ let failShot = async () => {};
   // Map veto in both looks.
   await pack.getByRole('button', { name: 'All', exact: true }).click();
   await pack.getByRole('option', { name: /Map veto/ }).click();
-  await pack.getByRole('tab', { name: 'Over the game' }).click();
+  await pack.getByRole('tab', { name: 'Overlay bar' }).click();
   await page.waitForTimeout(2500);
   // Each graphic lists its looks: the built-in ones to start from.
   await pack.getByRole('region', { name: 'Looks' }).getByRole('button', { name: 'Start from this' }).first().waitFor();
@@ -559,7 +559,7 @@ let failShot = async () => {};
   await addDrawer.getByText('Map result, on map 2, when you press Take, for 20 s, via the stinger.').waitFor();
   // The look: one of the built-in looks or a template (here our own, over the game).
   await addDrawer.getByRole('radiogroup', { name: 'Look' }).getByRole('radio', { name: /Gold result/ }).click();
-  await addDrawer.getByText(/A band over the game feed/).waitFor();
+  await addDrawer.getByText(/An overlay bar over the game feed/).waitFor();
   await page.waitForTimeout(2500);
   await shot('add-screen');
   await addDrawer.getByRole('button', { name: 'Add to rundown' }).click();

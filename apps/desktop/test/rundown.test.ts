@@ -86,7 +86,7 @@ test('a row can show its graphic over the game; only graphics that have that ver
   assert.equal(validRow({ ...base, style: 'band' }, 'v', 1, all).style, 'band');
   assert.equal(validRow(base, 'v', 1, all).style, 'full', 'full screen unless chosen');
   assert.equal(validRow({ ...base, section: 'post', show: 'champion', style: 'band' }, 'c', 1, all).style, 'full', 'Champion has no over-the-game version');
-  assert.throws(() => validRow({ ...base, style: 'sideways' as never }, 'v', 1, all), /full screen or over the game/);
+  assert.throws(() => validRow({ ...base, style: 'sideways' as never }, 'v', 1, all), /full screen or overlay bar/);
   const steps = buildRundown(1, [validRow({ ...base, style: 'band' }, 'v', 1, all)]);
   assert.equal(steps[0]!.style, 'band', 'autopilot takes it over the game');
 });

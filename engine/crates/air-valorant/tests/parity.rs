@@ -101,6 +101,11 @@ fn edge_cases() {
 }
 
 #[test]
+fn a_map_end_is_reported_once_and_an_abort_once() {
+    replay("map-end");
+}
+
+#[test]
 fn spectators_in_the_lobby_never_take_a_seat() {
     replay("spectators");
 }

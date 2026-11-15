@@ -127,7 +127,7 @@ function AllGraphics({ s, run, cycle, close, openForm }: Pick<PageProps, 's' | '
         <div className="editor-body">
           <input className="cell" aria-label="Search graphics, people, sponsors" placeholder="Search graphics, people, sponsors…" value={q} onChange={(e) => setQ(e.target.value)} />
           {(['ingame', 'between', 'fullscreen'] as const).map((g) => rows(g).length > 0 && (
-            <section key={g} className="stack" style={{ gap: 4 }}><Cap>{g === 'ingame' ? 'Over the game' : g === 'between' ? 'Between rounds' : 'Full screen'}</Cap><LayerList s={s} rows={rows(g)} fire={cycle} /></section>
+            <section key={g} className="stack" style={{ gap: 4 }}><Cap>{g === 'ingame' ? 'In-game' : g === 'between' ? 'Between rounds' : 'Full screen'}</Cap><LayerList s={s} rows={rows(g)} fire={cycle} /></section>
           ))}
           {(talent.length > 0 || match('spotlight')) && (
             <section className="stack" style={{ gap: 4 }}>
@@ -227,6 +227,17 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
     <div className="live-grid">
       <div className="stack" style={{ gap: 12, minWidth: 0 }}>
         {!s.match && <div className="notice">No match selected. <button className="btn fix" onClick={() => go('ready')}>Choose a match</button></div>}
+        {s.match && s.mapStopped && (
+          <div className="card warn stack" role="alert" style={{ gap: 8 }}>
+            <span><b>Map {s.mapStopped.map} ended at {s.mapStopped.scores[0]}–{s.mapStopped.scores[1]} before it was finished.</b> What was it?</span>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('team0'))}>Count it for {s.match.teams[0].name}</button>
+              <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('team1'))}>Count it for {s.match.teams[1].name}</button>
+              <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('remade'))}>Map remade, not counted</button>
+              <button className="btn quiet small" onClick={() => void run(() => air.mapStoppedResolve('ignore'))}>Ignore</button>
+            </div>
+          </div>
+        )}
         {s.match && <OnAirMonitor s={s} image={frame?.pgm ?? null} />}
         <div className="datastrip" aria-label="Live data">
           {live && r ? (

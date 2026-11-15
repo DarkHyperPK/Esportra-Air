@@ -8,7 +8,7 @@ import { openTemplateEditor } from './TemplateEditor.tsx';
 
 export type Look = { style: 'full' | 'band'; template?: string };
 
-/** The looks a screen can have: Full screen, Over the game (where it has one) and your templates. */
+/** The looks a screen can have: Full screen, Overlay bar (where it has one) and your templates. */
 export function looksFor(s: Snapshot, screen: string): Array<{ key: string; name: string; note: string; graphic: string; look: Look; template: Template | null }> {
   const out: Array<{ key: string; name: string; note: string; graphic: string; look: Look; template: Template | null }> = [];
   if (screen === 'in-game') {
@@ -17,7 +17,7 @@ export function looksFor(s: Snapshot, screen: string): Array<{ key: string; name
     return out;
   }
   // Break's two looks are the classic screen and the frame; the Desk has one.
-  const names = screen === 'holding' ? ['Default classic', 'Default frame', 'Classic', 'Frame'] : screen === 'casters' ? ['Default desk', '', 'Desk', ''] : ['Default full screen', 'Default over the game', 'Full screen', 'Over the game'];
+  const names = screen === 'holding' ? ['Default classic', 'Default frame', 'Classic', 'Frame'] : screen === 'casters' ? ['Default desk', '', 'Desk', ''] : ['Default full screen', 'Default overlay bar', 'Full screen', 'Overlay bar'];
   if (GRAPHICS[`${screen}|full`]) out.push({ key: 'full', name: names[0]!, note: 'Built in', graphic: `${screen}|full`, look: { style: 'full' }, template: null });
   if ((BAND_SCREENS.has(screen) || screen === 'holding') && GRAPHICS[`${screen}|band`]) out.push({ key: 'band', name: names[1]!, note: screen === 'holding' ? 'Built in · two windows' : 'Built in', graphic: `${screen}|band`, look: { style: 'band' }, template: null });
   for (const t of templatesFor(s.templates, screen)) out.push({ key: t.id, name: t.name, note: `Yours · ${graphicStyle(t.graphic) === 'band' ? names[3] : names[2]}`, graphic: t.graphic, look: { style: graphicStyle(t.graphic), template: t.id }, template: t });

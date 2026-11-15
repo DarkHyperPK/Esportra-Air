@@ -1,6 +1,7 @@
 // What the Player app's interface and main process exchange.
 import type { LinkView } from '../../../../packages/capture/src/link.ts';
 import type { PcRole } from '../../../../packages/capture/src/protocol.ts';
+import type { RecorderView } from '../../../../packages/capture/src/recorder.ts';
 
 export type { LinkView, PcRole };
 
@@ -12,6 +13,8 @@ export interface PlayerSnapshot {
   role: PcRole;
   link: LinkView;
   feed: { state: 'off' | 'waiting' | 'live' | 'unavailable'; reason: string | null };
+  /** Record game data (troubleshooting): raw game data to a file on this PC only. */
+  recording: RecorderView;
 }
 
 export interface PlayerApi {
@@ -22,8 +25,9 @@ export interface PlayerApi {
   retry(): Promise<PlayerSnapshot>;
   startCapture(input: { consent: true }): Promise<PlayerSnapshot>;
   stopCapture(): Promise<PlayerSnapshot>;
+  setRecording(on: boolean): Promise<PlayerSnapshot>;
 }
 
 export const CHANNELS = { call: 'player:call', snapshot: 'player:snapshot' } as const;
 export type PlayerMethod = Exclude<keyof PlayerApi, 'onSnapshot'>;
-export const METHODS: PlayerMethod[] = ['snapshot', 'connect', 'disconnect', 'retry', 'startCapture', 'stopCapture'];
+export const METHODS: PlayerMethod[] = ['snapshot', 'connect', 'disconnect', 'retry', 'startCapture', 'stopCapture', 'setRecording'];

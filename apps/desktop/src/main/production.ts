@@ -145,6 +145,8 @@ export class Production extends EventEmitter {
   private eventChain: Promise<void> = Promise.resolve();
   /** The match whose map end was just handled; cleared when a round is won (a new map has started). */
   private mapEndSeen: string | null = null;
+  /** A map left before it ended (the game aborted it): the producer decides what it was. */
+  private stopped: { matchId: string; map: number; scores: [number, number] } | null = null;
 
   constructor(deps: ProductionDeps) {
     super();
@@ -691,7 +693,7 @@ export class Production extends EventEmitter {
     let event = raw;
     const match = this.match;
     let state: any = null;
-    if (match && (raw.type === 'round.won' || raw.type === 'match.end')) {
+    if (match && (raw.type === 'round.won' || raw.type === 'match.end' || raw.type === 'match.aborted')) {
       state = await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`).then((d) => d.state).catch(() => null);
       event = withScores(raw, state?.teams);
     }
@@ -699,30 +701,65 @@ export class Production extends EventEmitter {
     this.autopilot.onGameEvent(event);
     this.companion.onEngineEvent(event);
     if (match && event.type === 'match.end' && state && this.mapEndSeen !== match.id) await this.countMap(match, state, event).catch((e) => this.log.add(`Map result not counted · ${(e as Error).message}`));
+    if (match && event.type === 'match.aborted' && state && !this.testRoundRunning(match)) {
+      const scores = ((event.scores as [number, number] | undefined) ?? [0, 0]);
+      const wins = [0, 1].map((i) => Number(state?.teams?.[i]?.series) || 0);
+      this.stopped = { matchId: match.id, map: wins[0]! + wins[1]! + 1, scores };
+      this.log.add(`Map ${this.stopped.map} left at ${scores[0]}–${scores[1]} · waiting for you`);
+      this.emit('notice', `The game left map ${this.stopped.map} at ${scores[0]}–${scores[1]}. Choose in Live whether it counts.`);
+      this.emit('changed');
+    }
+  }
+
+  private testRoundRunning(match: Match) {
+    return !!this.deps.engine.status?.rooms.find((r) => r.match === match.code.toUpperCase())?.testRound?.running;
+  }
+
+  /** The producer decides what a map the game left mid-way was: won by a team, remade, or nothing. */
+  async mapStoppedResolve(choice: 'team0' | 'team1' | 'remade' | 'ignore') {
+    const stopped = this.stopped;
+    const match = this.match;
+    if (!stopped || !match || stopped.matchId !== match.id) { this.stopped = null; throw new Error('There is no stopped map to decide.'); }
+    this.stopped = null;
+    if (choice === 'team0' || choice === 'team1') {
+      const state = await this.client.get<{ state: any }>(`/api/${encodeURIComponent(match.code)}`).then((d) => d.state);
+      await this.recordMap(match, state, stopped.scores, choice === 'team0' ? 0 : 1, 'Counted by the producer');
+    } else this.log.add(choice === 'remade' ? `Map ${stopped.map} remade · not counted` : `Map ${stopped.map} stop ignored`);
+    this.emit('changed');
   }
 
   /** A finished map counts in the series from the game: its result on the series graphics, one more win. */
   private async countMap(match: Match, state: any, event: GameEvent) {
     const scores = event.scores as [number, number] | undefined;
     if (!scores) return;
-    if (this.deps.engine.status?.rooms.find((r) => r.match === match.code.toUpperCase())?.testRound?.running) return;
+    if (this.testRoundRunning(match)) return;
     const label = `${scores[0]}–${scores[1]}`;
     if (!mapComplete(scores)) {
+      // Not a finished map (a forfeit, a remake, a server problem): the producer decides in Live.
+      const wins = [0, 1].map((i) => Number(state?.teams?.[i]?.series) || 0);
+      this.stopped = { matchId: match.id, map: wins[0]! + wins[1]! + 1, scores };
       this.log.add(`Map ended at ${label} · not counted as a result`);
-      this.emit('notice', `The map ended at ${label}, so Air did not count it as a result. If it was, set it in Fix data.`);
+      this.emit('notice', `The map ended at ${label}, so Air did not count it. Choose in Live whether it counts.`);
+      this.emit('changed');
       return;
     }
     // The game can report a map end twice; it counts once until a round of the next map is won.
     this.mapEndSeen = match.id;
+    this.stopped = null; // a map that counts answers any earlier question about this map
+    await this.recordMap(match, state, scores, scores[0] > scores[1] ? 0 : 1, 'from the game');
+  }
+
+  /** One more map in the series: its result on the series graphics and one more win for `winner`. */
+  private async recordMap(match: Match, state: any, scores: [number, number], winner: 0 | 1, how: string) {
+    const label = `${scores[0]}–${scores[1]}`;
     const wins = [0, 1].map((i) => Number(state?.teams?.[i]?.series) || 0);
     const map = wins[0]! + wins[1]! + 1;
     if (map > match.bestOf || Math.max(...wins) > match.bestOf / 2) return;
     // Already counted (the game can report a map end twice). Picked maps are listed beforehand without a winner.
     const done = state?.series?.[map - 1]?.winner;
     if (done === 0 || done === 1) return;
-    const winner = scores[0] > scores[1] ? 0 : 1;
     wins[winner]!++;
-    const fix = (field: string, value: unknown) => this.client.post(`/api/${encodeURIComponent(match.code)}/display-fixes`, { action: 'set', field, value, until: 'cleared', reason: `Map ${map} from the game` });
+    const fix = (field: string, value: unknown) => this.client.post(`/api/${encodeURIComponent(match.code)}/display-fixes`, { action: 'set', field, value, until: 'cleared', reason: `Map ${map} ${how}` });
     await fix('map_result', scores.map((score) => ({ mapIndex: map, score })));
     await fix('series', wins);
     this.log.add(`Map ${map} · ${match.teams[winner]?.name ?? 'Team'} win ${label} · series ${wins[0]}–${wins[1]}`);
@@ -1540,6 +1577,7 @@ export class Production extends EventEmitter {
       templates: this.templates,
       ownGraphics: this.ownGraphics,
       onAirLooks: this.onAirLooks(),
+      mapStopped: this.stopped && this.stopped.matchId === this.match?.id ? { map: this.stopped.map, scores: this.stopped.scores } : null,
       templateUse: this.templateUse(),
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,

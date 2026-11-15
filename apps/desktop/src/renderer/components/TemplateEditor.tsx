@@ -280,7 +280,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
           <aside className="tpl-left">
             <label className="stack g-1"><span className="cap">Graphic</span>
               <select className="cell" value={draft.graphic} disabled={!isNew} onChange={(e) => { const g = e.target.value; change((t) => ({ ...t, graphic: g, parts: {}, timer: undefined })); setSel(partsOf(g)[0]?.[0] ?? ''); setRects({}); setSample(''); }}>
-                <optgroup label="Over the game">{graphicsList.filter((g) => g.endsWith('|band') && !g.startsWith('holding|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
+                <optgroup label="Overlay bar">{graphicsList.filter((g) => g.endsWith('|band') && !g.startsWith('holding|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
                 <optgroup label="Full screen">{graphicsList.filter((g) => g.endsWith('|full') && !g.startsWith('holding|') && !g.startsWith('casters|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
                 <optgroup label="Scene screens">{graphicsList.filter((g) => g.startsWith('holding|') || g.startsWith('casters|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
                 <optgroup label="In-game HUD"><option value="hud">In-game HUD</option></optgroup>

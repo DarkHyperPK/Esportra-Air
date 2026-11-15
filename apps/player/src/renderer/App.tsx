@@ -110,6 +110,17 @@ export function App() {
               </div>
               {s.feed.state === 'off' && l.state !== 'connected' && <p className="muted" style={{ fontSize: 12 }}>Connect to the production PC first.</p>}
               <dl className="readout"><dt>Sent</dt><dd>{l.sent.toLocaleString('en-US')} messages</dd><dt>Waiting to send</dt><dd>{l.queued}</dd></dl>
+              <div className="stack" style={{ gap: 6 }}>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}>
+                  <input type="checkbox" checked={s.recording.on} disabled={!capturing && !s.recording.on} onChange={(e) => void run(() => player.setRecording(e.target.checked))} />
+                  Record game data on this PC (for troubleshooting)
+                </label>
+                <p className="muted" style={{ fontSize: 12 }}>
+                  {s.recording.on
+                    ? `Recording to ${s.recording.file} · ${s.recording.lines.toLocaleString('en-US')} messages. Stops by itself 10 s after the map ends.`
+                    : s.recording.stopped ? `Recording stopped: ${s.recording.stopped}` : 'Writes what the game reports to a file on this PC only; nothing extra is sent anywhere.'}
+                </p>
+              </div>
             </div>
           </section>
 

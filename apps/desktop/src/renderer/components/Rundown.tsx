@@ -31,7 +31,7 @@ const WHEN_TEXT: Partial<Record<RundownRow['trigger'], string>> = {
 };
 
 function comesUp(r: RundownRow): string {
-  if (r.show === HUD_ROW) return 'Over the game, all match long';
+  if (r.show === HUD_ROW) return 'In-game, all match long';
   if (!takesItself(r.show)) return `In OBS: switch to ${SCENES[r.show === 'casters' ? 'casters' : 'holding'].name} when you are ready`;
   const when = r.trigger === 'manual' ? 'When I press Take' : r.trigger === 'delay' ? `By itself ${r.delaySeconds} s after the previous one` : `By itself when ${WHEN_TEXT[r.trigger] ?? WHEN_LABEL[r.trigger].toLowerCase()}`;
   const parts = [when, r.map === 'every' ? '' : mapText(r.map).toLowerCase(), r.show ? onScreenText(r.forSeconds).toLowerCase() : '', r.transition === 'stinger' ? 'stinger' : 'cut', r.trigger === 'manual' ? '' : holdText(r).toLowerCase()];

@@ -20,7 +20,7 @@ export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: 
 
 const SCENE = (g: string) => g.startsWith('holding|') || g.startsWith('casters|');
 const GROUPS: Array<[string, string, (g: string) => boolean]> = [
-  ['band', 'Over the game', (g) => g.endsWith('|band') && !SCENE(g)],
+  ['band', 'Overlay bar', (g) => g.endsWith('|band') && !SCENE(g)],
   ['full', 'Full screen', (g) => g.endsWith('|full') && !SCENE(g)],
   ['scene', 'Scene screens', SCENE],
   ['hud', 'In-game HUD', (g) => g === 'hud'],

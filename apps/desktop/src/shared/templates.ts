@@ -129,7 +129,7 @@ export const graphicStyle = (graphic: string): 'full' | 'band' => (graphic.endsW
 export const graphicTitle = (graphic: string) => {
   const g = GRAPHICS[graphic];
   if (!g) return 'Unknown graphic';
-  return graphic === 'hud' || graphic.startsWith('holding|') || graphic.startsWith('casters|') ? g.title : `${g.title} · ${graphicStyle(graphic) === 'band' ? 'Over the game' : 'Full screen'}`;
+  return graphic === 'hud' || graphic.startsWith('holding|') || graphic.startsWith('casters|') ? g.title : `${g.title} · ${graphicStyle(graphic) === 'band' ? 'Overlay bar' : 'Full screen'}`;
 };
 export const partsOf = (graphic: string) => GRAPHICS[graphic]?.parts ?? [];
 

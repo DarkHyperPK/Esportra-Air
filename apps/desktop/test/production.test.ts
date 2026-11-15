@@ -531,6 +531,7 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     await new Promise((r) => setTimeout(r, 600));
     assert.equal(view().next!.state, 'armed', 'a 3–2 map end does not open the result');
     assert.deepEqual((await engine.client.get<any>(`/api/${code}`)).state.teams.map((t: any) => t.series ?? 0), [0, 0]);
+    assert.deepEqual(production.snapshot().mapStopped, { map: 1, scores: [3, 2] }, 'Live asks what the 3–2 map was');
     // A finished map (13–7): the result step opens, and the series counts it from the game.
     await scoreIs(13, 7);
     await engine.client.post(`/api/${code}/ingest/valorant`, [{ events: [{ name: 'match_end', data: '' }] }]);
@@ -538,6 +539,7 @@ test('autopilot puts graphics up through the real engine, with hold, skip, prese
     await wait(async () => (await engine.client.get<any>(`/api/${code}`)).state.teams[0].series === 1, 'series 1–0 from the game');
     const counted = (await engine.client.get<any>(`/api/${code}`)).state;
     assert.deepEqual([counted.teams[1].series ?? 0, counted.series[0].score, counted.series[0].winner], [0, [13, 7], 0], 'map 1 result on the series graphics');
+    assert.equal(production.snapshot().mapStopped, null, 'the map counted, so the question is gone');
     await engine.client.post(`/api/${code}/ingest/valorant`, [{ events: [{ name: 'match_end', data: '' }] }]);
     await new Promise((r) => setTimeout(r, 600));
     assert.equal((await engine.client.get<any>(`/api/${code}`)).state.teams[0].series, 1, 'a second map end for the same map is not counted twice');
@@ -1098,6 +1100,45 @@ test('your own graphics: the design is kept as exported, its boxes reach the roo
     assert.equal(production.snapshot().rundown.some((r) => r.show === `own:${id}`), false);
     assert.deepEqual((await room()).airOwn, []);
     assert.equal((await room()).airFullscreen ?? null, null, 'it was on screen: back to the game');
+  } finally {
+    production.log.stop();
+    await engine.stop(true);
+  }
+});
+
+test('a map the game leaves mid-way: Live asks, and the producer decides whether it counts', { skip: !existsSync(BINARY) && 'build the engine first' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'air-stop-'));
+  const port = await freePort();
+  (await import('node:fs')).mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port, key: 'stopped-map-key-0123456789abcdef', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const production = new Production({ store: new Store(join(dir, 'air.json')), engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture(), ingest: { target: () => {} }, version: 'test' });
+  production.setup.game = 'valorant';
+  const wait = async (check: () => boolean | Promise<boolean>, label: string) => { const end = Date.now() + 10_000; while (!(await check())) { if (Date.now() > end) assert.fail(`timed out: ${label}`); await new Promise((r) => setTimeout(r, 25)); } };
+  try {
+    await production.createQuickMatch({ teamA: 'Alpha', teamB: 'Bravo', bestOf: 3 });
+    const code = production.match!.code;
+    const ingest = (msgs: unknown[]) => engine.client.post(`/api/${code}/ingest/valorant`, msgs);
+    const series = async () => (await engine.client.get<any>(`/api/${code}`)).state.teams.map((t: any) => t.series ?? 0);
+    await ingest([{ events: [{ name: 'match_start', data: '' }] }, { info: { match_info: { match_score: JSON.stringify({ team_0: 0, team_1: 0 }) } }, feature: 'match_info' }]);
+    await ingest([{ info: { match_info: { match_score: JSON.stringify({ team_0: 5, team_1: 3 }) } }, feature: 'match_info' }]);
+    // Everyone goes back to the main menu mid-map (a server crash, say).
+    await ingest([{ info: { game_info: { scene: 'MainMenu' } }, feature: 'game_info' }]);
+    await wait(() => production.snapshot().mapStopped !== null, 'Live asks about the stopped map');
+    assert.deepEqual(production.snapshot().mapStopped, { map: 1, scores: [5, 3] });
+    assert.deepEqual(await series(), [0, 0], 'nothing is counted until the producer decides');
+    // The admins award the map to Bravo.
+    await production.mapStoppedResolve('team1');
+    assert.deepEqual(await series(), [0, 1], 'counted for Bravo, once');
+    assert.equal(production.snapshot().mapStopped, null);
+    await assert.rejects(production.mapStoppedResolve('team0'), /no stopped map/, 'nothing left to decide');
+    // A remake is only noted.
+    await ingest([{ events: [{ name: 'match_start', data: '' }] }, { info: { match_info: { match_score: JSON.stringify({ team_0: 1, team_1: 0 }) } }, feature: 'match_info' }]);
+    await ingest([{ info: { game_info: { state: 'Aborted' } }, feature: 'game_info' }]);
+    await wait(() => production.snapshot().mapStopped?.map === 2, 'asks about map 2');
+    await production.mapStoppedResolve('remade');
+    assert.deepEqual(await series(), [0, 1]);
+    assert.ok(production.snapshot().log.some((l) => l.text === 'Map 2 remade · not counted'));
   } finally {
     production.log.stop();
     await engine.stop(true);

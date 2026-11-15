@@ -18,7 +18,7 @@ export interface LibraryItem {
 }
 
 export const LIBRARY_GROUPS: Array<[LibraryGroup, string]> = [
-  ['ingame', 'Over the game'],
+  ['ingame', 'In-game'],
   ['between', 'Between rounds'],
   ['fullscreen', 'Full screen'],
   ['show', 'Holding, breaks and talent'],

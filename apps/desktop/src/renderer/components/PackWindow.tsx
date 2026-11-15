@@ -65,7 +65,7 @@ export function PackWindow({ s, run, close, start }: { s: Snapshot; run: Run; cl
             {item && BAND_SCREENS.has(item.overlay) && (
               <div className="seg" role="tablist" aria-label="Look">
                 <button role="tab" aria-selected={!band} aria-pressed={!band} onClick={() => setBand(false)}>Full screen</button>
-                <button role="tab" aria-selected={band} aria-pressed={band} onClick={() => setBand(true)}>Over the game</button>
+                <button role="tab" aria-selected={band} aria-pressed={band} onClick={() => setBand(true)}>Overlay bar</button>
               </div>
             )}
             {item && <Preview key={`${item.overlay}-${band}`} src={overlayUrl(s, band && BAND_SCREENS.has(item.overlay) ? bandOverlay(item.overlay) : item.overlay)} label={item.title} />}

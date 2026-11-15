@@ -68,7 +68,10 @@ function createValorantAdapter(opts = {}) {
   const teamOf = opts.teamOf || (g => g);                  // game team (0 always starts on attack) → HUD team index
   const ctx = {
     slots: new Map(), byName: new Map(),
-    confirmed: new Set(),           // player ids seen on the in-game scoreboard (real players, not spectators)
+    confirmed: new Set(),
+    mapEnded: false,                // map end already reported (the game can say it three ways)
+    mapAborted: false,              // map abort already reported
+           // player ids seen on the in-game scoreboard (real players, not spectators)
  spike: {}, lastScore: null, pendingKills: [],
     roundKills: new Map(),          // 'team,idx' → kill count this round (for ace)
     teamKillers: [new Set(), new Set()], // team → set of player indices who got a kill (for team ace)
@@ -108,6 +111,10 @@ function createValorantAdapter(opts = {}) {
     const t = attackingTeam(s); if (t >= 0) s.teamStats[t].plants++;
     out.push({ type: 'spike.planted' });
   }
+  /** A map end, said once however many ways the game says it (match_end, round phase game_end, match_outcome). */
+  function mapEnd(out) { if (ctx.mapEnded || ctx.mapAborted) return; ctx.mapEnded = true; out.push({ type: 'match.end' }); }
+  /** The map was left before it ended (the game aborted it, or everyone went back to the main menu). */
+  function mapAbort(out) { if (ctx.mapEnded || ctx.mapAborted) return; ctx.mapAborted = true; out.push({ type: 'match.aborted' }); }
   function countFirstKill(s, killer) {
     if (ctx.roundFirstKill) return;
     ctx.roundFirstKill = true;
@@ -201,6 +208,7 @@ function createValorantAdapter(opts = {}) {
         }
         else if (v === 'end' || v === 'game_end') Object.assign(r, { phase: 'end', endsAt: 0, remaining: 0 });
         out.push({ type: 'round.phase', phase: r.phase, round: r.number });
+        if (v === 'game_end') mapEnd(out);
       } else if (key === 'match_score' && v) {
         const sc = [v.team_0, v.team_1].map(Number), mapped = [0, 1].map(t => sc[[0, 1].find(g => teamOf(g) === t)]);
         if (ctx.lastScore) [0, 1].forEach(t => { if (mapped[t] > ctx.lastScore[t]) {
@@ -257,8 +265,13 @@ function createValorantAdapter(opts = {}) {
 
           out.push({ type: 'round.won', team: t, how, round: s.rounds.length, moment, player: momentPlayer });
         } });
+        // A round won after a reported map end means play went on: the next map end counts again.
+        if (ctx.lastScore && (mapped[0] > ctx.lastScore[0] || mapped[1] > ctx.lastScore[1])) { ctx.mapEnded = false; ctx.mapAborted = false; }
         ctx.lastScore = mapped; s.teams[0].score = mapped[0]; s.teams[1].score = mapped[1];
-      } else if (key === 'map' && MAPS[v]) s.map.name = MAPS[v];
+      } else if (key === 'match_outcome' && ['victory', 'defeat', 'draw'].includes(String(v).toLowerCase())) mapEnd(out);
+      // The map was left before it ended: aborted by the game, or everyone back to the main menu mid-map.
+      else if ((key === 'state' && v === 'Aborted') || (key === 'scene' && v === 'MainMenu' && (s.rounds.length > 0 || s.round.phase === 'live'))) mapAbort(out);
+      else if (key === 'map' && MAPS[v]) s.map.name = MAPS[v];
       else if (key === 'observing') { const tp = ctx.byName.get(nameKey(v)); if (tp) s.observed = tp; }
       else if (key === 'kill_feed' || key === 'planted_location' || key === 'match_start' || key === 'match_end') events.push({ name: key, data: v });
     }
@@ -305,8 +318,8 @@ function createValorantAdapter(opts = {}) {
       } else if (name === 'spike_defused') { if (!ctx.spike.defused) { const t = 1 - attackingTeam(s); if (t >= 0 && t < 2) s.teamStats[t].defuses++; } ctx.spike.defused = true; out.push({ type: 'spike.defused' }); }
       else if (name === 'spike_detonated') { ctx.spike.detonated = true; out.push({ type: 'spike.detonated' }); }
       else if (name === 'planted_location') { countPlant(s, now, out); out.push({ type: 'spike.site', site: d }); }
-      else if (name === 'match_start') { s.rounds = []; ctx.lastScore = [0, 0]; ctx.overtimeFired = false; ctx.roundFirstKill = false; s.teams.forEach(T => { T.score = 0; T.lossStreak = 0; }); s.teamStats.forEach(T => { T.plants = 0; T.defuses = 0; T.clutches = 0; T.ecoWins = 0; T.firstKills = 0; }); s.players.flat().forEach(p => { p.fk = 0; p.acs = null; p.adr = null; p.hs = null; }); out.push({ type: 'match.start' }); }
-      else if (name === 'match_end') out.push({ type: 'match.end' });
+      else if (name === 'match_start') { ctx.mapEnded = false; ctx.mapAborted = false; s.rounds = []; ctx.lastScore = [0, 0]; ctx.overtimeFired = false; ctx.roundFirstKill = false; s.teams.forEach(T => { T.score = 0; T.lossStreak = 0; }); s.teamStats.forEach(T => { T.plants = 0; T.defuses = 0; T.clutches = 0; T.ecoWins = 0; T.firstKills = 0; }); s.players.flat().forEach(p => { p.fk = 0; p.acs = null; p.adr = null; p.hs = null; }); out.push({ type: 'match.start' }); }
+      else if (name === 'match_end') mapEnd(out);
     }
     coverage.apply(s, now);
     return { state: s, events: out };
