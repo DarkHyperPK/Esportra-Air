@@ -142,6 +142,9 @@ export interface RoundReadout {
   /** The player the observer camera is on. */
   observed: { team: number; player: number; name: string } | null;
   roster: Array<Array<{ name: string; inGameName: string }>>;
+  /** Maps won in the series, and the team names and tags on screen. */
+  series: [number, number];
+  teams: Array<{ name: string; tag: string }>;
 }
 
 export interface LayerRow {
@@ -387,7 +390,7 @@ export interface QuickMatchInput {
 }
 
 export interface CorrectionInput {
-  field: 'scores' | 'names' | 'player_name' | 'sides';
+  field: 'scores' | 'series' | 'names' | 'player_name' | 'sides';
   value: unknown;
   reason: string;
 }

@@ -4,23 +4,31 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { Cap } from './ui.tsx';
 
-/** Fix data (PRD picture 13): changes go on air on Apply; the feed won't overwrite a fixed field until the next round. */
+/** Fix data (PRD picture 13): changes go on air on Apply. A fixed score lasts until the next round; names, series and sides until you clear them. */
 export function FixData({ s, run, close }: { s: Snapshot; run: Run; close?: () => void }) {
   const match = s.match;
   const r = s.readout;
   const [score, setScore] = useState<[number, number]>([r?.score[0] ?? 0, r?.score[1] ?? 0]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [swap, setSwap] = useState(false);
-  useEffect(() => setScore([r?.score[0] ?? 0, r?.score[1] ?? 0]), [match?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [series, setSeries] = useState<[number, number]>([r?.series[0] ?? 0, r?.series[1] ?? 0]);
+  const [teamNames, setTeamNames] = useState<Array<{ name: string; tag: string }> | null>(null);
+  useEffect(() => { setScore([r?.score[0] ?? 0, r?.score[1] ?? 0]); setSeries([r?.series[0] ?? 0, r?.series[1] ?? 0]); setTeamNames(null); }, [match?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!match) return <p className="muted">Choose a match first.</p>;
   const scoreChanged = r !== null && (score[0] !== (r.score[0] ?? 0) || score[1] !== (r.score[1] ?? 0));
-  const dirty = scoreChanged || swap || Object.keys(names).length > 0;
+  const seriesChanged = r !== null && (series[0] !== r.series[0] || series[1] !== r.series[1]);
+  const dirty = scoreChanged || seriesChanged || teamNames !== null || swap || Object.keys(names).length > 0;
   const step = (i: 0 | 1, d: number) => setScore((v) => (i === 0 ? [Math.max(0, v[0] + d), v[1]] : [v[0], Math.max(0, v[1] + d)]));
+  const maxWins = Math.ceil(match.bestOf / 2);
+  const stepSeries = (i: 0 | 1, d: number) => setSeries((v) => { const n = [...v] as [number, number]; n[i] = Math.min(maxWins, Math.max(0, n[i] + d)); return n; });
+  const shownTeams = teamNames ?? (r?.teams.length ? r.teams : match.teams.map((t) => ({ name: t.name, tag: t.tag })));
 
   const apply = async () => {
     const calls: Array<() => Promise<Snapshot | void>> = [];
     if (scoreChanged) calls.push(() => air.correct({ field: 'scores', value: score, reason: 'Operator score fix' }));
+    if (seriesChanged) calls.push(() => air.correct({ field: 'series', value: series, reason: 'Operator series fix' }));
+    if (teamNames && teamNames.every((t) => t.name.trim() && t.tag.trim())) calls.push(() => air.correct({ field: 'names', value: teamNames.map((t) => ({ name: t.name.trim(), tag: t.tag.trim().toUpperCase() })), reason: 'Operator team name fix' }));
     for (const [key, name] of Object.entries(names)) {
       const [team, index] = key.split(':').map(Number) as [number, number];
       if (name.trim()) calls.push(() => air.correct({ field: 'player_name', value: [team, { index, name: name.trim() }], reason: 'Operator name fix' }));
@@ -28,6 +36,7 @@ export function FixData({ s, run, close }: { s: Snapshot; run: Run; close?: () =
     if (swap && r?.sides[0] && r.sides[1]) calls.push(() => air.correct({ field: 'sides', value: [r.sides[1], r.sides[0]], reason: 'Operator side swap' }));
     for (const call of calls) if (!(await run(call))) return;
     setNames({});
+    setTeamNames(null);
     setSwap(false);
     close?.();
   };
@@ -37,7 +46,7 @@ export function FixData({ s, run, close }: { s: Snapshot; run: Run; close?: () =
       <div>
         <Cap>Fix data · live</Cap>
         <h2 className="title-md" style={{ marginTop: 8 }}>Correct what’s on screen</h2>
-        <p className="muted" style={{ marginTop: 6 }}>Changes go on air as soon as you apply them. The feed won’t overwrite a field you fixed until the next round.</p>
+        <p className="muted" style={{ marginTop: 6 }}>Changes go on air as soon as you apply them. A fixed score holds until the next round; team names, player names, the series and sides hold until you clear them.</p>
       </div>
       <section className="stack" style={{ gap: 8 }}>
         <Cap>Score</Cap>
@@ -53,6 +62,29 @@ export function FixData({ s, run, close }: { s: Snapshot; run: Run; close?: () =
             </div>
           ))}
         </div>
+      </section>
+      <section className="stack" style={{ gap: 8 }}>
+        <Cap>Series · maps won (best of {match.bestOf})</Cap>
+        <div className="grid2">
+          {match.teams.map((t, i) => (
+            <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flex: 1 }}>{t.name}</span>
+              <button className="btn small" aria-label={`Fewer maps for ${t.name}`} onClick={() => stepSeries(i as 0 | 1, -1)}>−</button>
+              <b style={{ minWidth: 20, textAlign: 'center' }}>{series[i]}</b>
+              <button className="btn small" aria-label={`More maps for ${t.name}`} onClick={() => stepSeries(i as 0 | 1, 1)}>+</button>
+            </div>
+          ))}
+        </div>
+        <p className="faint t-xs">The map being played follows: map {Math.min(series[0] + series[1] + 1, match.bestOf)} of {match.bestOf}.</p>
+      </section>
+      <section className="stack" style={{ gap: 8 }}>
+        <Cap>Team names on screen</Cap>
+        {shownTeams.map((t, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 8 }}>
+            <input className="cell" aria-label={`Team ${i + 1} name on screen`} value={t.name} maxLength={80} onChange={(e) => { const next = shownTeams.map((x) => ({ ...x })); next[i]!.name = e.target.value; setTeamNames(next); }} />
+            <input className="cell" aria-label={`Team ${i + 1} tag on screen`} value={t.tag} maxLength={12} onChange={(e) => { const next = shownTeams.map((x) => ({ ...x })); next[i]!.tag = e.target.value; setTeamNames(next); }} />
+          </div>
+        ))}
       </section>
       <section className="stack" style={{ gap: 8 }}>
         <Cap>Names on screen · in-game name → display</Cap>

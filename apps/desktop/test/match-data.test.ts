@@ -113,6 +113,12 @@ test('match data reaches the room: veto, maps, holding text, standings, ticker, 
     await production.matchDataSave({ ...production.snapshot().matchData!, show: { mode: 'brb', message: 'Back after the break', target: 0, minutes: 7 } });
     st = await room();
     assert.deepEqual([st.holding.mode, st.holding.message, st.holding.minutes], ['brb', 'Back after the break', 7]);
+    // Fix data: one map won moves the current map to map 2 and the holding text to Break.
+    await production.matchDataSave({ ...production.snapshot().matchData!, show: { mode: 'auto', message: '', target: 0, minutes: 5 } });
+    await production.correct({ field: 'series', value: [1, 0], reason: 'Map won' });
+    st = await room();
+    assert.deepEqual([st.map.number, st.map.name, st.holding.mode], [2, 'HAVEN', 'brb']);
+    assert.deepEqual(production.snapshot().readout?.series, [1, 0]);
     // The bracket can go on air.
     await engine.client.post('/control/action', { match: code, name: 'fullscreen.show', args: { screen: 'bracket' } });
     assert.equal((await room()).airFullscreen, 'bracket');

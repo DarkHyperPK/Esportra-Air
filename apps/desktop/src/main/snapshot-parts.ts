@@ -24,6 +24,8 @@ export function roomReadout(room: any, observed: Readout['observed']): Readout {
     spikePlanted: room.round?.phase === 'planted',
     observed,
     roster: [0, 1].map((t) => (room.players?.[t] ?? []).map((p: { name?: string; inGameName?: string }) => ({ name: p?.name ?? '', inGameName: p?.inGameName ?? '' }))),
+    series: [Number(room.teams?.[0]?.series) || 0, Number(room.teams?.[1]?.series) || 0],
+    teams: [0, 1].map((t) => ({ name: String(room.teams?.[t]?.name ?? ''), tag: String(room.teams?.[t]?.tag ?? '') })),
   };
 }
 

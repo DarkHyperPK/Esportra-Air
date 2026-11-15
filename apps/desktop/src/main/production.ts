@@ -1509,6 +1509,8 @@ export class Production extends EventEmitter {
     await this.client.post(`/api/${encodeURIComponent(match.code)}/display-fixes`, body);
     this.roomV = -1;
     await this.readRoom();
+    // A series fix moves the current map (from the veto) and the holding text along.
+    await this.matchData.publish().catch(() => {});
   }
 
   // ── snapshot ──
