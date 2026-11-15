@@ -35,6 +35,17 @@ export const LAYER_DEFS: LayerDef[] = [
   { id: 'fs:agent-select', label: 'Agent select', group: 'fullscreen', hotkey: 'Shift+H' },
   { id: 'fs:champion', label: 'Champion', group: 'fullscreen', hotkey: 'J' },
   { id: 'fs:cam-grid', label: 'Player cams', group: 'fullscreen', hotkey: 'K' },
+  // Before the match, and the post-game set (15 Nov).
+  { id: 'fs:match-intro', label: 'Match intro', group: 'fullscreen', hotkey: 'M' },
+  { id: 'fs:map-veto', label: 'Map veto', group: 'fullscreen', hotkey: 'V' },
+  { id: 'fs:schedule', label: 'Today’s schedule', group: 'fullscreen', hotkey: 'O' },
+  { id: 'fs:bracket', label: 'Bracket', group: 'fullscreen', hotkey: 'B' },
+  { id: 'fs:victory-map', label: 'Victory · Map', group: 'fullscreen', hotkey: 'Shift+V' },
+  { id: 'fs:victory-series', label: 'Victory · Series', group: 'fullscreen', hotkey: 'C' },
+  { id: 'fs:breakdown', label: 'Breakdown', group: 'fullscreen', hotkey: 'N' },
+  { id: 'fs:team-performance', label: 'Team performance', group: 'fullscreen', hotkey: 'P' },
+  { id: 'fs:postgame-player', label: 'Post-game player', group: 'fullscreen', hotkey: 'L' },
+  { id: 'fs:postgame-matchup', label: 'Post-game matchup', group: 'fullscreen', hotkey: 'X' },
 ];
 
 /** Layers where Auto means something (rules or the HUD decide until the producer overrides). */

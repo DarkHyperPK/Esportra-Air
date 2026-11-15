@@ -371,7 +371,7 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     assert.deepEqual(['scorebug', 'economy', 'scoreboard', 'spikeTimer'].map((id) => row(id).mode), ['on', 'auto', 'off', 'auto']);
     assert.equal(rows.filter((x) => x.group === 'ingame').length, 5);
     assert.equal(rows.filter((x) => x.group === 'between').length, 8);
-    assert.equal(rows.filter((x) => x.group === 'fullscreen').length, 8);
+    assert.equal(rows.filter((x) => x.group === 'fullscreen').length, 18, 'every full-screen graphic can be taken by hand, the post-game set and Map veto included');
     await production.setLayer('economy', 'off');
     assert.equal(row('economy').manual, true);
     assert.equal((await engine.client.get<any>(`/api/${match.code}`)).state.show.economy, false);
@@ -669,23 +669,23 @@ test('an Esportra match becomes the match on this PC, with its tournament, teams
     const match = production.match!;
     assert.equal(match.kind, 'esportra');
     assert.match(match.code, /^E[0-9A-F]{7}$/);
-    assert.deepEqual(match.teams.map((t) => [t.name, t.tag]), [['Paper Rex', 'PRX'], ['Fnatic', 'FNC']]);
+    assert.deepEqual(match.teams.map((t) => [t.name, t.tag]), [['Vanguard Esports', 'VGD'], ['Helix Gaming', 'HLX']]);
     assert.equal(match.teams[0]!.logo, 'https://example.com/a.png');
     assert.equal(match.bestOf, 3);
     assert.equal(match.source!.lineups![0]!.length, 5);
     const room = (await engine.client.get<any>(`/api/${match.code}`)).state;
     assert.equal(room.event.name, 'Community Cup', 'the tournament name is the event name on air');
-    assert.equal(room.teams[1].name, 'Fnatic');
+    assert.equal(room.teams[1].name, 'Helix Gaming');
     assert.equal(room.airContext.source, 'esportra');
 
     // Choosing it again updates the same match instead of adding a second one, and keeps its talent.
     assert.equal(production.eventOf(match)!.tournamentId, match.source!.tournamentId, 'the tournament is the event');
     await production.saveTalent(match.eventId, { name: 'Caster One' });
-    wanted.teamB = 'Fnatic Esports';
+    wanted.teamB = 'Helix Esports';
     await production.esportraRefresh();
     await production.useEsportraMatch(wanted.id);
     assert.equal(store.data.matches.filter((m) => m.source?.matchId === wanted.id).length, 1);
-    assert.equal(production.match!.teams[1].name, 'Fnatic Esports');
+    assert.equal(production.match!.teams[1].name, 'Helix Esports');
     assert.ok(production.eventOf(production.match!)!.talent.some((t) => t.name === 'Caster One'), 'the producer\'s talent is kept');
     assert.equal(production.match!.eventId, match.eventId);
 

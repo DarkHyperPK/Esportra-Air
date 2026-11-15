@@ -76,8 +76,8 @@ export class FakeEsportra {
     const soon = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
     const base = { tournamentId: randomUUID(), tournamentName: 'Community Cup', game: 'valorant', logoA: 'https://example.com/a.png', logoB: null, bestOf: 3 };
     this.matches = [
-      { ...base, id: randomUUID(), teamA: 'Paper Rex', teamB: 'Fnatic', tagA: 'PRX', tagB: 'FNC', scheduledAt: soon(2), status: 'scheduled' },
-      { ...base, id: randomUUID(), teamA: 'Team Liquid', teamB: 'Gen.G', tagA: 'TL', tagB: 'GEN', scheduledAt: soon(26), status: 'scheduled', bestOf: 1 },
+      { ...base, id: randomUUID(), teamA: 'Vanguard Esports', teamB: 'Helix Gaming', tagA: 'VGD', tagB: 'HLX', scheduledAt: soon(2), status: 'scheduled' },
+      { ...base, id: randomUUID(), teamA: 'Nova Rising', teamB: 'Ironclad', tagA: 'NVR', tagB: 'ICD', scheduledAt: soon(26), status: 'scheduled', bestOf: 1 },
     ];
   }
 

@@ -8,7 +8,7 @@ import { FakeEsportra } from '../dev/fake-esportra.ts';
 test('prepare’s package is read from its JSON string: lineups with Riot ids, veto, pool, sponsors, casters', () => {
   const fake = new FakeEsportra();
   const m = fake.matches[0]!;
-  fake.riot.set('PRX One', 'puuid-prx-1');
+  fake.riot.set('VGD One', 'puuid-vgd-1');
   fake.vetoOf(m.id).steps.push({ team: 0, action: 'ban', map: 'Bind', side: null }, { team: 1, action: 'ban', map: 'Pearl', side: null });
   const id = randomUUID();
   const config = (fake as any).configuration(m, id);
@@ -16,8 +16,8 @@ test('prepare’s package is read from its JSON string: lineups with Riot ids, v
   assert.equal(pkg.packageId, id);
   assert.equal(pkg.version, 3);
   assert.equal(pkg.lineups[0].length, 5, 'the coach is not in the lineup');
-  assert.deepEqual(pkg.lineups[0][0], { name: 'PRXOne', gameId: 'puuid-prx-1' }, 'the Riot name without its tag, and the PUUID');
-  assert.deepEqual(pkg.lineups[0][1], { name: 'PRX Two', gameId: '' }, 'an unverified player keeps the registered name');
+  assert.deepEqual(pkg.lineups[0][0], { name: 'VGDOne', gameId: 'puuid-vgd-1' }, 'the Riot name without its tag, and the PUUID');
+  assert.deepEqual(pkg.lineups[0][1], { name: 'VGD Two', gameId: '' }, 'an unverified player keeps the registered name');
   assert.deepEqual(pkg.veto.map((s) => s.map), ['BIND', 'PEARL']);
   assert.deepEqual(pkg.mapPool, ['ABYSS', 'ASCENT', 'BIND', 'CORRODE', 'HAVEN', 'LOTUS', 'SUNSET']);
   assert.deepEqual(pkg.sponsors.map((s) => [s.name, !!s.logoUrl, !!s.assetId]), [['Northwind', true, false], ['Bluefin', false, true]], 'an /air-assets/ logo is fetched by its asset id, never used as a path');
@@ -47,7 +47,7 @@ test('the bracket snapshot gives the semi-finals and the final; standings when t
   const fake = new FakeEsportra();
   const m = fake.matches[0]!;
   const out = bracketFrom(fake.bracket(m), m.id)!;
-  assert.deepEqual(out.bracket.sf, [['Paper Rex', 0, 'Fnatic', 0], ['Night Owls', 2, 'Crimson Five', 1]]);
+  assert.deepEqual(out.bracket.sf, [['Vanguard Esports', 0, 'Helix Gaming', 0], ['Night Owls', 2, 'Crimson Five', 1]]);
   assert.deepEqual(out.bracket.gf, [['Night Owls', 0, 'TBD', 0]]);
   assert.deepEqual(out.bracket.qf, []);
   const swiss = { stages: [{ id: 's', matches: [{ matchId: m.id, round: 1, side: 'group' }], standings: [{ teamName: 'Night Owls', wins: 3, losses: 1, scoreDiff: 4, roundDiff: -2 }] }], matches: [] };

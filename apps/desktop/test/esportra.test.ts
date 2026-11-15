@@ -37,7 +37,7 @@ test('sign-in registers this PC, stores the lease and lists the producer’s mat
     assert.equal(view.deviceName, 'STUDIO-PC');
     assert.deepEqual(backend.devices.get(deviceId), { name: 'STUDIO-PC', mode: 'production' });
     assert.equal(view.matches.length, 2);
-    assert.deepEqual([view.matches[0]!.teamA, view.matches[0]!.tagA, view.matches[0]!.bestOf, view.matches[0]!.supported], ['Paper Rex', 'PRX', 3, true]);
+    assert.deepEqual([view.matches[0]!.teamA, view.matches[0]!.tagA, view.matches[0]!.bestOf, view.matches[0]!.supported], ['Vanguard Esports', 'VGD', 3, true]);
     assert.equal(view.matches[1]!.logoB, null);
     assert.ok(view.syncedAt);
     // Tokens are in the encrypted secrets, not in the saved settings.

@@ -171,7 +171,7 @@ let failShot = async () => {};
     const rows = wizard.locator('.lineup').nth(t).locator('.player-row');
     for (let i = 0; i < 5; i++) {
       await rows.nth(i).getByLabel('Display name').fill(roster[t][i][0] + roster[t][i].slice(1).toLowerCase());
-      await rows.nth(i).getByLabel('In-game name').fill(`${roster[t][i]}#${t ? "FNC" : "PRX"}`);
+      await rows.nth(i).getByLabel('In-game name').fill(`${roster[t][i]}#${t ? "CRF" : "NWL"}`);
     }
   }
   await wizard.locator('.lineup').nth(0).locator('.player-row').nth(0).locator('input[type=file]').setInputFiles(png('#a78bfa'));
@@ -731,7 +731,7 @@ let failShot = async () => {};
   await rail('Events');
   await btn('← Events');
   await page.locator('.ev-card').filter({ hasText: 'Esportra tournament' }).first().click();
-  const paper = page.locator('.ev-match').filter({ hasText: 'Paper Rex' }).first();
+  const paper = page.locator('.ev-match').filter({ hasText: 'Vanguard Esports' }).first();
   await paper.waitFor();
   await shot('matches-with-esportra');
   // Switching match changes every graphic on air, so it is refused while game data or a test round runs.
@@ -744,7 +744,7 @@ let failShot = async () => {};
   await callWith("stopCapture");
   for (let i = 0; i < 50 && (await call('snapshot')).gameLocked; i++) await page.waitForTimeout(200);
   await paper.getByRole('button', { name: 'Open' }).click();
-  await page.locator('.tl-name').filter({ hasText: 'Paper Rex' }).first().waitFor();
+  await page.locator('.tl-name').filter({ hasText: 'Vanguard Esports' }).first().waitFor();
   await page.locator('[title^="Signed in as"]').first().waitFor(); // the Esportra chip in Ready
   await shot('readiness-esportra');
   // Deleting asks first; an event with no match goes at once.
