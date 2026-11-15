@@ -964,11 +964,13 @@
 
   // ═════════ EXTENDED LIBRARY ═════════
   const HOW = { elim: 'ELIMINATION', boom: 'SPIKE DETONATED', defuse: 'SPIKE DEFUSED', time: 'TIME EXPIRED' };
-  const RIC = (how, c = '#fff', z = 14) => ({
-    elim: `<svg width="${z}" height="${z}" viewBox="0 0 14 14"><path d="M2.5 2.5L11.5 11.5M11.5 2.5L2.5 11.5" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/></svg>`,
-    boom: `<svg width="${z}" height="${z}" viewBox="0 0 14 14"><path d="M7 0L8.6 4.8L13.6 3.4L10.2 7L13.6 10.6L8.6 9.2L7 14L5.4 9.2L.4 10.6L3.8 7L.4 3.4L5.4 4.8Z" fill="${c}"/></svg>`,
-    defuse: `<svg width="${z}" height="${z}" viewBox="0 0 14 14"><path d="M7 1L12.5 4V10L7 13L1.5 10V4Z" fill="none" stroke="${c}" stroke-width="1.8"/><path d="M4.6 7.2L6.4 9L9.6 5.2" fill="none" stroke="${c}" stroke-width="1.8"/></svg>`,
-    time: `<svg width="${z}" height="${z}" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.6" fill="none" stroke="${c}" stroke-width="1.8"/><path d="M7 3.8V7L9.3 8.4" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round"/></svg>` }[how] || '');
+  // The game's own round-win icons (white), as the in-game round history uses. On a light colour (c dark) they turn black.
+  const WIN_ICON = { elim: 'kills', boom: 'detonated', defuse: 'defused', time: 'timeout' };
+  const RIC = (how, c = '#fff', z = 14) => {
+    if (!WIN_ICON[how]) return '';
+    const h = /^#([0-9a-f]{6})$/i.exec(c), lum = h ? [0, 2, 4].map(i => parseInt(h[1].slice(i, i + 2), 16)).reduce((a, v, i) => a + v * [.299, .587, .114][i], 0) : 255;
+    return `<img class="win-ic" src="../core/assets/roundWinReason/${WIN_ICON[how]}.webp" alt="" width="${z}" height="${z}"${lum < 128 ? ' style="filter:brightness(0)"' : ''}>`;
+  };
   HUD.roundIcon = RIC;
   const sideOf = (s, t, r) => { const f = (s.firstSide || ['ATK', 'DEF'])[t], o = f === 'ATK' ? 'DEF' : 'ATK'; return r <= 12 ? f : r <= 24 ? o : ((r - 25) % 2 ? o : f); };
   HUD.sideOf = sideOf;
@@ -982,12 +984,7 @@
 
   M.roundhistory = root => {
     const m = E('div', 'mod', root), rh = E('div', 'rh fx-rise', m);
-    const RHMAP = {
-      elim:   '../core/assets/roundWinReason/kills.webp',
-      boom:   '../core/assets/roundWinReason/detonated.webp',
-      defuse: '../core/assets/roundWinReason/defused.webp',
-      time:   '../core/assets/roundWinReason/timeout.webp',
-    };
+    const RHMAP = Object.fromEntries(Object.entries(WIN_ICON).map(([k, f]) => [k, `../core/assets/roundWinReason/${f}.webp`]));
     return { update(s) {
       toggle(m, (s.show.roundHistory || s.round.phase === 'buy') && !s.show.scoreboard);
       rh.classList.toggle('buy', s.round.phase === 'buy' && vis.economy(s));
@@ -1123,7 +1120,7 @@
       const sides = t => [0, 1].map(h => sideOf(s, t, h ? 13 : 1));
       let h = `<div class="score">${s.teams.map((T, t) => `<div class="t" style="color:${T.color}">${T.tag}</div>`).join(`<div class="v disp hl">${sc_(0)}–${sc_(1)}</div>`)}</div>`;
       h += `<div class="halves"><div class="row h"><div>TEAM</div><div>FIRST HALF</div><div>SECOND HALF</div><div>OVERTIME</div></div>` + s.teams.map((T, t) => `<div class="row"><div class="n" style="color:${T.color}">${T.name}</div><div class="v">${won(t, 0, 12)}<small class="mono" style="font-size:11px;color:#8a8a90;margin-left:8px">${sides(t)[0]}</small></div><div class="v">${half ? '–' : won(t, 12, 24)}${half ? '' : `<small class="mono" style="font-size:11px;color:#8a8a90;margin-left:8px">${sides(t)[1]}</small>`}</div><div class="v">${R.length > 24 ? won(t, 24, 99) : '–'}</div></div>`).join('') + '</div>';
-      h += `<div class="tl"><div class="k mono">ROUND BY ROUND</div><div class="strip">` + R.map((r, i) => (i === 12 ? '<div class="half"></div>' : '') + `<div class="c w" style="--c:${s.teams[r.w].color}"><em>${i + 1}</em>${RIC(r.how, '#fff', 18)}</div>`).join('') + '</div></div>';
+      h += `<div class="tl"><div class="k mono">ROUND BY ROUND</div><div class="strip">` + R.map((r, i) => (i === 12 ? '<div class="half"></div>' : '') + `<div class="c w" style="--c:${s.teams[r.w].color}"><em>${i + 1}</em>${RIC(r.how, '#fff', 26)}</div>`).join('') + '</div></div>';
       const S = s.teamStats || [{}, {}];
       if (half) { const T0 = s.teams[0], T1 = s.teams[1]; h += `<div class="note">SIDES SWITCH<small>${T0.tag} TO ${sides(0)[1]}   /   ${T1.tag} TO ${sides(1)[1]}</small></div>`; }
       h += `<div class="side">${[['ATTACK ROUNDS WON', t => R.filter((r, i) => r.w === t && sideOf(s, t, i + 1) === 'ATK').length], ['DEFENSE ROUNDS WON', t => R.filter((r, i) => r.w === t && sideOf(s, t, i + 1) === 'DEF').length], ['SPIKE PLANTS', t => S[t].plants], ['CLUTCHES', t => S[t].clutches]].map(([l, f]) => `<div class="r"><b style="color:${s.teams[0].color}">${f(0) ?? '–'}</b><span>${l}</span><b style="color:${s.teams[1].color}">${f(1) ?? '–'}</b></div>`).join('')}</div>`;
