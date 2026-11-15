@@ -62,6 +62,11 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'setStarters': await p.setStarters(String(a[0] ?? ''), Number(a[1]), Array.isArray(a[2]) ? a[2].map(String) : []); break;
     case 'deleteEvent': await p.deleteEvent(String(a[0] ?? '')); break;
     case 'markFinished': await p.markFinished(String(a[0] ?? ''), a[1] === true); break;
+    case 'matchDataSave': await p.matchDataSave(a[0]); break;
+    case 'vetoStep': await p.vetoStep(a[0] ?? {}); break;
+    case 'vetoUndo': await p.vetoUndo(); break;
+    case 'eventDataSave': await p.eventDataSave(String(a[0] ?? ''), a[1]); break;
+    case 'playerPrepSave': await p.playerPrepSave(String(a[0] ?? ''), a[1]); break;
     case 'mapStoppedResolve': {
       const c = String(a[0] ?? '');
       if (c !== 'team0' && c !== 'team1' && c !== 'remade' && c !== 'ignore') throw new Error('Choose what the map was.');

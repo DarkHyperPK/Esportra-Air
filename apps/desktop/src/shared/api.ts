@@ -322,6 +322,12 @@ export interface Snapshot {
   onAirLooks: string[];
   /** The game left this map before it ended; Live asks what it was. */
   mapStopped: { map: number; scores: [number, number] } | null;
+  /** The selected match's data (veto, maps, holding text, champion), or null without a match. */
+  matchData: import('./match-data.ts').MatchData | null;
+  /** The selected match's event data (standings, ticker, bracket, handle, site), or null. */
+  eventData: import('./match-data.ts').EventData | null;
+  /** Each Teams/Players player's prep, by library player id. */
+  playerPrep: Record<string, import('./match-data.ts').PlayerPrep>;
   /** How many saved match rundowns use each template. */
   templateUse: Record<string, number>;
   /** Teams/Players. */
@@ -457,6 +463,11 @@ export interface AirApi {
   /** Marks a match finished (it stops following Teams/Players), or reopens it. */
   markFinished(id: string, finished: boolean): Promise<Snapshot>;
   mapStoppedResolve(choice: 'team0' | 'team1' | 'remade' | 'ignore'): Promise<Snapshot>;
+  matchDataSave(input: import('./match-data.ts').MatchData): Promise<Snapshot>;
+  vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }): Promise<Snapshot>;
+  vetoUndo(): Promise<Snapshot>;
+  eventDataSave(eventId: string, input: import('./match-data.ts').EventData): Promise<Snapshot>;
+  playerPrepSave(playerId: string, input: import('./match-data.ts').PlayerPrep): Promise<Snapshot>;
   /** Deletes a match from this PC (an Esportra match stays in Esportra). Refused while it is live. */
   deleteMatch(id: string): Promise<Snapshot>;
   updateEvent(id: string, patch: EventPatch): Promise<Snapshot>;

@@ -15,6 +15,7 @@ export const SCREEN_GROUPS: Array<{ label: string; hint: string; screens: PickSc
     { id: 'map-veto', overlay: 'map-veto', title: 'Map veto', when: 'After the veto' },
     { id: 'agent-select', overlay: 'agent-select', title: 'Agent select', when: 'While players lock in' },
     { id: 'schedule', overlay: 'schedule', title: 'Today’s schedule', when: 'Before or between' },
+    { id: 'bracket', overlay: 'bracket', title: 'Bracket', when: 'Before or between' },
   ] },
   { label: 'During the game', hint: 'Always on while rounds are played', screens: [
     { id: 'in-game', overlay: 'ingame', title: 'In-game HUD', when: 'Scorebug, cards, banners' },

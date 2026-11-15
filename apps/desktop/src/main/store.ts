@@ -42,6 +42,12 @@ export interface Saved {
   keymap?: Record<string, string>;
   /** The moments shown on Live, in order. */
   moments?: string[];
+  /** Match data per match: veto, map pool, holding text, champion (src/shared/match-data.ts). */
+  matchData?: Record<string, import('../shared/match-data.ts').MatchData>;
+  /** Event data per event: standings, ticker, bracket, handle and site. */
+  eventData?: Record<string, import('../shared/match-data.ts').EventData>;
+  /** What each Teams/Players player has done before (Player profile, pre-match matchup), by library player id. */
+  playerPrep?: Record<string, import('../shared/match-data.ts').PlayerPrep>;
   /** Saved looks from Graphics › Templates. */
   templates?: import('../shared/templates.ts').Template[];
   /** Your own graphics: imported designs with data boxes (Graphics › Your graphics). */
@@ -81,6 +87,7 @@ export const DEFAULT_SCREENS: Screen[] = [
   hosted('halftime', 'halftime', 'Halftime'),
   hosted('standings', 'standings', 'Standings'),
   hosted('schedule', 'schedule', 'Today\'s schedule'),
+  hosted('bracket', 'bracket', 'Bracket'),
   hosted('player-profile', 'player-profile', 'Player profile'),
   hosted('champion', 'champion', 'Champion'),
   hosted('cam-grid', 'cam-grid', 'Player cams'),

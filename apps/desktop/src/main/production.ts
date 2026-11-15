@@ -44,6 +44,7 @@ import { CompanionHost } from './companion.ts';
 import { presetRows, rowsForScreens, ruleOf, rundownScreens } from './autopilot/rundown.ts';
 import { COLORS, tagFor, tagsFor } from './team-tags.ts';
 import { EsportraMatches } from './esportra-matches.ts';
+import { MatchDataService } from './match-data.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
 import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/companion.ts';
@@ -196,6 +197,16 @@ export class Production extends EventEmitter {
       carryOver: (id, name) => this.carryOver(id, name), library: () => this.library,
       save: () => this.save(), syncEngine: () => this.syncEngine(), log: (text) => this.log.add(text),
       now: () => (deps.now ?? Date.now)(),
+    });
+    this.matchData = new MatchDataService({
+      store: deps.store, match: () => this.match, eventId: () => this.match?.eventId ?? null,
+      progress: () => {
+        const wins = (this.room?.teams ?? []).map((t: { series?: number }) => Number(t?.series) || 0);
+        return { mapsPlayed: (wins[0] ?? 0) + (wins[1] ?? 0), seriesWon: !!this.match && Math.max(0, ...wins) > this.match.bestOf / 2 };
+      },
+      save: () => this.save(),
+      patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
+      log: (text) => this.log.add(text),
     });
     this.looks = new Looks({
       store: deps.store, setup: () => this.setup, rows: () => this.autopilot.rows(), save: () => this.save(),
@@ -455,6 +466,8 @@ export class Production extends EventEmitter {
     if (Object.keys(plain).length) await this.client.patch(`/api/${code}`, { show: plain });
     // Today's schedule: the event's matches on this match's day.
     await this.client.patch(`/api/${code}`, { schedule: this.scheduleOf(match) });
+    // Match data: veto, maps, holding text, champion, standings, ticker, bracket.
+    await this.client.patch(`/api/${code}`, this.matchData.room() ?? {});
     // The lineups: the engine puts display names and photos on the players the game reports.
     await this.client.patch(`/api/${code}`, { airRoster: match.players.map((team) => team.map((p) => ({ gameId: p.gameId, name: p.name, photo: p.photo }))) });
     // Setup decides where each layer starts; after that the console owns them for the match.
@@ -765,6 +778,8 @@ export class Production extends EventEmitter {
     this.log.add(`Map ${map} · ${match.teams[winner]?.name ?? 'Team'} win ${label} · series ${wins[0]}–${wins[1]}`);
     this.roomV = -1;
     await this.readRoom();
+    // The next map from the veto, and the holding text (Break, or Ending once the series is won).
+    await this.matchData.publish().catch(() => {});
   }
 
   /** A team has won the series in the room: the match is finished and keeps its teams from now on. */
@@ -1023,9 +1038,11 @@ export class Production extends EventEmitter {
       if (!BANNER_THEMES.includes(patch.theme)) throw new Error('Choose one of the banner styles.');
       match.theme = patch.theme;
     }
-    if (patch.bestOf !== undefined) {
+    if (patch.bestOf !== undefined && patch.bestOf !== match.bestOf) {
       if (![1, 3, 5].includes(patch.bestOf)) throw new Error('Choose best of 1, 3 or 5.');
+      if (match.id === this.match?.id && this.gameLocked()) throw new Error('Stop game data or the test round before changing the best-of.');
       match.bestOf = patch.bestOf;
+      this.matchData.bestOfChanged(match);
     }
     this.save();
     if (match.id === this.match?.id) await this.syncEngine();
@@ -1276,6 +1293,15 @@ export class Production extends EventEmitter {
     this.link.retry();
   }
 
+  // ── match data: src/main/match-data.ts ──
+
+  readonly matchData: MatchDataService;
+  matchDataSave(input: unknown) { return this.matchData.save(input); }
+  vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }) { return this.matchData.vetoStep(input); }
+  vetoUndo() { return this.matchData.vetoUndo(); }
+  eventDataSave(eventId: string, input: unknown) { return this.matchData.saveEvent(eventId, input); }
+  playerPrepSave(playerId: string, input: unknown) { return this.matchData.savePrep(playerId, input); }
+
   // ── Esportra: src/main/esportra-matches.ts ──
 
   readonly esportraMatches: EsportraMatches;
@@ -1451,6 +1477,10 @@ export class Production extends EventEmitter {
       const observed = this.observedPlayer();
       if (!observed) throw new Error('No player is being observed yet. The player profile needs the game’s roster.');
       actions.push({ name: 'spotlight.set', args: { team: observed.team, player: observed.player } });
+      // What this player has done before (Teams/Players prep): Player profile's season numbers and quote.
+      const puuid = this.room?.players?.[observed.team]?.[observed.player]?.puuid;
+      const lineup = this.match?.players.flat().find((p) => (puuid && p.gameId === puuid) || p.name === observed.name);
+      await this.client.patch(`/api/${encodeURIComponent(this.match!.code)}`, { spotlight: this.matchData.spotlightFields(lineup?.libraryId) }).catch(() => {});
     }
     if (on && screenId === 'cam-grid' && this.cams.layout === 'ingame') {
       this.cams.layout = 'grid10';
@@ -1578,6 +1608,9 @@ export class Production extends EventEmitter {
       ownGraphics: this.ownGraphics,
       onAirLooks: this.onAirLooks(),
       mapStopped: this.stopped && this.stopped.matchId === this.match?.id ? { map: this.stopped.map, scores: this.stopped.scores } : null,
+      matchData: this.match ? this.matchData.of(this.match) : null,
+      eventData: this.match?.eventId ? this.matchData.eventData(this.match.eventId) : null,
+      playerPrep: this.deps.store.data.playerPrep ?? {},
       templateUse: this.templateUse(),
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,

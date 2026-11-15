@@ -820,7 +820,7 @@
   M.bracket = root => {
     const m = E('div', 'mod on bk', root); const sc = sceneBg(m); chrome(m, 'PLAYOFFS'); const box = E('div', '', m); sceneFx(sc);
     return { update(s) { if (same(this, s)) return;
-      const B = s.bracket, qy = i => 230 + i * 88, sfy = k => (qy(2 * k) + qy(2 * k + 1)) / 2, gfy = k => (sfy(2 * k) + sfy(2 * k + 1)) / 2, chy = (gfy(0) + gfy(1)) / 2;
+      const B = { qf: s.bracket.qf || [], sf: s.bracket.sf || [], gf: s.bracket.gf || [] }, qy = i => 230 + i * 88, sfy = k => (qy(2 * k) + qy(2 * k + 1)) / 2, gfy = k => (sfy(2 * k) + sfy(2 * k + 1)) / 2, chy = (gfy(0) + gfy(1)) / 2;
       let h = [['QUARTERFINALS', 200], ['SEMIFINALS', 700], ['GRAND FINAL', 1150], ['CHAMPION', 1580]].map(([t, x], i) => `<div class="hd mono" style="left:${x}px;${i === 3 ? 'color:#e0445e' : ''}">${t}</div>`).join('');
       let lines = '';
       const row = (x, y, w, n, sc_, win, done) => `<div class="rw ${done ? (win ? 'w' : 'l') : ''}" style="left:${x}px;top:${y}px;width:${w}px"><span class="n">${n}</span><span class="s num">${sc_}</span></div>`;
@@ -830,7 +830,7 @@
         h += row(200, qy(i), 330, mt[j * 2], mt[j * 2 + 1], won, done); con(530, qy(i), 700, sfy(k), won && done); }));
       B.sf.forEach((mt, k) => [0, 1].forEach(j => { const i = 2 * k + j, won = mt[j * 2 + 1] > mt[(1 - j) * 2 + 1], done = Math.max(mt[1], mt[3]) >= need_('sf');
         h += row(700, sfy(i), 310, mt[j * 2], mt[j * 2 + 1], won, done); con(1010, sfy(i), 1150, gfy(k), won && done); }));
-      const g = B.gf[0], gd = Math.max(g[1], g[3]) >= need(s);
+      const g = B.gf[0] || ['', 0, '', 0], gd = !!(g[0] && g[2]) && Math.max(g[1], g[3]) >= need(s);
       [0, 1].forEach(j => { const won = g[j * 2 + 1] > g[(1 - j) * 2 + 1]; h += row(1150, gfy(j), 310, g[j * 2], g[j * 2 + 1], won, gd); con(1460, gfy(j), 1580, chy, won && gd); });
       h += `<div class="champ" style="left:1580px;top:${chy - 8}px;width:300px;${gd ? '' : 'background:rgba(255,255,255,.05);box-shadow:none;color:#77777c;font-size:26px;padding-top:20px'}">${gd ? (g[1] > g[3] ? g[0] : g[2]) : 'TO BE DECIDED'}</div>`;
       box.innerHTML = `<div class="title disp hl">PLAYOFFS</div><svg width="1920" height="1080" style="position:absolute;left:0;top:0">${lines}</svg>` + h;
@@ -1127,7 +1127,7 @@
   // Full-screen host: one browser source that shows the graphic named in state.airFullscreen
   // (set by Esportra Air), so switching full-screen graphics never touches OBS.
   const OVER_ONLY = Q.get('over') === '1';
-  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule' };
+  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket' };
   M.fullscreen = root => {
     const slots = {};
     let shown = null;
