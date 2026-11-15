@@ -422,6 +422,11 @@ async fn peer(
         }
     }
     engine.join.lock().peers.remove(&id);
+    // If this PC was the game data source, the next sender takes over at once (sources.rs).
+    let source = format!("peer:{id}");
+    for room in engine.rooms() {
+        room.lock().sources.release(&source);
+    }
 }
 
 #[cfg(test)]

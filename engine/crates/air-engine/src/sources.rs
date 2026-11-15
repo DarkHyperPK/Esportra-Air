@@ -57,7 +57,11 @@ impl DataSources {
             }
             None => {
                 self.active = Some(source.to_string());
-                Gate::Use
+                if std::mem::take(&mut self.switched) {
+                    Gate::TakeOver
+                } else {
+                    Gate::Use
+                }
             }
             Some(_) if quiet(self) => {
                 self.active = Some(source.to_string());
@@ -67,6 +71,17 @@ impl DataSources {
                 *self.held.entry(source.to_string()).or_default() += 1;
                 Gate::Hold
             }
+        }
+    }
+
+    /// A sender disconnected. If it was the source, the next sender (often the same PC reconnecting
+    /// under a new id) takes over at once with a new baseline, instead of waiting out the quiet time.
+    pub fn release(&mut self, source: &str) {
+        self.seen.remove(source);
+        self.held.remove(source);
+        if self.active.as_deref() == Some(source) {
+            self.active = None;
+            self.switched = true;
         }
     }
 
@@ -110,6 +125,27 @@ impl DataSources {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_source_that_disconnects_hands_over_at_once() {
+        let mut s = DataSources::default();
+        s.gate("peer:1", 0.0);
+        assert_eq!(s.gate("peer:2", 100.0), Gate::Hold);
+        s.release("peer:1");
+        assert_eq!(
+            s.gate("peer:3", 200.0),
+            Gate::TakeOver,
+            "the same PC back under a new id, with a new baseline"
+        );
+        assert_eq!(s.gate("peer:3", 300.0), Gate::Use);
+        assert_eq!(s.gate("peer:2", 400.0), Gate::Hold);
+        s.release("peer:2");
+        assert_eq!(
+            s.gate("peer:3", 500.0),
+            Gate::Use,
+            "a standby leaving changes nothing"
+        );
+    }
 
     #[test]
     fn the_first_sender_is_the_source_and_a_second_is_held() {

@@ -1245,6 +1245,34 @@ async fn only_one_observer_pc_is_the_match_data_source() {
 }
 
 #[tokio::test]
+async fn an_observer_that_drops_and_reconnects_is_the_data_source_again_at_once() {
+    let r = engine(temp_dir()).await;
+    let port = free_port();
+    request(&r, "PUT", "/control/join", Some(&json!({ "enabled": true, "code": "K7M4QX", "match": "RC", "host": "127.0.0.1", "port": port })), true).await;
+    let mut obs = join_ws(port, "code=K7M4QX&role=observer&name=Observer%201").await.unwrap();
+    next_json(&mut obs).await;
+    for i in 0..10 {
+        obs.send(data(scoreboard(i))).await.unwrap();
+    }
+    obs.send(data(kill(0, 5))).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(show(&r, "RC").await["killfeed"].as_array().map(Vec::len), Some(1));
+    // The network drops: the socket closes and the PC joins again under a new id.
+    drop(obs);
+    for _ in 0..40 {
+        if join_status(&r).await["peers"].as_array().is_some_and(|p| p.is_empty()) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let mut back = join_ws(port, "code=K7M4QX&role=observer&name=Observer%201").await.unwrap();
+    next_json(&mut back).await;
+    back.send(data(kill(1, 6))).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(show(&r, "RC").await["killfeed"].as_array().map(Vec::len), Some(2), "the kill right after reconnecting counts, without waiting for a takeover");
+}
+
+#[tokio::test]
 async fn the_fullscreen_host_shows_one_named_graphic() {
     let r = engine(temp_dir()).await;
     assert_eq!(action(&r, "FS", "fullscreen.show", json!({ "screen": "map-result" })).await.status, 200);
