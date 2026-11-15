@@ -85,6 +85,8 @@ export interface Match {
     matchId: string; tournamentId: string; tournament: string; scheduledAt: string | null; lineups: [string[], string[]] | null;
     /** Esportra's match package (prepare): result proposals go to it. */
     packageId?: string; packageVersion?: number;
+    /** The team names as Esportra has them, team 1 then team 2 (to see whether the sides were swapped here). */
+    teams?: [string, string];
   };
 }
 
@@ -347,6 +349,8 @@ export interface Snapshot {
   esportra: EsportraView;
   /** Map results sent to Esportra for review, for a match from Esportra (null otherwise). */
   esportraResults: import('./esportra-package.ts').EsportraResultsView | null;
+  /** The selected Esportra match's veto: followed or entered here, its status on Esportra, warnings. */
+  esportraVeto: import('./esportra-package.ts').EsportraVetoView | null;
   mode: PcMode;
   join: JoinView;
   /** Keys rebound on this PC (overrides only) and the moments on Live. */
@@ -541,6 +545,8 @@ export interface AirApi {
   useEsportraMatch(matchId: string): Promise<Snapshot>;
   /** Applies or rejects a map result on Esportra (organizers and crew allowed to submit results). */
   esportraReview(proposalId: string, decision: 'apply' | 'reject'): Promise<Snapshot>;
+  /** Hands the veto back to Esportra after it was entered here. */
+  vetoFollowEsportra(): Promise<Snapshot>;
   camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }): Promise<Snapshot>;
   camCreate(team: number, slot: number): Promise<Snapshot>;
   camRemove(team: number, slot: number): Promise<Snapshot>;

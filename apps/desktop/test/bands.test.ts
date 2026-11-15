@@ -233,6 +233,24 @@ test('veto steps follow the best-of; a lock-in flashes only that card', { skip: 
     assert.deepEqual(steps.mid.slice(0, 4), ['done:ban:1', 'done:ban:0', 'now:pick:1', 'next:pick:0'], 'teams alternate from the team that acted first');
     assert.equal(steps.mid.at(-1), 'next:decider:-1');
 
+    // Esportra's own order, its turn and coin toss.
+    const live = await page.evaluate(() => {
+      const HUD = (window as any).HUD, f = HUD.vetoSteps;
+      const order = [{ action: 'ban', team: 1 }, { action: 'pick', team: 1 }, { action: 'pick', team: 0 }, { action: 'decider', team: -1 }];
+      const fresh = f([], 3, order, { team: 1, action: 'ban', endsAt: 0 });
+      const picked = f([{ team: 1, action: 'ban', map: 'BIND' }, { team: 1, action: 'pick', map: 'LOTUS' }], 3, order, { team: 0, action: 'pick_side', endsAt: 0 });
+      const s = { ...HUD.state, teams: HUD.state.teams };
+      const toss = HUD.vetoCaption({ ...s, vetoToss: { pending: true, winner: 1 } }, fresh);
+      const turn = HUD.vetoCaption({ ...s, vetoToss: null, vetoTurn: { team: 1, action: 'ban', endsAt: HUD.now() + 32_400 } }, fresh);
+      const side = HUD.vetoCaption({ ...s, vetoToss: null, vetoTurn: null }, picked);
+      return { fresh: fresh.map((x: any) => `${x.state}:${x.action}:${x.team}`), picked: picked.map((x: any) => `${x.state}:${x.sideBy ?? ''}`), toss, turn, side, tags: s.teams.map((t: any) => t.tag) };
+    });
+    assert.deepEqual(live.fresh, ['now:ban:1', 'next:pick:1', 'next:pick:0', 'next:decider:-1'], 'a custom order, and its first step is now once Esportra says whose turn it is');
+    assert.deepEqual(live.picked, ['done:', 'done:0', 'next:', 'next:'], 'while a side is chosen, the pick shows it and nothing else is now');
+    assert.equal(live.toss, `COIN TOSS   ·   ${live.tags[1]} WON`);
+    assert.match(live.turn, /^STEP 1 OF 4 {3}· {3}0:3[23]$/);
+    assert.equal(live.side, `${live.tags[0]} CHOOSING SIDE ON LOTUS`);
+
     const cards = await page.evaluate(() => {
       const HUD = (window as any).HUD, s = HUD.state;
       const push = () => HUD.subs.forEach((f: (x: unknown) => void) => f(s));

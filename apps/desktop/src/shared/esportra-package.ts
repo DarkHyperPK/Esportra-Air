@@ -6,7 +6,7 @@
 //   GET  /api/air/broadcast/matches/{id}/bracket → the bracket snapshot on its own.
 // Anything malformed is skipped, never thrown: Esportra data only ever adds to a match Air can run without it.
 
-import { DEFAULT_POOL, VALORANT_MAPS, VETO_ORDER, validVeto, type BracketMatch, type MapName, type StandingsRow, type VetoStep } from './match-data.ts';
+import { DEFAULT_POOL, VALORANT_MAPS, orderOf, validOrder, validVeto, type BracketMatch, type MapName, type StandingsRow, type VetoOrderStep, type VetoStep } from './match-data.ts';
 
 export interface EsportraPlayer {
   /** The name shown on air: the Riot name without its #tag, else the registered name. */
@@ -25,13 +25,20 @@ export interface EsportraPackage {
   series: [number, number];
   /** The veto as Esportra has it so far (Air's map names; unknown maps dropped). */
   veto: RawVetoStep[];
+  /** The order this match's veto follows on Esportra (null: unknown). */
+  vetoOrder: VetoOrderStep[] | null;
+  /** Maps in Esportra's veto that Air does not know (shown as a warning, never on air). */
+  unknownMaps: string[];
   mapPool: MapName[];
   sponsors: EsportraSponsor[];
   casters: EsportraCaster[];
   bracket: unknown;
 }
 
-export interface RawVetoStep { team: number; action: string; map: MapName; side?: 'ATK' | 'DEF' }
+export interface RawVetoStep { team: number; action: string; map: MapName; side?: 'ATK' | 'DEF'; sideTeam?: 0 | 1 }
+/** Whose turn it is on Esportra; `endsAt` is when the turn's time runs out (ms since epoch), or null. */
+export interface VetoTurn { team: 0 | 1; action: 'ban' | 'pick' | 'pick_side'; endsAt: number | null }
+export interface VetoToss { pending: boolean; winner: 0 | 1 | null }
 
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -53,9 +60,44 @@ export function readVetoSteps(input: unknown): RawVetoStep[] {
     if (!map || !['ban', 'pick', 'decider'].includes(action)) continue;
     const team = Number(r.team ?? r.pickedByTeam);
     const side = r.side === 'ATK' || r.side === 'DEF' ? r.side : undefined;
-    out.push({ team: team === 0 || team === 1 ? team : -1, action, map, ...(side ? { side } : {}) });
+    const sideTeam = side && (r.sideTeam === 0 || r.sideTeam === 1) ? r.sideTeam : undefined;
+    out.push({ team: team === 0 || team === 1 ? team : -1, action, map, ...(side ? { side } : {}), ...(sideTeam !== undefined ? { sideTeam } : {}) });
   }
   return out;
+}
+
+/** Map names in Esportra's veto that Air's catalog does not have. */
+export function unknownVetoMaps(input: unknown): string[] {
+  return [...new Set(arr(input).map(obj).map((r) => str(r.map, 40)).filter((m) => m && !mapOf(m)))];
+}
+
+/** The order Esportra's veto follows, or null when it sends none Air can use. */
+export function readOrder(input: unknown): VetoOrderStep[] | null {
+  try { return arr(input).length ? validOrder(arr(input).map(obj)) : null; } catch { return null; }
+}
+
+/** Whose turn it is on Esportra. The time left is kept as an end time on this PC's clock. */
+export function readTurn(input: unknown, now: number): VetoTurn | null {
+  const r = obj(input);
+  const team = Number(r.team);
+  const action = str(r.action, 10);
+  if ((team !== 0 && team !== 1) || !['ban', 'pick', 'pick_side'].includes(action)) return null;
+  const started = Date.parse(str(r.startedAt, 40));
+  const seconds = Number(r.seconds);
+  const endsAt = Number.isFinite(started) && seconds > 0 && seconds <= 600 ? Math.min(started + seconds * 1000, now + seconds * 1000) : null;
+  return { team, action: action as VetoTurn['action'], endsAt };
+}
+
+export function readToss(input: unknown): VetoToss | null {
+  if (!input || typeof input !== 'object') return null;
+  const r = obj(input);
+  const w = Number(r.winner);
+  return { pending: r.pending === true, winner: r.winner === null || r.winner === undefined || (w !== 0 && w !== 1) ? null : w };
+}
+
+/** Swaps the teams of everything veto-shaped, for a match whose sides in Air are the other way round from Esportra's. */
+export function flipVeto<T extends { team: number; sideTeam?: number }>(steps: T[]): T[] {
+  return steps.map((v) => ({ ...v, team: v.team === 0 || v.team === 1 ? 1 - v.team : v.team, ...(v.sideTeam === 0 || v.sideTeam === 1 ? { sideTeam: 1 - v.sideTeam } : {}) }));
 }
 
 export function readPool(input: unknown): MapName[] {
@@ -98,6 +140,8 @@ export function readPackage(input: unknown): EsportraPackage {
     lineups: [readLineup(obj(teams[0]).roster), readLineup(obj(teams[1]).roster)],
     series: [0, 1].map((i) => Math.max(0, Math.min(9, Math.floor(Number(obj(teams[i]).seriesScore) || 0)))) as [number, number],
     veto: readVetoSteps(config.veto),
+    vetoOrder: readOrder(config.vetoSequence),
+    unknownMaps: unknownVetoMaps(config.veto),
     mapPool: readPool(config.mapPool),
     sponsors,
     casters,
@@ -106,16 +150,17 @@ export function readPackage(input: unknown): EsportraPackage {
 }
 
 /**
- * Esportra's veto as Air's match data, or null when it does not follow Air's order for the best-of
- * (the producer then enters it in Match data). The pool is Esportra's, with the veto's maps added and,
+ * Esportra's veto as Air's match data, checked against the order it follows (Esportra's own for the match,
+ * else the best-of's usual one); null when it does not fit (the producer then enters it in Match data). The pool is Esportra's, with the veto's maps added and,
  * when Esportra's pool is too short to hold a full veto, Air's default maps after it.
  */
-export function vetoFrom(steps: RawVetoStep[], bestOf: 1 | 3 | 5, pool: MapName[]): { veto: VetoStep[]; mapPool: MapName[] } | null {
-  const need = VETO_ORDER[bestOf].length;
+export function vetoFrom(steps: RawVetoStep[], bestOf: 1 | 3 | 5, pool: MapName[], order?: VetoOrderStep[] | null): { veto: VetoStep[]; mapPool: MapName[] } | null {
+  const need = orderOf(bestOf, order).length;
   const mapPool = [...new Set([...pool, ...steps.map((s) => s.map)])];
   for (const m of DEFAULT_POOL) if (mapPool.length < need && !mapPool.includes(m)) mapPool.push(m);
+  for (const m of VALORANT_MAPS) if (mapPool.length < need && !mapPool.includes(m)) mapPool.push(m);
   try {
-    return { veto: validVeto(steps, bestOf, mapPool), mapPool };
+    return { veto: validVeto(steps, bestOf, mapPool, order), mapPool };
   } catch {
     return null;
   }
@@ -182,3 +227,17 @@ export interface EsportraResultsView {
   canReview: boolean;
   items: EsportraResult[];
 }
+
+export interface EsportraVetoView {
+  /** air: the producer's own veto (Esportra is not followed); esportra: following Esportra. */
+  source: 'air' | 'esportra';
+  /** Esportra's veto status (not_started, pending, toss_choice_pending, in_progress, completed), or null before the first read. */
+  status: string | null;
+  /** The match left the Esportra schedule: the veto stays as it is and is no longer followed. */
+  gone: boolean;
+  /** Maps in Esportra's veto that Air does not know. */
+  unknownMaps: string[];
+  /** Since when Esportra cannot be reached (ms), or null. */
+  unreachableSince: number | null;
+}
+

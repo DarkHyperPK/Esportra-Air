@@ -5,7 +5,7 @@
 import type { Match } from '../shared/api.ts';
 import {
   emptyEventData, emptyMatchData, emptyPrep, nextVetoStep, roomFields, validEventData, validMatchData, validPrep, validVeto,
-  type EventData, type MatchData, type PlayerPrep, type VetoStep,
+  type EventData, type MatchData, type PlayerPrep, type VetoOrderStep, type VetoStep,
 } from '../shared/match-data.ts';
 import type { Store } from './store.ts';
 
@@ -76,15 +76,15 @@ export class MatchDataService {
     await this.publish();
   }
 
-  /** The next veto step, entered as the teams make it: it goes on air at once. */
+  /** The next veto step, entered as the teams make it: it goes on air at once. The veto is then this PC's own. */
   async vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }) {
     const match = this.requireMatch();
     const data = this.of(match);
-    const next = nextVetoStep(data.veto, match.bestOf);
+    const next = nextVetoStep(data.veto, match.bestOf, data.vetoOrder);
     if (!next) throw new Error('The veto is complete.');
     const step = { team: next.team, action: next.action, map: input?.map, ...(input?.side ? { side: input.side } : {}) };
-    const veto = validVeto([...data.veto, step], match.bestOf, data.mapPool);
-    await this.save({ ...data, veto });
+    const veto = validVeto([...data.veto, step], match.bestOf, data.mapPool, data.vetoOrder);
+    await this.save({ ...data, veto, vetoSource: 'air' });
     const last = veto.at(-1)!;
     this.ctx.log(`Veto · ${last.action === 'decider' ? 'Decider' : `${match.teams[last.team as 0 | 1]?.tag ?? 'Team'} ${last.action}s`} ${last.map}`);
   }
@@ -93,14 +93,24 @@ export class MatchDataService {
     const match = this.requireMatch();
     const data = this.of(match);
     if (!data.veto.length) throw new Error('The veto is empty.');
-    await this.save({ ...data, veto: data.veto.slice(0, -1) });
+    await this.save({ ...data, veto: data.veto.slice(0, -1), vetoSource: 'air' });
   }
 
-  /** The match's veto from elsewhere (Esportra), replacing what was entered here. */
-  async setVeto(veto: VetoStep[], mapPool?: string[]) {
+  /** The match's veto as Esportra has it, replacing what is here (the caller decides whether it may). */
+  async setVeto(veto: VetoStep[], mapPool?: string[], vetoOrder?: VetoOrderStep[] | null) {
     const match = this.requireMatch();
     const data = this.of(match);
-    await this.save({ ...data, ...(mapPool?.length ? { mapPool } : {}), veto });
+    await this.save({ ...data, ...(mapPool?.length ? { mapPool } : {}), ...(vetoOrder !== undefined ? { vetoOrder } : {}), veto, vetoSource: 'esportra' });
+  }
+
+  /** Hands the veto back to Esportra: the next poll replaces what was entered here. */
+  async followEsportra() {
+    const match = this.requireMatch();
+    if (!match.source?.matchId) throw new Error('This match is not from Esportra.');
+    const data = this.of(match);
+    (this.ctx.store.data.matchData ??= {})[match.id] = { ...data, vetoSource: 'esportra' };
+    this.ctx.save();
+    this.ctx.log('Veto · following Esportra again');
   }
 
   async saveEvent(eventId: string, input: unknown) {

@@ -70,10 +70,10 @@ test('an Esportra match end to end: package, lineup Riot ids, live veto, bracket
     st = await room();
     assert.equal(st.veto.length, 4);
     assert.deepEqual(st.series.map((x: any) => x.map), ['LOTUS', 'HAVEN']);
-    // A veto typed in Air is never cut back by a shorter one from Esportra.
+    // Esportra changed its veto (an organizer edit): Air follows, shorter included.
     veto.steps.splice(3);
     await production.esportraSync.pollVeto(match);
-    assert.equal((await room()).veto.length, 4);
+    assert.equal((await room()).veto.length, 3);
     // Producer and Esportra edits never touch the producer's own sponsors: a refresh adds nothing.
     await production.saveSponsor(event.id, { name: 'House sponsor' });
     backend.draft.sponsors.push({ name: 'Later Sponsor', logoUrl: 'https://example.com/later.png' });
@@ -123,6 +123,132 @@ test('an Esportra match end to end: package, lineup Riot ids, live veto, bracket
     production.log.stop();
     await engine.stop(true);
     await backend.stop();
+  }
+});
+
+async function setupLive() {
+  const { EngineSupervisor } = await import('../src/main/engine-supervisor.ts');
+  const { realProcess, engineEnv } = await import('../src/main/process.ts');
+  const { ObsLink } = await import('../src/main/obs.ts');
+  const { Production } = await import('../src/main/production.ts');
+  const { Store } = await import('../src/main/store.ts');
+  const { EsportraAccount } = await import('../src/main/esportra.ts');
+  const { FakeObs } = await import('./fake-obs.ts');
+  const { FakeEsportra } = await import('../dev/fake-esportra.ts');
+  const backend = await new FakeEsportra().start();
+  const dir = mkdtempSync(join(tmpdir(), 'air-esp-veto-'));
+  mkdirSync(join(dir, 'engine'), { recursive: true });
+  const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: join(dir, 'engine'), port: await freePort(), key: 'esportra-veto-key-0123456789abcdef', env: engineEnv(), monitorEveryMs: 200, ...realProcess });
+  await engine.start();
+  const store = new Store(join(dir, 'air.json'));
+  const values = new Map<string, string>();
+  const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets: { get: (k) => values.get(k) ?? null, set: (k, v) => void (v === null ? values.delete(k) : values.set(k, v)) }, deviceId: randomUUID(), deviceName: 'TEST-PC' });
+  const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture() as never, ingest: { target: () => {} }, esportra, version: 'test' });
+  production.setup.game = 'valorant';
+  const stop = async () => { production.esportraSync.stop(); production.autopilot.stopAll(); production.log.stop(); await engine.stop(true); await backend.stop(); };
+  return { backend, engine, production, store, stop };
+}
+
+test('the Esportra veto as it happens: custom order, coin toss, turn, decider, reset, swapped sides, own veto, two matches, 404 and offline', { skip: !existsSync(BINARY) && 'build the engine first', timeout: 90_000 }, async () => {
+  const { backend, engine, production, stop } = await setupLive();
+  try {
+    await production.esportraSignIn(backend.email, backend.password);
+    const [first, second] = backend.matches as [any, any];
+    second.bestOf = 3;
+    const v = backend.vetoOf(first.id);
+    // A custom order where team 2 starts, and a coin toss team 1 won.
+    v.sequence = [{ action: 'ban', team: 1 }, { action: 'ban', team: 0 }, { action: 'pick', team: 1 }, { action: 'pick', team: 0 }, { action: 'ban', team: 1 }, { action: 'ban', team: 0 }, { action: 'decider', team: -1 }];
+    v.status = 'toss_choice_pending';
+    v.toss = { pending: true, winner: 0 };
+    await production.useEsportraMatch(first.id);
+    let match = production.match!;
+    const room = async () => (await engine.client.get<any>(`/api/${production.match!.code}`)).state;
+    await production.esportraSync.pollVeto(match);
+    let st = await room();
+    assert.deepEqual(st.vetoOrder.map((o: any) => `${o.action}:${o.team}`), ['ban:1', 'ban:0', 'pick:1', 'pick:0', 'ban:1', 'ban:0', 'decider:-1']);
+    assert.deepEqual(st.vetoToss, { pending: true, winner: 0 });
+    assert.equal(production.snapshot().esportraVeto!.status, 'toss_choice_pending');
+
+    // The veto starts: whose turn it is, with its time left.
+    v.status = 'in_progress';
+    v.toss = { pending: false, winner: 0 };
+    v.turn = { team: 1, action: 'ban', startedAt: new Date().toISOString(), seconds: 45 };
+    await production.esportraSync.pollVeto(match);
+    st = await room();
+    assert.equal(st.vetoTurn.team, 1);
+    assert.ok(st.vetoTurn.endsAt > Date.now() + 30_000 && st.vetoTurn.endsAt <= Date.now() + 45_000);
+    v.steps.push({ team: 1, action: 'ban', map: 'Bind', side: null }, { team: 0, action: 'ban', map: 'Dust2', side: null });
+    await production.esportraSync.pollVeto(match);
+    assert.deepEqual((await room()).veto.map((x: any) => x.map), ['BIND'], 'a map Air does not know is left out');
+    assert.deepEqual(production.snapshot().esportraVeto!.unknownMaps, ['Dust2']);
+    v.steps[1] = { team: 0, action: 'ban', map: 'Abyss', side: null };
+    v.steps.push({ team: 1, action: 'pick', map: 'Lotus', side: 'ATK', sideTeam: 0 }, { team: 0, action: 'pick', map: 'Haven', side: null },
+      { team: 1, action: 'ban', map: 'Ascent', side: null }, { team: 0, action: 'ban', map: 'Corrode', side: null }, { team: -1, action: 'decider', map: 'Sunset', side: 'DEF', sideTeam: 1 });
+    v.status = 'completed';
+    v.turn = null;
+    await production.esportraSync.pollVeto(match);
+    st = await room();
+    assert.equal(st.veto.length, 7);
+    assert.deepEqual([st.veto[2].side, st.veto[2].sideTeam, st.veto[6].sideTeam], ['ATK', 0, 1]);
+    assert.deepEqual(st.series.map((x: any) => x.map), ['LOTUS', 'HAVEN', 'SUNSET']);
+    assert.equal(st.vetoTurn, undefined, 'no turn once the veto is complete');
+    // Complete: the loop stops asking.
+    const asked = () => backend.calls.filter((c) => c.endsWith('/veto')).length;
+    const before = asked();
+    (production.esportraSync as any).last.veto = 0;
+    await production.esportraSync.tick();
+    assert.equal(asked(), before, 'a finished veto is not polled');
+
+    // The organizer resets it: the graphics clear too.
+    v.steps.length = 0;
+    v.status = 'pending';
+    await production.esportraSync.pollVeto(match);
+    st = await room();
+    assert.deepEqual([st.veto.length, st.series.length], [0, 0]);
+
+    // The producer swapped the sides here: Esportra's team 1 is Air's right-hand team.
+    const teams = production.match!.teams;
+    await production.updateMatch(match.id, { teams: [teams[1], teams[0]] });
+    v.status = 'in_progress';
+    v.steps.push({ team: 1, action: 'ban', map: 'Bind', side: null });
+    await production.esportraSync.pollVeto(production.match!);
+    st = await room();
+    assert.deepEqual([st.veto[0].team, st.vetoOrder[0].team], [0, 0], 'Esportra team 2 is on the left here');
+
+    // The producer enters a step: from now on the veto is theirs, and Esportra is not followed.
+    await production.vetoStep({ map: 'ABYSS' });
+    v.steps.push({ team: 0, action: 'ban', map: 'Pearl', side: null });
+    await production.esportraSync.pollVeto(production.match!);
+    assert.deepEqual((await room()).veto.map((x: any) => x.map), ['BIND', 'ABYSS']);
+    assert.equal(production.snapshot().esportraVeto!.source, 'air');
+    await production.vetoFollowEsportra();
+    assert.deepEqual((await room()).veto.map((x: any) => x.map), ['BIND', 'PEARL'], 'following Esportra again takes its veto');
+    assert.equal(production.snapshot().esportraVeto!.source, 'esportra');
+
+    // A second match keeps its own veto state.
+    const v2 = backend.vetoOf(second.id);
+    v2.status = 'in_progress';
+    v2.steps.push({ team: 0, action: 'ban', map: 'Split', side: null });
+    await production.useEsportraMatch(second.id);
+    await production.esportraSync.pollVeto(production.match!);
+    assert.deepEqual((await room()).veto.map((x: any) => x.map), ['SPLIT']);
+    assert.equal(production.snapshot().esportraVeto!.status, 'in_progress');
+
+    // Esportra unreachable: the veto stays, and the interface says since when.
+    backend.down = true;
+    await production.esportraSync.pollVeto(production.match!).catch(() => {});
+    assert.ok(production.snapshot().esportraVeto!.unreachableSince);
+    assert.deepEqual((await room()).veto.map((x: any) => x.map), ['SPLIT']);
+    backend.down = false;
+    await production.esportraSync.pollVeto(production.match!);
+    assert.equal(production.snapshot().esportraVeto!.unreachableSince, null);
+    // The match leaves the schedule: the veto stays and is no longer followed.
+    backend.matches.splice(backend.matches.indexOf(second), 1);
+    await production.esportraSync.pollVeto(production.match!).catch(() => {});
+    assert.equal(production.snapshot().esportraVeto!.gone, true);
+    assert.deepEqual((await room()).veto.map((x: any) => x.map), ['SPLIT']);
+  } finally {
+    await stop();
   }
 });
 

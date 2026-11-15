@@ -121,7 +121,7 @@ export class EsportraMatches {
       { name: found.teamA, tag: found.tagA || tagFor(found.teamA), color: COLORS[0]!, logo: found.logoA ?? '' },
       { name: found.teamB, tag: found.tagB || tagFor(found.teamB), color: COLORS[1]!, logo: found.logoB ?? '' },
     ] as [Team, Team];
-    const source: NonNullable<Match['source']> = { matchId, tournamentId: found.tournamentId, tournament: found.tournament, scheduledAt: found.scheduledAt, lineups };
+    const source: NonNullable<Match['source']> = { matchId, tournamentId: found.tournamentId, tournament: found.tournament, scheduledAt: found.scheduledAt, lineups, teams: [found.teamA, found.teamB] };
     const existing = data.matches.find((m) => m.source?.matchId === matchId);
     if (existing) {
       // The tournament may have changed names, logos or best-of; the producer's talent and sponsors are kept.

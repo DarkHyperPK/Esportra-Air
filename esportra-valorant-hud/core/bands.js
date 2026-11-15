@@ -41,7 +41,7 @@
   // 1 · Map veto (approved mock, 14 Nov): the format's steps; done steps show the map, who acted and the
   // side; the step being chosen is marked in that team's colour; later steps wait as empty slots.
   M.vetoBand = root => band(root, 'bd-veto', s => {
-    const T = s.teams, steps = HUD.vetoSteps(s.veto, s.event.bestOf);
+    const T = s.teams, steps = HUD.vetoSteps(s.veto, s.event.bestOf, s.vetoOrder, s.vetoTurn);
     const tiles = steps.map(v => {
       const team = v.team >= 0 ? T[v.team] : null, other = v.team >= 0 ? T[1 - v.team] : null;
       const n = String(v.i + 1).padStart(2, '0');
@@ -50,13 +50,13 @@
         const what = v.action === 'decider' ? '<b class="acc">DECIDER</b><span>MAP</span>' : `<b>${esc(team ? team.tag : '')}</b><span>${v.action === 'pick' ? 'PICK' : 'BAN'} MAP</span>`;
         return `<div class="bd-vcol ${v.state}"><div class="bd-map ${v.state}" style="${team ? `--c:${esc(team.color)}` : ''}"><span class="bd-num">${n}</span><span class="mn">${word}</span></div><div class="bd-vlab ${v.action === 'decider' ? 'dec' : ''}">${what}</div></div>`;
       }
-      const top = v.action === 'pick' && v.side ? `<span class="bd-cap top">${esc(other.tag)} PICKS ${esc(v.side)}</span>` : v.action === 'decider' && v.side ? `<span class="bd-cap top">${esc(v.side)} FIRST</span>` : `<span class="bd-num">${n}</span>`;
+      const by = v.sideTeam === 0 || v.sideTeam === 1 ? T[v.sideTeam] : v.action === 'pick' ? other : null;
+      const top = v.side && by ? `<span class="bd-cap top">${esc(by.tag)} PICKS ${esc(v.side)}</span>` : v.side ? `<span class="bd-cap top">${esc(v.side)} FIRST</span>` : v.sideBy !== undefined ? `<span class="bd-cap top">${esc(T[v.sideBy].tag)} CHOOSING SIDE</span>` : `<span class="bd-num">${n}</span>`;
       const label = v.action === 'decider' ? '<b class="acc">DECIDER</b><span>MAP</span>' : `<b>${esc(team ? team.tag : '')}</b><span>${v.action === 'ban' ? 'BAN' : 'PICK'} MAP</span>`;
       return `<div class="bd-vcol">${mapTile(v.map, v.action === 'ban' ? 'ban' : v.action === 'pick' ? 'pick' : 'dec', top)}<div class="bd-vlab ${v.action === 'decider' ? 'dec' : ''}" style="${team && v.action === 'pick' ? `--c:${esc(team.color)}` : ''}">${label}</div></div>`;
     }).join('');
-    const doneN = steps.filter(x => x.state === 'done').length;
-    return `<div class="bd-head"><span class="bd-title">MAP VETO <span class="acc">· ${doneN >= steps.length ? 'COMPLETE' : `STEP ${doneN + 1} OF ${steps.length}`}</span></span><span class="bd-cap">${esc([s.event.name, s.event.stage, `BO${s.event.bestOf}`].filter(Boolean).join(' · '))}</span><span class="bd-row">${mark(T[0], 40)}<span class="bd-vs">VS</span>${mark(T[1], 40)}</span></div><div class="bd-vgrid" style="--n:${Math.max(1, steps.length)}">${tiles}</div>`;
-  }, s => [s.veto, s.teams.map(t => [t.tag, t.color, t.logo]), s.event]);
+    return `<div class="bd-head"><span class="bd-title">MAP VETO <span class="acc">· ${esc(HUD.vetoCaption(s, steps, false).replace('VETO COMPLETE', 'COMPLETE'))}</span></span><span class="bd-cap">${esc([s.event.name, s.event.stage, `BO${s.event.bestOf}`].filter(Boolean).join(' · '))}</span><span class="bd-row">${mark(T[0], 40)}<span class="bd-vs">VS</span>${mark(T[1], 40)}</span></div><div class="bd-vgrid" style="--n:${Math.max(1, steps.length)}">${tiles}</div>`;
+  }, s => [s.veto, s.vetoOrder, s.vetoTurn && [s.vetoTurn.team, s.vetoTurn.action], s.vetoToss, s.teams.map(t => [t.tag, t.color, t.logo]), s.event]);
 
   // 2 · Agent select: both lineups with their agents, the map in the middle. A player still choosing is
   // dimmed; a lock-in marks the card and flashes it once.

@@ -15,7 +15,12 @@ export interface VetoStep {
   map: MapName;
   /** For a pick or the decider: the side the other team chose to start on. */
   side?: 'ATK' | 'DEF';
+  /** The team that chose that side, when known (Esportra records it). */
+  sideTeam?: 0 | 1;
 }
+
+/** One step of the order a veto follows: Esportra can set a match's own order. */
+export interface VetoOrderStep { action: VetoAction; team: 0 | 1 | -1 }
 
 export type HoldingMode = 'auto' | 'starting' | 'brb' | 'ending';
 export interface ShowText {
@@ -30,6 +35,10 @@ export interface ShowText {
 export interface MatchData {
   mapPool: MapName[];
   veto: VetoStep[];
+  /** The order this match's veto follows, when it is not the best-of's usual one (from Esportra). */
+  vetoOrder: VetoOrderStep[] | null;
+  /** Where the veto comes from: entered in Air, or followed from Esportra as the teams make it. */
+  vetoSource: 'air' | 'esportra';
   show: ShowText;
   /** -1: the series winner; 0 or 1 forces the champion. */
   champion: -1 | 0 | 1;
@@ -59,7 +68,7 @@ export interface PlayerPrep {
 }
 
 export const DEFAULT_POOL: MapName[] = ['ABYSS', 'ASCENT', 'BIND', 'CORRODE', 'HAVEN', 'LOTUS', 'SUNSET'];
-export const emptyMatchData = (): MatchData => ({ mapPool: [...DEFAULT_POOL], veto: [], show: { mode: 'auto', message: '', target: 0, minutes: 10 }, champion: -1 });
+export const emptyMatchData = (): MatchData => ({ mapPool: [...DEFAULT_POOL], veto: [], vetoOrder: null, vetoSource: 'air', show: { mode: 'auto', message: '', target: 0, minutes: 10 }, champion: -1 });
 export const emptyEventData = (): EventData => ({ standings: [], ticker: [], bracket: { qf: [], sf: [], gf: [] }, handle: '', site: '' });
 export const emptyPrep = (): PlayerPrep => ({ maps: null, rating: '', kpr: '', acs: null, hs: '', clutches: null, quote: '' });
 
@@ -87,16 +96,35 @@ const mapName = (v: unknown): MapName => {
   return m as MapName;
 };
 
-/** Checks a veto against its best-of: the order of bans and picks, one map once, from the pool. */
-export function validVeto(input: unknown, bestOf: 1 | 3 | 5, pool: MapName[]): VetoStep[] {
+/** The order a veto follows: the match's own (from Esportra) or the best-of's usual one. */
+export function orderOf(bestOf: 1 | 3 | 5, order?: VetoOrderStep[] | null): VetoOrderStep[] {
+  return order?.length ? order : VETO_ORDER[bestOf].map((action) => ({ action, team: action === 'decider' ? -1 : 0 }) as VetoOrderStep);
+}
+
+/** Checks a veto order from Esportra: bans, picks and at most one decider, last. */
+export function validOrder(input: unknown): VetoOrderStep[] | null {
+  if (input === null || input === undefined) return null;
+  if (!Array.isArray(input) || input.length < 1 || input.length > 15) throw new Error('A veto order has 1 to 15 steps.');
+  const out = input.map((raw) => {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    if (!['ban', 'pick', 'decider'].includes(String(r.action))) throw new Error('A veto order has bans, picks and a decider.');
+    const action = r.action as VetoAction;
+    return { action, team: action === 'decider' ? -1 : r.team === 1 ? 1 : 0 } as VetoOrderStep;
+  });
+  if (out.slice(0, -1).some((o) => o.action === 'decider')) throw new Error('The decider is the last step of a veto.');
+  return out;
+}
+
+/** Checks a veto against its order (the match's own, else the best-of's): bans and picks in turn, one map once, from the pool. */
+export function validVeto(input: unknown, bestOf: 1 | 3 | 5, pool: MapName[], vetoOrder?: VetoOrderStep[] | null): VetoStep[] {
   if (!Array.isArray(input)) throw new Error('The veto must be a list of steps.');
-  const order = VETO_ORDER[bestOf];
-  if (input.length > order.length) throw new Error(`A best of ${bestOf} veto has ${order.length} steps.`);
+  const order = orderOf(bestOf, vetoOrder).map((o) => o.action);
+  if (input.length > order.length) throw new Error(`${vetoOrder?.length ? 'This match\'s' : `A best of ${bestOf}`} veto has ${order.length} steps.`);
   const used = new Set<string>();
   return input.map((raw, i) => {
     const r = (raw ?? {}) as Record<string, unknown>;
     const action = order[i]!;
-    if (r.action !== action) throw new Error(`Step ${i + 1} of a best of ${bestOf} is a ${action}.`);
+    if (r.action !== action) throw new Error(`Step ${i + 1} of ${vetoOrder?.length ? 'this match\'s veto' : `a best of ${bestOf}`} is a ${action}.`);
     const map = mapName(r.map);
     if (!pool.includes(map)) throw new Error(`${map} is not in this match's map pool.`);
     if (used.has(map)) throw new Error(`${map} is already in the veto.`);
@@ -105,30 +133,37 @@ export function validVeto(input: unknown, bestOf: 1 | 3 | 5, pool: MapName[]): V
     if (team === null) throw new Error(`Choose which team ${action === 'ban' ? 'banned' : 'picked'} ${map}.`);
     const side = r.side === 'ATK' || r.side === 'DEF' ? r.side : undefined;
     if (side && action === 'ban') throw new Error('A banned map has no side.');
-    return { team, action, map, ...(side ? { side } : {}) } as VetoStep;
+    const sideTeam = side && (r.sideTeam === 0 || r.sideTeam === 1) ? r.sideTeam : undefined;
+    return { team, action, map, ...(side ? { side } : {}), ...(sideTeam !== undefined ? { sideTeam } : {}) } as VetoStep;
   });
 }
 
 /** The next step of a veto in progress: its action, and the team whose turn it is (as the HUD works it out). */
-export function nextVetoStep(veto: VetoStep[], bestOf: 1 | 3 | 5): { action: VetoAction; team: 0 | 1 | -1 } | null {
-  const order = VETO_ORDER[bestOf];
+export function nextVetoStep(veto: VetoStep[], bestOf: 1 | 3 | 5, vetoOrder?: VetoOrderStep[] | null): { action: VetoAction; team: 0 | 1 | -1 } | null {
+  const order = orderOf(bestOf, vetoOrder);
   if (veto.length >= order.length) return null;
+  const step = order[veto.length]!;
+  if (step.action === 'decider') return { action: 'decider', team: -1 };
+  if (vetoOrder?.length) return { action: step.action, team: step.team };
   const first = veto[0] && (veto[0].team === 0 || veto[0].team === 1) ? veto[0].team : 0;
-  const action = order[veto.length]!;
-  return { action, team: action === 'decider' ? -1 : (((first + veto.length) % 2) as 0 | 1) };
+  return { action: step.action, team: (((first + veto.length) % 2) as 0 | 1) };
 }
 
 export function validMatchData(input: unknown, bestOf: 1 | 3 | 5): MatchData {
   const r = (input ?? {}) as Record<string, unknown>;
   const pool = Array.isArray(r.mapPool) ? [...new Set(r.mapPool.map(mapName))] : [...DEFAULT_POOL];
-  if (pool.length < VETO_ORDER[bestOf].length) throw new Error(`A best of ${bestOf} veto needs ${VETO_ORDER[bestOf].length} maps in the pool.`);
+  const vetoOrder = validOrder(r.vetoOrder);
+  const need = orderOf(bestOf, vetoOrder).length;
+  if (pool.length < need) throw new Error(`${vetoOrder ? 'This match\'s' : `A best of ${bestOf}`} veto needs ${need} maps in the pool.`);
   const s = (r.show ?? {}) as Record<string, unknown>;
   const mode = (['auto', 'starting', 'brb', 'ending'] as const).find((m) => m === s.mode) ?? 'auto';
   const target = Number(s.target) || 0;
   if (target < 0) throw new Error('Choose a countdown time.');
   return {
     mapPool: pool,
-    veto: validVeto(r.veto ?? [], bestOf, pool),
+    veto: validVeto(r.veto ?? [], bestOf, pool, vetoOrder),
+    vetoOrder,
+    vetoSource: r.vetoSource === 'esportra' ? 'esportra' : 'air',
     show: { mode, message: text(s.message, 120, 'The message'), target, minutes: num(s.minutes, 240, 'The countdown') ?? 10 },
     champion: r.champion === 0 || r.champion === 1 ? r.champion : -1,
   };
@@ -185,7 +220,8 @@ export function holdingMode(mode: HoldingMode, mapsPlayed: number, seriesWon: bo
 export function roomFields(md: MatchData, ev: EventData, progress: { mapsPlayed: number; seriesWon: boolean }) {
   const maps = seriesMaps(md.veto);
   const fields: Record<string, unknown> = {
-    veto: md.veto.map((v) => ({ team: v.team, action: v.action, map: v.map, ...(v.side ? { side: v.side } : {}) })),
+    veto: md.veto.map((v) => ({ team: v.team, action: v.action, map: v.map, ...(v.side ? { side: v.side } : {}), ...(v.sideTeam !== undefined ? { sideTeam: v.sideTeam } : {}) })),
+    vetoOrder: md.vetoOrder,
     mapPool: md.mapPool,
     holding: { mode: holdingMode(md.show.mode, progress.mapsPlayed, progress.seriesWon), message: md.show.message, target: md.show.target, minutes: md.show.minutes },
     champion: { team: md.champion },
@@ -194,6 +230,8 @@ export function roomFields(md: MatchData, ev: EventData, progress: { mapsPlayed:
     bracket: ev.bracket,
     event: { handle: ev.handle, site: ev.site },
   };
+  // A veto followed from Esportra and then reset there leaves no maps: the old ones leave the graphics too.
+  if (!maps.length && md.vetoSource === 'esportra') fields.series = [];
   if (maps.length) {
     fields.series = maps.map((m) => ({ map: m.map, pick: m.pick, score: [0, 0], winner: null }));
     const current = Math.min(progress.mapsPlayed + 1, maps.length);

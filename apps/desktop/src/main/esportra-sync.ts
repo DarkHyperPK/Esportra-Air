@@ -13,9 +13,10 @@ import type { Match } from '../shared/api.ts';
 import type { EventInfo } from '../shared/model.ts';
 import { nextVetoStep, type EventData, type MatchData, type VetoStep } from '../shared/match-data.ts';
 import {
-  bracketFrom, readPool, readVetoSteps, talentRole, vetoFrom,
-  type EsportraPackage, type EsportraResult, type EsportraResultsView,
+  bracketFrom, flipVeto, readOrder, readPool, readToss, readTurn, readVetoSteps, talentRole, unknownVetoMaps, vetoFrom,
+  type EsportraPackage, type EsportraResult, type EsportraResultsView, type EsportraVetoView, type RawVetoStep, type VetoToss, type VetoTurn,
 } from '../shared/esportra-package.ts';
+import type { MapName, VetoOrderStep } from '../shared/match-data.ts';
 import type { EsportraAccount, EsportraError } from './esportra.ts';
 import { upsertSponsor, upsertTalent } from './event-model.ts';
 import type { Store } from './store.ts';
@@ -36,12 +37,16 @@ export interface EsportraSyncContext {
   store: Store;
   /** The selected match. */
   match(): Match | null;
-  matchData: { of(match: Match): MatchData; setVeto(veto: VetoStep[], mapPool?: string[]): Promise<void>; eventData(eventId: string | null): EventData; saveEvent(eventId: string, input: unknown): Promise<void> };
+  matchData: { of(match: Match): MatchData; setVeto(veto: VetoStep[], mapPool?: string[], vetoOrder?: VetoOrderStep[] | null): Promise<void>; eventData(eventId: string | null): EventData; saveEvent(eventId: string, input: unknown): Promise<void> };
   /** Game data or a test round is running (the veto is over). */
   live(): boolean;
   health(): Health;
   event(id: string): EventInfo | undefined;
   putEvent(event: EventInfo): Promise<void>;
+  /** Writes fields into the selected match's room (the veto's turn and coin toss). */
+  patch(fields: Record<string, unknown>): Promise<void>;
+  /** Takes the match from Esportra again (its best-of changed there). */
+  reprepare(matchId: string): Promise<void>;
   /** Stores a logo in the engine and returns its URL. */
   storeImage(bytes: Buffer, type: string): Promise<string>;
   save(): void;
@@ -50,7 +55,7 @@ export interface EsportraSyncContext {
   now(): number;
 }
 
-const VETO_EVERY = 5_000;
+const VETO_EVERY = 2_000;
 const VETO_IDLE_EVERY = 30_000;
 const RESULTS_EVERY = 30_000;
 const HEARTBEAT_EVERY = 60_000;
@@ -65,13 +70,18 @@ export function proposalKey(packageId: string, map: number, scores: [number, num
   return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20, 32)}`;
 }
 
+/** What Air knows of one match's veto on Esportra. */
+interface VetoWatch { status: string | null; gone: boolean; warned: Set<string>; turnKey: string; unknown: string[] }
+
+const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 export class EsportraSync {
   private readonly ctx: EsportraSyncContext;
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
   private last = { veto: 0, results: 0, heartbeat: 0, bracket: 0 };
-  private vetoStatus: string | null = null;
-  private vetoWarned: string | null = null;
+  private readonly watches = new Map<string, VetoWatch>();
+  private unreachableSince: number | null = null;
 
   constructor(ctx: EsportraSyncContext) {
     this.ctx = ctx;
@@ -79,7 +89,7 @@ export class EsportraSync {
 
   start() {
     if (this.timer) return;
-    this.timer = setInterval(() => void this.tick(), 5_000);
+    this.timer = setInterval(() => void this.tick(), 1_000);
     this.timer.unref?.();
   }
 
@@ -100,34 +110,74 @@ export class EsportraSync {
 
   // ── the package ──
 
+  private watch(matchId: string): VetoWatch {
+    let w = this.watches.get(matchId);
+    if (!w) this.watches.set(matchId, (w = { status: null, gone: false, warned: new Set(), turnKey: '', unknown: [] }));
+    return w;
+  }
+
+  /** The match's sides in Air are the other way round from Esportra's (the producer swapped the teams here). */
+  private flipped(match: Match) {
+    const names = match.source?.teams;
+    return !!names && !same(names[0], names[1]) && same(match.teams[0].name, names[1]) && same(match.teams[1].name, names[0]);
+  }
+
   /** Puts a prepared package into the selected match (it must be the match the package is for). */
   async apply(pkg: EsportraPackage) {
     const match = this.esportraMatch();
     if (!match) return;
     match.source = { ...match.source!, packageId: pkg.packageId, packageVersion: pkg.version };
     this.ctx.save();
-    await this.applyVeto(match, pkg.veto, pkg.mapPool);
+    const w = this.watch(match.id);
+    w.gone = false;
+    w.status = null;
+    w.unknown = pkg.unknownMaps;
+    await this.applyVeto(match, pkg.veto, pkg.mapPool, pkg.vetoOrder);
     await this.applyBracket(match, pkg.bracket);
     await this.fillEvent(match, pkg);
-    this.vetoStatus = null;
     this.last.bracket = this.ctx.now();
   }
 
-  /** Esportra's veto replaces Air's when it has at least as many steps (a veto typed here is never shortened). */
-  private async applyVeto(match: Match, steps: ReturnType<typeof readVetoSteps>, pool: ReturnType<typeof readPool>) {
-    if (!steps.length) return false;
-    const converted = vetoFrom(steps, match.bestOf, pool.length ? pool : this.ctx.matchData.of(match).mapPool);
+  /**
+   * Esportra's veto replaces Air's whenever it differs, a reset included. A veto the producer entered here
+   * is never overwritten until they choose to follow Esportra again.
+   */
+  private async applyVeto(match: Match, raw: RawVetoStep[], pool: MapName[], order: VetoOrderStep[] | null) {
+    const here = this.ctx.matchData.of(match);
+    if (here.vetoSource === 'air' && here.veto.length) return false;
+    const flip = this.flipped(match);
+    const steps = flip ? flipVeto(raw) : raw;
+    const vetoOrder = order && flip ? flipVeto(order) : order;
+    const converted = vetoFrom(steps, match.bestOf, pool.length ? pool : here.mapPool, vetoOrder);
+    const w = this.watch(match.id);
     if (!converted) {
-      if (this.vetoWarned !== match.id) this.ctx.log('Esportra’s veto does not follow this best-of’s order · enter it in Match data');
-      this.vetoWarned = match.id;
+      if (!w.warned.has('order')) this.ctx.log('Esportra’s veto does not fit this match’s order · enter it in Match data');
+      w.warned.add('order');
       return false;
     }
-    const here = this.ctx.matchData.of(match).veto;
-    if (converted.veto.length < here.length || JSON.stringify(converted.veto) === JSON.stringify(here)) return false;
-    await this.ctx.matchData.setVeto(converted.veto, converted.mapPool);
-    const step = converted.veto.at(-1)!;
-    this.ctx.log(`Veto from Esportra · ${step.action === 'decider' ? 'Decider' : `${match.teams[step.team as 0 | 1]?.tag ?? 'Team'} ${step.action}s`} ${step.map}`);
+    const same = JSON.stringify([converted.veto, vetoOrder ?? here.vetoOrder]) === JSON.stringify([here.veto, here.vetoOrder]);
+    if (same && here.vetoSource === 'esportra') return false;
+    await this.ctx.matchData.setVeto(converted.veto, converted.mapPool, vetoOrder ?? here.vetoOrder);
+    if (same) return false;
+    const step = converted.veto.at(-1);
+    if (!step) this.ctx.log(here.veto.length ? 'Veto reset on Esportra · cleared here too' : 'Veto · following Esportra');
+    else if (converted.veto.length < here.veto.length) this.ctx.log(`Veto changed on Esportra · ${converted.veto.length} step${converted.veto.length === 1 ? '' : 's'} now`);
+    else this.ctx.log(`Veto from Esportra · ${step.action === 'decider' ? 'Decider' : `${match.teams[step.team as 0 | 1]?.tag ?? 'Team'} ${step.action}s`} ${step.map}`);
     return true;
+  }
+
+  /** Whose turn it is and the coin toss, on air while Esportra's veto is followed and not finished. */
+  private async applyTurn(match: Match, turn: VetoTurn | null, toss: VetoToss | null) {
+    const md = this.ctx.matchData.of(match);
+    const w = this.watch(match.id);
+    const follow = md.vetoSource === 'esportra' || !md.veto.length;
+    const flip = this.flipped(match);
+    const t = follow && turn && w.status === 'in_progress' ? { ...turn, team: (flip ? 1 - turn.team : turn.team) as 0 | 1 } : null;
+    const c = follow && toss && w.status !== 'completed' ? { ...toss, winner: toss.winner === null ? null : ((flip ? 1 - toss.winner : toss.winner) as 0 | 1) } : null;
+    const key = JSON.stringify([t, c]);
+    if (key === w.turnKey) return;
+    w.turnKey = key;
+    await this.ctx.patch({ vetoTurn: t, vetoToss: c });
   }
 
   private async applyBracket(match: Match, snapshot: unknown) {
@@ -181,7 +231,8 @@ export class EsportraSync {
       }
       if (account.view().state === 'denied') return;
       const match = this.esportraMatch();
-      if (match && this.vetoWanted(match) && now - this.last.veto >= (this.vetoStatus === 'not_started' ? VETO_IDLE_EVERY : VETO_EVERY)) {
+      const w = match ? this.watch(match.id) : null;
+      if (match && this.vetoWanted(match) && now - this.last.veto >= (w?.status === 'in_progress' ? VETO_EVERY : VETO_IDLE_EVERY)) {
         this.last.veto = now;
         await this.pollVeto(match).catch(() => {});
       }
@@ -200,15 +251,62 @@ export class EsportraSync {
   }
 
   private vetoWanted(match: Match) {
-    if (this.ctx.live()) return false;
-    if (this.vetoStatus === 'completed') return false;
-    return nextVetoStep(this.ctx.matchData.of(match).veto, match.bestOf) !== null;
+    const w = this.watch(match.id);
+    if (w.gone || this.ctx.live()) return false;
+    const md = this.ctx.matchData.of(match);
+    if (md.vetoSource === 'air' && md.veto.length) return false;
+    return !(w.status === 'completed' && nextVetoStep(md.veto, match.bestOf, md.vetoOrder) === null);
   }
 
+  /** Reads the match's veto on Esportra and follows it. */
   async pollVeto(match: Match) {
-    const v = await this.account!.veto(match.source!.matchId);
-    this.vetoStatus = typeof v.status === 'string' ? v.status : null;
-    if (await this.applyVeto(match, readVetoSteps(v.steps), readPool(v.mapPool))) this.ctx.changed();
+    const w = this.watch(match.id);
+    let v: Awaited<ReturnType<EsportraAccount['veto']>>;
+    try {
+      v = await this.account!.veto(match.source!.matchId);
+    } catch (error) {
+      const status = (error as EsportraError).status ?? 0;
+      if (status === 404) {
+        w.gone = true;
+        this.ctx.log('This match is no longer in your Esportra schedule · its veto stays as it is');
+        await this.applyTurn(match, null, null);
+      } else if (status === 0 || status >= 500) this.unreachableSince ??= this.ctx.now();
+      this.ctx.changed();
+      throw error;
+    }
+    this.unreachableSince = null;
+    const bestOf = Number(v.bestOf);
+    if ([1, 3, 5].includes(bestOf) && bestOf !== match.bestOf && !w.warned.has(`bestOf:${bestOf}`)) {
+      w.warned.add(`bestOf:${bestOf}`);
+      this.ctx.log(`Best of ${bestOf} on Esportra · taking the match again`);
+      await this.ctx.reprepare(match.source!.matchId);
+      // Read the veto again for the match as it is now (once: the same best-of is not taken twice).
+      const again = this.esportraMatch();
+      if (again) await this.pollVeto(again);
+      return;
+    }
+    const before = w.status;
+    w.status = typeof v.status === 'string' ? v.status : null;
+    const unknown = unknownVetoMaps(v.steps);
+    for (const m of unknown) if (!w.warned.has(`map:${m}`)) { w.warned.add(`map:${m}`); this.ctx.log(`Esportra’s veto has ${m}, a map Air does not know · it is left out`); }
+    w.unknown = unknown;
+    const changed = await this.applyVeto(match, readVetoSteps(v.steps), readPool(v.mapPool), readOrder(v.sequence));
+    await this.applyTurn(match, readTurn(v.turn, this.ctx.now()), readToss(v.toss));
+    if (changed || before !== w.status) this.ctx.changed();
+  }
+
+  /** What the interface shows about the selected match's veto on Esportra. */
+  vetoView(match: Match | null): EsportraVetoView | null {
+    if (!match?.source?.matchId) return null;
+    const w = this.watch(match.id);
+    return { source: this.ctx.matchData.of(match).vetoSource, status: w.status, gone: w.gone, unknownMaps: w.unknown, unreachableSince: this.unreachableSince };
+  }
+
+  /** The producer hands the veto back to Esportra: read it now. */
+  async followAgain(match: Match) {
+    this.watch(match.id).warned.delete('order');
+    this.last.veto = 0;
+    await this.pollVeto(match).catch(() => {});
   }
 
   // ── results ──

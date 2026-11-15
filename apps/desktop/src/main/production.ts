@@ -219,6 +219,8 @@ export class Production extends EventEmitter {
       }),
       event: (id) => deps.store.data.events.find((e) => e.id === id), putEvent: (event) => this.putEvent(event),
       storeImage: (bytes, type) => this.storeImage(bytes, type),
+      patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
+      reprepare: async (matchId) => { await deps.esportra?.refreshMatches(); await this.esportraMatches.use(matchId); },
       save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('changed'), now: () => (deps.now ?? Date.now)(),
     });
     if (deps.esportra) this.esportraSync.start();
@@ -1332,6 +1334,10 @@ export class Production extends EventEmitter {
   useEsportraMatch(matchId: string) { return this.esportraMatches.use(matchId); }
   readonly esportraSync: EsportraSync;
   esportraReview(proposalId: string, decision: 'apply' | 'reject') { return this.esportraSync.review(proposalId, decision); }
+  async vetoFollowEsportra() {
+    await this.matchData.followEsportra();
+    await this.esportraSync.followAgain(this.match!);
+  }
 
   // ── player cameras: src/main/player-cams.ts ──
 
@@ -1643,6 +1649,7 @@ export class Production extends EventEmitter {
       cue: { mode: this.cue.mode, pending: this.pending.map((c) => c.label), room: this.cue.room() },
       esportra: this.deps.esportra?.view() ?? signedOut(),
       esportraResults: this.esportraSync.view(this.match),
+      esportraVeto: this.esportraSync.vetoView(this.match),
       mode: this.mode,
       join: this.joinHost.view(),
       devices: devicesView({ lineup: this.match?.players ?? null, roomPlayers: Array.isArray(this.room?.players) ? this.room.players : null, peers: this.joinHost.view().peers, sources: this.joinHost.view().dataSources, now: Date.now() }),

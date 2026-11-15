@@ -23,7 +23,8 @@ export interface FakeMatch {
   bestOf: number;
 }
 
-export interface FakeVetoStep { team: number; action: 'ban' | 'pick' | 'decider'; map: string; side: string | null }
+export interface FakeVetoStep { team: number; action: 'ban' | 'pick' | 'decider'; map: string; side: string | null; sideTeam?: number | null }
+export interface FakeVeto { status: string; steps: FakeVetoStep[]; sequence: Array<{ action: string; team: number }> | null; turn: { team: number; action: string; startedAt: string; seconds: number } | null; toss: { pending: boolean; winner: number | null } | null }
 export interface FakeProposal { id: string; packageId: string; mapNumber: number; teamAScore: number; teamBScore: number; reason: string; status: 'pending' | 'apply' | 'reject' }
 
 /** A 1×1 PNG, served as a sponsor logo uploaded on Esportra. */
@@ -45,7 +46,7 @@ export class FakeEsportra {
   /** Production PCs the plan allows (null: no limit). */
   deviceLimit: number | null = null;
   /** The veto per match, as the teams make it on Esportra (map names as Esportra spells them). */
-  readonly vetoes = new Map<string, { status: string; steps: FakeVetoStep[] }>();
+  readonly vetoes = new Map<string, FakeVeto>();
   readonly mapPool = ['Abyss', 'Ascent', 'Bind', 'Corrode', 'Haven', 'Lotus', 'Sunset'];
   /** The production draft's sponsors and talent (prepare copies them into the package). */
   draft: { sponsors: Array<{ name: string; logoUrl?: string; assetId?: string }>; talent: Array<{ name: string; role?: string }> } = {
@@ -89,9 +90,15 @@ export class FakeEsportra {
     }).concat([{ name: `${tag} Coach`, role: 'coach', playerId: null, inGameName: null, gameId: null }]);
   }
 
+  /** Esportra's default order for Valorant (VetoSequences.cs), as the veto route sends it. */
+  defaultOrder(bestOf: number) {
+    const o = bestOf === 1 ? ['ban', 'ban', 'ban', 'ban', 'ban', 'ban'] : bestOf === 5 ? ['ban', 'ban', 'pick', 'pick', 'pick', 'pick'] : ['ban', 'ban', 'pick', 'pick', 'ban', 'ban'];
+    return [...o.map((action, i) => ({ action, team: i % 2 })), { action: 'decider', team: -1 }];
+  }
+
   vetoOf(matchId: string) {
     let v = this.vetoes.get(matchId);
-    if (!v) this.vetoes.set(matchId, (v = { status: 'not_started', steps: [] }));
+    if (!v) this.vetoes.set(matchId, (v = { status: 'not_started', steps: [], sequence: null, turn: null, toss: null }));
     return v;
   }
 
@@ -123,7 +130,7 @@ export class FakeEsportra {
       showId: packageId, title: m.tournamentName, status: 'draft', matches: [], casters: this.draft.talent.map((t) => ({ ...t, displayName: t.name })), sponsors: this.draft.sponsors.map((s, i) => ({ ...s, displayOrder: i, ...(s.assetId ? { logoUrl: `/air-assets/${s.assetId}` } : {}) })),
       teams: [slot(m.teamA, m.tagA, m.logoA, 0), slot(m.teamB, m.tagB, m.logoB, 1)],
       eventLabel: m.tournamentName, seriesTotal: m.bestOf, tournamentId: m.tournamentId, game: 'valorant',
-      veto: v.steps.map((s) => ({ ...s, pickedByTeam: s.team })), mapPool: this.mapPool, packageId, packId: 'esportra-valorant-v1', source: 'esportra', schemaVersion: 1,
+      veto: v.steps.map((s) => ({ ...s, pickedByTeam: s.team })), vetoSequence: v.sequence ?? this.defaultOrder(m.bestOf), vetoStatus: v.status, mapPool: this.mapPool, packageId, packId: 'esportra-valorant-v1', source: 'esportra', schemaVersion: 1,
       bracketSnapshot: this.bracket(m),
     };
   }
@@ -228,7 +235,7 @@ export class FakeEsportra {
       }
       if (m[3] === 'veto') {
         const v = this.vetoOf(match.id);
-        return send(200, { matchId: match.id, status: v.status, bestOf: match.bestOf, steps: v.steps.map((s) => ({ ...s, pickedByTeam: s.team })), mapPool: this.mapPool });
+        return send(200, { matchId: match.id, status: v.status, bestOf: match.bestOf, steps: v.steps.map((s) => ({ ...s, pickedByTeam: s.team })), mapPool: this.mapPool, sequence: v.sequence ?? this.defaultOrder(match.bestOf), turn: v.turn, toss: v.toss, team1Id: null, team2Id: null });
       }
       if (m[3] === 'bracket') return send(200, this.bracket(match));
       return this.prepare(match, body, send);

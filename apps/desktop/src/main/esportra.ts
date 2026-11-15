@@ -240,7 +240,7 @@ export class EsportraAccount {
 
   async veto(matchId: string) {
     if (!UUID.test(matchId)) throw new Error('Choose an Esportra match.');
-    return this.json<{ status?: string; bestOf?: number; steps?: unknown; mapPool?: unknown }>(`/api/air/broadcast/matches/${matchId}/veto`);
+    return this.json<{ status?: string; bestOf?: number; steps?: unknown; mapPool?: unknown; sequence?: unknown; turn?: unknown; toss?: unknown }>(`/api/air/broadcast/matches/${matchId}/veto`);
   }
 
   async bracket(matchId: string) {

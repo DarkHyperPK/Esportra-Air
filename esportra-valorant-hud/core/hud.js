@@ -183,14 +183,38 @@
    * that acted first (team A when nothing has happened yet).
    */
   const VETO_ORDER = { 1: ['ban', 'ban', 'ban', 'ban', 'ban', 'ban', 'decider'], 3: ['ban', 'ban', 'pick', 'pick', 'ban', 'ban', 'decider'], 5: ['ban', 'ban', 'pick', 'pick', 'pick', 'pick', 'decider'] };
-  const vetoSteps = HUD.vetoSteps = (veto, bestOf) => {
-    const done = Array.isArray(veto) ? veto : [], order = VETO_ORDER[bestOf] || VETO_ORDER[3];
+  /**
+   * The veto's steps in order: done ones, then the ones still to come. `order` is the order this match's veto
+   * follows (Esportra's custom order, [{action, team}]); without it, the best-of's usual order. `turn`
+   * ({team, action, endsAt}) says whose turn it is; without it the first open step is "now" only mid-veto.
+   * While a team chooses the side of a picked map, that pick carries `sideBy`.
+   */
+  const vetoSteps = HUD.vetoSteps = (veto, bestOf, order, turn) => {
+    const done = Array.isArray(veto) ? veto : [];
+    const custom = Array.isArray(order) && order.length >= done.length && order.length > 0 && order.every(o => o && ['ban', 'pick', 'decider'].includes(o.action));
+    const seq = custom ? order : (VETO_ORDER[bestOf] || VETO_ORDER[3]).map(action => ({ action }));
     const first = done[0] && (done[0].team === 0 || done[0].team === 1) ? done[0].team : 0;
+    const choosingSide = turn && turn.action === 'pick_side' && (turn.team === 0 || turn.team === 1);
     const steps = done.map((v, i) => ({ ...v, i, state: 'done' }));
-    for (let i = done.length; i < order.length; i++) {
-      steps.push({ i, action: order[i], team: order[i] === 'decider' ? -1 : (first + i) % 2, state: i === done.length && done.length > 0 ? 'now' : 'next' });
+    const last = steps[steps.length - 1];
+    if (choosingSide && last && last.action === 'pick' && !last.side) last.sideBy = turn.team;
+    for (let i = done.length; i < seq.length; i++) {
+      const o = seq[i], team = o.action === 'decider' ? -1 : (o.team === 0 || o.team === 1 ? o.team : (first + i) % 2);
+      const now = i === done.length && (turn ? !(choosingSide && last && last.sideBy !== undefined) : done.length > 0);
+      steps.push({ i, action: o.action, team, state: now ? 'now' : 'next' });
     }
     return steps;
+  };
+  /** The veto's caption: the coin toss, the step being made and its time left, or complete. */
+  const vetoCaption = HUD.vetoCaption = (s, steps, clock = true) => {
+    const toss = s.vetoToss;
+    if (toss && toss.pending) return toss.winner === 0 || toss.winner === 1 ? `COIN TOSS   ·   ${s.teams[toss.winner].tag} WON` : 'COIN TOSS';
+    const doneN = steps.filter(x => x.state === 'done').length;
+    if (doneN >= steps.length) return 'VETO COMPLETE';
+    const t = s.vetoTurn, left = clock && t && t.endsAt ? Math.max(0, Math.ceil((t.endsAt - HUD.now()) / 1000)) : null;
+    const side = steps.find(x => x.sideBy !== undefined);
+    const what = side ? `${s.teams[side.sideBy].tag} CHOOSING SIDE ON ${side.map}` : `STEP ${doneN + 1} OF ${steps.length}`;
+    return left === null ? what : `${what}   ·   ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
   };
   /** A player in agent select: no agent yet, choosing (hovering an agent), or locked in. Without the game's flag, an agent counts as locked. */
   const lockState = HUD.lockState = p => (!p || !p.agent ? 'empty' : p.locked === false ? 'choosing' : 'locked');
@@ -712,17 +736,17 @@
     const tl = E('div', 'vt-team l', m), tr = E('div', 'vt-team r', m);
     const box = E('div', 'steps', m), cap = E('div', 'cap mono', m); sceneFx(sc);
     void title;
-    let sig = '';
+    let sig = '', cur = null;
     return {
       // Coming on air plays every card's entrance once; afterwards only a new card animates.
       play() { sig = ''; box.innerHTML = ''; },
       update(s) {
-        const k = JSON.stringify([s.veto, s.teams.map(t => [t.name, t.tag, t.color, t.logo]), s.series.map(x => x.map), s.event.bestOf, s.event.stage, s.event.accent]);
+        const k = JSON.stringify([s.veto, s.vetoOrder, s.vetoTurn, s.vetoToss, s.teams.map(t => [t.name, t.tag, t.color, t.logo]), s.series.map(x => x.map), s.event.bestOf, s.event.stage, s.event.accent]);
         if (k === sig) return; sig = k;
         m.style.setProperty('--ev', eventAccent(s));
         txt(sub, [s.event.stage, `BEST OF ${s.event.bestOf}`].filter(Boolean).join('   ·   '));
         [tl, tr].forEach((el, t) => morph(el, `${teamMark(s.teams[t], 96)}<div><b>${escH(s.teams[t].name)}</b><span class="mono">${escH(s.teams[t].tag)}</span></div>`));
-        const steps = vetoSteps(s.veto, s.event.bestOf);
+        const steps = cur = vetoSteps(s.veto, s.event.bestOf, s.vetoOrder, s.vetoTurn);
         box.style.setProperty('--n', steps.length);
         morph(box, steps.map(st => {
           const n = String(st.i + 1).padStart(2, '0'), T = st.team >= 0 ? s.teams[st.team] : null;
@@ -734,12 +758,14 @@
             return `<div class="card ${now ? 'now' : 'next'}" style="--c:${T ? escH(T.color) : 'var(--ev)'};${enter}"><div class="hd"><b class="stamp">${label}</b><i class="mono">${n}</i></div><div class="art"><div class="mn">${word}</div></div><div class="ft">${T ? `<div class="by">${teamMark(T, 40)}${escH(T.tag)}</div>` : ''}<div class="nt mono">${now ? 'CHOOSING NOW' : st.action === 'decider' ? 'LAST MAP STANDING' : ''}</div></div></div>`;
           }
           const Mm = mapA(st.map), kind = st.action === 'ban' ? 'ban' : st.action === 'decider' ? 'dec' : 'pick';
-          const note = st.side ? (T ? `${escH(s.teams[1 - st.team].tag)} PICKS ${escH(st.side)}` : `${escH(st.side)} FIRST`) : kind === 'ban' ? 'BANNED' : kind === 'dec' ? `MAP ${s.series.findIndex(x => x.map === st.map) + 1 || ''}` : '';
+          const by = st.sideTeam === 0 || st.sideTeam === 1 ? s.teams[st.sideTeam] : T ? s.teams[1 - st.team] : null;
+          const note = st.side ? (by ? `${escH(by.tag)} PICKS ${escH(st.side)}` : `${escH(st.side)} FIRST`) : st.sideBy !== undefined ? `${escH(s.teams[st.sideBy].tag)} CHOOSING SIDE` : kind === 'ban' ? 'BANNED' : kind === 'dec' ? `MAP ${s.series.findIndex(x => x.map === st.map) + 1 || ''}` : '';
           return `<div class="card ${kind}" style="--c:${kind === 'pick' && T ? escH(T.color) : kind === 'dec' ? 'var(--ev)' : 'rgba(255,255,255,.14)'};${enter}"><div class="hd"><b class="stamp">${label}</b><i class="mono">${n}</i></div><div class="art">${Mm ? `<img src="${escH(Mm.tall)}" alt="">` : ''}${kind === 'ban' ? '<span class="strike"></span>' : ''}<div class="mn">${escH(st.map)}</div></div><div class="ft">${T ? `<div class="by">${teamMark(T, 40)}${escH(T.tag)}</div>` : '<div class="by dec">DECIDER</div>'}<div class="nt mono">${note}</div></div></div>`;
         }).join(''));
-        const doneN = steps.filter(x => x.state === 'done').length;
-        txt(cap, doneN >= steps.length ? 'VETO COMPLETE' : `STEP ${doneN + 1} OF ${steps.length}`);
+        txt(cap, vetoCaption(s, steps));
       },
+      // The turn's time left counts down between updates.
+      tick(s) { if (cur && s.vetoTurn && s.vetoTurn.endsAt) txt(cap, vetoCaption(s, cur)); },
     };
   };
 
