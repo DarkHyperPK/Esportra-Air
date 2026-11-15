@@ -1,7 +1,7 @@
 // Real process helpers for the engine supervisor (kept separate so the supervisor is testable).
 import { spawn } from 'node:child_process';
 import { openSync, closeSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import type { ChildHandle, SupervisorOptions } from './engine-supervisor.ts';
 
 /** Spawns detached with output to a log file: a pipe would break when Air exits, and the engine would crash writing to it. */
@@ -37,9 +37,10 @@ export function engineEnv(): NodeJS.ProcessEnv {
   return Object.fromEntries(keep.filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]]));
 }
 
-export const realProcess: Pick<SupervisorOptions, 'spawn' | 'readFile' | 'isAlive' | 'kill'> = {
+export const realProcess: Pick<SupervisorOptions, 'spawn' | 'readFile' | 'writeFile' | 'isAlive' | 'kill'> = {
   spawn: spawnDetached,
   readFile: (path) => readFile(path, 'utf8'),
+  writeFile: (path, data) => writeFile(path, data, 'utf8'),
   isAlive,
   kill,
 };

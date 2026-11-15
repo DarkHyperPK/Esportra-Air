@@ -23,10 +23,10 @@ export function EditorDrawer({ title, close, children, footer }: { title: string
 }
 
 /** A small segmented choice (camera kind, tier). */
-export function Seg<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: Array<[T, string]>; onChange: (v: T) => void }) {
+export function Seg<T extends string>({ label, value, options, onChange, disabled }: { label: string; value: T; options: Array<[T, string]>; onChange: (v: T) => void; disabled?: boolean }) {
   return (
     <div className="seg" role="group" aria-label={label}>
-      {options.map(([v, text]) => <button type="button" key={v} aria-pressed={value === v} onClick={() => onChange(v)}>{text}</button>)}
+      {options.map(([v, text]) => <button type="button" key={v} aria-pressed={value === v} disabled={disabled} onClick={() => onChange(v)}>{text}</button>)}
     </div>
   );
 }

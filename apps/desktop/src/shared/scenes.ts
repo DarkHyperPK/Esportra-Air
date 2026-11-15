@@ -69,3 +69,21 @@ export const graphicSourceName = (title: string) => (sceneNames().includes(sourc
 export const isAirName = (name: string) => name.startsWith(PREFIX) || name.startsWith(LEGACY_PREFIX);
 /** The part after the prefix, for labels. */
 export const shortName = (name: string) => name.replace(PREFIX, '').replace(LEGACY_PREFIX, '');
+
+/** A page drawn in a preview of a scene; `over` = the full-screen host showing only overlay bar versions. */
+export interface ScenePage { overlay: string; over?: boolean }
+
+/**
+ * The Air pages that are in an OBS scene, as Air builds it (see `planScenes` in `src/main/scene-plan.ts`),
+ * so a preview of OBS program draws only what that scene really shows. `null` for a scene that is not
+ * Air's (the crew's own); without OBS (no scene) the sample is the HUD with overlay bars over the game.
+ */
+export function pagesForScene(sceneName: string | null, screens: Array<{ id: string; overlay: string; scene: SceneKey; enabled: boolean; hosted?: boolean }>): ScenePage[] | null {
+  const host = screens.find((x) => x.id === 'fullscreen' && x.enabled);
+  if (sceneName === null) return [{ overlay: 'ingame' }, { overlay: 'fullscreen', over: true }];
+  const key = SCENE_KEYS.find((k) => SCENES[k].name === sceneName || SCENES[k].formerly === sceneName);
+  if (!key) return null;
+  const pages: ScenePage[] = screens.filter((x) => x.scene === key && x.enabled && !x.hosted).map((x) => ({ overlay: x.overlay }));
+  if (host && (key === 'gameplay' || key === 'casters')) pages.push({ overlay: 'fullscreen', over: true });
+  return pages;
+}

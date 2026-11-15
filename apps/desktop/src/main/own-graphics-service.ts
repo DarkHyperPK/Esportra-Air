@@ -42,12 +42,13 @@ export class OwnGraphics {
 
   /** The design: a 1920×1080 PNG up to 16 MB (any Photoshop export fits), stored exactly as exported. */
   async uploadArtwork(dataUrl: string): Promise<string> {
-    const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
+    // The type a browser gives is not trusted either way: the PNG check below reads the bytes.
+    const m = /^data:[a-z0-9.+/-]*;base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl));
     if (!m) throw new Error('Export the design from Photoshop as a PNG.');
     const raw = Buffer.from(m[1]!, 'base64');
     if (raw.length > 16_000_000) throw new Error('The design is larger than 16 MB, which a 1920 × 1080 PNG never is. Export it again as a PNG.');
     const size = pngSize(raw);
-    if (!size) throw new Error('That file is not a PNG.');
+    if (!size) throw new Error('That file is not a PNG. Export the design from Photoshop as a PNG.');
     if (size.width !== 1920 || size.height !== 1080) throw new Error(`The design is ${size.width} × ${size.height}. Export it at 1920 × 1080.`);
     const id = randomUUID();
     await this.ctx.putAsset(id, raw);

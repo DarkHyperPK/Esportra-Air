@@ -2,7 +2,7 @@
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, safeStorage, shell } from 'electron';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { manualHtml } from '../shared/manual.ts';
 import { gameOf } from '../shared/games.ts';
 import { join, resolve } from 'node:path';
@@ -43,7 +43,9 @@ async function main() {
     secrets.set('engineKey', key);
   }
   const store = new Store(join(app.getPath('userData'), 'air.json'));
-  const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, env: engineEnv(), ...realProcess });
+  // The engine binary's size and date tell an engine left running by an older Air from this one.
+  const buildId = (() => { try { const st = statSync(paths.engine); return `${st.size}-${Math.round(st.mtimeMs)}`; } catch { return undefined; } })();
+  const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, env: engineEnv(), buildId, ...realProcess });
   const ingest = wsIngest();
   // A capture-only PC sends its game data to a producer's Air instead of to its own engine.
   const linkIngest = wsIngest();
