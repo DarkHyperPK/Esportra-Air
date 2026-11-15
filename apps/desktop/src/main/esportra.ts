@@ -7,8 +7,14 @@
 //   POST /api/air/access                is Air access active; returns a signed offline lease
 //   GET  /api/air/broadcast/matches     the producer's scheduled matches
 //   GET  /api/air/broadcast/matches/{id}/roster
-// Tokens live in the OS-encrypted secrets file; everything else in the saved settings. One-way in
-// v1: nothing is sent back to Esportra except the PC registration and tokens.
+//   POST /api/air/broadcast/matches/{id}/prepare   the match package: lineup with Riot ids, veto, sponsors, bracket
+//   GET  /api/air/broadcast/matches/{id}/veto      the veto as the teams make it
+//   GET  /api/air/broadcast/matches/{id}/bracket
+//   GET/POST /api/air/broadcast/packages/{id}/result-proposals (+ /{proposal}/review)
+//   POST /api/air/devices/{id}/heartbeat
+//   GET  /api/air/assets/{id}                       a sponsor logo uploaded on Esportra
+// Tokens live in the OS-encrypted secrets file; everything else in the saved settings. Air never
+// writes scores: a counted map goes back as a result proposal the organizer reviews.
 
 import { createHash } from 'node:crypto';
 import type { EsportraAccountInfo, EsportraMatch, EsportraState, EsportraView } from '../shared/esportra.ts';
@@ -22,7 +28,7 @@ export interface SavedEsportra {
   email: string;
   account: EsportraAccountInfo | null;
   deviceId: string;
-  access: { checkedAt: number; lastSeenAt: number; lease: Lease | null; pinnedKey: string | null; warning: string | null; denied: boolean } | null;
+  access: { checkedAt: number; lastSeenAt: number; lease: Lease | null; pinnedKey: string | null; warning: string | null; denied: boolean; reason?: string | null } | null;
   matches: EsportraMatch[];
   syncedAt: number | null;
 }
@@ -125,6 +131,7 @@ export class EsportraAccount {
 
   private warning(state: EsportraState): string | null {
     const saved = this.saved!;
+    if (state === 'denied' && saved.access?.denied && saved.access.reason) return saved.access.reason;
     if (state === 'denied') return saved.access?.denied ? 'Esportra has not turned on Air for this account yet. Your own events and matches work as normal.' : 'Air could not confirm access and no valid offline lease is saved. Reconnect to Esportra to renew it.';
     const expires = leaseExpiry(saved.access?.lease);
     if (state === 'offline') return `Working offline on a verified lease${expires ? ` (valid until ${new Date(expires).toLocaleString()})` : ''}. Reconnect before it expires.`;
@@ -192,7 +199,9 @@ export class EsportraAccount {
       const status = (error as EsportraError).status;
       if (status === 401 || status === 403 || status === 409) {
         // Refused: no lease may outlive an explicit refusal.
-        saved.access = { checkedAt: this.now(), lastSeenAt: saved.access?.lastSeenAt ?? 0, lease: null, pinnedKey: null, warning: null, denied: true };
+        // A full device allowance is not a missing plan: say which it is.
+        const reason = status === 409 ? 'Your Air plan’s device allowance is full, so this PC cannot be registered. Remove a PC on Esportra or ask your admin for more.' : null;
+        saved.access = { checkedAt: this.now(), lastSeenAt: saved.access?.lastSeenAt ?? 0, lease: null, pinnedKey: null, warning: null, denied: true, reason };
         this.online = true;
       } else {
         this.online = false;
@@ -219,7 +228,65 @@ export class EsportraAccount {
 
   async roster(matchId: string) {
     if (!UUID.test(matchId)) throw new Error('Choose an Esportra match.');
-    return this.json<{ team1: { name: string; players: Array<{ displayName: string }> }; team2: { name: string; players: Array<{ displayName: string }> } }>(`/api/air/broadcast/matches/${matchId}/roster`);
+    type Side = { name: string; players: Array<{ displayName: string }>; lineup?: unknown };
+    return this.json<{ team1: Side; team2: Side }>(`/api/air/broadcast/matches/${matchId}/roster`);
+  }
+
+  /** The match package. The same `requestId` returns the same version (safe to retry). */
+  async prepare(matchId: string, requestId: string) {
+    if (!UUID.test(matchId) || !UUID.test(requestId)) throw new Error('Choose an Esportra match.');
+    return this.json<unknown>(`/api/air/broadcast/matches/${matchId}/prepare`, { method: 'POST', body: { requestId } });
+  }
+
+  async veto(matchId: string) {
+    if (!UUID.test(matchId)) throw new Error('Choose an Esportra match.');
+    return this.json<{ status?: string; bestOf?: number; steps?: unknown; mapPool?: unknown }>(`/api/air/broadcast/matches/${matchId}/veto`);
+  }
+
+  async bracket(matchId: string) {
+    if (!UUID.test(matchId)) throw new Error('Choose an Esportra match.');
+    return this.json<unknown>(`/api/air/broadcast/matches/${matchId}/bracket`);
+  }
+
+  async proposeResult(packageId: string, body: { clientKey: string; mapNumber: number; teamAScore: number; teamBScore: number; reason: string }) {
+    if (!UUID.test(packageId)) throw new Error('This match has no Esportra package yet.');
+    return this.json<{ proposalId: string }>(`/api/air/broadcast/packages/${packageId}/result-proposals`, { method: 'POST', body });
+  }
+
+  async results(packageId: string) {
+    if (!UUID.test(packageId)) throw new Error('This match has no Esportra package yet.');
+    return this.json<{ canReview?: boolean; proposals?: Array<Record<string, unknown>> }>(`/api/air/broadcast/packages/${packageId}/result-proposals`);
+  }
+
+  async reviewResult(packageId: string, proposalId: string, body: { decision: 'apply' | 'reject'; currentTeamAScore: number | null; currentTeamBScore: number | null }) {
+    if (!UUID.test(packageId) || !UUID.test(proposalId)) throw new Error('Choose a result again.');
+    return this.json<{ status: string }>(`/api/air/broadcast/packages/${packageId}/result-proposals/${proposalId}/review`, { method: 'POST', body });
+  }
+
+  /** Tells Esportra this PC is alive and what it is doing (shown to the account owner on Esportra). */
+  async heartbeat(health: { appVersion: string; obsConnected: boolean; captureActive: boolean; productionActive: boolean; feedState: 'waiting' | 'live' | 'stale' | 'offline' }) {
+    const saved = this.saved;
+    if (!saved || !this.tokens) return;
+    try {
+      await this.json(`/api/air/devices/${saved.deviceId}/heartbeat`, { method: 'POST', body: { ...health, appVersion: health.appVersion.slice(0, 40), projectId: null } });
+    } catch (error) {
+      // A revoked PC: find out properly, so the interface says so.
+      if ((error as EsportraError).status === 403) await this.checkAccess().catch(() => {});
+      throw error;
+    }
+  }
+
+  /** A logo uploaded on Esportra (PNG, JPEG or WebP, up to 5 MB). */
+  async asset(assetId: string): Promise<{ bytes: Buffer; type: string }> {
+    if (!UUID.test(assetId)) throw new Error('Choose a logo again.');
+    if (!this.tokens) throw new EsportraError('Sign in to Esportra first.', 401);
+    if (this.tokens.expiresAt < this.now() + 30_000) await this.refresh();
+    const response = await this.send(`/api/air/assets/${assetId}`, undefined, { method: 'GET', headers: { Authorization: `Bearer ${this.tokens!.accessToken}`, 'X-Air-Device-Id': this.o.deviceId } });
+    if (!response.ok) throw new EsportraError('Esportra could not send this logo.', response.status);
+    const type = String(response.headers.get('content-type') ?? '').split(';')[0]!.trim();
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > 5_242_880) throw new Error('That logo is larger than 5 MB.');
+    return { bytes, type };
   }
 
   // ── transport ──

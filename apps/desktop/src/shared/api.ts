@@ -81,7 +81,11 @@ export interface Match {
   /** The banner style used by this match's graphics. */
   theme: BannerTheme;
   /** Set for matches taken from an Esportra tournament. */
-  source?: { matchId: string; tournamentId: string; tournament: string; scheduledAt: string | null; lineups: [string[], string[]] | null };
+  source?: {
+    matchId: string; tournamentId: string; tournament: string; scheduledAt: string | null; lineups: [string[], string[]] | null;
+    /** Esportra's match package (prepare): result proposals go to it. */
+    packageId?: string; packageVersion?: number;
+  };
 }
 
 export interface Screen {
@@ -341,6 +345,8 @@ export interface Snapshot {
   /** Graphics waiting in the Cued column, and the sample room the Cued monitor shows. */
   cue: { mode: boolean; pending: string[]; room: string | null };
   esportra: EsportraView;
+  /** Map results sent to Esportra for review, for a match from Esportra (null otherwise). */
+  esportraResults: import('./esportra-package.ts').EsportraResultsView | null;
   mode: PcMode;
   join: JoinView;
   /** Keys rebound on this PC (overrides only) and the moments on Live. */
@@ -533,6 +539,8 @@ export interface AirApi {
   esportraSignOut(): Promise<Snapshot>;
   esportraRefresh(): Promise<Snapshot>;
   useEsportraMatch(matchId: string): Promise<Snapshot>;
+  /** Applies or rejects a map result on Esportra (organizers and crew allowed to submit results). */
+  esportraReview(proposalId: string, decision: 'apply' | 'reject'): Promise<Snapshot>;
   camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }): Promise<Snapshot>;
   camCreate(team: number, slot: number): Promise<Snapshot>;
   camRemove(team: number, slot: number): Promise<Snapshot>;

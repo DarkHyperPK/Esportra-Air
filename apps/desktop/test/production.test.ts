@@ -686,7 +686,7 @@ test('an Esportra match becomes the match on this PC, with its tournament, teams
     await production.useEsportraMatch(wanted.id);
     assert.equal(store.data.matches.filter((m) => m.source?.matchId === wanted.id).length, 1);
     assert.equal(production.match!.teams[1].name, 'Fnatic Esports');
-    assert.equal(production.eventOf(production.match!)!.talent[0]!.name, 'Caster One');
+    assert.ok(production.eventOf(production.match!)!.talent.some((t) => t.name === 'Caster One'), 'the producer\'s talent is kept');
     assert.equal(production.match!.eventId, match.eventId);
 
     // A game Air cannot produce, and a refused account, both say why.

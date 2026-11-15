@@ -32,6 +32,8 @@ export interface Saved {
   autopilotProgress?: Record<string, { states: Record<string, 'done' | 'on_air'>; savedAt: number }>;
   /** The signed-in Esportra account (tokens are kept separately, encrypted). */
   esportra?: SavedEsportra;
+  /** Map results sent (or waiting to be sent) to Esportra for review, per match (src/main/esportra-sync.ts). */
+  esportraResults?: Record<string, import('./esportra-sync.ts').SavedResults>;
   /** This PC's id with Esportra (stable across sign-ins). */
   deviceId?: string;
   /** What this PC does: run the show, or only capture the game and send it to a producer's Air. */

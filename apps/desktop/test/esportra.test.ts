@@ -138,7 +138,9 @@ test('the roster comes from the backend and malformed matches are ignored', asyn
     await account.login(backend.email, backend.password);
     const id = account.view().matches[0]!.id;
     const roster = await account.roster(id);
-    assert.equal(roster.team1.players.length, 5);
+    // As the real backend: one registration row per team, and the registered lineup (starters and coach) beside it.
+    assert.equal(roster.team1.players.length, 1);
+    assert.equal((roster.team1.lineup as unknown[]).length, 6);
     await assert.rejects(account.roster('not-an-id'), /Choose an Esportra match/);
     backend.matches.push({ ...backend.matches[0]!, id: 'not-a-guid' });
     backend.matches.push({ ...backend.matches[0]!, id: randomUUID(), game: 'cs2', logoA: 'javascript:alert(1)' });

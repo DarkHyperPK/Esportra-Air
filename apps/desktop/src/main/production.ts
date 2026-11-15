@@ -44,6 +44,7 @@ import { CompanionHost } from './companion.ts';
 import { presetRows, rowsForScreens, ruleOf, rundownScreens } from './autopilot/rundown.ts';
 import { COLORS, tagFor, tagsFor } from './team-tags.ts';
 import { EsportraMatches } from './esportra-matches.ts';
+import { EsportraSync } from './esportra-sync.ts';
 import { MatchDataService } from './match-data.ts';
 import { deleteTeam, linkMatch, pickTeam, pushMatch, refreshMatch, setLineup, validPlayer, validTeam } from './team-library.ts';
 import type { LibPlayer, LibTeam, Library } from '../shared/api.ts';
@@ -197,6 +198,7 @@ export class Production extends EventEmitter {
       carryOver: (id, name) => this.carryOver(id, name), library: () => this.library,
       save: () => this.save(), syncEngine: () => this.syncEngine(), log: (text) => this.log.add(text),
       now: () => (deps.now ?? Date.now)(),
+      applyPackage: (pkg) => this.esportraSync.apply(pkg),
     });
     this.matchData = new MatchDataService({
       store: deps.store, match: () => this.match, eventId: () => this.match?.eventId ?? null,
@@ -208,6 +210,18 @@ export class Production extends EventEmitter {
       patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
       log: (text) => this.log.add(text),
     });
+    this.esportraSync = new EsportraSync({
+      account: () => deps.esportra, store: deps.store, match: () => this.match, matchData: this.matchData,
+      live: () => !!this.gameLocked(),
+      health: () => ({
+        appVersion: deps.version, obsConnected: deps.obs.status.state === 'connected', captureActive: deps.capture.state === 'live',
+        productionActive: !!this.match, feedState: deps.capture.state === 'live' ? 'live' : 'waiting',
+      }),
+      event: (id) => deps.store.data.events.find((e) => e.id === id), putEvent: (event) => this.putEvent(event),
+      storeImage: (bytes, type) => this.storeImage(bytes, type),
+      save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('changed'), now: () => (deps.now ?? Date.now)(),
+    });
+    if (deps.esportra) this.esportraSync.start();
     this.looks = new Looks({
       store: deps.store, setup: () => this.setup, rows: () => this.autopilot.rows(), save: () => this.save(),
       publish: async () => { if (this.match) await this.syncEngine(); },
@@ -635,9 +649,14 @@ export class Production extends EventEmitter {
   async uploadImage(dataUrl: string): Promise<string> {
     const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
     if (!m) throw new Error('Choose a PNG, JPEG or WebP image.');
-    const raw = Buffer.from(m[2]!, 'base64');
+    return this.storeImage(Buffer.from(m[2]!, 'base64'), `image/${m[1]}`);
+  }
+
+  /** Stores image bytes (PNG, or JPEG/WebP converted to PNG) in the engine and returns their URL. */
+  private async storeImage(raw: Buffer, type: string): Promise<string> {
+    if (!/^image\/(png|jpeg|webp)$/.test(type)) throw new Error('Choose a PNG, JPEG or WebP image.');
     if (raw.length > 6_000_000) throw new Error('That image is larger than 6 MB. Choose a smaller one.');
-    const png = this.deps.toPng ? this.deps.toPng(raw) : m[1] === 'png' ? raw : null;
+    const png = this.deps.toPng ? this.deps.toPng(raw) : type === 'image/png' ? raw : null;
     if (!png) throw new Error('This build can only read PNG images.');
     const id = randomUUID();
     await this.client.putBytes(`/control/assets/${id}`, png);
@@ -776,6 +795,8 @@ export class Production extends EventEmitter {
     await fix('map_result', scores.map((score) => ({ mapIndex: map, score })));
     await fix('series', wins);
     this.log.add(`Map ${map} · ${match.teams[winner]?.name ?? 'Team'} win ${label} · series ${wins[0]}–${wins[1]}`);
+    // An Esportra match: the result goes to the organizer for review (Air never writes scores).
+    await this.esportraSync.propose(match, map, scores, how).catch((e) => this.log.add(`Result not queued for Esportra · ${(e as Error).message}`));
     this.roomV = -1;
     await this.readRoom();
     // The next map from the veto, and the holding text (Break, or Ending once the series is won).
@@ -1309,6 +1330,8 @@ export class Production extends EventEmitter {
   async esportraSignOut() { this.esportraMatches.signOut(); }
   esportraRefresh() { return this.esportraMatches.refresh(); }
   useEsportraMatch(matchId: string) { return this.esportraMatches.use(matchId); }
+  readonly esportraSync: EsportraSync;
+  esportraReview(proposalId: string, decision: 'apply' | 'reject') { return this.esportraSync.review(proposalId, decision); }
 
   // ── player cameras: src/main/player-cams.ts ──
 
@@ -1619,6 +1642,7 @@ export class Production extends EventEmitter {
       companion: this.companion.view(),
       cue: { mode: this.cue.mode, pending: this.pending.map((c) => c.label), room: this.cue.room() },
       esportra: this.deps.esportra?.view() ?? signedOut(),
+      esportraResults: this.esportraSync.view(this.match),
       mode: this.mode,
       join: this.joinHost.view(),
       devices: devicesView({ lineup: this.match?.players ?? null, roomPlayers: Array.isArray(this.room?.players) ? this.room.players : null, peers: this.joinHost.view().peers, sources: this.joinHost.view().dataSources, now: Date.now() }),

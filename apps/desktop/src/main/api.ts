@@ -139,6 +139,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'esportraSignOut': await p.esportraSignOut(); break;
     case 'esportraRefresh': await p.esportraRefresh(); break;
     case 'useEsportraMatch': await p.useEsportraMatch(String(a[0])); break;
+    case 'esportraReview': await p.esportraReview(String(a[0]), a[1] === 'apply' ? 'apply' : 'reject'); break;
     case 'camsSet': await p.camsSet(a[0] ?? {}); break;
     case 'camCreate': await p.camCreate(Number(a[0]), Number(a[1])); break;
     case 'camRemove': await p.camRemove(Number(a[0]), Number(a[1])); break;
