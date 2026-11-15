@@ -1392,6 +1392,7 @@ export class Production extends EventEmitter {
   readonly mapRecords: MapRecords;
   recordShow(choice: RecordChoice) { return this.mapRecords.show(choice); }
   recordRemove(map: number) { return this.mapRecords.remove(map); }
+  postOptions(input: Partial<import('./map-records.ts').PostOptions>) { return this.mapRecords.setOptions(input); }
   /** Keeps the map being played as it stands, without counting it in the series (the game did not end it properly). */
   async closeMap() {
     const match = this.requireMatch();

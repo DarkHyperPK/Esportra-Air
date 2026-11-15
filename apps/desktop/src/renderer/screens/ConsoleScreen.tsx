@@ -1,6 +1,7 @@
-// Live (approved mock): four zones. On air (what viewers see, with one status line), Next (autopilot's
-// next step: Hold, Skip, Take), Cued (what waits for Take), Moments (your six keys). Everything else is
-// in All graphics. Every key comes from the keymap, so a key rebound in Settings works here at once.
+// Live is the control panel (approved mock, 15 Nov): the match bar, graphics by phase, the selected
+// graphic's options and data, and on the right the pause hint, Program, Cued and Esportra results.
+// Autopilot's next step, the moments and All graphics stay. Every key comes from the keymap, so a key
+// rebound in Settings works here at once.
 import { useEffect, useRef, useState } from 'react';
 import type { LayerRow, Snapshot } from '../../shared/api.ts';
 import { nextMode } from '../../shared/layers.ts';
@@ -12,6 +13,7 @@ import { sceneLabel, useMonitor } from '../components/Monitor.tsx';
 import { Composite } from '../components/Preview.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
 import { AutopilotCard } from '../components/Autopilot.tsx';
+import { GraphicDetail, GraphicList, MatchBar, PauseHint, ResultsCard, panelItems, type Phase } from '../components/ControlPanel.tsx';
 import type { PageProps } from '../App.tsx';
 
 /** Runs what a key or moment means (the same call the main process makes for keys over the game). */
@@ -164,6 +166,8 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   ref.current = s;
   const [form, setForm] = useState<'toast' | 'poll' | null>(null);
   const [drawer, setDrawer] = useState(false);
+  const [phase, setPhase] = useState<Phase>(() => (s.feed.state === 'live' || s.testRound.running ? 'ingame' : s.mapRecords?.maps.length ? 'post' : 'pre'));
+  const [selected, setSelected] = useState<string | null>(null);
   const frame = useMonitor(s.obs.state === 'connected');
   const now = useNow(!!s.readout);
   const cued = s.cue.pending.length > 0;
@@ -223,82 +227,93 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   });
   const d = s.devices;
 
-  return (
-    <div className="live-grid">
-      <div className="stack" style={{ gap: 12, minWidth: 0 }}>
-        {!s.match && <div className="notice">No match selected. <button className="btn fix" onClick={() => go('ready')}>Choose a match</button></div>}
-        {s.match && s.mapStopped && (
-          <div className="card warn stack" role="alert" style={{ gap: 8 }}>
-            <span><b>Map {s.mapStopped.map} ended at {s.mapStopped.scores[0]}–{s.mapStopped.scores[1]} before it was finished.</b> What was it?</span>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('team0'))}>Count it for {s.match.teams[0].name}</button>
-              <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('team1'))}>Count it for {s.match.teams[1].name}</button>
-              <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('remade'))}>Map remade, not counted</button>
-              <button className="btn quiet small" onClick={() => void run(() => air.mapStoppedResolve('ignore'))}>Ignore</button>
-            </div>
-          </div>
-        )}
-        {s.match && <OnAirMonitor s={s} image={frame?.pgm ?? null} />}
-        <div className="datastrip" aria-label="Live data">
-          {live && r ? (
-            <>
-              <span><b>Round {r.round ?? '—'}</b> · {(r.phase ?? '—')}{r.clockEndsAt && ['live', 'buy', 'planted'].includes(r.phase ?? '') ? ` · ~${clock(r.clockEndsAt - now)}` : ''}</span>
-              <span className="sc">{r.score[0] ?? '–'} – {r.score[1] ?? '–'}</span>
-              <span><b>Alive</b> {r.alive[0]} v {r.alive[1]}</span>
-              {r.spikePlanted && r.clockEndsAt && <span style={{ color: 'var(--amber)' }}>Spike (inferred) ~{clock(r.clockEndsAt - now)}</span>}
-              {s.testRound.running && <Tally kind="covered">Test round</Tally>}
-            </>
-          ) : <span className="muted">Waiting for game data</span>}
-          <span className="spacer" />
-          <span><i className={`dot ${s.feed.state === 'live' ? 'ok' : 'off'}`} /> Game data {s.feed.state === 'live' ? age(s.feed.ageMs) : 'off'}</span>
-          {(s.setup.profile === 'player-pcs' || d.pcs.length > 0) && <span><i className={`dot ${d.fromGame ? (d.checkedIn === d.seats.length && d.seats.length ? 'ok' : 'warn') : d.pcs.length ? 'ok' : 'warn'}`} /> Player PCs {d.fromGame ? `${d.checkedIn}/${d.seats.length}` : `${d.pcs.length} detected`}</span>}
-          <span><i className={`dot ${s.obs.state === 'connected' ? 'ok' : 'warn'}`} /> OBS</span>
-          <button className="btn small" onClick={openFix}>Fix data <span className="kbd">{keyLabel(keyOf(s.keymap, 'fix'))}</span></button>
-        </div>
-        <div className="live-log" aria-live="polite">
-          {s.log.slice(0, 3).map((e, i) => <div key={`${e.t}-${i}`}><time className="mono">{new Date(e.t).toLocaleTimeString('en-GB')}</time><span>{e.text}</span></div>)}
-        </div>
-        {s.obs.state !== 'connected'
-          ? <p className="muted t-sm">OBS is not connected: the monitor shows a sample backdrop. <button className="btn quiet small" onClick={() => go('settings')}>Connect OBS</button></p>
-          : !s.obs.installed ? <div className="notice">The ESPORTRA scenes are not in OBS yet. <button className="btn fix" onClick={() => void run(() => air.installGraphics())}>Add for me</button></div> : null}
+  const items = panelItems(s, run, setForm);
+  // The selected graphic, or the phase's first (what is on air first) so the middle is never empty.
+  const inPhase = items.filter((x) => x.phase === phase);
+  const sel = items.find((x) => x.id === selected && x.phase === phase) ?? inPhase.find((x) => x.state === 'onair') ?? inPhase[0] ?? null;
+  const cuedZone = (
+    <section className="zone" aria-label="Cued">
+      <div className="between">
+        <h2 className="title-sm">{s.cue.mode ? 'Cued' : 'Straight to air'}</h2>
+        <label className="row-gap t-xs muted">Changes wait here<button type="button" className="switch" role="switch" aria-checked={s.cue.mode} aria-label="Cue changes before they go on air" onClick={() => void run(() => air.cueMode(!s.cue.mode))} /></label>
       </div>
-
-      <aside className="stack live-side">
-        {s.control !== 'companion' && <AutopilotCard s={s} run={run} />}
-
-        <section className="zone" aria-label="Cued">
-          <div className="between">
-            <h2 className="title-sm">{s.cue.mode ? 'Cued' : 'Straight to air'}</h2>
-            <label className="row-gap t-xs muted">Changes wait here<button type="button" className="switch" role="switch" aria-checked={s.cue.mode} aria-label="Cue changes before they go on air" onClick={() => void run(() => air.cueMode(!s.cue.mode))} /></label>
+      {s.cue.mode ? (cued ? (
+        <>
+          <div className="cue-list">{s.cue.pending.map((label, i) => <span key={`${label}-${i}`} className="cue-chip">{label}</span>)}</div>
+          <div className="row-gap" style={{ flexWrap: 'wrap' }}>
+            <button className="btn primary" onClick={() => void run(() => air.cueTake('take'))}>Take <span className="kbd">{keyLabel(keyOf(s.keymap, 'take'))}</span></button>
+            <button className="btn" onClick={() => void run(() => air.cueTake('stinger'))}>Behind the stinger <span className="kbd">{keyLabel(keyOf(s.keymap, 'stinger'))}</span></button>
+            <button className="btn quiet small" onClick={() => void run(() => air.cueClear())}>Clear</button>
           </div>
-          {s.cue.mode ? (cued ? (
-            <>
-              <div className="cue-list">{s.cue.pending.map((label, i) => <span key={`${label}-${i}`} className="cue-chip">{label}</span>)}</div>
-              <div className="row-gap">
-                <button className="btn primary" onClick={() => void run(() => air.cueTake('take'))}>Take <span className="kbd">{keyLabel(keyOf(s.keymap, 'take'))}</span></button>
-                <button className="btn" onClick={() => void run(() => air.cueTake('stinger'))}>Behind the stinger <span className="kbd">{keyLabel(keyOf(s.keymap, 'stinger'))}</span></button>
-                <button className="btn quiet small" onClick={() => void run(() => air.cueClear())}>Clear</button>
+        </>
+      ) : <div className="cue-empty"><b>Nothing cued</b><span>Pick a graphic or a moment. It waits here until you press <span className="kbd">{keyLabel(keyOf(s.keymap, 'take'))}</span></span></div>)
+        : <p className="muted t-sm">Every change goes on air the moment you make it.</p>}
+    </section>
+  );
+
+  return (
+    <div className="cp">
+      {!s.match && <div className="notice">No match selected. <button className="btn fix" onClick={() => go('ready')}>Choose a match</button></div>}
+      <MatchBar s={s} run={run} openFix={openFix} />
+      {s.match && s.mapStopped && (
+        <div className="card warn stack" role="alert" style={{ gap: 8, padding: 14 }}>
+          <span><b>Map {s.mapStopped.map} ended at {s.mapStopped.scores[0]}–{s.mapStopped.scores[1]} before it was finished.</b> What was it?</span>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('team0'))}>Count it for {s.match.teams[0].name}</button>
+            <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('team1'))}>Count it for {s.match.teams[1].name}</button>
+            <button className="btn small" onClick={() => void run(() => air.mapStoppedResolve('remade'))}>Map remade, not counted</button>
+            <button className="btn quiet small" onClick={() => void run(() => air.mapStoppedResolve('ignore'))}>Ignore</button>
+          </div>
+        </div>
+      )}
+      <div className="cp-cols">
+        <GraphicList items={items} phase={phase} setPhase={setPhase} selected={sel?.id ?? null} select={setSelected} />
+        <div className="stack cp-midcol">
+          <GraphicDetail s={s} run={run} item={sel} cycle={cycle} />
+          <div className="cp-row">
+            {s.control !== 'companion' && <AutopilotCard s={s} run={run} />}
+            <section className="zone" aria-label="Moments">
+              <div className="between"><h2 className="title-sm">Moments</h2><span className="row-gap"><button className="btn quiet small" onClick={() => setDrawer(true)}>All graphics <span className="kbd">{keyLabel(keyOf(s.keymap, 'all'))}</span></button><button className="btn quiet small" onClick={() => go('settings')}>Choose</button></span></div>
+              <div className="moments">
+                {moments.map((m) => (
+                  <button key={m.id} className={`moment ${m.state}`} disabled={!m.built || !s.match} onClick={m.fire} aria-pressed={m.state !== 'idle'} title={m.detail}>
+                    <span><b>{m.label}</b><br /><span className="faint t-xs">{m.detail}</span></span>
+                    <span className="kbd">{keyLabel(keyOf(s.keymap, m.id))}</span>
+                  </button>
+                ))}
               </div>
-            </>
-          ) : <div className="cue-empty"><b>Nothing cued</b><span>Pick a moment or a graphic. It waits here until you press <span className="kbd">{keyLabel(keyOf(s.keymap, 'take'))}</span></span></div>)
-            : <p className="muted t-sm">Every change goes on air the moment you make it.</p>}
-        </section>
-
-        <section className="zone" aria-label="Moments">
-          <div className="between"><h2 className="title-sm">Moments</h2><button className="btn quiet small" onClick={() => go('settings')}>Choose</button></div>
-          <div className="moments">
-            {moments.map((m) => (
-              <button key={m.id} className={`moment ${m.state}`} disabled={!m.built || !s.match} onClick={m.fire} aria-pressed={m.state !== 'idle'} title={m.detail}>
-                <span><b>{m.label}</b><br /><span className="faint t-xs">{m.detail}</span></span>
-                <span className="kbd">{keyLabel(keyOf(s.keymap, m.id))}</span>
-              </button>
-            ))}
+              {form === 'toast' && <ToastForm s={s} run={run} close={() => setForm(null)} />}
+              {form === 'poll' && <PollForm s={s} run={run} close={() => setForm(null)} active={s.triggers.poll} />}
+            </section>
           </div>
-          {form === 'toast' && <ToastForm s={s} run={run} close={() => setForm(null)} />}
-          {form === 'poll' && <PollForm s={s} run={run} close={() => setForm(null)} active={s.triggers.poll} />}
-          <button className="btn" onClick={() => setDrawer(true)}>All graphics <span className="kbd">{keyLabel(keyOf(s.keymap, 'all'))}</span></button>
-        </section>
-      </aside>
+          <div className="live-log" aria-live="polite">
+            {s.log.slice(0, 3).map((e, i) => <div key={`${e.t}-${i}`}><time className="mono">{new Date(e.t).toLocaleTimeString('en-GB')}</time><span>{e.text}</span></div>)}
+          </div>
+        </div>
+        <aside className="stack cp-right">
+          <PauseHint s={s} run={run} />
+          {s.match && <OnAirMonitor s={s} image={frame?.pgm ?? null} />}
+          {cuedZone}
+          <ResultsCard s={s} run={run} />
+          <div className="datastrip" aria-label="Live data">
+            {live && r ? (
+              <>
+                <span><b>Round {r.round ?? '—'}</b> · {(r.phase ?? '—')}{r.clockEndsAt && ['live', 'buy', 'planted'].includes(r.phase ?? '') ? ` · ~${clock(r.clockEndsAt - now)}` : ''}</span>
+                <span><b>Alive</b> {r.alive[0]} v {r.alive[1]}</span>
+                {r.spikePlanted && r.clockEndsAt && <span style={{ color: 'var(--amber)' }}>Spike (inferred) ~{clock(r.clockEndsAt - now)}</span>}
+                {s.testRound.running && <Tally kind="covered">Test round</Tally>}
+              </>
+            ) : <span className="muted">Waiting for game data</span>}
+            <span className="spacer" />
+            <span><i className={`dot ${s.feed.state === 'live' ? 'ok' : 'off'}`} /> Game data {s.feed.state === 'live' ? age(s.feed.ageMs) : 'off'}</span>
+            {(s.setup.profile === 'player-pcs' || d.pcs.length > 0) && <span><i className={`dot ${d.fromGame ? (d.checkedIn === d.seats.length && d.seats.length ? 'ok' : 'warn') : d.pcs.length ? 'ok' : 'warn'}`} /> Player PCs {d.fromGame ? `${d.checkedIn}/${d.seats.length}` : `${d.pcs.length} detected`}</span>}
+            <span><i className={`dot ${s.obs.state === 'connected' ? 'ok' : 'warn'}`} /> OBS</span>
+          </div>
+          {s.obs.state !== 'connected'
+            ? <p className="muted t-sm">OBS is not connected: the monitor shows a sample backdrop. <button className="btn quiet small" onClick={() => go('settings')}>Connect OBS</button></p>
+            : !s.obs.installed ? <div className="notice">The ESPORTRA scenes are not in OBS yet. <button className="btn fix" onClick={() => void run(() => air.installGraphics())}>Add for me</button></div> : null}
+        </aside>
+      </div>
       {drawer && <AllGraphics s={s} run={run} cycle={cycle} close={() => setDrawer(false)} openForm={setForm} />}
     </div>
   );

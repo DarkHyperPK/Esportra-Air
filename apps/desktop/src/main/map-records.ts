@@ -18,6 +18,10 @@ export interface MapRecordsContext {
 
 /** Which record the post-game graphics show: a map number, or the whole series. */
 export type RecordChoice = number | 'series';
+/** The post-game graphics' options: the stats ticked, and the players picked ([team, slot]; null: the top fraggers). */
+export interface PostOptions { stats: string[]; player: [number, number] | null; matchup: [[number, number], [number, number]] | null }
+export const POST_STATS = ['k', 'd', 'a', 'fk', 'fd', 'kd', 'multi', 'hs', 'adr'] as const;
+const slot = (v: unknown): [number, number] | null => (Array.isArray(v) && (v[0] === 0 || v[0] === 1) && Number.isInteger(v[1]) && v[1] >= 0 && v[1] < 5 ? [v[0], v[1]] : null);
 const MAX_MAPS = 9;
 
 export class MapRecords {
@@ -82,20 +86,46 @@ export class MapRecords {
     await this.publish();
   }
 
-  /** The room fields: the chosen record (the latest map when none is chosen) and the list of maps kept. */
+  /** The record the post-game graphics show (the latest map when none is chosen). */
+  shown(match: Match) {
+    const list = this.list(match.id);
+    const choice = this.ctx.store.data.recordShown?.[match.id];
+    return choice === 'series' ? seriesRecord(list) : list.find((r) => r.map === choice) ?? list[list.length - 1] ?? null;
+  }
+
+  options(matchId: string): PostOptions {
+    return this.ctx.store.data.postOptions?.[matchId] ?? { stats: ['k', 'd', 'a', 'fk', 'kd'], player: null, matchup: null };
+  }
+
+  /** The stats ticked for Post-game player and matchup, and the players they show. */
+  async setOptions(input: Partial<PostOptions>) {
+    const match = this.ctx.match();
+    if (!match) throw new Error('Choose a match first.');
+    const now = this.options(match.id);
+    const next: PostOptions = {
+      stats: input.stats !== undefined ? [...new Set((Array.isArray(input.stats) ? input.stats : []).filter((k) => (POST_STATS as readonly string[]).includes(k)))].slice(0, 6) : now.stats,
+      player: input.player !== undefined ? slot(input.player) : now.player,
+      matchup: input.matchup !== undefined ? (Array.isArray(input.matchup) && slot(input.matchup[0]) && slot(input.matchup[1]) ? [slot(input.matchup[0])!, slot(input.matchup[1])!] : null) : now.matchup,
+    };
+    if (input.stats !== undefined && !next.stats.length) throw new Error('Tick at least one stat.');
+    (this.ctx.store.data.postOptions ??= {})[match.id] = next;
+    this.ctx.save();
+    await this.publish();
+  }
+
+  /** The room fields: the chosen record, the list of maps kept, and the post-game options. */
   room(): Record<string, unknown> | null {
     const match = this.ctx.match();
     if (!match) return null;
     const list = this.list(match.id);
-    const choice = this.ctx.store.data.recordShown?.[match.id];
-    const record = choice === 'series' ? seriesRecord(list) : list.find((r) => r.map === choice) ?? list[list.length - 1] ?? null;
-    return { airRecord: record, airRecords: list.map((r) => ({ map: r.map, name: r.name, score: r.score, winner: r.winner })) };
+    const o = this.options(match.id);
+    return { airRecord: this.shown(match), airRecords: list.map((r) => ({ map: r.map, name: r.name, score: r.score, winner: r.winner })), airPostStats: o.stats, airPostPlayer: o.player, airMatchup: o.matchup };
   }
 
   view(match: Match | null) {
     if (!match) return null;
     const list = this.list(match.id);
-    return { maps: list.map((r) => ({ map: r.map, name: r.name, score: r.score, winner: r.winner, how: r.how, partial: r.partial })), shown: this.ctx.store.data.recordShown?.[match.id] ?? (list.length ? list[list.length - 1]!.map : null) };
+    return { maps: list.map((r) => ({ map: r.map, name: r.name, score: r.score, winner: r.winner, how: r.how, partial: r.partial })), shown: this.ctx.store.data.recordShown?.[match.id] ?? (list.length ? list[list.length - 1]!.map : null), record: this.shown(match), options: this.options(match.id) };
   }
 
   async publish() {

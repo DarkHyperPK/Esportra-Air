@@ -356,7 +356,13 @@ export interface Snapshot {
   /** The selected match's map records, and which one the post-game graphics show. */
   /** The buy phase has run long: maybe a timeout. Null when not, or while a pause is on air. */
   pauseHint: { seconds: number } | null;
-  mapRecords: { maps: Array<{ map: number; name: string; score: [number, number]; winner: 0 | 1 | -1; how: 'game' | 'producer' | 'closed'; partial: boolean }>; shown: number | 'series' | null } | null;
+  mapRecords: {
+    maps: Array<{ map: number; name: string; score: [number, number]; winner: 0 | 1 | -1; how: 'game' | 'producer' | 'closed'; partial: boolean }>;
+    shown: number | 'series' | null;
+    /** The record the post-game graphics show now. */
+    record: import('./map-records.ts').MapRecord | null;
+    options: { stats: string[]; player: [number, number] | null; matchup: [[number, number], [number, number]] | null };
+  } | null;
   mode: PcMode;
   join: JoinView;
   /** Keys rebound on this PC (overrides only) and the moments on Live. */
@@ -562,6 +568,8 @@ export interface AirApi {
   recordRemove(map: number): Promise<Snapshot>;
   /** Keeps the map being played as it stands, without counting it in the series. */
   closeMap(): Promise<Snapshot>;
+  /** Post-game player and matchup: the stats ticked and the players shown (null: the top fraggers). */
+  postOptions(input: { stats?: string[]; player?: [number, number] | null; matchup?: [[number, number], [number, number]] | null }): Promise<Snapshot>;
   camsSet(patch: { layout?: CamsView['layout']; delayMs?: number }): Promise<Snapshot>;
   camCreate(team: number, slot: number): Promise<Snapshot>;
   camRemove(team: number, slot: number): Promise<Snapshot>;

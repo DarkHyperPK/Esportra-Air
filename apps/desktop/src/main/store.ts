@@ -37,6 +37,7 @@ export interface Saved {
   /** Each match's map records (src/shared/map-records.ts) and which one the post-game graphics show. */
   mapRecords?: Record<string, import('../shared/map-records.ts').MapRecord[]>;
   recordShown?: Record<string, number | 'series'>;
+  postOptions?: Record<string, import('./map-records.ts').PostOptions>;
   /** Map results sent (or waiting to be sent) to Esportra for review, per match (src/main/esportra-sync.ts). */
   esportraResults?: Record<string, import('./esportra-sync.ts').SavedResults>;
   /** This PC's id with Esportra (stable across sign-ins). */

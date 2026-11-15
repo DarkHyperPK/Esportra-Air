@@ -1167,3 +1167,45 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .sp-space { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 52px; padding: 6px 10px; border: 1px solid var(--hair); border-radius: var(--r-md); }
 .sp-space.on { background: var(--raised); border-color: var(--hair-strong); }
 .sp-active { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Control panel (approved mock 15 Nov): match bar, graphics by phase, the selected graphic, Program and Cued.
+   ───────────────────────────────────────────────────────────────────────────── */
+.cp { display: grid; gap: 12px; min-width: 0; }
+.cp-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--surface); }
+.cp-teams { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.cp-team { display: inline-flex; align-items: center; gap: 10px; }
+.cp-team b:first-child { box-shadow: inset 0 -2px 0 var(--c); padding-bottom: 2px; }
+.cp-series { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--hair); border-radius: var(--r-md); padding: 0 2px; }
+.cp-series b { min-width: 22px; text-align: center; font-size: var(--t-lg); }
+.cp-mid { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cp-mid b { font-size: 18px; }
+.cp-cols { display: grid; grid-template-columns: 240px minmax(0, 1fr) minmax(300px, 380px); gap: 12px; align-items: start; }
+@media (max-width: 1280px) { .cp-cols { grid-template-columns: 220px minmax(0, 1fr); } .cp-right { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); } }
+@media (max-width: 900px) { .cp-cols { grid-template-columns: minmax(0, 1fr); } }
+.cp-left { display: grid; gap: 8px; align-content: start; }
+.cp-phases { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.cp-phases button { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--hair); border-radius: var(--r-md); background: transparent; color: var(--text-2); font-size: var(--t-sm); cursor: pointer; }
+.cp-phases button[aria-selected='true'] { background: var(--raised); color: var(--text); border-color: var(--hair-strong); box-shadow: inset 2px 0 0 var(--rose); }
+.cp-phases small { color: var(--text-3); font-size: var(--t-2xs); }
+.cp-glist { display: grid; gap: 2px; max-height: calc(100vh - 280px); overflow: auto; }
+.cp-gi { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 6px 10px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--text-2); font-size: var(--t-sm); text-align: left; cursor: pointer; }
+.cp-gi:hover:not(:disabled) { background: var(--raised); color: var(--text); }
+.cp-gi.sel { background: var(--raised); color: var(--text); box-shadow: inset 0 0 0 1px var(--hair-strong); }
+.cp-gi:disabled { opacity: 0.45; cursor: default; }
+.cp-state { flex: none; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 4px; }
+.cp-state.onair { background: var(--rose); color: #fff; }
+.cp-state.cued { background: var(--wash-warn); color: var(--amber); border: 1px solid var(--edge-warn); }
+.cp-state.auto { color: var(--text-3); border: 1px solid var(--hair-strong); }
+.cp-midcol { gap: 12px; min-width: 0; }
+.cp-detail .cp-empty { padding: 40px 16px; text-align: center; }
+.cp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-chips .chip { height: 28px; padding: 0 10px; border: 1px solid var(--hair); border-radius: var(--r-pill); color: var(--text-2); font-size: var(--t-xs); cursor: pointer; }
+.cp-chips .chip.on { color: var(--text); border-color: var(--text); }
+.cp-record { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1100px) { .cp-record { grid-template-columns: minmax(0, 1fr); } }
+.cp-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.cp-right { gap: 12px; min-width: 0; }
+.cp-hint { display: grid; gap: 8px; padding: 12px 14px; }
+.cp-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.warn-text { color: var(--amber); }
