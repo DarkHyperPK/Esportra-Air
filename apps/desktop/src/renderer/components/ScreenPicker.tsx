@@ -38,17 +38,9 @@ export const SCREEN_GROUPS: Array<{ label: string; hint: string; screens: PickSc
   ] },
 ];
 
-export type StartPoint = 'standard' | 'results' | 'everything' | 'hud';
-export const START_POINTS: Array<[StartPoint, string]> = [['standard', 'Standard'], ['results', 'Results only'], ['everything', 'Everything'], ['hud', 'Just the HUD']];
-
-/** The ticks a starting point gives, and the rules (template) the Rundown starts from. */
-export function startPoint(point: StartPoint, bestOf: 1 | 3 | 5): { screens: string[]; template: Preset } {
-  const all = SCREEN_GROUPS.flatMap((g) => g.screens.map((x) => x.id));
-  if (point === 'everything') return { screens: all, template: 'standard' };
-  if (point === 'hud') return { screens: ['in-game'], template: 'standard' };
-  if (point === 'results') return { screens: ['in-game', 'map-result', ...(bestOf > 1 ? ['series'] : []), 'champion'], template: 'minimal' };
-  return { screens: ['holding', 'match-intro', 'map-veto', 'agent-select', 'in-game', 'halftime', 'map-result', ...(bestOf > 1 ? ['series'] : []), 'casters', 'champion'], template: 'standard' };
-}
+export { START_POINTS, startPoint, type StartPoint } from '../../shared/show-templates.ts';
+import type { StartPoint } from '../../shared/show-templates.ts';
+import { START_POINTS } from '../../shared/show-templates.ts';
 
 const THEME_LABEL: Record<BannerTheme, string> = { broadcast: 'Broadcast', compact: 'Compact', monument: 'Monument', impact: 'Impact' } as Record<BannerTheme, string>;
 

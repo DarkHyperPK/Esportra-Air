@@ -65,6 +65,14 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'matchDataSave': await p.matchDataSave(a[0]); break;
     case 'vetoStep': await p.vetoStep(a[0] ?? {}); break;
     case 'vetoUndo': await p.vetoUndo(); break;
+    case 'showTemplateApply': await p.showTemplateApply(String(a[0] ?? '')); break;
+    case 'showTemplateSave': p.showTemplateSave(a[0] ?? {}); break;
+    case 'showTemplateRename': p.showTemplateRename(String(a[0] ?? ''), a[1]); break;
+    case 'showTemplateDuplicate': p.showTemplateDuplicate(String(a[0] ?? '')); break;
+    case 'showTemplateDelete': p.showTemplateDelete(String(a[0] ?? '')); break;
+    case 'vetoFirst': await p.vetoFirst(a[0]); break;
+    case 'vetoToss': await p.vetoToss(); break;
+    case 'vetoEdit': await p.vetoEdit(Number(a[0]), a[1] ?? {}); break;
     case 'eventDataSave': await p.eventDataSave(String(a[0] ?? ''), a[1]); break;
     case 'playerPrepSave': await p.playerPrepSave(String(a[0] ?? ''), a[1]); break;
     case 'mapStoppedResolve': {
@@ -140,6 +148,9 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'esportraSignIn': await p.esportraSignIn(String(a[0] ?? ''), String(a[1] ?? '')); break;
     case 'esportraSignOut': await p.esportraSignOut(); break;
     case 'esportraRefresh': await p.esportraRefresh(); break;
+    case 'esportraCheck': await p.esportraCheck(); break;
+    case 'esportraRequestAccess': await p.esportraRequestAccess(a[0]); break;
+    case 'esportraWithdrawRequest': await p.esportraWithdrawRequest(); break;
     case 'useEsportraMatch': await p.useEsportraMatch(String(a[0])); break;
     case 'vetoFollowEsportra': await p.vetoFollowEsportra(); break;
     case 'recordShow': await p.recordShow(a[0] === 'series' ? 'series' : Number(a[0])); break;

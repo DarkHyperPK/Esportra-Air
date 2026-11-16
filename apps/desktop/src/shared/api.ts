@@ -7,7 +7,7 @@ import type { DevicesView } from './devices.ts';
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
-export type Page = 'ready' | 'event' | 'help' | 'console' | 'teams' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings';
+export type Page = 'ready' | 'event' | 'help' | 'console' | 'teams' | 'library' | 'studio' | 'scenes' | 'capture' | 'outputs' | 'settings';
 export type Health = 'ok' | 'warn' | 'off' | 'bad';
 
 export interface Team {
@@ -150,6 +150,8 @@ export interface RoundReadout {
   /** The player the observer camera is on. */
   observed: { team: number; player: number; name: string } | null;
   roster: Array<Array<{ name: string; inGameName: string }>>;
+  /** Each player's numbers from the game data, for Live's match data (16 Nov). */
+  players: Array<Array<{ name: string; agent: string; k: number; d: number; a: number; credits: number; ult: number; ultMax: number; alive: boolean }>>;
   /** Maps won in the series, and the team names and tags on screen. */
   series: [number, number];
   teams: Array<{ name: string; tag: string }>;
@@ -341,6 +343,9 @@ export interface Snapshot {
   playerPrep: Record<string, import('./match-data.ts').PlayerPrep>;
   /** How many saved match rundowns use each template. */
   templateUse: Record<string, number>;
+  /** Show templates (built in and yours), and the one the selected match's show was last set from. */
+  showTemplates: import('./show-templates.ts').ShowTemplateView[];
+  showTemplateOf: string | null;
   /** Teams/Players. */
   library: Library;
   /** How this PC runs graphics. */
@@ -493,6 +498,19 @@ export interface AirApi {
   matchDataSave(input: import('./match-data.ts').MatchData): Promise<Snapshot>;
   vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }): Promise<Snapshot>;
   vetoUndo(): Promise<Snapshot>;
+  /** Starts the selected match's show from a show template (rows, banner style, pause look). */
+  showTemplateApply(id: string): Promise<Snapshot>;
+  /** Keeps the selected match's show as a template (a new one, or replacing one of yours by id). */
+  showTemplateSave(input: { name: string; id?: string }): Promise<Snapshot>;
+  showTemplateRename(id: string, name: string): Promise<Snapshot>;
+  showTemplateDuplicate(id: string): Promise<Snapshot>;
+  showTemplateDelete(id: string): Promise<Snapshot>;
+  /** Who acts first in the veto; steps already entered swap teams with it. */
+  vetoFirst(team: 0 | 1): Promise<Snapshot>;
+  /** A coin toss for who starts the veto. */
+  vetoToss(): Promise<Snapshot>;
+  /** Changes a step already entered: map, side, which team chose the side. */
+  vetoEdit(index: number, input: { map?: string; side?: 'ATK' | 'DEF' | null; sideTeam?: 0 | 1 | null }): Promise<Snapshot>;
   eventDataSave(eventId: string, input: import('./match-data.ts').EventData): Promise<Snapshot>;
   playerPrepSave(playerId: string, input: import('./match-data.ts').PlayerPrep): Promise<Snapshot>;
   /** Deletes a match from this PC (an Esportra match stays in Esportra). Refused while it is live. */
@@ -560,6 +578,11 @@ export interface AirApi {
   esportraSignIn(email: string, password: string): Promise<Snapshot>;
   esportraSignOut(): Promise<Snapshot>;
   esportraRefresh(): Promise<Snapshot>;
+  /** Checks access again (and loads the matches once it is on); still refused is not an error. */
+  esportraCheck(): Promise<Snapshot>;
+  /** Asks Esportra to turn Air on for this account, with an optional note (up to 500 characters). */
+  esportraRequestAccess(note: string): Promise<Snapshot>;
+  esportraWithdrawRequest(): Promise<Snapshot>;
   useEsportraMatch(matchId: string): Promise<Snapshot>;
   /** Applies or rejects a map result on Esportra (organizers and crew allowed to submit results). */
   esportraReview(proposalId: string, decision: 'apply' | 'reject'): Promise<Snapshot>;

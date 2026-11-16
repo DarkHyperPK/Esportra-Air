@@ -14,8 +14,9 @@ import { pagesForScene, type ScenePage } from '../../shared/scenes.ts';
 import { Composite } from '../components/Preview.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
 import { AutopilotCard } from '../components/Autopilot.tsx';
-import { GraphicDetail, GraphicList, MatchBar, PauseHint, ResultsCard, panelItems, type Phase } from '../components/ControlPanel.tsx';
+import { GraphicDetail, GraphicList, LiveBoard, MatchBar, PauseHint, ResultsCard, panelItems, type Phase } from '../components/ControlPanel.tsx';
 import type { PageProps } from '../App.tsx';
+import { MatchData } from '../components/MatchData.tsx';
 
 /** Runs what a key or moment means (the same call the main process makes for keys over the game). */
 const runCommand = (run: PageProps['run'], cmd: KeyCommand) => {
@@ -168,6 +169,8 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   ref.current = s;
   const [form, setForm] = useState<'toast' | 'poll' | null>(null);
   const [drawer, setDrawer] = useState(false);
+  // The match's own setup over Live (approved mock 16 Nov): veto, players' prep, event data, show text.
+  const [matchDrawer, setMatchDrawer] = useState(false);
   const [phase, setPhase] = useState<Phase>(() => (s.feed.state === 'live' || s.testRound.running ? 'ingame' : s.mapRecords?.maps.length ? 'post' : 'pre'));
   const [selected, setSelected] = useState<string | null>(null);
   const frame = useMonitor(s.obs.state === 'connected');
@@ -200,7 +203,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target)) return;
-      if (e.key === 'Escape') { if (form) setForm(null); else if (drawer) setDrawer(false); return; }
+      if (e.key === 'Escape') { if (form) setForm(null); else if (drawer) setDrawer(false); else if (matchDrawer) setMatchDrawer(false); return; }
       if (e.repeat) return;
       const snap = ref.current;
       const id = actionFor(snap.keymap, e);
@@ -210,6 +213,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
       e.preventDefault();
       if (id === 'fix') return openFix();
       if (id === 'all') return setDrawer((v) => !v);
+      if (id === 'match') return setMatchDrawer((v) => !v);
       const cmd = keyCommand(id, snap);
       if (cmd !== 'ui') return runCommand(run, cmd);
       // Moments that open something in Air (the toast and poll forms, Talent with no one added).
@@ -256,7 +260,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   return (
     <div className="cp">
       {!s.match && <div className="notice">No match selected. <button className="btn fix" onClick={() => go('ready')}>Choose a match</button></div>}
-      <MatchBar s={s} run={run} openFix={openFix} />
+      <MatchBar s={s} run={run} openFix={openFix} openMatch={() => setMatchDrawer(true)} />
       {s.match && s.mapStopped && (
         <div className="card warn stack" role="alert" style={{ gap: 8, padding: 14 }}>
           <span><b>Map {s.mapStopped.map} ended at {s.mapStopped.scores[0]}–{s.mapStopped.scores[1]} before it was finished.</b> What was it?</span>
@@ -272,6 +276,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
         <GraphicList items={items} phase={phase} setPhase={setPhase} selected={sel?.id ?? null} select={setSelected} keymap={s.keymap} />
         <div className="stack cp-midcol">
           <GraphicDetail s={s} run={run} item={sel} cycle={cycle} />
+          <LiveBoard s={s} />
           <div className="cp-row">
             {s.control !== 'companion' && <AutopilotCard s={s} run={run} />}
             <section className="zone" aria-label="Moments">
@@ -316,6 +321,14 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
             : !s.obs.installed ? <div className="notice">The ESPORTRA scenes are not in OBS yet. <button className="btn fix" onClick={() => void run(() => air.installGraphics())}>Add for me</button></div> : null}
         </aside>
       </div>
+      {matchDrawer && (
+        <div className="scrim right" onClick={(e) => e.target === e.currentTarget && setMatchDrawer(false)}>
+          <div className="editor match-drawer" role="dialog" aria-modal="true" aria-label="Match">
+            <header><h2 className="title-md">{s.match?.title ?? 'Match'}</h2><button className="btn quiet small" onClick={() => setMatchDrawer(false)}>Esc</button></header>
+            <div className="editor-body"><MatchData s={s} run={run} openFix={() => { setMatchDrawer(false); openFix(); }} /></div>
+          </div>
+        </div>
+      )}
       {drawer && <AllGraphics s={s} run={run} cycle={cycle} close={() => setDrawer(false)} openForm={setForm} />}
     </div>
   );

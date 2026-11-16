@@ -282,3 +282,35 @@ test('a full device allowance says so, instead of saying Air is not turned on', 
     assert.match(account.view().warning!, /device allowance is full/);
   } finally { await backend.stop(); }
 });
+
+test('while access is refused Air checks again every minute, and a grant brings the matches back without a restart', async () => {
+  const { EsportraAccount } = await import('../src/main/esportra.ts');
+  const { EsportraSync } = await import('../src/main/esportra-sync.ts');
+  const { Store } = await import('../src/main/store.ts');
+  const { FakeEsportra } = await import('../dev/fake-esportra.ts');
+  const backend = await new FakeEsportra().start();
+  backend.allowed = false;
+  const store = new Store(join(mkdtempSync(join(tmpdir(), 'air-esp-grant-')), 'air.json'));
+  const values = new Map<string, string>();
+  let now = 1_000_000;
+  const logs: string[] = [];
+  const account = new EsportraAccount({ apiBase: backend.url, store, secrets: { get: (k) => values.get(k) ?? null, set: (k, v) => void (v === null ? values.delete(k) : values.set(k, v)) }, deviceId: randomUUID(), deviceName: 'TEST-PC' });
+  const sync = new EsportraSync({
+    account: () => account, store, match: () => null, live: () => false, now: () => now, log: (t: string) => logs.push(t), changed: () => {}, save: () => {},
+    health: () => ({ appVersion: 'test', obsConnected: false, captureActive: false, productionActive: false, feedState: 'offline' }),
+  } as unknown as ConstructorParameters<typeof EsportraSync>[0]);
+  try {
+    await account.login(backend.email, backend.password);
+    assert.equal(account.view().state, 'denied');
+    await sync.tick();
+    backend.grant();
+    now += 30_000;
+    await sync.tick();
+    assert.equal(account.view().state, 'denied', 'not before the minute is up');
+    now += 31_000;
+    await sync.tick();
+    assert.equal(account.view().state, 'online');
+    assert.equal(account.view().matches.length, 2, 'the Esportra matches are back');
+    assert.ok(logs.includes('Esportra turned on Air for this account'));
+  } finally { await backend.stop(); }
+});

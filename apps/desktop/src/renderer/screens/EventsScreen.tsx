@@ -10,6 +10,7 @@ import { air } from '../bridge.ts';
 import type { PageProps } from '../App.tsx';
 import { StageLight } from '../components/FirstRun.tsx';
 import { EventBranding, EventLogo, EventTalent } from './EventScreen.tsx';
+import { AccessRequest } from '../components/AccessRequest.tsx';
 import { TeamMark } from './MatchWorkspace.tsx';
 
 export type EventTab = 'matches' | 'branding' | 'talent';
@@ -76,6 +77,7 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
           <p className="muted">An event holds its matches, its logo, and the people and sponsors on air. Start with its name.</p>
           <div className="fr-actions" style={{ justifyContent: 'center' }}>{form}</div>
           {s.esportra.state === 'signed-out' && <button className="btn quiet" onClick={openSignIn}>Sign in to load your Esportra tournaments</button>}
+          {s.esportra.state === 'denied' && <div style={{ textAlign: 'left', maxWidth: 520, margin: '0 auto' }}><AccessRequest e={s.esportra} run={run} /></div>}
         </div>
       </div>
     );
@@ -122,7 +124,7 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
       {s.esportra.state === 'signed-out'
         ? <button className="btn quiet" style={{ alignSelf: 'flex-start' }} onClick={openSignIn}>Sign in to load your Esportra tournaments</button>
         : s.esportra.state === 'denied'
-          ? <p className="faint t-xs">{s.esportra.warning ?? 'Esportra has not turned on Air for this account yet.'}</p>
+          ? <AccessRequest e={s.esportra} run={run} />
           : <button className="btn quiet small" style={{ alignSelf: 'flex-start' }} onClick={() => void run(() => air.esportraRefresh())}>Refresh from Esportra</button>}
     </div>
   );

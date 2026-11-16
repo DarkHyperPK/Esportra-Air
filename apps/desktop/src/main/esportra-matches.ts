@@ -55,6 +55,23 @@ export class EsportraMatches {
     this.ctx.log('Signed out of Esportra');
   }
 
+  async requestAccess(note: unknown) {
+    await this.account.requestAccess(note);
+    this.ctx.log('Asked Esportra for Air access');
+  }
+
+  async withdrawRequest() {
+    await this.account.withdrawRequest();
+    this.ctx.log('Air access request withdrawn');
+  }
+
+  /** Check again: asks whether access is on, and loads the matches when it is. Still refused is not an error here. */
+  async check() {
+    const account = this.account;
+    await account.checkAccess().catch(() => {});
+    if (account.view().state !== 'denied') await this.refresh();
+  }
+
   async refresh() {
     const account = this.account;
     await account.checkAccess().catch(() => {});

@@ -1,6 +1,7 @@
 // Air's saved settings: the tournament setup, matches, OBS address and which OBS scenes Air owns.
 // Secrets (engine key, OBS password) are kept separately, encrypted by the OS (see secrets.ts).
 
+import { loadShowTemplates } from './show-templates.ts';
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -28,6 +29,9 @@ export interface Saved {
   enginePort: number;
   /** The producer's rundown rows, per match (older saves hold edits and are migrated). Whether autopilot is on is never saved. */
   rundown?: Record<string, SavedRundown>;
+  /** The producer's show templates (16 Nov), and which one each match's show was last set from. */
+  showTemplates?: import('../shared/show-templates.ts').ShowTemplate[];
+  showTemplateOf?: Record<string, string>;
   /** Where autopilot is in each match's rundown, so a restart resumes instead of starting over. */
   autopilotProgress?: Record<string, { states: Record<string, 'done' | 'on_air'>; savedAt: number }>;
   /** The signed-in Esportra account (tokens are kept separately, encrypted). */
@@ -156,6 +160,7 @@ export class Store {
 
   /** Brings an older save up to the current scene model, keeping what the producer chose. */
   private migrate() {
+    if (this.data.showTemplates !== undefined) this.data.showTemplates = loadShowTemplates(this.data.showTemplates);
     const setup = this.data.setup;
     const known = new Map((setup.screens ?? []).map((x) => [x.id, x]));
     setup.screens = DEFAULT_SCREENS.map((def) => {

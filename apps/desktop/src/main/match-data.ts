@@ -80,13 +80,48 @@ export class MatchDataService {
   async vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }) {
     const match = this.requireMatch();
     const data = this.of(match);
-    const next = nextVetoStep(data.veto, match.bestOf, data.vetoOrder);
+    const next = nextVetoStep(data.veto, match.bestOf, data.vetoOrder, data.vetoFirst);
     if (!next) throw new Error('The veto is complete.');
     const step = { team: next.team, action: next.action, map: input?.map, ...(input?.side ? { side: input.side } : {}) };
     const veto = validVeto([...data.veto, step], match.bestOf, data.mapPool, data.vetoOrder);
     await this.save({ ...data, veto, vetoSource: 'air' });
     const last = veto.at(-1)!;
     this.ctx.log(`Veto · ${last.action === 'decider' ? 'Decider' : `${match.teams[last.team as 0 | 1]?.tag ?? 'Team'} ${last.action}s`} ${last.map}`);
+  }
+
+  /** Who acts first in the usual order. With steps entered already, the teams of every step swap with it. */
+  async vetoFirst(team: 0 | 1) {
+    const match = this.requireMatch();
+    const data = this.of(match);
+    if (team !== 0 && team !== 1) throw new Error('Choose the team that starts the veto.');
+    if (data.vetoFirst === team && !data.veto.length) return;
+    const flip = data.veto.length && (data.veto[0]!.team === 0 || data.veto[0]!.team === 1) && data.veto[0]!.team !== team;
+    const other = (t: number) => (t === 0 ? 1 : t === 1 ? 0 : t);
+    const veto = flip ? data.veto.map((v) => ({ ...v, team: other(v.team) as VetoStep['team'], ...(v.sideTeam !== undefined ? { sideTeam: other(v.sideTeam) as 0 | 1 } : {}) })) : data.veto;
+    await this.save({ ...data, veto, vetoFirst: team, vetoSource: 'air' });
+    this.ctx.log(`Veto · ${match.teams[team]?.tag || match.teams[team]?.name || 'Team'} starts`);
+  }
+
+  /** A coin toss for who starts the veto. */
+  async vetoToss(random: () => number = Math.random): Promise<0 | 1> {
+    const team = (random() < 0.5 ? 0 : 1) as 0 | 1;
+    const match = this.requireMatch();
+    this.ctx.log(`Coin toss · ${match.teams[team]?.tag || match.teams[team]?.name || 'Team'} wins`);
+    await this.vetoFirst(team);
+    return team;
+  }
+
+  /** Changes one step already entered: its map, side, and which team chose the side. */
+  async vetoEdit(index: number, input: { map?: string; side?: 'ATK' | 'DEF' | null; sideTeam?: 0 | 1 | null }) {
+    const match = this.requireMatch();
+    const data = this.of(match);
+    const step = data.veto[index];
+    if (!Number.isInteger(index) || !step) throw new Error('That step is not in the veto yet.');
+    const next: Record<string, unknown> = { ...step, ...(input?.map ? { map: input.map } : {}) };
+    if (input?.side !== undefined) { if (input.side) next.side = input.side; else { delete next.side; delete next.sideTeam; } }
+    if (input?.sideTeam !== undefined) { if (input.sideTeam === null) delete next.sideTeam; else next.sideTeam = input.sideTeam; }
+    const veto = validVeto(data.veto.map((v, i) => (i === index ? next : v)), match.bestOf, data.mapPool, data.vetoOrder);
+    await this.save({ ...data, veto, vetoSource: 'air' });
   }
 
   async vetoUndo() {

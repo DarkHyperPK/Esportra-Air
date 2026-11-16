@@ -42,6 +42,7 @@ import type { Preset, RowInput } from '../shared/autopilot.ts';
 import type { Store } from './store.ts';
 import { CompanionHost } from './companion.ts';
 import { presetRows, rowsForScreens, ruleOf, rundownScreens } from './autopilot/rundown.ts';
+import { ShowTemplates } from './show-templates.ts';
 import { COLORS, tagFor, tagsFor } from './team-tags.ts';
 import { EsportraMatches } from './esportra-matches.ts';
 import { EsportraSync } from './esportra-sync.ts';
@@ -249,6 +250,15 @@ export class Production extends EventEmitter {
       addRow: (row) => this.rundownSave(row), live: () => !!this.gameLocked(),
       onAir: () => (typeof this.room?.airFullscreen === 'string' ? this.room.airFullscreen : null),
       takeOff: () => this.fullscreen(null, false, true),
+    });
+    this.shows = new ShowTemplates({
+      store: deps.store, match: () => this.match, rows: () => this.autopilot.rows(),
+      replaceRows: (rows, from) => this.autopilot.replaceRows(rows, from), screens: () => this.autopilot.screenIds(),
+      looks: () => this.templates, sectionOf: (s) => this.sectionOf(s), purposeOf: (s) => this.purposeOf(s),
+      pause: () => lookOf(this.setup.look).pause,
+      setPause: async (p) => { if (lookOf(this.setup.look).pause !== p) await this.updateSetup({ look: { ...lookOf(this.setup.look), pause: p } }); },
+      setTheme: async (t) => { if (this.match && this.match.theme !== t) await this.updateMatch(this.match.id, { theme: t }); },
+      log: (text) => this.log.add(text),
     });
     this.cue = new CueDeck({
       match: () => this.match,
@@ -687,6 +697,7 @@ export class Production extends EventEmitter {
   // ── your own graphics: src/main/own-graphics-service.ts ──
 
   readonly own: OwnGraphics;
+  readonly shows: ShowTemplates;
   get ownGraphics(): OwnGraphic[] { return this.own.list; }
   uploadArtwork(dataUrl: string) { return this.own.uploadArtwork(dataUrl); }
   uploadFont(dataUrl: string, name: string) { return this.own.uploadFont(dataUrl, name); }
@@ -1365,6 +1376,14 @@ export class Production extends EventEmitter {
   matchDataSave(input: unknown) { return this.matchData.save(input); }
   vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }) { return this.matchData.vetoStep(input); }
   vetoUndo() { return this.matchData.vetoUndo(); }
+  async showTemplateApply(id: string) { await this.shows.apply(id); this.emit('change'); }
+  showTemplateSave(input: { name?: unknown; id?: unknown }) { const id = this.shows.save(input); this.emit('change'); return id; }
+  showTemplateRename(id: string, name: unknown) { this.shows.rename(id, name); this.emit('change'); }
+  showTemplateDuplicate(id: string) { const x = this.shows.duplicate(id); this.emit('change'); return x; }
+  showTemplateDelete(id: string) { this.shows.remove(id); this.emit('change'); }
+  vetoFirst(team: 0 | 1) { return this.matchData.vetoFirst(team); }
+  async vetoToss() { await this.matchData.vetoToss(); }
+  vetoEdit(index: number, input: { map?: string; side?: 'ATK' | 'DEF' | null; sideTeam?: 0 | 1 | null }) { return this.matchData.vetoEdit(index, input); }
   eventDataSave(eventId: string, input: unknown) { return this.matchData.saveEvent(eventId, input); }
   playerPrepSave(playerId: string, input: unknown) { return this.matchData.savePrep(playerId, input); }
 
@@ -1374,6 +1393,9 @@ export class Production extends EventEmitter {
   esportraSignIn(email: string, password: string) { return this.esportraMatches.signIn(email, password); }
   async esportraSignOut() { this.esportraMatches.signOut(); }
   esportraRefresh() { return this.esportraMatches.refresh(); }
+  esportraCheck() { return this.esportraMatches.check(); }
+  esportraRequestAccess(note: unknown) { return this.esportraMatches.requestAccess(note); }
+  esportraWithdrawRequest() { return this.esportraMatches.withdrawRequest(); }
   useEsportraMatch(matchId: string) { return this.esportraMatches.use(matchId); }
   readonly esportraSync: EsportraSync;
 
@@ -1701,6 +1723,8 @@ export class Production extends EventEmitter {
       eventData: this.match?.eventId ? this.matchData.eventData(this.match.eventId) : null,
       playerPrep: this.deps.store.data.playerPrep ?? {},
       templateUse: this.templateUse(),
+      showTemplates: this.shows.views(),
+      showTemplateOf: this.match ? this.deps.store.data.showTemplateOf?.[this.match.id] ?? null : null,
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,
       companion: this.companion.view(),

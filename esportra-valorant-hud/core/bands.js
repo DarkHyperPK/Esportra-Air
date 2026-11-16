@@ -41,7 +41,7 @@
   // 1 · Map veto (approved mock, 14 Nov): the format's steps; done steps show the map, who acted and the
   // side; the step being chosen is marked in that team's colour; later steps wait as empty slots.
   M.vetoBand = root => band(root, 'bd-veto', s => {
-    const T = s.teams, steps = HUD.vetoSteps(s.veto, s.event.bestOf, s.vetoOrder, s.vetoTurn);
+    const T = s.teams, steps = HUD.vetoSteps(s.veto, s.event.bestOf, s.vetoOrder, s.vetoTurn, s.vetoFirst);
     const tiles = steps.map(v => {
       const team = v.team >= 0 ? T[v.team] : null, other = v.team >= 0 ? T[1 - v.team] : null;
       const n = String(v.i + 1).padStart(2, '0');

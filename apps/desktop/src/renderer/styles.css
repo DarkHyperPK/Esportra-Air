@@ -702,6 +702,8 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .onair-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--rose, #f43f5e); color: #fff; font-weight: 700; font-size: 11.5px; padding: 3px 9px; border-radius: 4px; letter-spacing: 0.04em; }
 .datastrip .spacer { flex: 1; }
 .editor.all-graphics { max-width: 480px; }
+.editor.match-drawer { max-width: min(1100px, 92vw); width: min(1100px, 92vw); }
+.editor.match-drawer .md-grid { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 1280px) { .live-grid { grid-template-columns: minmax(0, 1fr) 320px; } }
 
 /* Help: the manual by situation */
@@ -1134,6 +1136,8 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .md-vrow.now { background: color-mix(in srgb, var(--c, var(--rose)) 9%, transparent); box-shadow: inset 0 0 0 1px var(--c, var(--rose)); }
 .md-vrow.now .cap, .md-vrow.now > span:nth-child(3) { color: var(--c, var(--rose)); }
 .md-vrow.next { background: transparent; border: 1px dashed var(--hair); color: var(--text-3); }
+.md-vedit select.cell { height: 28px; padding: 0 6px; width: 132px; min-width: 0; }
+.md-vedit .row-gap { flex-wrap: nowrap; gap: 8px; }
 .md-series { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
 .md-sm { display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--r-md); background: var(--raised); }
 .md-sm b { font: 800 20px/1.1 'Barlow Condensed', var(--font-ui, sans-serif); letter-spacing: 0.03em; }
@@ -1195,3 +1199,27 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .cp-hint { display: grid; gap: 8px; padding: 12px 14px; }
 .cp-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .warn-text { color: var(--amber); }
+
+/* Show templates (16 Nov): cards to choose a whole show, and the chosen one's detail. */
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.tpl-card { display: grid; gap: 4px; text-align: left; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--hair-strong); background: var(--panel); color: var(--text); cursor: pointer; }
+.tpl-card:hover { background: var(--raised); }
+.tpl-card.on { box-shadow: inset 0 0 0 1px var(--text); background: var(--raised); }
+.tpl-rows { display: grid; gap: 2px; padding-top: 0; }
+.tpl-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); gap: 12px; align-items: center; min-height: 32px; border-top: 1px solid var(--hair); font-size: var(--t-sm); }
+.tpl-row .pill { justify-self: start; }
+
+/* Live's match data from the game (16 Nov). */
+.lb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.lb-table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+.lb-table caption { text-align: left; font-weight: 700; padding: 0 0 6px; white-space: nowrap; }
+.lb-table caption .dot { margin-right: 8px; vertical-align: middle; }
+.lb-table th { text-align: right; font: 600 10px var(--mono); letter-spacing: 0.08em; color: var(--text-3); padding: 4px 6px; white-space: nowrap; }
+.lb-table th:first-child, .lb-table td:first-child { text-align: left; }
+.lb-table td { padding: 5px 6px; border-top: 1px solid var(--hair); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lb-table td:first-child { overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.lb-table tr.dead td { color: var(--text-3); }
+.lb-ult { display: inline-flex; gap: 2px; }
+.lb-ult i { width: 4px; height: 10px; border-radius: 1px; background: var(--hair-strong); }
+.lb-ult i.f { background: var(--amber); }
+@media (max-width: 1280px) { .lb-grid { grid-template-columns: minmax(0, 1fr); } }

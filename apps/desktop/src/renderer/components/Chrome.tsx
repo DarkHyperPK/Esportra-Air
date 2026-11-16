@@ -5,18 +5,18 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { ICONS, LOGO } from './ui.tsx';
 
-/** The menu (approved 12 Nov): Events (which hold their matches), Live, then the graphics library. */
+/** The menu (approved 12 Nov; 16 Nov): Events (which hold their matches), Live, then Teams/Players, HUD library (choose) and Graphics studio (edit). */
 const RAIL_TOP: Array<[Page, string]> = [['event', 'Events']];
-const RAIL_LIBRARIES: Array<[Page, string]> = [['teams', 'Teams/Players'], ['library', 'Graphics']];
+const RAIL_LIBRARIES: Array<[Page, string]> = [['teams', 'Teams/Players'], ['library', 'HUD library'], ['studio', 'Graphics studio']];
 
 /** What each page is called, for the top bar and the command palette. */
 export const PAGE_NAME: Record<Page, string> = {
-  console: 'Live', ready: 'Match', event: 'Events', teams: 'Teams/Players', library: 'Graphics', scenes: 'OBS', outputs: 'Browser sources',
+  console: 'Live', ready: 'Match', event: 'Events', teams: 'Teams/Players', library: 'HUD library', studio: 'Graphics studio', scenes: 'OBS', outputs: 'Browser sources',
   capture: 'Player PCs and cameras', settings: 'Settings', help: 'Help',
 };
 
 /** Pages in the rail's order, for the command palette. */
-export const PAGE_ORDER: Page[] = ['event', 'console', 'teams', 'library', 'help', 'settings'];
+export const PAGE_ORDER: Page[] = ['event', 'console', 'teams', 'library', 'studio', 'help', 'settings'];
 
 /** The rail item a page belongs to. */
 export const railOf = (page: Page): Page => (page === 'ready' || page === 'scenes' || page === 'outputs' || page === 'capture' ? 'event' : page);

@@ -1,4 +1,5 @@
 import { air } from '../bridge.ts';
+import { AccessRequest } from '../components/AccessRequest.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
 import type { PageProps } from '../App.tsx';
 
@@ -26,7 +27,7 @@ export function SyncScreen({ s, run, openSignIn }: PageProps) {
             ) : (
               <>
                 <div><h2 className="title-md">{e.email}</h2><p className="muted" style={{ fontSize: 12.5 }}>{e.host} · this PC is registered as {e.deviceName}</p></div>
-                {e.warning && <div className="notice">{e.warning}</div>}
+                {e.state === 'denied' ? <AccessRequest e={e} run={run} /> : e.warning && <div className="notice">{e.warning}</div>}
                 {e.error && e.state !== 'online' && <p className="muted" style={{ fontSize: 12.5 }}>Last problem: {e.error}</p>}
                 <dl className="readout">
                   <dt>Plan</dt><dd>{e.account?.status ?? '—'}</dd>
