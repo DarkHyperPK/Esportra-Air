@@ -79,7 +79,8 @@ let failShot = async () => {};
 
   await page.goto(`${HOST}/?host=${HOST}`);
   // First run (spec 4A): welcome, guest, game (no default), setup, Connect OBS, then Matches.
-  await page.getByRole('heading', { name: 'Run a professional broadcast from one place.' }).waitFor();
+  await page.getByRole('heading', { name: 'Broadcast graphics for your tournament.' }).waitFor();
+  if (await page.locator('.fr-right, .stagelight').count()) throw new Error('first run has no pictures (15 Nov)');
   await shot('first-run-welcome');
   await btn('Get started');
   await page.getByRole('button', { name: 'Continue as guest' }).waitFor();
@@ -92,7 +93,6 @@ let failShot = async () => {};
   if (!(await cont.isDisabled())) throw new Error('Continue must wait until a game is chosen');
   if (await page.getByRole('radio', { checked: true }).count()) throw new Error('No game may be chosen by default');
   await page.getByRole('radio', { name: /Valorant/ }).click();
-  await page.getByText('What Air shows for Valorant').waitFor();
   await shot('first-run-game');
   await cont.click();
   await page.getByRole('radio', { name: /With player PCs/ }).click();
@@ -190,7 +190,19 @@ let failShot = async () => {};
   await wizard.getByRole('radio', { name: 'Impact' }).click();
   await page.waitForTimeout(2500);
   await shot('wizard-screens');
-  await wizard.getByRole('button', { name: 'Create match and rehearse' }).click();
+  await wizard.getByRole('button', { name: 'Create match · maps and veto' }).click();
+  // Maps and veto (approved mock, 16 Nov): who starts, a ban entered by clicking a map, then rehearse.
+  await wizard.getByRole('group', { name: 'Who starts the veto' }).getByRole('button').nth(1).click();
+  await page.waitForTimeout(400);
+  await wizard.getByRole('button', { name: /^Bind/ }).click();
+  await page.waitForTimeout(600);
+  { const md = (await call('snapshot')).matchData; if (md.vetoFirst !== 1 || md.veto[0]?.map !== 'BIND' || md.veto[0]?.team !== 1) throw new Error('the veto starts with the team chosen: ' + JSON.stringify(md.veto)); }
+  await shot('wizard-veto');
+  // Put it back: the match's Match data step enters the full veto later.
+  await wizard.getByRole('button', { name: 'Undo last' }).click();
+  await wizard.getByRole('group', { name: 'Who starts the veto' }).getByRole('button').nth(0).click();
+  await page.waitForTimeout(400);
+  await wizard.getByRole('button', { name: 'Continue · rehearse' }).click();
   // Rehearse: one big picture and the screens just picked, in show order.
   await wizard.getByRole('button', { name: /Play/ }).first().waitFor();
   { const snap = await call('snapshot'); if (!snap.rundown.some((r) => r.show === 'standings') || !snap.rundown.some((r) => r.show === 'map-veto')) throw new Error('the ticked screens are the Rundown'); }
@@ -259,7 +271,7 @@ let failShot = async () => {};
   await vetoMap('Abyss');
   await page.locator('.md-vrow.now').getByRole('button', { name: 'DEF' }).click();
   await vetoMap('Lotus');
-  await page.locator('.md-vrow').nth(2).getByText('DEF').waitFor();
+  if ((await page.locator('.md-vrow').nth(2).locator('select').nth(1).inputValue()) !== 'DEF') throw new Error('the pick keeps its side, editable in place');
   await shot('match-data-veto');
   await btn('Undo last');
   await page.locator('.md-vrow.now').getByText('PICK', { exact: false }).waitFor();
@@ -294,8 +306,9 @@ let failShot = async () => {};
   await page.getByText(/pictures are not on this PC yet/).waitFor({ timeout: 30_000 });
 
   // HUD library: live previews with this match's teams.
-  await rail('Graphics');
-  await page.getByRole('heading', { name: 'Graphics packs' }).waitFor();
+  await rail('HUD library');
+  await page.getByRole('heading', { name: 'Choose what your shows use' }).waitFor();
+  await page.getByRole('radiogroup', { name: 'Show template' }).getByRole('radio', { name: /Results only/ }).click();
   await page.waitForTimeout(3000);
   await shot('library');
   await btn('Open Esportra Broadcast pack');
@@ -495,8 +508,8 @@ let failShot = async () => {};
   await page.getByRole('menuitem', { name: /Standard show/ }).click();
   await section('Between maps').getByText(/^By itself when the map ends/).waitFor();
   // Graphics › Templates: a look of our own for Map result over the game (approved mock, 13 Nov).
-  await rail('Graphics');
-  await page.getByRole('tab', { name: /Templates/ }).click();
+  await rail('Graphics studio');
+  await page.getByRole('tab', { name: /Looks/ }).click();
   await page.getByLabel('Graphic for a new template').selectOption('map-result|band');
   await btn('+ New template');
   const ed = page.getByRole('dialog', { name: /Template editor/ });
@@ -546,7 +559,7 @@ let failShot = async () => {};
     await art.setContent('<body style="margin:0;background:transparent"><div style="position:absolute;left:260px;top:220px;width:1400px;height:520px;background:#1d0f2b;box-shadow:0 0 0 3px #ffb22e inset"></div><div style="position:absolute;left:260px;top:160px;width:520px;height:60px;background:#ffb22e"></div></body>');
     await art.screenshot({ path: designFile, omitBackground: true });
     await art.close(); }
-  await page.getByRole('tab', { name: /Your graphics/ }).click();
+  await page.getByRole('tab', { name: /Your designs/ }).click();
   await btn('+ Import a design');
   const own = page.getByRole('dialog', { name: /Your graphic/ });
   await own.getByLabel('Design PNG').setInputFiles(designFile);
@@ -903,7 +916,7 @@ let failShot = async () => {};
 
   // A laptop screen: every main page at 1280x800.
   await page.setViewportSize({ width: 1280, height: 800 });
-  for (const [name, label] of [['laptop-live', 'Live'], ['laptop-events', 'Events'], ['laptop-graphics', 'Graphics'], ['laptop-settings', 'Settings']]) {
+  for (const [name, label] of [['laptop-live', 'Live'], ['laptop-events', 'Events'], ['laptop-graphics', 'HUD library'], ['laptop-settings', 'Settings']]) {
     await rail(label);
     await page.waitForTimeout(900);
     await shot(name);
