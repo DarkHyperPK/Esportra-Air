@@ -1365,6 +1365,9 @@ export class Production extends EventEmitter {
   matchDataSave(input: unknown) { return this.matchData.save(input); }
   vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }) { return this.matchData.vetoStep(input); }
   vetoUndo() { return this.matchData.vetoUndo(); }
+  vetoFirst(team: 0 | 1) { return this.matchData.vetoFirst(team); }
+  async vetoToss() { await this.matchData.vetoToss(); }
+  vetoEdit(index: number, input: { map?: string; side?: 'ATK' | 'DEF' | null; sideTeam?: 0 | 1 | null }) { return this.matchData.vetoEdit(index, input); }
   eventDataSave(eventId: string, input: unknown) { return this.matchData.saveEvent(eventId, input); }
   playerPrepSave(playerId: string, input: unknown) { return this.matchData.savePrep(playerId, input); }
 

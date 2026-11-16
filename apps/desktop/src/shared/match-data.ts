@@ -39,6 +39,8 @@ export interface MatchData {
   vetoOrder: VetoOrderStep[] | null;
   /** Where the veto comes from: entered in Air, or followed from Esportra as the teams make it. */
   vetoSource: 'air' | 'esportra';
+  /** The team that acts first in the best-of's usual order (chosen, or by coin toss). */
+  vetoFirst: 0 | 1;
   show: ShowText;
   /** -1: the series winner; 0 or 1 forces the champion. */
   champion: -1 | 0 | 1;
@@ -68,7 +70,7 @@ export interface PlayerPrep {
 }
 
 export const DEFAULT_POOL: MapName[] = ['ABYSS', 'ASCENT', 'BIND', 'CORRODE', 'HAVEN', 'LOTUS', 'SUNSET'];
-export const emptyMatchData = (): MatchData => ({ mapPool: [...DEFAULT_POOL], veto: [], vetoOrder: null, vetoSource: 'air', show: { mode: 'auto', message: '', target: 0, minutes: 10 }, champion: -1 });
+export const emptyMatchData = (): MatchData => ({ mapPool: [...DEFAULT_POOL], veto: [], vetoOrder: null, vetoSource: 'air', vetoFirst: 0, show: { mode: 'auto', message: '', target: 0, minutes: 10 }, champion: -1 });
 export const emptyEventData = (): EventData => ({ standings: [], ticker: [], bracket: { qf: [], sf: [], gf: [] }, handle: '', site: '' });
 export const emptyPrep = (): PlayerPrep => ({ maps: null, rating: '', kpr: '', acs: null, hs: '', clutches: null, quote: '' });
 
@@ -139,13 +141,13 @@ export function validVeto(input: unknown, bestOf: 1 | 3 | 5, pool: MapName[], ve
 }
 
 /** The next step of a veto in progress: its action, and the team whose turn it is (as the HUD works it out). */
-export function nextVetoStep(veto: VetoStep[], bestOf: 1 | 3 | 5, vetoOrder?: VetoOrderStep[] | null): { action: VetoAction; team: 0 | 1 | -1 } | null {
+export function nextVetoStep(veto: VetoStep[], bestOf: 1 | 3 | 5, vetoOrder?: VetoOrderStep[] | null, vetoFirst: 0 | 1 = 0): { action: VetoAction; team: 0 | 1 | -1 } | null {
   const order = orderOf(bestOf, vetoOrder);
   if (veto.length >= order.length) return null;
   const step = order[veto.length]!;
   if (step.action === 'decider') return { action: 'decider', team: -1 };
   if (vetoOrder?.length) return { action: step.action, team: step.team };
-  const first = veto[0] && (veto[0].team === 0 || veto[0].team === 1) ? veto[0].team : 0;
+  const first = veto[0] && (veto[0].team === 0 || veto[0].team === 1) ? veto[0].team : vetoFirst;
   return { action: step.action, team: (((first + veto.length) % 2) as 0 | 1) };
 }
 
@@ -164,6 +166,7 @@ export function validMatchData(input: unknown, bestOf: 1 | 3 | 5): MatchData {
     veto: validVeto(r.veto ?? [], bestOf, pool, vetoOrder),
     vetoOrder,
     vetoSource: r.vetoSource === 'esportra' ? 'esportra' : 'air',
+    vetoFirst: r.vetoFirst === 1 ? 1 : 0,
     show: { mode, message: text(s.message, 120, 'The message'), target, minutes: num(s.minutes, 240, 'The countdown') ?? 10 },
     champion: r.champion === 0 || r.champion === 1 ? r.champion : -1,
   };
@@ -222,6 +225,7 @@ export function roomFields(md: MatchData, ev: EventData, progress: { mapsPlayed:
   const fields: Record<string, unknown> = {
     veto: md.veto.map((v) => ({ team: v.team, action: v.action, map: v.map, ...(v.side ? { side: v.side } : {}), ...(v.sideTeam !== undefined ? { sideTeam: v.sideTeam } : {}) })),
     vetoOrder: md.vetoOrder,
+    vetoFirst: md.vetoFirst ?? 0,
     mapPool: md.mapPool,
     holding: { mode: holdingMode(md.show.mode, progress.mapsPlayed, progress.seriesWon), message: md.show.message, target: md.show.target, minutes: md.show.minutes },
     champion: { team: md.champion },

@@ -187,13 +187,14 @@
    * The veto's steps in order: done ones, then the ones still to come. `order` is the order this match's veto
    * follows (Esportra's custom order, [{action, team}]); without it, the best-of's usual order. `turn`
    * ({team, action, endsAt}) says whose turn it is; without it the first open step is "now" only mid-veto.
-   * While a team chooses the side of a picked map, that pick carries `sideBy`.
+   * While a team chooses the side of a picked map, that pick carries `sideBy`. `first` is the team that acts
+   * first in the usual order (Air's Who starts), used until the veto has its first step.
    */
-  const vetoSteps = HUD.vetoSteps = (veto, bestOf, order, turn) => {
+  const vetoSteps = HUD.vetoSteps = (veto, bestOf, order, turn, first0) => {
     const done = Array.isArray(veto) ? veto : [];
     const custom = Array.isArray(order) && order.length >= done.length && order.length > 0 && order.every(o => o && ['ban', 'pick', 'decider'].includes(o.action));
     const seq = custom ? order : (VETO_ORDER[bestOf] || VETO_ORDER[3]).map(action => ({ action }));
-    const first = done[0] && (done[0].team === 0 || done[0].team === 1) ? done[0].team : 0;
+    const first = done[0] && (done[0].team === 0 || done[0].team === 1) ? done[0].team : first0 === 1 ? 1 : 0;
     const choosingSide = turn && turn.action === 'pick_side' && (turn.team === 0 || turn.team === 1);
     const steps = done.map((v, i) => ({ ...v, i, state: 'done' }));
     const last = steps[steps.length - 1];
@@ -764,7 +765,7 @@
         m.style.setProperty('--ev', eventAccent(s));
         txt(sub, [s.event.stage, `BEST OF ${s.event.bestOf}`].filter(Boolean).join('   ·   '));
         [tl, tr].forEach((el, t) => morph(el, `${teamMark(s.teams[t], 96)}<div><b>${escH(s.teams[t].name)}</b><span class="mono">${escH(s.teams[t].tag)}</span></div>`));
-        const steps = cur = vetoSteps(s.veto, s.event.bestOf, s.vetoOrder, s.vetoTurn);
+        const steps = cur = vetoSteps(s.veto, s.event.bestOf, s.vetoOrder, s.vetoTurn, s.vetoFirst);
         box.style.setProperty('--n', steps.length);
         morph(box, steps.map(st => {
           const n = String(st.i + 1).padStart(2, '0'), T = st.team >= 0 ? s.teams[st.team] : null;

@@ -65,6 +65,9 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'matchDataSave': await p.matchDataSave(a[0]); break;
     case 'vetoStep': await p.vetoStep(a[0] ?? {}); break;
     case 'vetoUndo': await p.vetoUndo(); break;
+    case 'vetoFirst': await p.vetoFirst(a[0]); break;
+    case 'vetoToss': await p.vetoToss(); break;
+    case 'vetoEdit': await p.vetoEdit(Number(a[0]), a[1] ?? {}); break;
     case 'eventDataSave': await p.eventDataSave(String(a[0] ?? ''), a[1]); break;
     case 'playerPrepSave': await p.playerPrepSave(String(a[0] ?? ''), a[1]); break;
     case 'mapStoppedResolve': {

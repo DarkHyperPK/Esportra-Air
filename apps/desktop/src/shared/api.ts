@@ -493,6 +493,12 @@ export interface AirApi {
   matchDataSave(input: import('./match-data.ts').MatchData): Promise<Snapshot>;
   vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }): Promise<Snapshot>;
   vetoUndo(): Promise<Snapshot>;
+  /** Who acts first in the veto; steps already entered swap teams with it. */
+  vetoFirst(team: 0 | 1): Promise<Snapshot>;
+  /** A coin toss for who starts the veto. */
+  vetoToss(): Promise<Snapshot>;
+  /** Changes a step already entered: map, side, which team chose the side. */
+  vetoEdit(index: number, input: { map?: string; side?: 'ATK' | 'DEF' | null; sideTeam?: 0 | 1 | null }): Promise<Snapshot>;
   eventDataSave(eventId: string, input: import('./match-data.ts').EventData): Promise<Snapshot>;
   playerPrepSave(playerId: string, input: import('./match-data.ts').PlayerPrep): Promise<Snapshot>;
   /** Deletes a match from this PC (an Esportra match stays in Esportra). Refused while it is live. */

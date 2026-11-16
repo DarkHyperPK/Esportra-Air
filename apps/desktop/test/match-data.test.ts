@@ -44,6 +44,14 @@ test('the next step: teams take turns from whoever acted first; the decider is n
   assert.equal(nextVetoStep(validVeto(BO3, 3, [...POOL]), 3), null);
 });
 
+test('who starts the veto: the usual order alternates from the chosen team until the first step is in', () => {
+  assert.deepEqual(nextVetoStep([], 3, null, 1), { action: 'ban', team: 1 });
+  assert.deepEqual(nextVetoStep([], 3, null), { action: 'ban', team: 0 }, 'team A by default');
+  assert.deepEqual(nextVetoStep([{ team: 1, action: 'ban', map: 'BIND' }], 3, null, 1), { action: 'ban', team: 0 });
+  assert.equal(validMatchData({ vetoFirst: 1 }, 3).vetoFirst, 1);
+  assert.equal(roomFields(validMatchData({ vetoFirst: 1 }, 3), emptyEventData(), { mapsPlayed: 0, seriesWon: false }).vetoFirst, 1, 'the graphics know who starts');
+});
+
 test('the veto makes the series: picks then the decider, with the current map and holding text', () => {
   const md = validMatchData({ mapPool: [...POOL], veto: BO3, show: { mode: 'auto', message: 'Back soon', minutes: 5 } }, 3);
   assert.deepEqual(seriesMaps(md.veto).map((m) => `${m.map}:${m.pick}`), ['LOTUS:0', 'HAVEN:1', 'SUNSET:-1']);
@@ -122,6 +130,16 @@ test('match data reaches the room: veto, maps, holding text, standings, ticker, 
     assert.equal(st.holding.mode, 'starting');
     await production.vetoUndo();
     assert.equal((await room()).veto.length, 6, 'undo takes the last step back off air');
+    // Who starts: swapping swaps the teams of the steps entered; a step can be edited in place.
+    await production.vetoFirst(1);
+    st = await room();
+    assert.deepEqual([st.vetoFirst, st.veto[0].team, st.veto[1].team], [1, 1, 0], 'Swap: the other team started, every step follows');
+    await production.vetoEdit(2, { side: 'ATK', sideTeam: 0 });
+    st = await room();
+    assert.deepEqual([st.veto[2].side, st.veto[2].sideTeam], ['ATK', 0]);
+    await assert.rejects(production.vetoEdit(0, { map: st.veto[1].map }), /already in the veto/);
+    await assert.rejects(production.vetoEdit(9, { map: 'BIND' }), /not in the veto yet/);
+    await production.vetoFirst(0);
     // The event's standings, ticker and bracket, and the holding text.
     const eventId = production.match!.eventId!;
     {
