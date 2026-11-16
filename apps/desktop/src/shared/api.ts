@@ -7,7 +7,7 @@ import type { DevicesView } from './devices.ts';
 // The contract between the main process and the interface. The renderer only ever sees these
 // shapes, through `window.air` (see src/preload/index.ts).
 
-export type Page = 'ready' | 'event' | 'help' | 'console' | 'teams' | 'library' | 'scenes' | 'capture' | 'outputs' | 'settings';
+export type Page = 'ready' | 'event' | 'help' | 'console' | 'teams' | 'library' | 'studio' | 'scenes' | 'capture' | 'outputs' | 'settings';
 export type Health = 'ok' | 'warn' | 'off' | 'bad';
 
 export interface Team {
@@ -341,6 +341,9 @@ export interface Snapshot {
   playerPrep: Record<string, import('./match-data.ts').PlayerPrep>;
   /** How many saved match rundowns use each template. */
   templateUse: Record<string, number>;
+  /** Show templates (built in and yours), and the one the selected match's show was last set from. */
+  showTemplates: import('./show-templates.ts').ShowTemplateView[];
+  showTemplateOf: string | null;
   /** Teams/Players. */
   library: Library;
   /** How this PC runs graphics. */
@@ -493,6 +496,13 @@ export interface AirApi {
   matchDataSave(input: import('./match-data.ts').MatchData): Promise<Snapshot>;
   vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }): Promise<Snapshot>;
   vetoUndo(): Promise<Snapshot>;
+  /** Starts the selected match's show from a show template (rows, banner style, pause look). */
+  showTemplateApply(id: string): Promise<Snapshot>;
+  /** Keeps the selected match's show as a template (a new one, or replacing one of yours by id). */
+  showTemplateSave(input: { name: string; id?: string }): Promise<Snapshot>;
+  showTemplateRename(id: string, name: string): Promise<Snapshot>;
+  showTemplateDuplicate(id: string): Promise<Snapshot>;
+  showTemplateDelete(id: string): Promise<Snapshot>;
   /** Who acts first in the veto; steps already entered swap teams with it. */
   vetoFirst(team: 0 | 1): Promise<Snapshot>;
   /** A coin toss for who starts the veto. */

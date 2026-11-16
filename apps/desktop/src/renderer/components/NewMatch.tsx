@@ -6,10 +6,14 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { LineupEditor, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
 import { RehearsePanel } from './Rehearse.tsx';
+import { VetoTab } from './MatchData.tsx';
+import { ShowTemplatePicker } from './ShowTemplates.tsx';
 
-const STEPS = ['Teams', 'Players', 'Screens', 'Rehearse'] as const;
+// The match is created when leaving Show (the veto is saved to it); Maps and veto and Rehearse work on it.
+const STEPS = ['Teams', 'Players', 'Show', 'Maps and veto', 'Rehearse'] as const;
 const SCREENS = 2;
-const REHEARSE = 3;
+const VETO = 3;
+const REHEARSE = 4;
 
 export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapshot; run: Run; close: () => void; eventId?: string | null }) {
   const last = s.matches[0];
@@ -35,7 +39,16 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
   // Screens that start as an overlay bar over the game (the rest full screen).
   const [bands, setBands] = useState<string[]>([]);
   const [template, setTemplate] = useState(startPoint('standard', 3).template);
-  const choosePoint = (p: StartPoint) => { const x = startPoint(p, bestOf); setPoint(p); setPicked(x.screens); setTemplate(x.template); };
+  // A show template of your own: its screens and looks here; its exact rows are applied once the match exists.
+  const [mine, setMine] = useState<string | null>(null);
+  const choosePoint = (p: StartPoint) => { const x = startPoint(p, bestOf); setPoint(p); setMine(null); setPicked(x.screens); setTemplate(x.template); };
+  const chooseShow = (id: string) => {
+    if (id.startsWith('builtin:')) return choosePoint(id.slice(8) as StartPoint);
+    const t = s.showTemplates.find((x) => x.id === id);
+    if (!t) return;
+    setPoint(null); setMine(id); setTheme(t.theme); setTemplate('standard');
+    setPicked(['in-game', ...t.screens.map((x) => x.show)]); setBands(t.screens.filter((x) => x.style === 'band').map((x) => x.show));
+  };
   useEffect(() => { if (point) choosePoint(point); }, [bestOf]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   // Once created, the match is edited on its own page; the wizard only rehearses it.
@@ -50,8 +63,9 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
     const ok = await run(() => air.createMatch({ bestOf, teams, players, ...(event ? { eventId: event.id } : {}), stage, theme, template, screens: [...new Set(['in-game', ...picked])], bands: bands.filter((b) => picked.includes(b)) }));
     setBusy(false);
     if (ok) {
+      if (mine) await run(() => air.showTemplateApply(mine));
       setCreated(true);
-      setStep(REHEARSE);
+      setStep(VETO);
     }
   };
   const done = () => {
@@ -65,11 +79,11 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
         <header className="wizard-head">
           <div><span className="cap">New {s.game?.name ?? ''} match</span><h2 className="title-md" style={{ marginTop: 4 }}>{STEPS[step]}</h2></div>
           <ol className="stepper">
-            {STEPS.map((label, i) => <li key={label} className={i === step ? 'now' : i < step ? 'done' : ''}><button type="button" disabled={i > step || (created && i < REHEARSE)} onClick={() => setStep(i)}><span>{i + 1}</span>{label}</button></li>)}
+            {STEPS.map((label, i) => <li key={label} className={i === step ? 'now' : i < step ? 'done' : ''}><button type="button" disabled={i > step || (created && i < VETO)} onClick={() => setStep(i)}><span>{i + 1}</span>{label}</button></li>)}
           </ol>
           <button className="btn quiet small" onClick={done} aria-label="Close">Esc · Close</button>
         </header>
-        {step < REHEARSE && (
+        {step < VETO && (
           <div className="wizard-ctx">
             {forEvent && event
               ? <span>Match in <b>{event.name}</b></span>
@@ -130,7 +144,16 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
             </div>
           )}
           {step === SCREENS && (
-            <ScreenPicker s={s} picked={picked} onPick={(ids) => { setPicked(ids); setPoint(null); }} point={point} onPoint={choosePoint} theme={theme} onTheme={setTheme} bands={bands} onBands={setBands} />
+            <div className="stack" style={{ gap: 16 }}>
+            <ShowTemplatePicker s={s} value={mine ? mine : point ? `builtin:${point}` : null} onPick={chooseShow} />
+            <ScreenPicker s={s} picked={picked} onPick={(ids) => { setPicked(ids); setPoint(null); setMine(null); }} point={point} onPoint={choosePoint} theme={theme} onTheme={setTheme} bands={bands} onBands={(b) => { setBands(b); setMine(null); }} />
+            </div>
+          )}
+          {step === VETO && s.match && s.matchData && (
+            <div className="stack" style={{ gap: 14 }}>
+              <p className="lead">Best of, the map pool and who starts. Enter the veto now, or later from Live’s Match drawer as the teams ban and pick.</p>
+              <VetoTab key={s.match.id} s={s} run={run} md={s.matchData} />
+            </div>
           )}
           {step === REHEARSE && (
             <div className="stack" style={{ gap: 14 }}>
@@ -140,12 +163,14 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
           )}
         </div>
         <footer className="wizard-foot">
-          <button className="btn quiet" disabled={step === 0 || created} onClick={() => setStep(step - 1)}>Back</button>
+          <button className="btn quiet" disabled={step === 0 || (created && step <= VETO)} onClick={() => setStep(step - 1)}>Back</button>
           <span className="muted" style={{ fontSize: 12.5 }}>Step {step + 1} of {STEPS.length}</span>
           {step === REHEARSE
             ? <button className="btn primary" onClick={done}>Finish · Readiness</button>
-            : step === REHEARSE - 1
-              ? <button className="btn primary" disabled={busy || !teamsOk} onClick={() => void finish()}>{busy ? 'Creating…' : 'Create match and rehearse'}</button>
+            : step === SCREENS
+              ? <button className="btn primary" disabled={busy || !teamsOk} onClick={() => void finish()}>{busy ? 'Creating…' : 'Create match · maps and veto'}</button>
+              : step === VETO
+                ? <button className="btn primary" onClick={() => setStep(REHEARSE)}>Continue · rehearse</button>
               : <button className="btn primary" disabled={!canNext} onClick={() => setStep(step + 1)}>Continue</button>}
         </footer>
       </div>

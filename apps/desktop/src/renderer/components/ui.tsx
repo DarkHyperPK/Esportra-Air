@@ -41,6 +41,7 @@ export const ICONS = {
   teams: svg(<><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><circle cx="17" cy="9" r="2.5" /><path d="M15.5 14.2c2.9.3 5.5 2.6 5.5 5.8" /></>),
   event: svg(<><path d="M8 4h8v5a4 4 0 0 1-8 0z" /><path d="M8 6H5a3 3 0 0 0 3 3M16 6h3a3 3 0 0 1-3 3M12 13v4M8 20h8" /></>),
   library: svg(<><rect x="3" y="4" width="8" height="7" rx="1.5" /><rect x="13" y="4" width="8" height="7" rx="1.5" /><rect x="3" y="13" width="8" height="7" rx="1.5" /><path d="M13 16.5h8M17 13v7" /></>),
+  studio: svg(<><path d="M4 20l4-1 10-10-3-3L5 16l-1 4z" /><path d="M13 7l3 3" /></>),
   data: svg(<><rect x="4" y="5" width="16" height="14" /><path d="M4 10h16M9 5v14" /></>),
   sync: svg(<><path d="M20 8a8 8 0 0 0-14-2M4 4v4h4" /><path d="M4 16a8 8 0 0 0 14 2M20 20v-4h-4" /></>),
   setup: svg(<><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>),

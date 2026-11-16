@@ -10,6 +10,7 @@ import { GRAPHICS, graphicTitle, type BrandKit, type Template } from '../../shar
 import { brandOfMatch, openTemplateEditor, templatePreviewUrl } from '../components/TemplateEditor.tsx';
 import { OwnGraphicEditor, blankOwn } from '../components/OwnGraphicEditor.tsx';
 import { OWN_PURPOSES, ownScreenId, type OwnGraphic } from '../../shared/own-graphics.ts';
+import { ShowTemplateManager } from '../components/ShowTemplates.tsx';
 
 /** A live thumbnail of a graphic with a template (or its default look). */
 export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit }) {
@@ -140,9 +141,9 @@ export function BannerStyles({ s, value, onPick }: { s: Snapshot; value: BannerT
   );
 }
 
+/** HUD library (16 Nov): choose what a match's show uses. Show templates, every graphic in the pack, the banner style. */
 export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'library' | 'templates' | 'own'>('library');
   const game = s.game;
   const items = LIBRARY[game?.id ?? 'valorant'];
   const chosen = items.filter((i) => inShow(s.setup, i)).length;
@@ -151,31 +152,46 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id, theme, s.match?.teams.map((t) => t.name + t.logo + t.color).join()]);
   return (
     <div className="stack" style={{ gap: 26 }}>
-      <PageHeader eyebrow={`Library · ${game?.name ?? 'no game chosen'}`} title={tab === 'library' ? 'Graphics packs' : tab === 'own' ? 'Your graphics' : 'Templates'}>
-        {tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : tab === 'library' ? <>Every graphic Air can put on air, live {s.match ? <>with <b>{s.match.teams[0].name}</b> and <b>{s.match.teams[1].name}</b></> : 'with sample teams'}. Open a pack to choose what is in your show.</> : 'Your own looks for the graphics, used by the Rundown.'}
+      <PageHeader eyebrow={`HUD library · ${game?.name ?? 'no game chosen'}`} title="Choose what your shows use">
+        Pick a show template for {s.match ? <b>{s.match.title}</b> : 'a match'}, or open the pack to choose graphic by graphic. Editing a look happens in Graphics studio.
       </PageHeader>
-      <div className="seg tabs-seg" role="tablist" aria-label="Graphics">
-        <button role="tab" aria-selected={tab === 'library'} aria-pressed={tab === 'library'} onClick={() => setTab('library')}>Library</button>
-        <button role="tab" aria-selected={tab === 'templates'} aria-pressed={tab === 'templates'} onClick={() => setTab('templates')}>Templates{s.templates.length ? ` · ${s.templates.length}` : ''}</button>
-        <button role="tab" aria-selected={tab === 'own'} aria-pressed={tab === 'own'} onClick={() => setTab('own')}>Your graphics{s.ownGraphics.length ? ` · ${s.ownGraphics.length}` : ''}</button>
-      </div>
-      {tab === 'own' ? <OwnTab s={s} run={run} /> : tab === 'templates' ? <TemplatesTab s={s} /> : <>
-      <div className="packs">
-        <button className="pack-card" onClick={() => setOpen(true)} aria-label={`Open ${game?.pack ?? 'the'} pack`}>
-          <Preview src={overlayUrl(s, 'ingame')} label={`${game?.pack ?? 'Graphics'} pack`} />
-          <span className="between"><span><b>{game?.pack ?? 'Graphics'}</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in the show</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
-        </button>
-        <div className="pack-card soon" aria-hidden="true">
-          <div className="pv pv-bg pack-soon"><span className="muted t-sm">More packs later</span></div>
-          <span><b>Other packs</b><br /><span className="muted t-sm">Not available yet</span></span>
+      <ShowTemplateManager s={s} run={run} />
+      <section className="stack" style={{ gap: 10 }}>
+        <h2 className="title-sm">Graphics</h2>
+        <div className="packs">
+          <button className="pack-card" onClick={() => setOpen(true)} aria-label={`Open ${game?.pack ?? 'the'} pack`}>
+            <Preview src={overlayUrl(s, 'ingame')} label={`${game?.pack ?? 'Graphics'} pack`} />
+            <span className="between"><span><b>{game?.pack ?? 'Graphics'}</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in the show</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
+          </button>
+          <div className="pack-card soon" aria-hidden="true">
+            <div className="pv pv-bg pack-soon"><span className="muted t-sm">More packs later</span></div>
+            <span><b>Other packs</b><br /><span className="muted t-sm">Not available yet</span></span>
+          </div>
         </div>
-      </div>
+      </section>
       <section className="stack" style={{ gap: 10 }}>
         <div className="between"><h2 className="title-sm">Banner style</h2><span className="muted t-sm">{s.match ? `Used by ${s.match.title}` : 'Choose a match to set its style'}</span></div>
         <BannerStyles s={s} value={theme} onPick={(t) => s.match && void run(() => air.updateMatch(s.match!.id, { theme: t }))} />
       </section>
-      </>}
       {open && <PackWindow s={s} run={run} close={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+/** Graphics studio (16 Nov): editing only. Looks for Air's graphics, and your own designs. */
+export function StudioScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
+  const [tab, setTab] = useState<'templates' | 'own'>('templates');
+  useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id]);
+  return (
+    <div className="stack" style={{ gap: 26 }}>
+      <PageHeader eyebrow="Graphics studio" title={tab === 'own' ? 'Your designs' : 'Looks'}>
+        {tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : 'Change how Air’s graphics look. A look is used wherever a show picks it; saving updates every match using it.'}
+      </PageHeader>
+      <div className="seg tabs-seg" role="tablist" aria-label="Graphics studio">
+        <button role="tab" aria-selected={tab === 'templates'} aria-pressed={tab === 'templates'} onClick={() => setTab('templates')}>Looks{s.templates.length ? ` · ${s.templates.length}` : ''}</button>
+        <button role="tab" aria-selected={tab === 'own'} aria-pressed={tab === 'own'} onClick={() => setTab('own')}>Your designs{s.ownGraphics.length ? ` · ${s.ownGraphics.length}` : ''}</button>
+      </div>
+      {tab === 'own' ? <OwnTab s={s} run={run} /> : <TemplatesTab s={s} />}
     </div>
   );
 }

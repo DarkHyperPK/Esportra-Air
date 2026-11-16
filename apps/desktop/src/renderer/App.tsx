@@ -9,7 +9,7 @@ import { FixData } from './components/FixData.tsx';
 import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
 import { ReadyScreen } from './screens/ReadyScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
-import { LibraryScreen } from './screens/LibraryScreen.tsx';
+import { LibraryScreen, StudioScreen } from './screens/LibraryScreen.tsx';
 import { TemplateEditor, type EditorStart } from './components/TemplateEditor.tsx';
 import { EventsScreen, type EventView } from './screens/EventsScreen.tsx';
 import type { Match } from '../shared/api.ts';
@@ -223,6 +223,7 @@ export function App() {
             {page === 'console' && <ConsoleScreen {...props} />}
             {page === 'teams' && <TeamsScreen s={s} run={run} />}
             {page === 'library' && <LibraryScreen {...props} />}
+            {page === 'studio' && <StudioScreen {...props} />}
             {page === 'settings' && <SettingsScreen {...props} />}
           </main>
         </div>

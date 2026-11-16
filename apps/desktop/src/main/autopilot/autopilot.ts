@@ -156,6 +156,16 @@ export class Autopilot {
     this.saveRows();
   }
 
+  /** Replaces the selected match's rows (a show template); refused while autopilot runs. */
+  replaceRows(rows: RundownRow[], startedFrom: SavedRundown['startedFrom']) {
+    const match = this.editable();
+    this.deps.store.data.rundown![match.id] = { rows: sortRows(rows), startedFrom };
+    this.saveRows();
+  }
+
+  /** Screen ids a row can use (the setup's screens). */
+  screenIds(): string[] { return this.allScreens(); }
+
   private editable(): Match {
     const match = this.deps.match();
     if (!match) throw new Error('Choose a match first.');

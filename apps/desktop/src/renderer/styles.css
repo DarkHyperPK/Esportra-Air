@@ -1197,3 +1197,12 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .cp-hint { display: grid; gap: 8px; padding: 12px 14px; }
 .cp-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .warn-text { color: var(--amber); }
+
+/* Show templates (16 Nov): cards to choose a whole show, and the chosen one's detail. */
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.tpl-card { display: grid; gap: 4px; text-align: left; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--hair-strong); background: var(--panel); color: var(--text); cursor: pointer; }
+.tpl-card:hover { background: var(--raised); }
+.tpl-card.on { box-shadow: inset 0 0 0 1px var(--text); background: var(--raised); }
+.tpl-rows { display: grid; gap: 2px; padding-top: 0; }
+.tpl-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); gap: 12px; align-items: center; min-height: 32px; border-top: 1px solid var(--hair); font-size: var(--t-sm); }
+.tpl-row .pill { justify-self: start; }
