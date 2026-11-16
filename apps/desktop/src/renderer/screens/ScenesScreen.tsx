@@ -1,4 +1,4 @@
-import { SCENE_KEYS, SCENES, sourceName } from '../../shared/scenes.ts';
+import { SCENE_KEYS, SCENES, SLOT_NOTE, SOURCE_NOTE, sourceName } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
@@ -72,6 +72,7 @@ export function ScenesScreen({ s, run, go, embedded }: PageProps & { embedded?: 
             const st = s.obs.scenes.find((x) => x.key === key);
             const inObs = !!st?.inObs;
             const sources = s.setup.screens.filter((x) => x.scene === key && x.enabled);
+            const host = s.setup.screens.some((x) => x.id === 'fullscreen' && x.enabled);
             return (
               <div key={key} style={{ borderTop: '1px solid var(--hair)', background: s.obs.programScene === def.name ? 'var(--rose-soft)' : undefined }}>
                 <div className="tree-row" style={{ minHeight: 44 }}>
@@ -84,7 +85,7 @@ export function ScenesScreen({ s, run, go, embedded }: PageProps & { embedded?: 
                 </div>
                 {st?.slots.map((slot) => (
                   <div className="tree-row" key={slot.id} style={{ paddingLeft: 34 }}>
-                    <span>{slot.label}{slot.source && <span className="muted"> · {slot.source}</span>}</span>
+                    <span className="stack" style={{ gap: 2 }}><span>{slot.label}{slot.source && <span className="muted"> · {slot.source}</span>}</span><span className="faint t-xs">{SLOT_NOTE[slot.id as keyof typeof SLOT_NOTE]}</span></span>
                     <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {!slot.source && inObs && s.obs.videoInputs.length > 0 && (
                         <select className="cell" style={{ width: 170, height: 28 }} aria-label={`Use an existing OBS source for ${slot.label}`} value="" onChange={(e) => e.target.value && void run(() => air.useSlotSource(slot.id, e.target.value))}>
@@ -96,10 +97,11 @@ export function ScenesScreen({ s, run, go, embedded }: PageProps & { embedded?: 
                     </span>
                   </div>
                 ))}
-                {sources.map((x) => (
+                {[...sources.map((x) => ({ id: x.id, name: sourceName(x.title) })),
+                  ...(host && key === 'gameplay' ? [{ id: 'fullscreen-over-game', name: sourceName('Full screen over game') }] : []),
+                  ...(host && key === 'casters' ? [{ id: 'fullscreen-over-desk', name: sourceName('Full screen over desk') }] : [])].map((x) => (
                   <div className="tree-row" key={x.id} style={{ paddingLeft: 34 }}>
-                    <span className="muted">{sourceName(x.title)}</span>
-                    <span className="mono muted" style={{ fontSize: 11 }}>{x.frame.width}×{x.frame.height}</span>
+                    <span className="stack" style={{ gap: 2 }}><span className="muted">{x.name}</span>{SOURCE_NOTE[x.id] && <span className="faint t-xs">{SOURCE_NOTE[x.id]}</span>}</span>
                   </div>
                 ))}
               </div>

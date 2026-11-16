@@ -21,7 +21,7 @@ import { devicesView } from '../shared/devices.ts';
 import { DEFAULT_MOMENTS, rebind, validMoments } from '../shared/keymap.ts';
 import { gameName, gameOf, type GameId, type Profile } from '../shared/games.ts';
 import { LIBRARY_ROOM } from '../shared/library.ts';
-import { lookOf, validLook } from '../shared/look.ts';
+import { BAND_SCREENS, lookOf, validLook } from '../shared/look.ts';
 import { BRAND_KEYS, graphicStyle, validBrand, validTemplate, DEFAULT_BRAND, type BrandKit, type Template } from '../shared/templates.ts';
 import { isOwnScreen, ownScreen, ownScreenId, pngSize, validOwn, type OwnGraphic } from '../shared/own-graphics.ts';
 import { HUD_ROW, defaultSection, type Section } from '../shared/autopilot.ts';
@@ -609,7 +609,10 @@ export class Production extends EventEmitter {
     const known = new Set(this.setup.screens.map((x) => x.id));
     if (input.screens !== undefined && (!Array.isArray(input.screens) || input.screens.some((x) => typeof x !== 'string' || !known.has(x)))) throw new Error('Choose screens from the list.');
     const preset = input.template ?? 'standard';
-    (data.rundown ??= {})[id] = { rows: input.screens ? rowsForScreens([...new Set(input.screens)], preset, input.bestOf, (show) => this.sectionOf(show), (show) => this.purposeOf(show)) : presetRows(preset, input.bestOf), startedFrom: preset };
+    if (input.bands !== undefined && (!Array.isArray(input.bands) || input.bands.some((x) => typeof x !== 'string' || !BAND_SCREENS.has(x)))) throw new Error('Only screens with an overlay bar can use it.');
+    const bands = new Set(input.bands ?? []);
+    const rows = input.screens ? rowsForScreens([...new Set(input.screens)], preset, input.bestOf, (show) => this.sectionOf(show), (show) => this.purposeOf(show)) : presetRows(preset, input.bestOf);
+    (data.rundown ??= {})[id] = { rows: rows.map((r) => (r.show && bands.has(r.show) ? { ...r, style: 'band' as const } : r)), startedFrom: preset };
     data.selectedMatchId = id;
     this.save();
     await this.syncEngine();
@@ -952,7 +955,13 @@ export class Production extends EventEmitter {
   templateSave(input: unknown) { return this.looks.save(input); }
   templateDelete(id: string) { return this.looks.delete(id); }
   private breakLook() { return this.looks.breakLook(); }
-  private slotWanted(id: string) { return this.looks.slotWanted(id); }
+  /** Holders Air adds: Break's windows only with the frame look; a desk camera holder only for talent with a camera. */
+  private slotWanted(id: string) {
+    if (!this.looks.slotWanted(id)) return false;
+    if (id !== 'cam1' && id !== 'cam2') return true;
+    const cams = this.match ? onAir(this.match, this.eventOf(this.match)).talent.filter((t) => t.camera.kind !== 'none').length : 0;
+    return cams >= (id === 'cam1' ? 1 : 2);
+  }
   private templateUse() { return this.looks.use(); }
   private hudTemplate() { return this.looks.hud(); }
   /** templateState(match) still decides the brand from the given match (sample rooms pass theirs). */
@@ -1232,7 +1241,8 @@ export class Production extends EventEmitter {
       return;
     }
     if (this.monitorTimer) return;
-    this.monitorTimer = setInterval(() => void this.pump(), 350);
+    // Once a second: each picture makes OBS render and compress a frame, which competes with the game and the stream.
+    this.monitorTimer = setInterval(() => void this.pump(), 1000);
     this.monitorTimer.unref?.();
     void this.pump();
   }

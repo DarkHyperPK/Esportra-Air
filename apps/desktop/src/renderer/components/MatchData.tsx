@@ -65,6 +65,7 @@ function EsportraVetoNote({ s, run }: { s: Snapshot; run: Run }) {
 function VetoTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }) {
   const m = s.match!;
   const locked = !!s.gameLocked;
+  const [pendingBo, setPendingBo] = useState<1 | 3 | 5 | null>(null);
   const [side, setSide] = useState<'ATK' | 'DEF' | ''>('');
   const next = nextVetoStep(md.veto, m.bestOf, md.vetoOrder);
   const order = orderOf(m.bestOf, md.vetoOrder);
@@ -91,10 +92,17 @@ function VetoTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }) {
           <section className="card">
             <div className="card-head">
               <b>Format and map pool</b>
-              <span title={locked ? 'Best of locks while game data or a test round runs' : undefined}>
-                <Seg label="Best of" value={String(m.bestOf) as '1' | '3' | '5'} options={[['1', 'BO1'], ['3', 'BO3'], ['5', 'BO5']]} onChange={(v) => { if (!locked) void run(() => air.updateMatch(m.id, { bestOf: Number(v) as 1 | 3 | 5 })); }} />
-              </span>
+              <Seg label="Best of" disabled={locked} value={String(m.bestOf) as '1' | '3' | '5'} options={[['1', 'BO1'], ['3', 'BO3'], ['5', 'BO5']]} onChange={(v) => { const bo = Number(v) as 1 | 3 | 5; if (bo === m.bestOf) return; if (md.veto.length) setPendingBo(bo); else void run(() => air.updateMatch(m.id, { bestOf: bo })); }} />
             </div>
+            {locked && <p className="faint t-xs body-pad" style={{ paddingTop: 0 }}>Best of is locked while game data or a test round runs. Stop them in Live to change it.</p>}
+            {!locked && m.kind === 'esportra' && <p className="faint t-xs body-pad" style={{ paddingTop: 0 }}>Best of comes from Esportra. A change here lasts until Esportra changes the match.</p>}
+            {pendingBo && (
+              <div className="body-pad row-gap" role="alertdialog" aria-label="Change best of" style={{ paddingTop: 0 }}>
+                <span className="t-sm">Best of {pendingBo} has a different veto order, so the veto entered so far is cleared.</span>
+                <button className="btn small" onClick={() => { const bo = pendingBo; setPendingBo(null); void run(async () => { await air.matchDataSave({ ...md, veto: [], vetoSource: 'air' }); return air.updateMatch(m.id, { bestOf: bo }); }); }}>Change to BO{pendingBo}</button>
+                <button className="btn quiet small" onClick={() => setPendingBo(null)}>Keep BO{m.bestOf}</button>
+              </div>
+            )}
             <div className="body-pad stack" style={{ gap: 8, paddingTop: 0 }}>
               <div className="md-pool" role="group" aria-label="Map pool">
                 {VALORANT_MAPS.map((map) => {

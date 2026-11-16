@@ -32,6 +32,8 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
   // The screens ticked in Screens; they become this match's Rundown.
   const [point, setPoint] = useState<StartPoint | null>('standard');
   const [picked, setPicked] = useState<string[]>(() => startPoint('standard', 3).screens);
+  // Screens that start as an overlay bar over the game (the rest full screen).
+  const [bands, setBands] = useState<string[]>([]);
   const [template, setTemplate] = useState(startPoint('standard', 3).template);
   const choosePoint = (p: StartPoint) => { const x = startPoint(p, bestOf); setPoint(p); setPicked(x.screens); setTemplate(x.template); };
   useEffect(() => { if (point) choosePoint(point); }, [bestOf]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -45,7 +47,7 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
   const finish = async () => {
     setBusy(true);
     const players = lineups.map((team) => team.filter((p) => p.name.trim())) as Lineups;
-    const ok = await run(() => air.createMatch({ bestOf, teams, players, ...(event ? { eventId: event.id } : {}), stage, theme, template, screens: [...new Set(['in-game', ...picked])] }));
+    const ok = await run(() => air.createMatch({ bestOf, teams, players, ...(event ? { eventId: event.id } : {}), stage, theme, template, screens: [...new Set(['in-game', ...picked])], bands: bands.filter((b) => picked.includes(b)) }));
     setBusy(false);
     if (ok) {
       setCreated(true);
@@ -128,7 +130,7 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
             </div>
           )}
           {step === SCREENS && (
-            <ScreenPicker s={s} picked={picked} onPick={(ids) => { setPicked(ids); setPoint(null); }} point={point} onPoint={choosePoint} theme={theme} onTheme={setTheme} />
+            <ScreenPicker s={s} picked={picked} onPick={(ids) => { setPicked(ids); setPoint(null); }} point={point} onPoint={choosePoint} theme={theme} onTheme={setTheme} bands={bands} onBands={setBands} />
           )}
           {step === REHEARSE && (
             <div className="stack" style={{ gap: 14 }}>

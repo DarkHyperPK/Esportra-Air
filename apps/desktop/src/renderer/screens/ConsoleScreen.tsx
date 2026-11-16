@@ -10,6 +10,7 @@ import { keyCommand, nextSponsor, sponsorsOn, type KeyCommand } from '../../shar
 import { ROLE_NAME, onAir } from '../../shared/model.ts';
 import { air } from '../bridge.ts';
 import { sceneLabel, useMonitor } from '../components/Monitor.tsx';
+import { pagesForScene, type ScenePage } from '../../shared/scenes.ts';
 import { Composite } from '../components/Preview.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
 import { AutopilotCard } from '../components/Autopilot.tsx';
@@ -99,14 +100,15 @@ function PollForm({ s, run, close, active }: Pick<PageProps, 's' | 'run'> & { cl
   );
 }
 
-/** What viewers see: the HUD and the full-screen host over OBS's program picture. */
+/** What viewers see: OBS's program picture with the Air pages that scene really holds (none over a crew scene). */
 function OnAirMonitor({ s, image }: { s: Snapshot; image: string | null }) {
-  const url = (overlay: string) => `http://127.0.0.1:${s.engine.port}/overlays/${overlay}.html?${new URLSearchParams({ match: s.match!.code, screen: '1' })}`;
+  const url = (p: ScenePage) => `http://127.0.0.1:${s.engine.port}/overlays/${p.overlay}.html?${new URLSearchParams({ match: s.match!.code, screen: '1', ...(p.over ? { over: '1' } : {}) })}`;
   const live = s.feed.state === 'live';
+  const pages = pagesForScene(image ? s.obs.programScene : null, s.setup.screens) ?? [];
   return (
     <figure className="gmon onair live-monitor" aria-label="On air graphics">
       <div style={{ position: 'relative' }}>
-        <Composite srcs={[url('ingame'), url('fullscreen')]} label="Graphics on air" image={image} />
+        <Composite srcs={pages.map(url)} label="Graphics on air" image={image} />
         <span className="tag">{live ? <span className="onair-pill">● ON AIR</span> : <Tally kind="off">Game data off</Tally>}</span>
       </div>
       <figcaption className="mono muted"><span>What viewers see</span><span>{image ? `OBS program · ${sceneLabel(s.obs.programScene)}` : 'Sample backdrop (OBS not connected)'}</span></figcaption>
@@ -267,7 +269,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
         </div>
       )}
       <div className="cp-cols">
-        <GraphicList items={items} phase={phase} setPhase={setPhase} selected={sel?.id ?? null} select={setSelected} />
+        <GraphicList items={items} phase={phase} setPhase={setPhase} selected={sel?.id ?? null} select={setSelected} keymap={s.keymap} />
         <div className="stack cp-midcol">
           <GraphicDetail s={s} run={run} item={sel} cycle={cycle} />
           <div className="cp-row">

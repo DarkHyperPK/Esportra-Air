@@ -60,10 +60,13 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
   const importDesign = async (file: File | undefined) => {
     if (!file) return;
     setNotice(null);
-    if (file.type !== 'image/png') { setNotice('Export the design from Photoshop as a PNG.'); return; }
+    // Windows can report a PNG with no type (or another one): the file's own first bytes decide.
+    const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => head[i] === v);
+    if (!png) { setNotice('That file is not a PNG. Export the design from Photoshop as a PNG.'); return; }
     setBusy(true);
     try {
-      const url = await air.uploadArtwork(await readFile(file));
+      const url = await air.uploadArtwork((await readFile(file)).replace(/^data:[^;,]*;base64,/, 'data:image/png;base64,'));
       change({ image: url, ...(g.name ? {} : { name: file.name.replace(/\.png$/i, '').replace(/[-_]+/g, ' ').slice(0, 60) }) });
     } catch (e) { setNotice((e as Error).message); } finally { setBusy(false); }
   };

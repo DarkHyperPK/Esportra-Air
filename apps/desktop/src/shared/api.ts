@@ -399,6 +399,8 @@ export interface NewMatchInput {
   template?: Preset;
   /** The screens ticked in New match › Screens; the Rundown is made of these (with the template's rules). */
   screens?: string[];
+  /** Screens (of `screens`) that start with the overlay bar look instead of full screen. */
+  bands?: string[];
 }
 
 export type MatchPatch = Partial<Pick<Match, 'title' | 'players' | 'teams' | 'bestOf' | 'theme' | 'eventId' | 'stage' | 'talentOff' | 'sponsorsOff'>>;

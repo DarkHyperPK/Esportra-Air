@@ -98,7 +98,9 @@ export function MatchBar({ s, run, openFix }: { s: Snapshot; run: Run; openFix: 
 }
 
 /** Left: graphics by phase, each marked On air, Cued or Auto. */
-export function GraphicList({ items, phase, setPhase, selected, select }: { items: Item[]; phase: Phase; setPhase: (p: Phase) => void; selected: string | null; select: (id: string) => void }) {
+export function GraphicList({ items, phase, setPhase, selected, select, keymap }: { items: Item[]; phase: Phase; setPhase: (p: Phase) => void; selected: string | null; select: (id: string) => void; keymap?: Snapshot['keymap'] }) {
+  // Each graphic's key, so it can be pressed straight away without opening All graphics.
+  const keyFor = (x: Item) => (x.row ? keyOf(keymap, `layer:${x.row.id}`) : '');
   const tag = { onair: ['ON AIR', 'onair'], cued: ['CUED', 'cued'], auto: ['AUTO', 'auto'], off: ['', ''] } as const;
   return (
     <nav className="cp-left" aria-label="Graphics">
@@ -108,7 +110,7 @@ export function GraphicList({ items, phase, setPhase, selected, select }: { item
       <div className="cp-glist">
         {items.filter((x) => x.phase === phase).map((x) => (
           <button key={x.id} className={`cp-gi ${selected === x.id ? 'sel' : ''}`} aria-current={selected === x.id ? 'true' : undefined} disabled={!x.available} onClick={() => select(x.id)}>
-            <span>{x.label}</span>{tag[x.state][0] && <span className={`cp-state ${tag[x.state][1]}`}>{tag[x.state][0]}</span>}
+            <span>{x.label}</span>{tag[x.state][0] && <span className={`cp-state ${tag[x.state][1]}`}>{tag[x.state][0]}</span>}{keyFor(x) && <span className="kbd" aria-label={`Key ${keyFor(x)}`}>{keyLabel(keyFor(x))}</span>}
           </button>
         ))}
       </div>

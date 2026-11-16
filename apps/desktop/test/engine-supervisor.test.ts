@@ -102,3 +102,26 @@ test('a port held by another program is reported clearly', { skip: !existsSync(B
   await sup.stop(false);
   blocker.close();
 });
+
+test('an engine left running by an older Air is replaced by the one Air ships; the same build is re-attached', { skip: !existsSync(BINARY) && 'engine not built' }, async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'air-sup-build-'));
+  const port = await freePort();
+  const old = new EngineSupervisor({ binary: BINARY, hudRoot: HUD, dataDir, port, key: KEY, env: engineEnv(), monitorEveryMs: 200, buildId: 'old-build', ...realProcess });
+  await old.start();
+  const oldPid = old.status!.pid;
+  await old.stop(false);
+  const same = new EngineSupervisor({ binary: BINARY, hudRoot: HUD, dataDir, port, key: KEY, env: engineEnv(), monitorEveryMs: 200, buildId: 'old-build', ...realProcess });
+  await same.start();
+  assert.equal(same.reattached, true);
+  assert.equal(same.status!.pid, oldPid, 'the same build stays running');
+  await same.stop(false);
+  const updated = new EngineSupervisor({ binary: BINARY, hudRoot: HUD, dataDir, port, key: KEY, env: engineEnv(), monitorEveryMs: 200, buildId: 'new-build', ...realProcess });
+  await updated.start();
+  try {
+    assert.equal(updated.state, 'running');
+    assert.equal(updated.reattached, false, 'an older build is not kept');
+    assert.notEqual(updated.status!.pid, oldPid, 'a new engine runs');
+  } finally {
+    await updated.stop(true);
+  }
+});

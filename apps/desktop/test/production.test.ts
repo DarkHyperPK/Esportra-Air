@@ -167,7 +167,8 @@ test('quick match to live: engine context, OBS install, checks and triggers', { 
     await production.updateSetup({ look: { break: 'classic', timer: { dx: 0, width: 160, plate: '#17181e' } } });
     assert.ok(Array.isArray((await engine.client.get<any>(`/api/${match.code}`)).state.schedule), "today's schedule is in the room");
     assert.deepEqual(snap.obs.scenes.map((x) => [x.key, x.inObs]), [['holding', true], ['gameplay', true], ['fullscreen', true], ['replay', true], ['casters', true]]);
-    assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'casters')!.slots.map((x) => [x.id, x.source]), [['cam1', null], ['cam2', null]], 'slots wait for the crew’s sources');
+    assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'casters')!.slots, [], 'no talent has a camera, so no empty camera holders are added');
+    assert.deepEqual(snap.obs.scenes.find((x) => x.key === 'gameplay')!.slots.map((x) => [x.id, x.source]), [['game', null]], 'Game feed waits for the crew’s capture');
     await production.useSlotSource('game', 'Game Capture');
     assert.equal(production.snapshot().obs.scenes.find((x) => x.key === 'gameplay')!.slots[0]!.source, 'Game Capture');
 
@@ -737,7 +738,11 @@ test('the New match wizard: teams with logos, lineups with Riot IDs and photos r
     };
     await assert.rejects(production.createMatch({ ...base, teams: [{ name: 'Same', tag: '', color: '#ffffff', logo: '' }, { name: 'same', tag: '', color: '#000000', logo: '' }] as never }), /different names/);
     await assert.rejects(production.createMatch({ ...base, teams: [{ name: 'A', tag: '', color: '#fff', logo: 'javascript:alert(1)' }, { name: 'B', tag: '', color: '#000', logo: '' }] as never }), /logo again/);
-    await production.createMatch(base);
+    await assert.rejects(production.createMatch({ ...base, screens: ['in-game', 'map-result'], bands: ['in-game'] }), /overlay bar/);
+    await production.createMatch({ ...base, screens: ['in-game', 'map-veto', 'map-result'], bands: ['map-veto'] });
+    const rows = (production as any).deps.store.data.rundown[production.match!.id].rows as Array<{ show: string | null; style?: string }>;
+    assert.equal(rows.find((r) => r.show === 'map-veto')?.style, 'band', 'Map veto chosen as an overlay bar in Screens');
+    assert.notEqual(rows.find((r) => r.show === 'map-result')?.style, 'band');
     const match = production.match!;
     await production.updateEvent(match.eventId, { name: 'Community Cup' });
     assert.deepEqual([match.game, match.title, match.teams[0].logo, match.teams[1].tag, match.stage], ['valorant', 'Night Owls vs Crimson Five', logo, 'CF', 'Playoffs']);
@@ -1063,6 +1068,7 @@ test('your own graphics: the design is kept as exported, its boxes reach the roo
     await assert.rejects(production.uploadArtwork(`data:image/png;base64,${(await blankPng(1280, 720)).toString('base64')}`), /1280 × 720\. Export it at 1920 × 1080/);
     await assert.rejects(production.uploadArtwork('data:image/jpeg;base64,/9j/4AAQ'), /as a PNG/);
     const image = await production.uploadArtwork(`data:image/png;base64,${png.toString('base64')}`);
+    assert.match(await production.uploadArtwork(`data:application/octet-stream;base64,${png.toString('base64')}`), /^\/air-assets\//, 'a PNG Windows gave no image type is still a PNG');
     const served = await fetch(`http://127.0.0.1:${port}${image}`);
     assert.equal(served.headers.get('content-type'), 'image/png');
     assert.ok(Buffer.from(await served.arrayBuffer()).equals(png), 'kept exactly as exported');

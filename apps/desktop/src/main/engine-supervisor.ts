@@ -22,6 +22,9 @@ export interface SupervisorOptions {
   key: string;
   spawn: (command: string, args: string[], options: { detached: boolean; env: NodeJS.ProcessEnv; logFile: string }) => ChildHandle;
   readFile: (path: string) => Promise<string>;
+  writeFile?: (path: string, data: string) => Promise<void>;
+  /** Identifies the engine binary Air ships (size and date). A running engine started from another build is replaced. */
+  buildId?: string;
   isAlive: (pid: number) => boolean;
   kill: (pid: number) => void;
   fetch?: Fetch;
@@ -81,6 +84,12 @@ export class EngineSupervisor extends EventEmitter {
     try {
       if (await this.attach()) {
         this.reattached = true;
+        // After an update the engine left running is the old build (older limits, missing routes): replace it.
+        // Its match state is saved, so overlays reconnect to the same graphics within a second or two.
+        if (await this.outdated()) {
+          await this.replace();
+          this.reattached = false;
+        }
       } else {
         this.reattached = false;
         await this.launch();
@@ -115,8 +124,34 @@ export class EngineSupervisor extends EventEmitter {
     }
   }
 
+  /** Whether the running engine was started from a different binary than the one Air ships now. */
+  private async outdated(): Promise<boolean> {
+    if (!this.options.buildId) return false;
+    let running = '';
+    try {
+      running = (await this.options.readFile(join(this.options.dataDir, 'engine.build'))).trim();
+    } catch {
+      // Started by an Air from before builds were recorded: also an older build.
+    }
+    return running !== this.options.buildId;
+  }
+
+  /** Stops the running engine and starts the shipped one. */
+  private async replace(): Promise<void> {
+    const pid = this.status?.pid;
+    try {
+      await this.client.post('/control/shutdown');
+    } catch {
+      // Already going.
+    }
+    for (let i = 0; i < 40 && pid && this.options.isAlive(pid); i++) await this.sleep(100);
+    if (pid && this.options.isAlive(pid)) this.options.kill(pid);
+    await this.launch();
+  }
+
   private async launch(): Promise<void> {
     const { binary, hudRoot, dataDir, port, key } = this.options;
+    if (this.options.buildId && this.options.writeFile) await this.options.writeFile(join(dataDir, 'engine.build'), this.options.buildId).catch(() => undefined);
     const child = this.options.spawn(binary, ['--root', hudRoot, '--data', dataDir, '--host', '127.0.0.1', '--port', String(port)], {
       detached: true,
       env: { ...(this.options.env ?? {}), AIR_ENGINE_KEY: key },

@@ -5,6 +5,7 @@ import type { BannerTheme, Snapshot } from '../../shared/api.ts';
 import type { Preset } from '../../shared/autopilot.ts';
 import { BANNER_THEMES } from '../../shared/api.ts';
 import { Preview, screenUrl } from './Preview.tsx';
+import { BAND_SCREENS } from '../../shared/look.ts';
 
 export interface PickScreen { id: string; overlay: string; title: string; when: string; yours?: boolean }
 
@@ -51,8 +52,10 @@ export function startPoint(point: StartPoint, bestOf: 1 | 3 | 5): { screens: str
 
 const THEME_LABEL: Record<BannerTheme, string> = { broadcast: 'Broadcast', compact: 'Compact', monument: 'Monument', impact: 'Impact' } as Record<BannerTheme, string>;
 
-export function ScreenPicker({ s, picked, onPick, point, onPoint, theme, onTheme }: {
+export function ScreenPicker({ s, picked, onPick, point, onPoint, theme, onTheme, bands = [], onBands }: {
   s: Snapshot; picked: string[]; onPick: (ids: string[]) => void; point: StartPoint | null; onPoint: (p: StartPoint) => void; theme: BannerTheme; onTheme: (t: BannerTheme) => void;
+  /** Screens shown as an overlay bar over the game instead of full screen. */
+  bands?: string[]; onBands?: (ids: string[]) => void;
 }) {
   const [big, setBig] = useState<PickScreen | null>(null);
   const on = new Set(picked);
@@ -94,6 +97,14 @@ export function ScreenPicker({ s, picked, onPick, point, onPoint, theme, onTheme
                     <span className="pick-meta"><b>{x.title}</b><span className="faint">{x.when}</span></span>
                   </button>
                   {fixed ? <span className="pick-badge">Always</span> : <button type="button" className="pick-eye" onClick={() => setBig(x)}>Preview</button>}
+                  {ticked && onBands && BAND_SCREENS.has(x.id) && (
+                    <div className="seg pick-look" role="radiogroup" aria-label={`${x.title}: look`}>
+                      {([['full', 'Full screen'], ['band', 'Overlay bar']] as const).map(([v, label]) => {
+                        const sel = (v === 'band') === bands.includes(x.id);
+                        return <button key={v} type="button" role="radio" aria-checked={sel} aria-pressed={sel} onClick={() => onBands(v === 'band' ? [...new Set([...bands, x.id])] : bands.filter((b) => b !== x.id))}>{label}</button>;
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
