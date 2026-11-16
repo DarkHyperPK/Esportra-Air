@@ -7,15 +7,22 @@ import { Tally } from './ui.tsx';
 /** Latest PVW / PGM frames from OBS. Polls only while a monitor is mounted. */
 export function useMonitor(active: boolean): MonitorFrame | null {
   const [frame, setFrame] = useState<MonitorFrame | null>(null);
+  // No OBS pictures while Air's window is hidden or minimised: nobody sees them, and OBS renders each one.
+  const [visible, setVisible] = useState(() => document.visibilityState !== 'hidden');
   useEffect(() => {
-    if (!active) return;
+    const on = () => setVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', on);
+    return () => document.removeEventListener('visibilitychange', on);
+  }, []);
+  useEffect(() => {
+    if (!active || !visible) return;
     const off = air.onMonitor(setFrame);
     void air.monitor(true);
     return () => {
       off();
       void air.monitor(false);
     };
-  }, [active]);
+  }, [active, visible]);
   return frame;
 }
 

@@ -1241,7 +1241,8 @@ export class Production extends EventEmitter {
       return;
     }
     if (this.monitorTimer) return;
-    this.monitorTimer = setInterval(() => void this.pump(), 350);
+    // Once a second: each picture makes OBS render and compress a frame, which competes with the game and the stream.
+    this.monitorTimer = setInterval(() => void this.pump(), 1000);
     this.monitorTimer.unref?.();
     void this.pump();
   }
