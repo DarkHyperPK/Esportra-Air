@@ -148,6 +148,9 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'esportraSignIn': await p.esportraSignIn(String(a[0] ?? ''), String(a[1] ?? '')); break;
     case 'esportraSignOut': await p.esportraSignOut(); break;
     case 'esportraRefresh': await p.esportraRefresh(); break;
+    case 'esportraCheck': await p.esportraCheck(); break;
+    case 'esportraRequestAccess': await p.esportraRequestAccess(a[0]); break;
+    case 'esportraWithdrawRequest': await p.esportraWithdrawRequest(); break;
     case 'useEsportraMatch': await p.useEsportraMatch(String(a[0])); break;
     case 'vetoFollowEsportra': await p.vetoFollowEsportra(); break;
     case 'recordShow': await p.recordShow(a[0] === 'series' ? 'series' : Number(a[0])); break;

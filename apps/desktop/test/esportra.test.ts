@@ -151,3 +151,47 @@ test('the roster comes from the backend and malformed matches are ignored', asyn
     assert.equal(list[2]!.logoA, null, 'only https logos are kept');
   } finally { await backend.stop(); }
 });
+
+test('without access the producer can ask for it, see the request wait or be declined, and get Air back once granted', async () => {
+  const { backend, account } = await setup();
+  try {
+    backend.allowed = false;
+    await account.login(backend.email, backend.password);
+    let view = account.view();
+    assert.equal(view.state, 'denied');
+    assert.equal(view.canRequest, true);
+    assert.equal(view.request, null);
+    await assert.rejects(account.requestAccess('x'.repeat(501)), /500 characters/);
+    await account.requestAccess('  Finals this weekend  ');
+    assert.deepEqual([account.view().request?.status, account.view().request?.note], ['pending', 'Finals this weekend']);
+    await account.requestAccess('Two PCs please');
+    assert.equal(account.view().request?.note, 'Two PCs please', 'asking again updates the open request');
+    await account.withdrawRequest();
+    assert.equal(account.view().request?.status, 'withdrawn');
+    await account.requestAccess('');
+    backend.decline('Plan ended');
+    await account.checkAccess().catch(() => {});
+    view = account.view();
+    assert.deepEqual([view.request?.status, view.request?.reason], ['declined', 'Plan ended'], 'a check while refused reads the request again');
+    await assert.rejects(account.requestAccess('again'), /24 hours/);
+    backend.request = null;
+    await account.requestAccess('again');
+    backend.grant();
+    await account.checkAccess();
+    view = account.view();
+    assert.equal(view.state, 'online');
+    assert.equal(view.request, null, 'nothing about requests shows once access is on');
+    await account.requestAccess('late').catch(() => {});
+    assert.equal(account.view().state, 'online', 'asking with access on just checks again');
+  } finally { await backend.stop(); }
+});
+
+test('a full PC allowance is not something a request can fix', async () => {
+  const { backend, account } = await setup();
+  try {
+    backend.deviceLimit = 0;
+    await account.login(backend.email, backend.password);
+    assert.equal(account.view().state, 'denied');
+    assert.equal(account.view().canRequest, false);
+  } finally { await backend.stop(); }
+});

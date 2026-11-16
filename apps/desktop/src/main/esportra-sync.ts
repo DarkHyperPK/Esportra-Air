@@ -6,7 +6,8 @@
 //  · results — a counted map goes back as a result proposal for the organizer to review. Kept in an
 //              outbox and retried while Esportra is unreachable; the same map and score is the same
 //              proposal (idempotent `clientKey`). Air never writes scores itself;
-//  · heartbeat every 60 s, and the bracket every 2 min.
+//  · heartbeat every 60 s, and the bracket every 2 min;
+//  · while access is refused, access is checked again every 60 s (a grant on Esportra needs no restart).
 // Production gives it a small context; HTTP is src/main/esportra.ts, the reading is src/shared/esportra-package.ts.
 import { createHash } from 'node:crypto';
 import type { Match } from '../shared/api.ts';
@@ -59,6 +60,8 @@ const VETO_EVERY = 2_000;
 const VETO_IDLE_EVERY = 30_000;
 const RESULTS_EVERY = 30_000;
 const HEARTBEAT_EVERY = 60_000;
+/** While access is refused, ask again this often, so a grant on Esportra reaches Air without a restart. */
+const ACCESS_EVERY = 60_000;
 const BRACKET_EVERY = 120_000;
 
 /** The same map and score always gives the same proposal id (Esportra treats a repeat as the same proposal). */
@@ -79,7 +82,7 @@ export class EsportraSync {
   private readonly ctx: EsportraSyncContext;
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
-  private last = { veto: 0, results: 0, heartbeat: 0, bracket: 0 };
+  private last = { veto: 0, results: 0, heartbeat: 0, bracket: 0, access: 0 };
   private readonly watches = new Map<string, VetoWatch>();
   private unreachableSince: number | null = null;
 
@@ -225,11 +228,22 @@ export class EsportraSync {
     this.busy = true;
     const now = this.ctx.now();
     try {
+      // Access can come back through the heartbeat's own check or through ours: either way, reload the matches.
+      const wasDenied = account.view().state === 'denied';
       if (now - this.last.heartbeat >= HEARTBEAT_EVERY) {
         this.last.heartbeat = now;
         await account.heartbeat(this.ctx.health()).catch(() => {});
       }
-      if (account.view().state === 'denied') return;
+      if (account.view().state === 'denied') {
+        if (now - this.last.access < ACCESS_EVERY) return;
+        this.last.access = now;
+        await account.checkAccess().catch(() => {});
+        if (account.view().state === 'denied') return;
+      }
+      if (wasDenied) {
+        this.ctx.log('Esportra turned on Air for this account');
+        await account.refreshMatches().catch(() => {});
+      }
       const match = this.esportraMatch();
       const w = match ? this.watch(match.id) : null;
       if (match && this.vetoWanted(match) && now - this.last.veto >= (w?.status === 'in_progress' ? VETO_EVERY : VETO_IDLE_EVERY)) {

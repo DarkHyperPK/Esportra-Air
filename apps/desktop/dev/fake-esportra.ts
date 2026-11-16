@@ -36,6 +36,8 @@ export class FakeEsportra {
   readonly password = 'correct horse battery';
   /** Access can be switched off, as when a plan expires. */
   allowed = true;
+  /** This account's latest access request, as Esportra keeps it (one open request at a time). */
+  request: { id: string; note: string; status: 'pending' | 'granted' | 'declined' | 'withdrawn'; reason: string | null; createdAt: string; decidedAt: string | null } | null = null;
   /** Simulates the backend being unreachable (connections are dropped). */
   down = false;
   /** Token lifetime in seconds. */
@@ -209,6 +211,21 @@ export class FakeEsportra {
       case 'POST /api/air/access':
         if (!this.allowed) return send(403, { error: 'Air access expired or was suspended. Existing production must finish before starting another match.' });
         return send(200, { allowed: true, serverTime: new Date().toISOString(), validUntil: new Date(Date.now() + 30 * 86400_000).toISOString(), offlineLease: this.lease(String(body.deviceId)), offlineWarning: null });
+      case 'GET /api/air/access-request':
+        return send(200, { request: this.request });
+      case 'POST /api/air/access-request': {
+        if (this.allowed) return send(409, { error: 'You already have Air access. Press Check again in Air.' });
+        const note = String(body.note ?? '').trim();
+        if (note.length > 500) return send(400, { error: 'Keep the note under 500 characters.' });
+        const r = this.request;
+        if (r?.status === 'declined' && r.decidedAt && Date.parse(r.decidedAt) > Date.now() - 86_400_000) return send(429, { error: 'Your last request was declined. You can ask again 24 hours after it.' });
+        this.request = r?.status === 'pending' ? { ...r, note } : { id: randomUUID(), note, status: 'pending', reason: null, createdAt: new Date().toISOString(), decidedAt: null };
+        return send(200, { request: this.request, id: this.request.id });
+      }
+      case 'DELETE /api/air/access-request':
+        if (this.request?.status !== 'pending') return send(404, { error: 'There is no open request.' });
+        this.request = { ...this.request, status: 'withdrawn' };
+        return send(200, { withdrawn: true });
       case 'GET /api/air/broadcast/matches':
         if (!this.allowed || !this.devices.has(deviceId)) return send(403, { error: 'An active Air account and registered production PC are required.' });
         return send(200, { matches: this.matches.map((m) => ({ ...m, packId: m.game === 'valorant' ? 'esportra-valorant-v1' : null, supported: m.game === 'valorant' })) });
@@ -297,5 +314,16 @@ export class FakeEsportra {
   /** Every access token issued so far stops working (the refresh token still does). */
   expireNow() {
     for (let i = 1; i < this.access; i++) this.expired.add(String(i));
+  }
+
+  /** An admin on Esportra grants access: the open request is marked granted. */
+  grant() {
+    this.allowed = true;
+    if (this.request?.status === 'pending') this.request = { ...this.request, status: 'granted', decidedAt: new Date().toISOString() };
+  }
+
+  /** An admin declines the open request with a reason. */
+  decline(reason: string) {
+    if (this.request?.status === 'pending') this.request = { ...this.request, status: 'declined', reason, decidedAt: new Date().toISOString() };
   }
 }

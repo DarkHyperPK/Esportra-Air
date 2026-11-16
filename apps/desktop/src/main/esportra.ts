@@ -5,6 +5,7 @@
 //   POST /api/air/session               who am I, which plan
 //   POST /api/air/devices               register this PC
 //   POST /api/air/access                is Air access active; returns a signed offline lease
+//   GET/POST/DELETE /api/air/access-request   ask Esportra to turn Air on (one open request per account)
 //   GET  /api/air/broadcast/matches     the producer's scheduled matches
 //   GET  /api/air/broadcast/matches/{id}/roster
 //   POST /api/air/broadcast/matches/{id}/prepare   the match package: lineup with Riot ids, veto, sponsors, bracket
@@ -17,7 +18,7 @@
 // writes scores: a counted map goes back as a result proposal the organizer reviews.
 
 import { createHash } from 'node:crypto';
-import type { EsportraAccountInfo, EsportraMatch, EsportraState, EsportraView } from '../shared/esportra.ts';
+import type { EsportraAccessRequest, EsportraAccountInfo, EsportraMatch, EsportraState, EsportraView } from '../shared/esportra.ts';
 import { signedOut } from '../shared/esportra.ts';
 import { leaseExpiry, verifyLease, type Lease } from './esportra-lease.ts';
 import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
@@ -28,7 +29,8 @@ export interface SavedEsportra {
   email: string;
   account: EsportraAccountInfo | null;
   deviceId: string;
-  access: { checkedAt: number; lastSeenAt: number; lease: Lease | null; pinnedKey: string | null; warning: string | null; denied: boolean; reason?: string | null } | null;
+  access: { checkedAt: number; lastSeenAt: number; lease: Lease | null; pinnedKey: string | null; warning: string | null; denied: boolean; reason?: string | null; full?: boolean } | null;
+  request?: EsportraAccessRequest | null;
   matches: EsportraMatch[];
   syncedAt: number | null;
 }
@@ -116,7 +118,11 @@ export class EsportraAccount {
     const saved = this.saved;
     if (!this.tokens || !saved) return { ...signedOut(host), deviceName: this.o.deviceName, error: this.error };
     const state = this.state();
-    return { state, email: saved.email, account: saved.account, deviceName: this.o.deviceName, host, warning: this.warning(state), error: this.error, syncedAt: saved.syncedAt, matches: saved.matches };
+    const denied = state === 'denied';
+    return {
+      state, email: saved.email, account: saved.account, deviceName: this.o.deviceName, host, warning: this.warning(state), error: this.error, syncedAt: saved.syncedAt, matches: saved.matches,
+      request: denied ? saved.request ?? null : null, canRequest: denied && !!saved.access?.denied && !saved.access.full,
+    };
   }
 
   private state(): EsportraState {
@@ -203,8 +209,9 @@ export class EsportraAccount {
         // Otherwise Esportra's own reason (expired, suspended, this PC revoked), so the producer knows what to ask for.
         const said = status === 403 && (error as Error).message ? `Esportra says: ${(error as Error).message} Your own events and matches work as normal.` : null;
         const reason = status === 409 ? 'Your Air plan’s device allowance is full, so this PC cannot be registered. Remove a PC on Esportra or ask your admin for more.' : said;
-        saved.access = { checkedAt: this.now(), lastSeenAt: saved.access?.lastSeenAt ?? 0, lease: null, pinnedKey: null, warning: null, denied: true, reason };
+        saved.access = { checkedAt: this.now(), lastSeenAt: saved.access?.lastSeenAt ?? 0, lease: null, pinnedKey: null, warning: null, denied: true, reason, full: status === 409 };
         this.online = true;
+        if (status !== 401) await this.refreshRequest().catch(() => {});
       } else {
         this.online = false;
       }
@@ -215,6 +222,43 @@ export class EsportraAccount {
     }
     this.o.store.save();
     this.changed();
+  }
+
+  // ── asking for access ──
+
+  /** Reads this account's latest access request (kept so Air can say it is waiting, or why it was declined). */
+  async refreshRequest() {
+    const saved = this.saved;
+    if (!saved) throw new Error('Sign in to Esportra first.');
+    const { request } = await this.json<{ request: unknown }>('/api/air/access-request');
+    saved.request = readRequest(request);
+    this.o.store.save();
+    this.changed();
+  }
+
+  /** Asks Esportra to turn Air on for this account. Asking again updates the note of the open request. */
+  async requestAccess(note: unknown) {
+    const saved = this.saved;
+    if (!saved) throw new Error('Sign in to Esportra first.');
+    const text = typeof note === 'string' ? note.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').trim() : '';
+    if (text.length > 500) throw new Error('Keep the note to 500 characters.');
+    try {
+      const { request } = await this.json<{ request: unknown }>('/api/air/access-request', { method: 'POST', body: { note: text } });
+      saved.request = readRequest(request);
+    } catch (error) {
+      // Access was turned on in the meantime: check again instead of asking.
+      if ((error as EsportraError).status === 409) return this.checkAccess();
+      throw error;
+    }
+    this.o.store.save();
+    this.changed();
+  }
+
+  /** Withdraws the open request. */
+  async withdrawRequest() {
+    if (!this.saved) throw new Error('Sign in to Esportra first.');
+    await this.json('/api/air/access-request', { method: 'DELETE' }).catch((error: EsportraError) => { if (error.status !== 404) throw error; });
+    await this.refreshRequest();
   }
 
   /** Reads the producer's scheduled matches. The last list is kept for offline use. */
@@ -391,5 +435,22 @@ function readMatch(row: Record<string, unknown>): EsportraMatch | null {
     status: str(pick('status')),
     bestOf: [1, 3, 5].includes(bestOf) ? bestOf : 3,
     supported: pick('supported') === true,
+  };
+}
+
+const REQUEST_STATUSES = ['pending', 'granted', 'declined', 'withdrawn'] as const;
+
+/** Esportra's access request, checked field by field; anything else reads as no request. */
+export function readRequest(input: unknown): EsportraAccessRequest | null {
+  if (!input || typeof input !== 'object') return null;
+  const r = input as Record<string, unknown>;
+  const status = REQUEST_STATUSES.find((x) => x === r.status);
+  if (!status || typeof r.createdAt !== 'string') return null;
+  return {
+    status,
+    note: typeof r.note === 'string' ? r.note.slice(0, 500) : '',
+    reason: typeof r.reason === 'string' ? r.reason.slice(0, 500) : null,
+    createdAt: r.createdAt,
+    decidedAt: typeof r.decidedAt === 'string' ? r.decidedAt : null,
   };
 }

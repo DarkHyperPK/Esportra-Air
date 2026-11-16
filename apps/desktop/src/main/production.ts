@@ -1393,6 +1393,9 @@ export class Production extends EventEmitter {
   esportraSignIn(email: string, password: string) { return this.esportraMatches.signIn(email, password); }
   async esportraSignOut() { this.esportraMatches.signOut(); }
   esportraRefresh() { return this.esportraMatches.refresh(); }
+  esportraCheck() { return this.esportraMatches.check(); }
+  esportraRequestAccess(note: unknown) { return this.esportraMatches.requestAccess(note); }
+  esportraWithdrawRequest() { return this.esportraMatches.withdrawRequest(); }
   useEsportraMatch(matchId: string) { return this.esportraMatches.use(matchId); }
   readonly esportraSync: EsportraSync;
 

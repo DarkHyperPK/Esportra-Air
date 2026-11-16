@@ -32,6 +32,16 @@ export interface EsportraAccountInfo {
  */
 export type EsportraState = 'signed-out' | 'online' | 'offline' | 'denied';
 
+/** This account's latest request for Air access (`/api/air/access-request`). */
+export interface EsportraAccessRequest {
+  status: 'pending' | 'granted' | 'declined' | 'withdrawn';
+  note: string;
+  /** Why it was declined, in Esportra's words. */
+  reason: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
 export interface EsportraView {
   state: EsportraState;
   email: string | null;
@@ -44,6 +54,10 @@ export interface EsportraView {
   error: string | null;
   syncedAt: number | null;
   matches: EsportraMatch[];
+  /** The latest access request, while access is refused. */
+  request?: EsportraAccessRequest | null;
+  /** Access was refused in a way a request can fix (not a full PC allowance). */
+  canRequest?: boolean;
 }
 
 export const signedOut = (host = ''): EsportraView => ({ state: 'signed-out', email: null, account: null, deviceName: '', host, warning: null, error: null, syncedAt: null, matches: [] });

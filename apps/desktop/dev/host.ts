@@ -145,6 +145,16 @@ createServer(async (req, res) => {
     res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ pressed: ok }));
     return;
   }
+  if (url.pathname === '/dev/esportra' && req.method === 'POST') {
+    // Plays the Esportra admin: ?access=off|grant, or ?decline=<reason> for the open request.
+    const access = url.searchParams.get('access');
+    if (access === 'off') backend.allowed = false;
+    if (access === 'grant') backend.grant();
+    const reason = url.searchParams.get('decline');
+    if (reason) backend.decline(reason);
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ allowed: backend.allowed, request: backend.request }));
+    return;
+  }
   if (url.pathname === '/dev/state') {
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ clipboard, enginePort: ENGINE_PORT, obsScenes: [...fakeObs.scenes.keys()] }));
     return;

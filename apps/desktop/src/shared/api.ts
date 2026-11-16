@@ -578,6 +578,11 @@ export interface AirApi {
   esportraSignIn(email: string, password: string): Promise<Snapshot>;
   esportraSignOut(): Promise<Snapshot>;
   esportraRefresh(): Promise<Snapshot>;
+  /** Checks access again (and loads the matches once it is on); still refused is not an error. */
+  esportraCheck(): Promise<Snapshot>;
+  /** Asks Esportra to turn Air on for this account, with an optional note (up to 500 characters). */
+  esportraRequestAccess(note: string): Promise<Snapshot>;
+  esportraWithdrawRequest(): Promise<Snapshot>;
   useEsportraMatch(matchId: string): Promise<Snapshot>;
   /** Applies or rejects a map result on Esportra (organizers and crew allowed to submit results). */
   esportraReview(proposalId: string, decision: 'apply' | 'reject'): Promise<Snapshot>;
