@@ -45,6 +45,7 @@ import { presetRows, rowsForScreens, ruleOf, rundownScreens } from './autopilot/
 import { ShowTemplates } from './show-templates.ts';
 import { COLORS, tagFor, tagsFor } from './team-tags.ts';
 import { EsportraMatches } from './esportra-matches.ts';
+import { VetoOutbox } from './esportra-veto-outbox.ts';
 import { EsportraSync } from './esportra-sync.ts';
 import { MapRecords, type RecordChoice } from './map-records.ts';
 import { PauseHint } from './pause-hint.ts';
@@ -213,6 +214,7 @@ export class Production extends EventEmitter {
       save: () => this.save(),
       patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
       log: (text) => this.log.add(text),
+      veto: () => this.vetoOutbox,
     });
     this.esportraSync = new EsportraSync({
       account: () => deps.esportra, store: deps.store, match: () => this.match, matchData: this.matchData,
@@ -225,6 +227,11 @@ export class Production extends EventEmitter {
       storeImage: (bytes, type) => this.storeImage(bytes, type),
       patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
       reprepare: async (matchId) => { await deps.esportra?.refreshMatches(); await this.esportraMatches.use(matchId); },
+      save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('change'), now: () => (deps.now ?? Date.now)(),
+      outbox: () => this.vetoOutbox,
+    });
+    this.vetoOutbox = new VetoOutbox({
+      store: deps.store, account: () => deps.esportra ?? null, matchData: this.matchData, flipped: (m) => this.esportraSync.flipped(m),
       save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('change'), now: () => (deps.now ?? Date.now)(),
     });
     if (deps.esportra) this.esportraSync.start();
@@ -1398,6 +1405,15 @@ export class Production extends EventEmitter {
   esportraWithdrawRequest() { return this.esportraMatches.withdrawRequest(); }
   useEsportraMatch(matchId: string) { return this.esportraMatches.use(matchId); }
   readonly esportraSync: EsportraSync;
+  /** Veto steps entered here for the Esportra match room (two-way veto, 16 Nov). */
+  readonly vetoOutbox: VetoOutbox;
+  /** The producer picks which veto stands after the match room changed, or confirms sending a corrected veto. */
+  async vetoOutboxResolve(keep: 'air' | 'esportra') {
+    const match = this.requireMatch();
+    await this.vetoOutbox.resolve(match, keep === 'esportra' ? 'esportra' : 'air');
+    if (keep === 'esportra') await this.esportraSync.followAgain(match);
+  }
+  vetoOutboxRetry() { this.vetoOutbox.retry(this.requireMatch()); }
 
   /** The buy phase running long: maybe a timeout nobody announced (approved mock 15 Nov). */
   readonly pauseHint = new PauseHint(() => this.emit('change'));
@@ -1415,6 +1431,8 @@ export class Production extends EventEmitter {
   }
   esportraReview(proposalId: string, decision: 'apply' | 'reject') { return this.esportraSync.review(proposalId, decision); }
   async vetoFollowEsportra() {
+    // Steps entered here that have not reached the match room are dropped: its veto is taken as it is.
+    if (this.vetoOutbox.linked(this.match)) await this.vetoOutbox.resolve(this.match, 'esportra');
     await this.matchData.followEsportra();
     await this.esportraSync.followAgain(this.match!);
   }

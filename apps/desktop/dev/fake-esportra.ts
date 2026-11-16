@@ -24,7 +24,7 @@ export interface FakeMatch {
 }
 
 export interface FakeVetoStep { team: number; action: 'ban' | 'pick' | 'decider'; map: string; side: string | null; sideTeam?: number | null }
-export interface FakeVeto { status: string; steps: FakeVetoStep[]; sequence: Array<{ action: string; team: number }> | null; turn: { team: number; action: string; startedAt: string; seconds: number } | null; toss: { pending: boolean; winner: number | null } | null }
+export interface FakeVeto { status: string; steps: FakeVetoStep[]; sequence: Array<{ action: string; team: number }> | null; turn: { team: number; action: string; startedAt: string; seconds: number } | null; toss: { pending: boolean; winner: number | null } | null; step?: number; first?: number; keys?: Map<string, unknown> }
 export interface FakeProposal { id: string; packageId: string; mapNumber: number; teamAScore: number; teamBScore: number; reason: string; status: 'pending' | 'apply' | 'reject' }
 
 /** A 1×1 PNG, served as a sponsor logo uploaded on Esportra. */
@@ -96,6 +96,73 @@ export class FakeEsportra {
   defaultOrder(bestOf: number) {
     const o = bestOf === 1 ? ['ban', 'ban', 'ban', 'ban', 'ban', 'ban'] : bestOf === 5 ? ['ban', 'ban', 'pick', 'pick', 'pick', 'pick'] : ['ban', 'ban', 'pick', 'pick', 'ban', 'ban'];
     return [...o.map((action, i) => ({ action, team: i % 2 })), { action: 'decider', team: -1 }];
+  }
+
+  /** The match room's whole order, as VetoSequences.cs makes it: T1 is the team that acts first; a side after each pick and on the decider. */
+  fullOrder(bestOf: number): Array<{ action: 'ban' | 'pick' | 'pick_side'; t: 1 | 2; decider?: boolean }> {
+    const o: Array<{ action: 'ban' | 'pick' | 'pick_side'; t: 1 | 2; decider?: boolean }> = [];
+    if (bestOf === 1) { for (let i = 0; i < 6; i++) o.push({ action: 'ban', t: i % 2 ? 2 : 1 }); o.push({ action: 'pick_side', t: 1, decider: true }); return o; }
+    o.push({ action: 'ban', t: 1 }, { action: 'ban', t: 2 });
+    for (let i = 0; i < bestOf - 1; i++) { const t = i % 2 ? 2 : 1; o.push({ action: 'pick', t }, { action: 'pick_side', t: t === 1 ? 2 : 1 }); }
+    for (let i = 0; i < 7 - bestOf - 2; i++) o.push({ action: 'ban', t: i % 2 ? 2 : 1 });
+    o.push({ action: 'pick_side', t: bestOf === 5 ? 2 : 1, decider: true });
+    return o;
+  }
+
+  /** The coin toss Esportra makes when the veto starts (fixed here so tests know who won). */
+  tossWinner = 1;
+
+  /** A veto step Air entered for the match room (POST …/veto/actions), with the backend's state machine. */
+  vetoAction(match: FakeMatch, body: Record<string, any>): [number, unknown] {
+    const v = this.vetoOf(match.id);
+    v.keys ??= new Map();
+    if (typeof body.clientKey !== 'string' || body.clientKey.length < 8) return [400, { error: 'Send a client key (8 to 80 characters).' }];
+    if (v.keys.has(body.clientKey)) return [200, v.keys.get(body.clientKey)];
+    const step = v.step ?? 0;
+    if (Number.isInteger(body.expectedStep) && !['start', 'reset'].includes(body.action) && body.expectedStep !== step) return [409, { error: 'The match room’s veto changed since Air last read it.', veto: this.vetoView(match) }];
+    const order = this.fullOrder(match.bestOf);
+    const teamOf = (t: 1 | 2) => (t === 1 ? v.first ?? 0 : 1 - (v.first ?? 0));
+    const done = (answer: unknown): [number, unknown] => { v.keys!.set(body.clientKey, answer); return [200, answer]; };
+    if (body.action === 'reset') { Object.assign(v, { status: 'not_started', steps: [], toss: null, turn: null, step: 0 }); return done(this.vetoView(match)); }
+    if (body.action === 'start') {
+      if (v.status === 'not_started') Object.assign(v, { status: 'toss_choice_pending', toss: { pending: true, winner: this.tossWinner }, step: 0 });
+      return done(this.vetoView(match));
+    }
+    if (body.action === 'toss_choice') {
+      if (v.status !== 'toss_choice_pending') return [400, { error: 'There is no coin toss to answer.' }];
+      const winner = v.toss!.winner ?? 0;
+      Object.assign(v, { first: body.goFirst ? winner : 1 - winner, status: 'in_progress', step: 1, toss: { pending: false, winner } });
+      this.setTurn(v, order);
+      return done(this.vetoView(match));
+    }
+    const now = order[step - 1];
+    if (v.status !== 'in_progress' || !now || now.action !== body.action) return [400, { error: 'That veto step is not valid right now.' }];
+    const map = this.mapPool.find((m) => m.toLowerCase() === String(body.map ?? '').toLowerCase());
+    if (!map) return [400, { error: `${body.map} is not in this match's map pool.` }];
+    const team = teamOf(now.t);
+    if (now.action === 'pick_side') {
+      if (!['ATK', 'DEF'].includes(body.side)) return [400, { error: 'Choose ATK or DEF.' }];
+      const pick = v.steps.find((x) => x.action === 'pick' && x.map === map);
+      if (pick) Object.assign(pick, { side: body.side, sideTeam: team });
+      else v.steps.push({ team: -1, action: 'decider', map, side: body.side, sideTeam: team });
+    } else {
+      if (v.steps.some((x) => x.map === map)) return [400, { error: `${map} is already gone.` }];
+      v.steps.push({ team, action: now.action, map, side: null });
+    }
+    v.step = step + 1;
+    if (v.step > order.length) Object.assign(v, { status: 'completed', turn: null });
+    else this.setTurn(v, order);
+    return done(this.vetoView(match));
+  }
+
+  private setTurn(v: FakeVeto, order: ReturnType<FakeEsportra['fullOrder']>) {
+    const now = order[(v.step ?? 1) - 1]!;
+    v.turn = { team: now.t === 1 ? v.first ?? 0 : 1 - (v.first ?? 0), action: now.action, startedAt: new Date().toISOString(), seconds: 30 };
+  }
+
+  vetoView(match: FakeMatch) {
+    const v = this.vetoOf(match.id);
+    return { matchId: match.id, status: v.status, bestOf: match.bestOf, steps: v.steps.map((s) => ({ ...s, pickedByTeam: s.team })), mapPool: this.mapPool, sequence: v.sequence ?? this.defaultOrder(match.bestOf), turn: v.turn, toss: v.toss, step: v.step ?? v.steps.length, team1Id: null, team2Id: null };
   }
 
   vetoOf(matchId: string) {
@@ -242,7 +309,7 @@ export class FakeEsportra {
       return send(200, { acknowledged: true });
     }
     if (!this.allowed || !this.devices.has(deviceId)) return send(403, { error: 'An active Air account and registered production PC are required.' });
-    const m = /^(GET|POST) \/api\/air\/broadcast\/matches\/([0-9a-f-]{36})\/(roster|prepare|veto|bracket)$/.exec(route);
+    const m = /^(GET|POST) \/api\/air\/broadcast\/matches\/([0-9a-f-]{36})\/(roster|prepare|veto|veto\/actions|bracket)$/.exec(route);
     if (m) {
       const match = this.matches.find((x) => x.id === m[2]);
       if (!match) return send(404, { error: 'This match is unavailable or you no longer have broadcast access.' });
@@ -250,10 +317,8 @@ export class FakeEsportra {
         const side = (name: string, tag: string, logo: string | null) => ({ id: randomUUID(), name, tag, logo, players: [{ participantId: randomUUID(), teamId: randomUUID(), userId: null, displayName: name, avatarUrl: null, role: 'team' }], lineup: this.lineup(tag) });
         return send(200, { matchId: match.id, team1: side(match.teamA, match.tagA, match.logoA), team2: side(match.teamB, match.tagB, match.logoB) });
       }
-      if (m[3] === 'veto') {
-        const v = this.vetoOf(match.id);
-        return send(200, { matchId: match.id, status: v.status, bestOf: match.bestOf, steps: v.steps.map((s) => ({ ...s, pickedByTeam: s.team })), mapPool: this.mapPool, sequence: v.sequence ?? this.defaultOrder(match.bestOf), turn: v.turn, toss: v.toss, team1Id: null, team2Id: null });
-      }
+      if (m[3] === 'veto') return send(200, this.vetoView(match));
+      if (m[3] === 'veto/actions') { const [code, answer] = this.vetoAction(match, body); return send(code, answer); }
       if (m[3] === 'bracket') return send(200, this.bracket(match));
       return this.prepare(match, body, send);
     }

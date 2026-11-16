@@ -230,15 +230,17 @@ test('the Esportra veto as it happens: custom order, coin toss, turn, decider, r
     st = await room();
     assert.deepEqual([st.veto[0].team, st.vetoOrder[0].team], [0, 0], 'Esportra team 2 is on the left here');
 
-    // The producer enters a step: from now on the veto is theirs, and Esportra is not followed.
+    // The producer enters a step: it waits to go to the match room, and Esportra's older veto does not undo it.
     await production.vetoStep({ map: 'ABYSS' });
     v.steps.push({ team: 0, action: 'ban', map: 'Pearl', side: null });
     await production.esportraSync.pollVeto(production.match!);
     assert.deepEqual((await room()).veto.map((x: any) => x.map), ['BIND', 'ABYSS']);
-    assert.equal(production.snapshot().esportraVeto!.source, 'air');
+    assert.equal(production.snapshot().esportraVeto!.source, 'esportra', 'two-way: the veto still follows the match room');
+    assert.equal(production.snapshot().esportraVeto!.outbox!.waiting, 1);
+    // Follow Esportra again: the waiting step is dropped and the match room's veto is taken.
     await production.vetoFollowEsportra();
     assert.deepEqual((await room()).veto.map((x: any) => x.map), ['BIND', 'PEARL'], 'following Esportra again takes its veto');
-    assert.equal(production.snapshot().esportraVeto!.source, 'esportra');
+    assert.equal(production.snapshot().esportraVeto!.outbox!.waiting, 0);
 
     // A second match keeps its own veto state.
     const v2 = backend.vetoOf(second.id);
@@ -313,4 +315,87 @@ test('while access is refused Air checks again every minute, and a grant brings 
     assert.equal(account.view().matches.length, 2, 'the Esportra matches are back');
     assert.ok(logs.includes('Esportra turned on Air for this account'));
   } finally { await backend.stop(); }
+});
+
+test('two-way veto: a Bo3 entered in Air reaches the match room in order and once; offline it waits; a website step in between asks which veto stands', { skip: !existsSync(BINARY) && 'build the engine first', timeout: 90_000 }, async () => {
+  const { backend, engine, production, stop } = await setupLive();
+  try {
+    production.esportraSync.stop(); // the test sends by hand
+    await production.esportraSignIn(backend.email, backend.password);
+    const [first, second] = backend.matches as [any, any];
+    first.bestOf = 3;
+    await production.esportraMatches.refresh();
+    await production.useEsportraMatch(first.id);
+    const match = production.match!;
+    await production.esportraSync.pollVeto(match);
+    const outbox = production.vetoOutbox;
+    const flush = async () => { for (let i = 0; i < 30 && outbox.view(production.match!).waiting; i++) { (outbox as any).lastSend = 0; await outbox.tick(production.match!); } };
+    const room = async () => (await engine.client.get<any>(`/api/${production.match!.code}`)).state;
+    const v = backend.vetoOf(first.id);
+    backend.tossWinner = 1;
+
+    // Esportra's coin toss went to the second team; it goes first. Then bans, picks with sides, and the decider's side.
+    await production.vetoFirst(1);
+    await production.vetoStep({ map: 'ABYSS' });
+    await production.vetoStep({ map: 'BIND' });
+    assert.equal(production.snapshot().esportraVeto!.outbox!.waiting, 2, 'two steps wait to be sent');
+    assert.equal(production.matchData.of(match).vetoSource, 'esportra', 'the veto keeps following the match room');
+    await flush();
+    assert.equal(v.first, 1, 'the toss winner went first');
+    assert.deepEqual(v.steps.map((x) => `${x.team}:${x.action}:${x.map}`), ['1:ban:Abyss', '0:ban:Bind']);
+    await production.vetoStep({ map: 'LOTUS' });
+    await production.vetoEdit(2, { side: 'DEF' });
+    await production.vetoStep({ map: 'HAVEN' });
+    await flush();
+    assert.equal(production.snapshot().esportraVeto!.outbox!.needsSide, 'HAVEN', 'the match room waits for the side on Haven before the next step');
+    await production.vetoStep({ map: 'ASCENT' });
+    await production.vetoEdit(3, { side: 'ATK' });
+    await production.vetoStep({ map: 'CORRODE' });
+    await production.vetoStep({ map: 'SUNSET' });
+    await production.vetoEdit(6, { side: 'DEF' });
+    await flush();
+    assert.equal(v.status, 'completed');
+    assert.deepEqual(v.steps.map((x) => `${x.team}:${x.action}:${x.map}:${x.side ?? ''}:${x.sideTeam ?? ''}`),
+      ['1:ban:Abyss::', '0:ban:Bind::', '1:pick:Lotus:DEF:0', '0:pick:Haven:ATK:1', '1:ban:Ascent::', '0:ban:Corrode::', '-1:decider:Sunset:DEF:1'], 'every step once, sides by the right team, the decider side by the team that went first');
+    const st = await room();
+    assert.deepEqual(st.veto.map((x: any) => x.map), ['ABYSS', 'BIND', 'LOTUS', 'HAVEN', 'ASCENT', 'CORRODE', 'SUNSET']);
+    assert.equal(st.veto[6].side, 'DEF');
+
+    // Offline: steps wait, then go in order.
+    second.bestOf = 1;
+    await production.esportraMatches.refresh();
+    await production.useEsportraMatch(second.id);
+    const m2 = production.match!;
+    await production.esportraSync.pollVeto(m2);
+    const v2 = backend.vetoOf(second.id);
+    backend.down = true;
+    await production.vetoStep({ map: 'ABYSS' });
+    await production.vetoStep({ map: 'BIND' });
+    (outbox as any).lastSend = 0; await outbox.tick(m2);
+    assert.ok(outbox.view(m2).waiting >= 2, 'offline: nothing lost (plus starting the veto)');
+    backend.down = false;
+    await flush();
+    assert.deepEqual(v2.steps.map((x) => x.map), ['Abyss', 'Bind']);
+
+    // A step on the website while Air's next step waited: Air asks which veto stands.
+    await production.vetoStep({ map: 'LOTUS' });
+    backend.vetoAction(second, { clientKey: 'website-0001', expectedStep: 3, action: 'ban', map: 'Haven' });
+    (outbox as any).lastSend = 0; await outbox.tick(m2);
+    const conflict = outbox.view(m2).conflict!;
+    assert.ok(conflict, 'the conflict is shown');
+    assert.deepEqual(conflict.esportra.map((x) => x.map), ['ABYSS', 'BIND', 'HAVEN']);
+    assert.deepEqual(conflict.air.map((x) => x.map), ['ABYSS', 'BIND', 'LOTUS']);
+    // Keep Air's: the match room is reset and gets Air's veto again.
+    await production.vetoOutboxResolve('air');
+    await flush();
+    assert.deepEqual(v2.steps.map((x) => x.map), ['Abyss', 'Bind', 'Lotus']);
+    assert.equal(outbox.view(m2).conflict, null);
+
+    // An undo of a sent step asks first, then resets and resends.
+    await production.vetoUndo();
+    assert.equal(outbox.view(m2).rewrite, true);
+    await production.vetoOutboxResolve('air');
+    await flush();
+    assert.deepEqual(v2.steps.map((x) => x.map), ['Abyss', 'Bind']);
+  } finally { await stop(); }
 });
