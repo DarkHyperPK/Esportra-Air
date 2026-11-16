@@ -58,7 +58,7 @@ export function panelItems(s: Snapshot, run: Run, openForm: (f: 'toast' | 'poll'
 }
 
 /** Top: the series with − / +, the map being played and its score, Close map and Fix data. */
-export function MatchBar({ s, run, openFix }: { s: Snapshot; run: Run; openFix: () => void }) {
+export function MatchBar({ s, run, openFix, openMatch }: { s: Snapshot; run: Run; openFix: () => void; openMatch?: () => void }) {
   const m = s.match;
   if (!m) return null;
   const r = s.readout;
@@ -90,6 +90,7 @@ export function MatchBar({ s, run, openFix }: { s: Snapshot; run: Run; openFix: 
         {r?.round ? <span className="muted">Round {r.round}{r.phase ? ` · ${r.phase}` : ''}</span> : null}
       </div>
       <div className="row-gap">
+        {openMatch && <button className="btn small" title="Veto, players' prep, event data and show text, without leaving Live" onClick={openMatch}>Match <span className="kbd">{keyLabel(keyOf(s.keymap, 'match'))}</span></button>}
         <button className="btn small" title="Keep this map's data for the post-game graphics without counting it" onClick={() => void run(() => air.closeMap())}>Close map {map}</button>
         <button className="btn small" onClick={openFix}>Fix data <span className="kbd">{keyLabel(keyOf(s.keymap, 'fix'))}</span></button>
       </div>
@@ -253,6 +254,36 @@ export function ResultsCard({ s, run }: { s: Snapshot; run: Run }) {
               </span>
             )}
           </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** The game's numbers for every player (approved mock, 16 Nov): agent, K / D / A, credits, ultimate, alive. */
+export function LiveBoard({ s }: { s: Snapshot }) {
+  const r = s.readout;
+  const m = s.match;
+  if (!m || !r || !r.players?.some((t) => t.length)) return null;
+  return (
+    <section className="card live-board" aria-label="Match data from the game">
+      <div className="card-head"><b>Match data</b><span className="faint t-xs">from the game{r.round ? ` · round ${r.round}` : ''}</span></div>
+      <div className="lb-grid body-pad" style={{ paddingTop: 0 }}>
+        {[0, 1].map((t) => (
+          <table key={t} className="lb-table">
+            <caption><i className="dot" style={{ background: m.teams[t]!.color }} />{m.teams[t]!.tag || m.teams[t]!.name}<span className="faint"> · bank {(r.bank[t] ?? 0).toLocaleString('en-GB')}</span></caption>
+            <thead><tr><th>Player</th><th>K / D / A</th><th>Credits</th><th>Ult</th></tr></thead>
+            <tbody>
+              {(r.players[t] ?? []).map((p, i) => (
+                <tr key={i} className={p.alive ? '' : 'dead'}>
+                  <td><b>{p.name}</b> <span className="faint">{p.agent ? p.agent[0] + p.agent.slice(1).toLowerCase() : ''}</span></td>
+                  <td className="num">{p.k} / {p.d} / {p.a}</td>
+                  <td className="num">{p.credits.toLocaleString('en-GB')}</td>
+                  <td><span className="lb-ult" aria-label={`Ultimate ${p.ult} of ${p.ultMax}`}>{Array.from({ length: Math.min(p.ultMax, 9) }, (_, k) => <i key={k} className={k < p.ult ? 'f' : ''} />)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ))}
       </div>
     </section>

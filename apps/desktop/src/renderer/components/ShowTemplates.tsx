@@ -8,6 +8,8 @@ import type { Run } from '../App.tsx';
 
 const THEME: Record<string, string> = { broadcast: 'Broadcast', compact: 'Compact', monument: 'Monument', impact: 'Impact' };
 const PAUSE: Record<string, string> = { box: 'Box', panel: 'Panel', bar: 'Bar' };
+/** Scene screens by what the producer calls them. */
+const NAME: Record<string, string> = { holding: 'Starting soon · Break · Ending', casters: 'Desk' };
 
 function summary(t: ShowTemplateView) {
   const bars = t.screens.filter((x) => x.style === 'band').length;
@@ -70,7 +72,7 @@ export function ShowTemplateManager({ s, run }: { s: Snapshot; run: Run }) {
         )}
         <div className="tpl-rows body-pad">
           {t.screens.map((x) => (
-            <div key={x.show} className="tpl-row"><span>{s.setup.screens.find((y) => y.id === x.show)?.title ?? x.show}</span><span className={`pill ${x.style === 'band' ? 'ok' : ''}`}>{x.style === 'band' ? 'Overlay bar' : 'Full screen'}</span><span className="faint t-xs">{x.look ?? 'Built-in look'}</span></div>
+            <div key={x.show} className="tpl-row"><span>{NAME[x.show] ?? s.setup.screens.find((y) => y.id === x.show)?.title ?? x.show}</span><span className={`pill ${x.style === 'band' ? 'ok' : ''}`}>{x.show === 'holding' ? (x.style === 'band' ? 'Frame' : 'Classic') : x.show === 'casters' ? 'OBS scene' : x.style === 'band' ? 'Overlay bar' : 'Full screen'}</span><span className="faint t-xs">{x.look ?? 'Built-in look'}</span></div>
           ))}
           <div className="tpl-row faint t-sm"><span>Banner style</span><span>{THEME[t.theme] ?? t.theme}</span><span /></div>
           <div className="tpl-row faint t-sm"><span>HUD look</span><span>{t.hudLook ?? 'Built in'}</span><span /></div>

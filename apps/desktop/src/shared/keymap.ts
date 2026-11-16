@@ -19,6 +19,7 @@ const SHOW: KeyAction[] = [
   { id: 'skip', label: 'Skip the next autopilot step', group: 'show', key: 'S' },
   { id: 'all', label: 'All graphics', group: 'show', key: 'Ctrl+G' },
   { id: 'fix', label: 'Fix data', group: 'show', key: 'Ctrl+D' },
+  { id: 'match', label: 'Match: veto, show text, event data', group: 'show', key: 'Ctrl+M' },
 ];
 
 /** Moments: one press for what happens during a show. Up to six are on Live. */

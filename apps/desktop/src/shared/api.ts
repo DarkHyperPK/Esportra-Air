@@ -150,6 +150,8 @@ export interface RoundReadout {
   /** The player the observer camera is on. */
   observed: { team: number; player: number; name: string } | null;
   roster: Array<Array<{ name: string; inGameName: string }>>;
+  /** Each player's numbers from the game data, for Live's match data (16 Nov). */
+  players: Array<Array<{ name: string; agent: string; k: number; d: number; a: number; credits: number; ult: number; ultMax: number; alive: boolean }>>;
   /** Maps won in the series, and the team names and tags on screen. */
   series: [number, number];
   teams: Array<{ name: string; tag: string }>;
