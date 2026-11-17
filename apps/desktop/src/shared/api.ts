@@ -580,6 +580,11 @@ export interface AirApi {
   esportraRefresh(): Promise<Snapshot>;
   /** Checks access again (and loads the matches once it is on); still refused is not an error. */
   esportraCheck(): Promise<Snapshot>;
+  /** After the match room changed: keep Air's veto (sent again) or use the match room's. Also confirms sending a corrected veto. */
+  vetoOutboxResolve(keep: 'air' | 'esportra'): Promise<Snapshot>;
+  vetoOutboxRetry(): Promise<Snapshot>;
+  /** Starts the veto in the Esportra match room, which flips the coin. */
+  vetoOutboxStart(): Promise<Snapshot>;
   /** Asks Esportra to turn Air on for this account, with an optional note (up to 500 characters). */
   esportraRequestAccess(note: string): Promise<Snapshot>;
   esportraWithdrawRequest(): Promise<Snapshot>;

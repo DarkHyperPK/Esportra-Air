@@ -128,6 +128,12 @@ test('match data reaches the room: veto, maps, holding text, standings, ticker, 
     assert.deepEqual(st.series.map((x: any) => x.map), ['LOTUS', 'HAVEN', 'SUNSET']);
     assert.deepEqual([st.map.number, st.map.name], [1, 'LOTUS']);
     assert.equal(st.holding.mode, 'starting');
+    // The decider's side, chosen as on Esportra: in a best of 3 by the team that went first (team 0 here).
+    const { deciderSideTeam } = await import('../src/shared/match-data.ts');
+    await production.vetoEdit(6, { side: 'DEF', sideTeam: deciderSideTeam(3, 0) });
+    st = await room();
+    assert.deepEqual([st.veto[6].side, st.veto[6].sideTeam], ['DEF', 0]);
+    assert.equal(st.series[2].side, 'DEF', 'map 3 carries the decider side');
     await production.vetoUndo();
     assert.equal((await room()).veto.length, 6, 'undo takes the last step back off air');
     // Who starts: swapping swaps the teams of the steps entered; a step can be edited in place.

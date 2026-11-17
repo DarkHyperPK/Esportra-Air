@@ -6,14 +6,15 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { LineupEditor, TeamFields, emptyPlayer, type Lineups } from './MatchEditors.tsx';
 import { RehearsePanel } from './Rehearse.tsx';
-import { VetoTab } from './MatchData.tsx';
+import { EventTab, ShowTab, VetoTab } from './MatchData.tsx';
 import { ShowTemplatePicker } from './ShowTemplates.tsx';
 
 // The match is created when leaving Show (the veto is saved to it); Maps and veto and Rehearse work on it.
-const STEPS = ['Teams', 'Players', 'Show', 'Maps and veto', 'Rehearse'] as const;
+const STEPS = ['Teams', 'Players', 'Show', 'Maps and veto', 'Show text and event data', 'Rehearse'] as const;
 const SCREENS = 2;
 const VETO = 3;
-const REHEARSE = 4;
+const TEXT = 4;
+const REHEARSE = 5;
 
 export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapshot; run: Run; close: () => void; eventId?: string | null }) {
   const last = s.matches[0];
@@ -155,6 +156,7 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
               <VetoTab key={s.match.id} s={s} run={run} md={s.matchData} />
             </div>
           )}
+          {step === TEXT && s.match && s.matchData && <TextStep s={s} run={run} />}
           {step === REHEARSE && (
             <div className="stack" style={{ gap: 14 }}>
               <p className="lead">Watch {s.match?.title ?? 'the match'} run through your graphics: your teams, players and photos on sample game data, with autopilot firing as it would on the night.</p>
@@ -170,10 +172,27 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
             : step === SCREENS
               ? <button className="btn primary" disabled={busy || !teamsOk} onClick={() => void finish()}>{busy ? 'Creating…' : 'Create match · maps and veto'}</button>
               : step === VETO
-                ? <button className="btn primary" onClick={() => setStep(REHEARSE)}>Continue · rehearse</button>
+                ? <button className="btn primary" onClick={() => setStep(TEXT)}>Continue</button>
+              : step === TEXT
+                ? <span className="row-gap"><button className="btn quiet" onClick={() => setStep(REHEARSE)}>Skip</button><button className="btn primary" onClick={() => setStep(REHEARSE)}>Continue · rehearse</button></span>
               : <button className="btn primary" disabled={!canNext} onClick={() => setStep(step + 1)}>Continue</button>}
         </footer>
       </div>
+    </div>
+  );
+}
+
+/** Optional: Starting soon / Break / Ending text and the event's standings, ticker and bracket. Both stay editable in Match data and Live. */
+function TextStep({ s, run }: { s: Snapshot; run: Run }) {
+  const [tab, setTab] = useState<'show' | 'event'>('show');
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <p className="lead">What the holding screens say, and the event’s standings, ticker and bracket. Optional: skip it and fill it in later from Match data or Live’s Match drawer.</p>
+      <div className="seg tabs-seg" role="tablist" aria-label="Show text and event data">
+        <button role="tab" aria-selected={tab === 'show'} aria-pressed={tab === 'show'} onClick={() => setTab('show')}>Show text</button>
+        <button role="tab" aria-selected={tab === 'event'} aria-pressed={tab === 'event'} onClick={() => setTab('event')}>Event data</button>
+      </div>
+      {tab === 'show' ? <ShowTab key={s.match!.id} s={s} run={run} md={s.matchData!} /> : <EventTab key={s.match!.eventId} s={s} run={run} />}
     </div>
   );
 }

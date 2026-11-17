@@ -10,6 +10,7 @@
 //   GET  /api/air/broadcast/matches/{id}/roster
 //   POST /api/air/broadcast/matches/{id}/prepare   the match package: lineup with Riot ids, veto, sponsors, bracket
 //   GET  /api/air/broadcast/matches/{id}/veto      the veto as the teams make it
+//   POST /api/air/broadcast/matches/{id}/veto/actions  a veto step entered in Air, for the match room
 //   GET  /api/air/broadcast/matches/{id}/bracket
 //   GET/POST /api/air/broadcast/packages/{id}/result-proposals (+ /{proposal}/review)
 //   POST /api/air/devices/{id}/heartbeat
@@ -43,9 +44,12 @@ interface Tokens {
 
 export class EsportraError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /** Esportra's answer body, when it sent one (a 409 on a veto step carries the match room's veto). */
+  readonly data: unknown;
+  constructor(message: string, status: number, data: unknown = null) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -286,7 +290,13 @@ export class EsportraAccount {
 
   async veto(matchId: string) {
     if (!UUID.test(matchId)) throw new Error('Choose an Esportra match.');
-    return this.json<{ status?: string; bestOf?: number; steps?: unknown; mapPool?: unknown; sequence?: unknown; turn?: unknown; toss?: unknown }>(`/api/air/broadcast/matches/${matchId}/veto`);
+    return this.json<{ status?: string; bestOf?: number; steps?: unknown; mapPool?: unknown; sequence?: unknown; turn?: unknown; toss?: unknown; step?: number }>(`/api/air/broadcast/matches/${matchId}/veto`);
+  }
+
+  /** Enters one veto step in the match room for the team whose turn it is (same key: same answer, never twice). */
+  async vetoAction(matchId: string, step: { clientKey: string; expectedStep: number | null; action: string; map?: string; side?: 'ATK' | 'DEF'; goFirst?: boolean }) {
+    if (!UUID.test(matchId)) throw new Error('Choose an Esportra match.');
+    return this.json<{ status?: string; steps?: unknown; sequence?: unknown; turn?: unknown; toss?: unknown; step?: number }>(`/api/air/broadcast/matches/${matchId}/veto/actions`, { method: 'POST', body: step });
   }
 
   async bracket(matchId: string) {
@@ -398,13 +408,15 @@ export class EsportraAccount {
     }
     if (!response.ok) {
       let message = 'Esportra could not complete this request.';
+      let data: unknown = null;
       try {
-        const body = (await response.json()) as { error?: string };
-        if (body.error) message = String(body.error);
+        data = await response.json();
+        const body = data as { error?: string };
+        if (body?.error) message = String(body.error);
       } catch {
         // keep the generic message
       }
-      throw new EsportraError(message, response.status);
+      throw new EsportraError(message, response.status, data);
     }
     this.online = true;
     return (await response.json()) as T;

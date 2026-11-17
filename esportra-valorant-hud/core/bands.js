@@ -56,7 +56,7 @@
       return `<div class="bd-vcol">${mapTile(v.map, v.action === 'ban' ? 'ban' : v.action === 'pick' ? 'pick' : 'dec', top)}<div class="bd-vlab ${v.action === 'decider' ? 'dec' : ''}" style="${team && v.action === 'pick' ? `--c:${esc(team.color)}` : ''}">${label}</div></div>`;
     }).join('');
     return `<div class="bd-head"><span class="bd-title">MAP VETO <span class="acc">· ${esc(HUD.vetoCaption(s, steps, false).replace('VETO COMPLETE', 'COMPLETE'))}</span></span><span class="bd-cap">${esc([s.event.name, s.event.stage, `BO${s.event.bestOf}`].filter(Boolean).join(' · '))}</span><span class="bd-row">${mark(T[0], 40)}<span class="bd-vs">VS</span>${mark(T[1], 40)}</span></div><div class="bd-vgrid" style="--n:${Math.max(1, steps.length)}">${tiles}</div>`;
-  }, s => [s.veto, s.vetoOrder, s.vetoTurn && [s.vetoTurn.team, s.vetoTurn.action], s.vetoToss, s.teams.map(t => [t.tag, t.color, t.logo]), s.event]);
+  }, s => [s.veto, s.vetoOrder, s.vetoTurn && [s.vetoTurn.team, s.vetoTurn.action], s.vetoToss, s.vetoFirst, s.teams.map(t => [t.tag, t.color, t.logo]), s.event]);
 
   // 2 · Agent select: both lineups with their agents, the map in the middle. A player still choosing is
   // dimmed; a lock-in marks the card and flashes it once.
@@ -78,7 +78,7 @@
         <div class="bd-lgrid">${cards(0)}
           <div class="bd-lmid">${mapTile(s.map.name, 'mid')}<div class="bd-lser"><span class="bd-cap">SERIES</span><b>${T[0].series || 0} – ${T[1].series || 0}</b><span class="bd-cap small">${esc(played.map(x => `${x.map} ${x.score[0]}–${x.score[1]}`).join(' · '))}</span></div></div>
           ${cards(1)}</div>`;
-    }, s => [s.players.map(t => t.map(p => [p.name, p.agent, p.locked])), s.teams.map(t => [t.name, t.tag, t.color, t.logo, t.side, t.series]), s.map, s.series]);
+    }, s => [s.players.map(t => t.map(p => [p.name, p.agent, p.locked])), s.teams.map(t => [t.name, t.tag, t.color, t.logo, t.side, t.series]), [s.map.name, s.map.number], s.series.map(x => [x.map, x.winner, x.score]), s.event.bestOf]);
     return { update: b.update, play() { was = null; b.play(); } };
   };
 

@@ -672,10 +672,20 @@ fn apply_rules(inner: &mut RoomInner, state: &mut Value, events: &[Value]) -> bo
     callout
 }
 
+/// Writes `data` to `path` through a temporary file and a rename. Each write has its own temporary file:
+/// with one shared name, two saves at once (two requests, or a request and the autosave) raced, and the
+/// second rename failed because the first had already moved the file (seen on Windows CI, 17 Nov).
 fn write_atomic(path: &Path, data: &Value) -> std::io::Result<()> {
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, serde_json::to_vec(data)?)?;
-    fs::rename(tmp, path)
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("json.{}.{n}.tmp", std::process::id()));
+    if let Err(e) = fs::write(&tmp, serde_json::to_vec(data)?) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = fs::remove_file(&tmp);
+    })
 }
 
 pub struct Engine {
@@ -905,6 +915,27 @@ fn parse_outputs(value: &Value) -> HashMap<String, Output> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saves_at_the_same_time_all_succeed_and_leave_no_temporary_files() {
+        let dir = std::env::temp_dir().join(format!("air-atomic-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("outputs.json");
+        let threads: Vec<_> = (0..16)
+            .map(|i| {
+                let path = path.clone();
+                std::thread::spawn(move || (0..50).map(|j| write_atomic(&path, &json!({ "n": i * 100 + j }))).collect::<Vec<_>>())
+            })
+            .collect();
+        for t in threads {
+            for r in t.join().unwrap() {
+                r.expect("every save succeeds");
+            }
+        }
+        let left: Vec<_> = fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name()).collect();
+        assert_eq!(left, vec![std::ffi::OsString::from("outputs.json")], "only the saved file is left");
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn room_codes_match_the_js_rules() {

@@ -153,6 +153,9 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'esportraWithdrawRequest': await p.esportraWithdrawRequest(); break;
     case 'useEsportraMatch': await p.useEsportraMatch(String(a[0])); break;
     case 'vetoFollowEsportra': await p.vetoFollowEsportra(); break;
+    case 'vetoOutboxResolve': await p.vetoOutboxResolve(a[0] === 'esportra' ? 'esportra' : 'air'); break;
+    case 'vetoOutboxRetry': p.vetoOutboxRetry(); break;
+    case 'vetoOutboxStart': p.vetoOutboxStart(); break;
     case 'recordShow': await p.recordShow(a[0] === 'series' ? 'series' : Number(a[0])); break;
     case 'recordRemove': await p.recordRemove(Number(a[0])); break;
     case 'closeMap': await p.closeMap(); break;

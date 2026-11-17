@@ -151,10 +151,25 @@
   // animations) are kept, only what differs is changed. Graphics that redraw on live data use this so
   // nothing blinks or replays its entrance when an unrelated value changes. A picture that failed and
   // fell back keeps its fallback until its source really changes.
+  // A part a template styles (core/templates.js) keeps the template's inline properties, its marker and
+  // its words through a redraw: stripping them and letting the template put them back a frame later was
+  // the flash on every veto update.
+  const tplOwned = el => (el.hasAttribute && el.hasAttribute('data-tpl') && window.AirTemplates && window.AirTemplates.owned ? window.AirTemplates.owned(el) : null);
+  const scratch = document.createElement('i');
+  const withOwned = (style, own) => {
+    scratch.setAttribute('style', style || '');
+    Object.entries(own.css).forEach(([k, v]) => scratch.style.setProperty(k, v, 'important'));
+    return scratch.getAttribute('style') || '';
+  };
   const morphAttrs = (a, b) => {
     if (a.tagName === 'IMG' && a.dataset.failed && a.dataset.failed === b.getAttribute('src')) return;
-    for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
-    for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+    const own = tplOwned(a);
+    for (const { name } of [...a.attributes]) if (!b.hasAttribute(name) && !(own && (name === 'data-tpl' || name === 'style'))) a.removeAttribute(name);
+    for (const { name, value } of [...b.attributes]) {
+      const want = own && name === 'style' ? withOwned(value, own) : value;
+      if (a.getAttribute(name) !== want) a.setAttribute(name, want);
+    }
+    if (own && !b.hasAttribute('style') && Object.keys(own.css).length) { const want = withOwned('', own); if (a.getAttribute('style') !== want) a.setAttribute('style', want); }
   };
   const morphKids = (a, b) => {
     const an = [...a.childNodes], bn = [...b.childNodes];
@@ -164,6 +179,8 @@
       if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y, x); return; }
       if (y.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; return; }
       morphAttrs(x, y);
+      const own = tplOwned(x);
+      if (own && own.text) return;
       if (x.innerHTML !== y.innerHTML) morphKids(x, y);
     });
     for (let i = an.length - 1; i >= bn.length; i--) a.removeChild(an[i]);
@@ -199,9 +216,12 @@
     const steps = done.map((v, i) => ({ ...v, i, state: 'done' }));
     const last = steps[steps.length - 1];
     if (choosingSide && last && last.action === 'pick' && !last.side) last.sideBy = turn.team;
+    // A veto entered in Air has no turn from Esportra: a pick or the decider without its side is still owed it,
+    // by the other team after a pick and, on the decider, as Esportra does (best of 1 or 3: the team that went first; best of 5: the other).
+    else if (!turn && last && (last.action === 'pick' || last.action === 'decider') && !last.side) last.sideBy = last.action === 'pick' ? 1 - last.team : bestOf === 5 ? 1 - first : first;
     for (let i = done.length; i < seq.length; i++) {
       const o = seq[i], team = o.action === 'decider' ? -1 : (o.team === 0 || o.team === 1 ? o.team : (first + i) % 2);
-      const now = i === done.length && (turn ? !(choosingSide && last && last.sideBy !== undefined) : done.length > 0);
+      const now = i === done.length && (turn ? !(choosingSide && last && last.sideBy !== undefined) : done.length > 0 && !(last && last.sideBy !== undefined));
       steps.push({ i, action: o.action, team, state: now ? 'now' : 'next' });
     }
     return steps;
@@ -760,7 +780,7 @@
       // Coming on air plays every card's entrance once; afterwards only a new card animates.
       play() { sig = ''; box.innerHTML = ''; },
       update(s) {
-        const k = JSON.stringify([s.veto, s.vetoOrder, s.vetoTurn, s.vetoToss, s.teams.map(t => [t.name, t.tag, t.color, t.logo]), s.series.map(x => x.map), s.event.bestOf, s.event.stage, s.event.accent]);
+        const k = JSON.stringify([s.veto, s.vetoOrder, s.vetoTurn && [s.vetoTurn.team, s.vetoTurn.action], s.vetoToss, s.vetoFirst, s.teams.map(t => [t.name, t.tag, t.color, t.logo]), s.series.map(x => x.map), s.event.bestOf, s.event.stage, s.event.accent]);
         if (k === sig) return; sig = k;
         m.style.setProperty('--ev', eventAccent(s));
         txt(sub, [s.event.stage, `BEST OF ${s.event.bestOf}`].filter(Boolean).join('   ·   '));
@@ -798,7 +818,7 @@
     return {
       play() { sig = ''; was = null; cols[0].innerHTML = cols[2].innerHTML = ''; },
       update(s) {
-        const k = JSON.stringify([s.players.map(t => t.map(p => [p.name, p.agent, p.locked])), s.teams.map(t => [t.name, t.tag, t.color, t.logo, t.side, t.series]), s.map, s.series, s.event.accent]);
+        const k = JSON.stringify([s.players.map(t => t.map(p => [p.name, p.agent, p.locked])), s.teams.map(t => [t.name, t.tag, t.color, t.logo, t.side, t.series]), [s.map.name, s.map.number], s.series.map(x => [x.map, x.winner, x.score]), s.event.bestOf, s.event.accent]);
         if (k === sig) return; sig = k;
         m.style.setProperty('--ev', eventAccent(s));
         const now = s.players.map(t => t.slice(0, 5).map(lockState));
@@ -1311,8 +1331,9 @@
       const panel = s.airPause, enabled = (!PREVIEW || tplSample === 'pause' || tplSample === 'timeout') && ['technical', 'timeout'].includes(panel?.kind) && Number.isFinite(panel.startedAt);
       const asBar = !!enabled && s.layout && s.layout.pauseStyle === 'bar';
       pausePanel.classList.toggle('on', !!enabled && !asBar);
-      pausePanel.style.visibility = enabled && !asBar ? 'visible' : 'hidden';
-      pausePanel.setAttribute('aria-hidden', enabled && !asBar ? 'false' : 'true');
+      const vis = enabled && !asBar ? 'visible' : 'hidden', hid = enabled && !asBar ? 'false' : 'true';
+      if (pausePanel.style.visibility !== vis) pausePanel.style.visibility = vis;
+      if (pausePanel.getAttribute('aria-hidden') !== hid) pausePanel.setAttribute('aria-hidden', hid);
       pauseBar.classList.toggle('on', asBar);
       // A timeout comes in the buy phase: the bar then takes the round history's place above the economy table.
       pauseBar.classList.toggle('buy', asBar && s.round.phase === 'buy'); root.classList.toggle('pause-bar-buy', asBar && s.round.phase === 'buy');

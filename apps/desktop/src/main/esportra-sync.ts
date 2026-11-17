@@ -54,6 +54,8 @@ export interface EsportraSyncContext {
   log(text: string): void;
   changed(): void;
   now(): number;
+  /** Veto steps entered in Air on their way to the match room (src/main/esportra-veto-outbox.ts). */
+  outbox?(): import('./esportra-veto-outbox.ts').VetoOutbox | null;
 }
 
 const VETO_EVERY = 2_000;
@@ -120,7 +122,7 @@ export class EsportraSync {
   }
 
   /** The match's sides in Air are the other way round from Esportra's (the producer swapped the teams here). */
-  private flipped(match: Match) {
+  flipped(match: Match) {
     const names = match.source?.teams;
     return !!names && !same(names[0], names[1]) && same(match.teams[0].name, names[1]) && same(match.teams[1].name, names[0]);
   }
@@ -148,6 +150,8 @@ export class EsportraSync {
   private async applyVeto(match: Match, raw: RawVetoStep[], pool: MapName[], order: VetoOrderStep[] | null) {
     const here = this.ctx.matchData.of(match);
     if (here.vetoSource === 'air' && here.veto.length) return false;
+    // Steps entered here are still on their way to the match room: Esportra's older veto must not replace them.
+    if (this.ctx.outbox?.()?.holds(match)) return false;
     const flip = this.flipped(match);
     const steps = flip ? flipVeto(raw) : raw;
     const vetoOrder = order && flip ? flipVeto(order) : order;
@@ -245,6 +249,7 @@ export class EsportraSync {
         await account.refreshMatches().catch(() => {});
       }
       const match = this.esportraMatch();
+      await this.ctx.outbox?.()?.tick(match).catch(() => {});
       const w = match ? this.watch(match.id) : null;
       if (match && this.vetoWanted(match) && now - this.last.veto >= (w?.status === 'in_progress' ? VETO_EVERY : VETO_IDLE_EVERY)) {
         this.last.veto = now;
@@ -301,6 +306,7 @@ export class EsportraSync {
     }
     const before = w.status;
     w.status = typeof v.status === 'string' ? v.status : null;
+    this.ctx.outbox?.()?.observe(match, v);
     const unknown = unknownVetoMaps(v.steps);
     for (const m of unknown) if (!w.warned.has(`map:${m}`)) { w.warned.add(`map:${m}`); this.ctx.log(`Esportra’s veto has ${m}, a map Air does not know · it is left out`); }
     w.unknown = unknown;
@@ -313,7 +319,8 @@ export class EsportraSync {
   vetoView(match: Match | null): EsportraVetoView | null {
     if (!match?.source?.matchId) return null;
     const w = this.watch(match.id);
-    return { source: this.ctx.matchData.of(match).vetoSource, status: w.status, gone: w.gone, unknownMaps: w.unknown, unreachableSince: this.unreachableSince };
+    const outbox = this.ctx.outbox?.();
+    return { source: this.ctx.matchData.of(match).vetoSource, status: w.status, gone: w.gone, unknownMaps: w.unknown, unreachableSince: this.unreachableSince, ...(outbox?.linked(match) ? { outbox: outbox.view(match) } : {}) };
   }
 
   /** The producer hands the veto back to Esportra: read it now. */

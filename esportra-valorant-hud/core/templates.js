@@ -152,8 +152,8 @@
       let text = prev.text;
       if (w.label != null) { if (text == null) text = el.textContent; if (el.textContent !== w.label) el.textContent = w.label; }
       else if (text != null) { if (el.textContent !== text) el.textContent = text; text = null; }
-      SET.set(el, { css: Object.keys(w.css), text });
-      el.setAttribute('data-tpl', '');
+      SET.set(el, { css: Object.keys(w.css), vals: { ...w.css }, text });
+      if (!el.hasAttribute('data-tpl')) el.setAttribute('data-tpl', '');
     });
   }
   function restore(el) {
@@ -161,6 +161,13 @@
     prev.css.forEach(k => el.style.removeProperty(k));
     if (prev.text != null && el.textContent !== prev.text) el.textContent = prev.text;
     SET.delete(el); el.removeAttribute('data-tpl');
+  }
+
+  /** What a template set on an element (its inline properties, and whether it replaced the words), so a
+   *  redraw can keep them instead of stripping them for a frame (the flash on every veto update). */
+  function owned(el) {
+    const prev = SET && SET.get(el);
+    return prev ? { css: prev.vals || {}, text: prev.text != null } : null;
   }
 
   /** Plays each part's entrance (preview Play, and when the full-screen host shows the graphic). */
@@ -206,5 +213,5 @@
   /** The graphic a page shows: the full-screen host's current one, or the HUD. */
   const graphicOf = (screen, style) => (screen ? `${screen}|${style === 'band' ? 'band' : 'full'}` : 'hud');
 
-  return { GRAPHICS, FONTS: [...Object.keys(FONTS), 'poppins'], WEIGHTS, BRAND, ENTRANCES: Object.keys(ENTER), styles, apply, enter, appear, brand, graphicOf, partsOf };
+  return { GRAPHICS, FONTS: [...Object.keys(FONTS), 'poppins'], WEIGHTS, BRAND, ENTRANCES: Object.keys(ENTER), styles, apply, enter, appear, brand, graphicOf, partsOf, owned };
 });

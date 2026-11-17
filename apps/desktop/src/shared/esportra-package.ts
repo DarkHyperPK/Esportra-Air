@@ -239,5 +239,25 @@ export interface EsportraVetoView {
   unknownMaps: string[];
   /** Since when Esportra cannot be reached (ms), or null. */
   unreachableSince: number | null;
+  /** Veto steps entered in Air on their way to the match room (two-way veto, 16 Nov). */
+  outbox?: VetoOutboxView;
+}
+
+/** Air's veto steps for the match room: sent in order, kept while Esportra cannot be reached. */
+export interface VetoOutboxView {
+  /** Steps still to send. */
+  waiting: number;
+  /** When the last step reached the match room (ms), or null. */
+  sentAt: number | null;
+  /** Why sending stopped (Esportra's words), or null. */
+  error: string | null;
+  /** A step was changed after the match room had it: sending the corrected veto replaces the match room's. */
+  rewrite: boolean;
+  /** The match room's veto moved on while Air's steps waited: the producer picks which veto stands. */
+  conflict: { air: VetoStep[]; esportra: VetoStep[] } | null;
+  /** The match room waits for a side on this map before the next step can go. */
+  needsSide: MapName | null;
+  /** Esportra's coin toss: who won it (Air's team order), and whether the winner has still to choose. */
+  toss: { winner: 0 | 1 | null; pending: boolean } | null;
 }
 
