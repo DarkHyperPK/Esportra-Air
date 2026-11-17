@@ -1,6 +1,6 @@
 // What the veto panel shows, worked out from the match data (pure, so the panel's parts stay simple).
 import type { Match, Snapshot } from '../../../shared/api.ts';
-import { deciderSideTeam, nextVetoStep, orderOf, seriesMaps, vetoNeedsSide, type MapName, type MatchData, type VetoStep } from '../../../shared/match-data.ts';
+import { deciderSideTeam, firstTeamOf, nextVetoStep, orderOf, orderTeam, seriesMaps, vetoNeedsSide, type MapName, type MatchData, type VetoStep } from '../../../shared/match-data.ts';
 
 export const title = (m: string) => m.charAt(0) + m.slice(1).toLowerCase();
 export const other = (t: 0 | 1) => (t === 0 ? 1 : 0) as 0 | 1;
@@ -25,7 +25,8 @@ export interface VetoModel {
 
 export function vetoModel(s: Snapshot, md: MatchData): VetoModel {
   const m = s.match!;
-  const first = (md.veto[0] && md.veto[0].team !== -1 ? md.veto[0].team : md.vetoFirst ?? 0) as 0 | 1;
+  // The team acting first: with Esportra's own order, worked out from it (its teams are relative to who acts first).
+  const first = md.vetoOrder?.length ? firstTeamOf(md.veto, md.vetoOrder, md.vetoFirst ?? 0) : (md.veto[0] && md.veto[0].team !== -1 ? md.veto[0].team : md.vetoFirst ?? 0) as 0 | 1;
   const sideAt = vetoNeedsSide(md.veto);
   const waiting = md.veto[sideAt];
   const sideTeam = !waiting ? null : waiting.action === 'decider' ? deciderSideTeam(m.bestOf, first) : other(waiting.team as 0 | 1);
@@ -41,5 +42,5 @@ export function vetoModel(s: Snapshot, md: MatchData): VetoModel {
 export function teamAt(v: VetoModel, i: number): 0 | 1 | -1 {
   const o = v.order[i];
   if (!o || o.action === 'decider') return -1;
-  return v.md.vetoOrder?.length ? (o.team as 0 | 1) : (((v.first + i) % 2) as 0 | 1);
+  return v.md.vetoOrder?.length ? (orderTeam(o.team, v.first) as 0 | 1) : (((v.first + i) % 2) as 0 | 1);
 }

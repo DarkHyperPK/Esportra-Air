@@ -38,7 +38,7 @@ export interface EsportraSyncContext {
   store: Store;
   /** The selected match. */
   match(): Match | null;
-  matchData: { of(match: Match): MatchData; setVeto(veto: VetoStep[], mapPool?: string[], vetoOrder?: VetoOrderStep[] | null): Promise<void>; eventData(eventId: string | null): EventData; saveEvent(eventId: string, input: unknown): Promise<void> };
+  matchData: { of(match: Match): MatchData; setVeto(veto: VetoStep[], mapPool?: string[], vetoOrder?: VetoOrderStep[] | null): Promise<void>; setFirst(team: 0 | 1): Promise<void>; eventData(eventId: string | null): EventData; saveEvent(eventId: string, input: unknown): Promise<void> };
   /** Game data or a test round is running (the veto is over). */
   live(): boolean;
   health(): Health;
@@ -154,7 +154,8 @@ export class EsportraSync {
     if (this.ctx.outbox?.()?.holds(match)) return false;
     const flip = this.flipped(match);
     const steps = flip ? flipVeto(raw) : raw;
-    const vetoOrder = order && flip ? flipVeto(order) : order;
+    // Esportra's order is relative to the team acting first, so swapping the teams here does not change it.
+    const vetoOrder = order;
     const converted = vetoFrom(steps, match.bestOf, pool.length ? pool : here.mapPool, vetoOrder);
     const w = this.watch(match.id);
     if (!converted) {
@@ -184,6 +185,8 @@ export class EsportraSync {
     const key = JSON.stringify([t, c]);
     if (key === w.turnKey) return;
     w.turnKey = key;
+    // Before the first step, Esportra's turn says which team acts first (T1 of its order): the panel and graphics follow it.
+    if (t && !md.veto.length && t.action !== 'pick_side') await this.ctx.matchData.setFirst((md.vetoOrder?.[0]?.team === 1 ? 1 - t.team : t.team) as 0 | 1);
     await this.ctx.patch({ vetoTurn: t, vetoToss: c });
   }
 

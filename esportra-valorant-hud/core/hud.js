@@ -211,7 +211,8 @@
     const done = Array.isArray(veto) ? veto : [];
     const custom = Array.isArray(order) && order.length >= done.length && order.length > 0 && order.every(o => o && ['ban', 'pick', 'decider'].includes(o.action));
     const seq = custom ? order : (VETO_ORDER[bestOf] || VETO_ORDER[3]).map(action => ({ action }));
-    const first = done[0] && (done[0].team === 0 || done[0].team === 1) ? done[0].team : first0 === 1 ? 1 : 0;
+    // Esportra's own order names teams relative to the team acting first (T1 = 0, T2 = 1), not as team A/B.
+    const first = done[0] && (done[0].team === 0 || done[0].team === 1) ? (custom && seq[0] && seq[0].team === 1 ? 1 - done[0].team : done[0].team) : first0 === 1 ? 1 : 0;
     const choosingSide = turn && turn.action === 'pick_side' && (turn.team === 0 || turn.team === 1);
     const steps = done.map((v, i) => ({ ...v, i, state: 'done' }));
     const last = steps[steps.length - 1];
@@ -220,7 +221,7 @@
     // by the other team after a pick and, on the decider, as Esportra does (best of 1 or 3: the team that went first; best of 5: the other).
     else if (!turn && last && (last.action === 'pick' || last.action === 'decider') && !last.side) last.sideBy = last.action === 'pick' ? 1 - last.team : bestOf === 5 ? 1 - first : first;
     for (let i = done.length; i < seq.length; i++) {
-      const o = seq[i], team = o.action === 'decider' ? -1 : (o.team === 0 || o.team === 1 ? o.team : (first + i) % 2);
+      const o = seq[i], team = o.action === 'decider' ? -1 : (o.team === 0 || o.team === 1 ? (o.team === 0 ? first : 1 - first) : (first + i) % 2);
       const now = i === done.length && (turn ? !(choosingSide && last && last.sideBy !== undefined) : done.length > 0 && !(last && last.sideBy !== undefined));
       steps.push({ i, action: o.action, team, state: now ? 'now' : 'next' });
     }
@@ -1191,6 +1192,9 @@
   // Full-screen host: one browser source that shows the graphic named in state.airFullscreen
   // (set by Esportra Air), so switching full-screen graphics never touches OBS.
   const OVER_ONLY = Q.get('over') === '1';
+  // A browser source for one graphic (Air's Rundown › Copy browser source, 17 Nov): ?only=<screen> shows that
+  // graphic alone, only while Air has it on air (or always with &always=1), in &style=full|band (else the Take's).
+  const ONLY = Q.get('only'), ALWAYS = Q.get('always') === '1', ONLY_STYLE = Q.get('style');
   const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'map-breakdown': 'mapbreakdown', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup' };
   M.fullscreen = root => {
     const slots = {};
@@ -1209,6 +1213,13 @@
         // The copies over the game and over the desk (?over=1) show only over-the-game versions: a
         // full-screen graphic covers the whole picture, so it lives in the Full screen scene the crew switches to.
         if (OVER_ONLY && want && !(want.endsWith('|band') || (own && own.style === 'band'))) want = null;
+        if (ONLY) {
+          const onAir = s.airFullscreen === ONLY;
+          const style = ONLY_STYLE === 'band' || ONLY_STYLE === 'full' ? ONLY_STYLE : onAir && s.airFullscreenStyle === 'band' ? 'band' : 'full';
+          const mine = ONLY.startsWith('own:') ? (M.ownslot && HUD.OWN.find(s, ONLY.slice(4)) ? ONLY + '|own' : null)
+            : FULLSCREEN[ONLY] ? ONLY + (style === 'band' && HUD.BANDS && HUD.BANDS[ONLY] && M[HUD.BANDS[ONLY]] ? '|band' : '|full') : null;
+          want = onAir || ALWAYS ? mine : null;
+        }
         if (want !== shown) {
           // An own graphic plays its exit (fade or slide) before it is hidden.
           if (shown && slots[shown].part.leave) { const was = shown; slots[was].part.leave(s, () => { if (shown !== was) slots[was].el.style.display = 'none'; }); }

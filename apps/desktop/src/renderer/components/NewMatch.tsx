@@ -90,9 +90,9 @@ export function NewMatchWizard({ s, run, close, eventId: forEvent }: { s: Snapsh
               ? <span>Match in <b>{event.name}</b></span>
               : s.events.length > 0
                 ? <label className="row-gap"><span>Event</span><select aria-label="Event" value={event?.id ?? ''} onChange={(e) => setEventId(e.target.value)}>{s.events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
-                : <form className="row-gap" onSubmit={async (e) => { e.preventDefault(); if (await run(() => air.createEvent(newEvent))) { setNewEvent(''); setEventId('__last'); } }}>
-                    <input className="cell" aria-label="New event name" value={newEvent} onChange={(e) => setNewEvent(e.target.value)} placeholder="Name the event this match belongs to" maxLength={60} />
-                    <button className="btn small" disabled={!newEvent.trim()}>Create event</button>
+                : <form className="row-gap" onSubmit={async (e) => { e.preventDefault(); if (!newEvent.trim()) { (e.currentTarget.elements.namedItem('event-name') as HTMLInputElement | null)?.focus(); return; } if (await run(() => air.createEvent(newEvent))) { setNewEvent(''); setEventId('__last'); } }}>
+                    <input className="cell" name="event-name" aria-label="New event name" value={newEvent} onChange={(e) => setNewEvent(e.target.value)} placeholder="Name the event this match belongs to" maxLength={60} />
+                    <button className="btn small">Create event</button>
                   </form>}
             <label className="row-gap"><span>Stage</span><input className="cell" aria-label="Stage on air" value={stage} onChange={(e) => setStage(e.target.value)} maxLength={40} placeholder="e.g. Playoffs" list="wizard-stages" style={{ width: 160 }} /></label>
             <datalist id="wizard-stages">{(event?.stages ?? []).map((x) => <option key={x} value={x} />)}</datalist>

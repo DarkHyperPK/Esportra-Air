@@ -9,10 +9,12 @@ import { SCENES } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { Preview, overlayUrl, screenUrl } from './Preview.tsx';
-import { lookOf } from '../../shared/look.ts';
+import { lookOf, lookOverlay } from '../../shared/look.ts';
 import { LookPicker } from './LookPicker.tsx';
 import { TemplateThumb } from '../screens/LibraryScreen.tsx';
 import { ScreenRule, holdText, mapText, onScreenText } from './ScreenRule.tsx';
+import { CopySourceButton, CopySourcePanel } from './CopySource.tsx';
+import { browserSource } from '../../shared/browser-source.ts';
 
 /** The parts of the in-game HUD the producer can switch (the HUD's own `show` flags). */
 const HUD_PARTS: Array<[string, string]> = [
@@ -63,6 +65,7 @@ export function Rundown({ s, run }: { s: Snapshot; run: Run }) {
   const [adding, setAdding] = useState<Section | null>(null);
   const [editing, setEditing] = useState<RundownRow | null>(null);
   const [template, setTemplate] = useState(false);
+  const [source, setSource] = useState<string | null>(null);
   const rows = s.rundown;
   const locked = s.autopilot.enabled;
   const title = (id: string) => s.setup.screens.find((x) => x.id === id)?.title ?? id;
@@ -99,12 +102,14 @@ export function Rundown({ s, run }: { s: Snapshot; run: Run }) {
                     <button className="btn quiet small" disabled={locked || i === 0} aria-label={`Move ${name} up`} onClick={() => void run(() => air.rundownMove(r.id, -1))}>↑</button>
                     <button className="btn quiet small" disabled={locked || i === list.length - 1} aria-label={`Move ${name} down`} onClick={() => void run(() => air.rundownMove(r.id, 1))}>↓</button>
                   </span>
-                  <span className="rd-thumb">{r.template && s.templates.some((t) => t.id === r.template) ? <TemplateThumb s={s} graphic={s.templates.find((t) => t.id === r.template)!.graphic} template={s.templates.find((t) => t.id === r.template)!} label={name} /> : ov && r.show ? <Preview src={screenUrl(s, r.show, ov)} label={name} /> : <span className="sr-thumb">GAME</span>}</span>
+                  <span className="rd-thumb">{r.template && s.templates.some((t) => t.id === r.template) ? <TemplateThumb s={s} graphic={s.templates.find((t) => t.id === r.template)!.graphic} template={s.templates.find((t) => t.id === r.template)!} label={name} /> : ov && r.show ? <Preview key={`${r.show}:${r.style ?? 'full'}`} src={screenUrl(s, r.show, lookOverlay(r.show, ov, r.style))} label={name} /> : <span className="sr-thumb">GAME</span>}</span>
                   <span className="rd-name"><b>{name}</b><span className="muted t-sm">{comesUp(r)}</span></span>
                   <span className="row-gap">
                     {takesItself(r.show) && <button className="btn quiet small" disabled={locked} onClick={() => setEditing(r)} aria-label={`Edit ${name}`}>Edit</button>}
+                    {browserSource(s.engine.port ?? 0, s.setup.screens, r) && <CopySourceButton open={source === r.id} toggle={() => setSource(source === r.id ? null : r.id)} name={name} />}
                     <button className="btn quiet small" disabled={locked} onClick={() => void run(() => air.rundownRemove(r.id))} aria-label={`Remove ${name}`}>Remove</button>
                   </span>
+                  {source === r.id && <CopySourcePanel s={s} row={r} />}
                   {r.show === HUD_ROW && (
                     <div className="hud-parts" role="group" aria-label="Parts of the in-game HUD">
                       {HUD_PARTS.map(([key, label]) => {

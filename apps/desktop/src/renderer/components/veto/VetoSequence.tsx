@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { air } from '../../bridge.ts';
 import type { Run } from '../../App.tsx';
 import { other, teamAt, title, type VetoModel } from './model.ts';
@@ -6,6 +7,7 @@ import { other, teamAt, title, type VetoModel } from './model.ts';
 export function VetoSequence({ run, v }: { run: Run; v: VetoModel }) {
   const tag = (t: number) => (t === 0 || t === 1 ? v.m.teams[t].tag || v.m.teams[t].name : '');
   const ownOrder = !!v.md.vetoOrder?.length;
+  const [asking, setAsking] = useState(false);
   return (
     <section className="stack" style={{ gap: 8 }}>
       <div className="between">
@@ -13,8 +15,18 @@ export function VetoSequence({ run, v }: { run: Run; v: VetoModel }) {
         <span className="row-gap">
           {!ownOrder && <button className="btn quiet small" onClick={() => void run(() => air.vetoFirst(other(v.first)))}>Swap who starts</button>}
           <button className="btn small" disabled={!v.md.veto.length} onClick={() => void run(() => air.vetoUndo())}>Undo last</button>
+          <button className="btn quiet small" disabled={!v.md.veto.length} onClick={() => setAsking(true)}>Reset veto</button>
         </span>
       </div>
+      {asking && (
+        <div className="notice between" role="alertdialog" aria-label="Reset the veto">
+          <span>Clear every ban and pick{v.linked ? ' here and in the Esportra match room' : ''}? The coin toss result stays.</span>
+          <span className="row-gap">
+            <button className="btn small" onClick={() => { setAsking(false); void run(() => air.vetoReset()); }}>Reset veto</button>
+            <button className="btn quiet small" onClick={() => setAsking(false)}>Keep it</button>
+          </span>
+        </div>
+      )}
       <div className="vp-seq">
         {v.order.map((o, i) => {
           const done = v.md.veto[i];

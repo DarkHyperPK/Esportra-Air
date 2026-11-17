@@ -21,7 +21,7 @@ export interface MatchDataContext {
   patch(fields: Record<string, unknown>): Promise<void>;
   log(text: string): void;
   /** The Esportra match room's veto (two-way, src/main/esportra-veto-outbox.ts): steps entered here go there too. */
-  veto?(): { linked(match: Match | null): boolean; noteChange(match: Match, before: MatchData, after: MatchData): void } | null;
+  veto?(): { linked(match: Match | null): boolean; noteChange(match: Match, before: MatchData, after: MatchData): void; reset(match: Match): void } | null;
 }
 
 export class MatchDataService {
@@ -115,6 +115,14 @@ export class MatchDataService {
     this.ctx.log(`Veto · ${match.teams[team]?.tag || match.teams[team]?.name || 'Team'} starts`);
   }
 
+  /** Who acts first, as Esportra's match room says (before any step); the veto is not made this PC's own. */
+  async setFirst(team: 0 | 1) {
+    const match = this.requireMatch();
+    const data = this.of(match);
+    if (data.vetoFirst === team || data.veto.length) return;
+    await this.save({ ...data, vetoFirst: team });
+  }
+
   /** A coin toss for who starts the veto. */
   async vetoToss(random: () => number = Math.random): Promise<0 | 1> {
     const team = (random() < 0.5 ? 0 : 1) as 0 | 1;
@@ -135,6 +143,15 @@ export class MatchDataService {
     if (input?.sideTeam !== undefined) { if (input.sideTeam === null) delete next.sideTeam; else next.sideTeam = input.sideTeam; }
     const veto = validVeto(data.veto.map((v, i) => (i === index ? next : v)), match.bestOf, data.mapPool, data.vetoOrder);
     await this.saveVeto(match, data, { ...data, veto, vetoSource: this.sourceFor(match) });
+  }
+
+  /** Empties the veto (and, for an Esportra match, resets the match room's veto too). */
+  async vetoReset() {
+    const match = this.requireMatch();
+    const data = this.of(match);
+    await this.save({ ...data, veto: [], vetoSource: this.sourceFor(match) });
+    this.ctx.veto?.()?.reset(match);
+    this.ctx.log('Veto · reset');
   }
 
   async vetoUndo() {

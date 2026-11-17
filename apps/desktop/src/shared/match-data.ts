@@ -156,12 +156,26 @@ export function vetoNeedsSide(veto: VetoStep[]): number {
   return v && v.action !== 'ban' && !v.side ? i : -1;
 }
 
+/**
+ * Esportra's own veto order names its teams relative to the team that acts first (T1 = 0, T2 = 1; VetoSequences.cs),
+ * not as team A and team B: who T1 is depends on the coin toss. The team A/B index of T1: from the first step entered
+ * (its order step says whether T1 or T2 made it), else who acts first (`vetoFirst`).
+ */
+export function firstTeamOf(veto: VetoStep[], order: VetoOrderStep[] | null | undefined, vetoFirst: 0 | 1 = 0): 0 | 1 {
+  const v = veto[0], o = order?.[0];
+  if (v && (v.team === 0 || v.team === 1)) return (o && o.team === 1 ? 1 - v.team : v.team) as 0 | 1;
+  return vetoFirst;
+}
+
+/** The team A/B index of an order step's team (relative to T1, the team acting first). */
+export const orderTeam = (team: 0 | 1 | -1, first: 0 | 1): 0 | 1 | -1 => (team === -1 ? -1 : team === 0 ? first : (1 - first) as 0 | 1);
+
 export function nextVetoStep(veto: VetoStep[], bestOf: 1 | 3 | 5, vetoOrder?: VetoOrderStep[] | null, vetoFirst: 0 | 1 = 0): { action: VetoAction; team: 0 | 1 | -1 } | null {
   const order = orderOf(bestOf, vetoOrder);
   if (veto.length >= order.length) return null;
   const step = order[veto.length]!;
   if (step.action === 'decider') return { action: 'decider', team: -1 };
-  if (vetoOrder?.length) return { action: step.action, team: step.team };
+  if (vetoOrder?.length) return { action: step.action, team: orderTeam(step.team, firstTeamOf(veto, vetoOrder, vetoFirst)) };
   const first = veto[0] && (veto[0].team === 0 || veto[0].team === 1) ? veto[0].team : vetoFirst;
   return { action: step.action, team: (((first + veto.length) % 2) as 0 | 1) };
 }

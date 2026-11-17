@@ -6,8 +6,10 @@ import { title } from './model.ts';
 export interface TileTeam { tag: string; color: string }
 
 /** One map in the pool: its picture; struck through with the team's crest when banned; Map N when picked. */
-export function MapTile({ map, art, step, mapNo, team, sideBy, action, onPick }: {
+export function MapTile({ map, art, step, mapNo, team, sideBy, action, actor, onPick }: {
   map: MapName; art: string | null; step?: VetoStep; mapNo?: number; team?: TileTeam; sideBy?: TileTeam;
+  /** The team acting now, named on the tile's action label so it always matches the turn banner. */
+  actor?: string;
   /** What clicking does now (ban, pick, decider), or null when the tile cannot be clicked. */
   action: 'ban' | 'pick' | 'decider' | null; onPick: () => void;
 }) {
@@ -25,7 +27,7 @@ export function MapTile({ map, art, step, mapNo, team, sideBy, action, onPick }:
         </span>
       )}
       {step?.side && <span className={`vp-side ${step.side === 'ATK' ? 'atk' : 'def'}`}>{sideBy ? `${sideBy.tag} · ` : ''}{step.side}</span>}
-      {action && <span className="vp-act">{action === 'decider' ? 'DECIDER' : action === 'ban' ? 'BAN' : 'PICK'} {map}</span>}
+      {action && <span className="vp-act">{action === 'decider' ? `DECIDER ${map}` : `${actor ? `${actor} ` : ''}${action === 'ban' ? 'BANS' : 'PICKS'} ${map}`}</span>}
       <span className="vp-name">{title(map)}</span>
     </button>
   );

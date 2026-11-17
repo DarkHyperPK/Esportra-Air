@@ -498,6 +498,8 @@ export interface AirApi {
   matchDataSave(input: import('./match-data.ts').MatchData): Promise<Snapshot>;
   vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }): Promise<Snapshot>;
   vetoUndo(): Promise<Snapshot>;
+  /** Empties the veto; for an Esportra match the match room's veto is reset too. */
+  vetoReset(): Promise<Snapshot>;
   /** Starts the selected match's show from a show template (rows, banner style, pause look). */
   showTemplateApply(id: string): Promise<Snapshot>;
   /** Keeps the selected match's show as a template (a new one, or replacing one of yours by id). */

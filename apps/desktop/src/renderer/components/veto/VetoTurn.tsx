@@ -19,7 +19,7 @@ export function VetoTurn({ v }: { v: VetoModel }) {
     const t = teamAt(v, v.md.veto.length) as 0 | 1;
     color = v.m.teams[t].color;
     const pickNo = v.md.veto.filter((x) => x.action === 'pick').length + 1;
-    say = <><em>{tag(t)}</em> {v.next.action === 'ban' ? 'bans' : `picks map ${pickNo}`}</>;
+    say = <><em>{tag(t)}</em>’s turn · {v.next.action === 'ban' ? 'ban a map' : `pick map ${pickNo}`}</>;
     meta = `Step ${v.md.veto.length + 1} of ${v.order.length} · click a map`;
   }
   return (

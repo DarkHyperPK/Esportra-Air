@@ -1303,3 +1303,12 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
   .vp-toss, .vp-sidepick, .vp-cmp { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .vp-act { transition: none; } }
+/* New event: the add card is a button; the form shows a hint when the name is missing (17 Nov). */
+button.ev-add { background: transparent; text-align: left; cursor: pointer; font: inherit; }
+button.ev-add:hover, button.ev-add:focus-visible { border-color: var(--white); color: var(--text); }
+.ev-new { display: grid; gap: 4px; justify-items: end; }
+/* Rundown › Browser source (17 Nov) */
+.rd-src { grid-column: 3 / -1; display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--raised); }
+.rd-src-line { display: grid; gap: 4px; }
+.rd-src-line input { flex: 1; min-width: 0; font-size: 12px; }
+.rd-src-line .row-gap { display: flex; }

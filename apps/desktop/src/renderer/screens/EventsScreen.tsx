@@ -1,7 +1,7 @@
 // Events (approved mock, 12 Nov): the top of the tree. An event holds its matches, its branding, and the
 // people and sponsors on air. Opening a match goes to its steps. Esportra tournaments that have no event
 // on this PC yet are listed too; opening one of their matches makes the event.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Match } from '../../shared/api.ts';
 import type { EsportraMatch } from '../../shared/esportra.ts';
 import type { EventInfo } from '../../shared/model.ts';
@@ -59,13 +59,20 @@ export function EventsScreen({ s, run, openSignIn, view, setView, openMatch, ope
 
 function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<PageProps, 's' | 'run' | 'openSignIn'> & { tournaments: Array<[string, string]>; remoteCount: (tid: string) => number; open: (id: string) => void }) {
   const [name, setName] = useState('');
+  const [hint, setHint] = useState(false);
+  const box = useRef<HTMLInputElement>(null);
+  // Always clickable: with no name yet it points at the name box (a greyed-out button read as "can't create").
   const create = async () => {
-    if (await run(() => air.createEvent(name))) setName('');
+    if (!name.trim()) { setHint(true); box.current?.focus(); return; }
+    if (await run(() => air.createEvent(name))) { setName(''); setHint(false); }
   };
   const form = (
-    <form className="row-gap" onSubmit={(e) => { e.preventDefault(); void create(); }}>
-      <input className="cell" aria-label="New event name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Event name, e.g. Community Cup" maxLength={60} style={{ width: 280 }} />
-      <button className="btn primary" disabled={!name.trim()}>New event</button>
+    <form className="ev-new" onSubmit={(e) => { e.preventDefault(); void create(); }}>
+      <span className="row-gap">
+        <input ref={box} className="cell" aria-label="New event name" value={name} onChange={(e) => { setName(e.target.value); setHint(false); }} placeholder="Event name, e.g. Community Cup" maxLength={60} style={{ width: 280 }} />
+        <button className="btn primary">New event</button>
+      </span>
+      {hint && <span className="t-xs" role="status" style={{ color: 'var(--amber)' }}>Name the event first, then press New event.</span>}
     </form>
   );
   if (!s.events.length && !tournaments.length) {
@@ -119,7 +126,7 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
             <span className="ev-card-foot"><span className="faint t-xs">Teams and best-of come from Esportra</span><span className="btn small">Open event</span></span>
           </button>
         ))}
-        <div className="ev-add"><b style={{ color: 'var(--text)' }}>Another event?</b><span className="t-sm">Name it above and press New event. Its logo, colour, talent and sponsors are set once; every match in it uses them.</span></div>
+        <button type="button" className="ev-add" onClick={() => { box.current?.focus(); setHint(!name.trim()); }}><b style={{ color: 'var(--text)' }}>+ New event</b><span className="t-sm">Your own event, with or without Esportra. Its logo, colour, talent and sponsors are set once; every match in it uses them.</span></button>
       </div>
       {s.esportra.state === 'signed-out'
         ? <button className="btn quiet" style={{ alignSelf: 'flex-start' }} onClick={openSignIn}>Sign in to load your Esportra tournaments</button>
