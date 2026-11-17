@@ -257,5 +257,7 @@ export interface VetoOutboxView {
   conflict: { air: VetoStep[]; esportra: VetoStep[] } | null;
   /** The match room waits for a side on this map before the next step can go. */
   needsSide: MapName | null;
+  /** Esportra's coin toss: who won it (Air's team order), and whether the winner has still to choose. */
+  toss: { winner: 0 | 1 | null; pending: boolean } | null;
 }
 

@@ -216,9 +216,12 @@
     const steps = done.map((v, i) => ({ ...v, i, state: 'done' }));
     const last = steps[steps.length - 1];
     if (choosingSide && last && last.action === 'pick' && !last.side) last.sideBy = turn.team;
+    // A veto entered in Air has no turn from Esportra: a pick or the decider without its side is still owed it,
+    // by the other team after a pick and, on the decider, as Esportra does (best of 1 or 3: the team that went first; best of 5: the other).
+    else if (!turn && last && (last.action === 'pick' || last.action === 'decider') && !last.side) last.sideBy = last.action === 'pick' ? 1 - last.team : bestOf === 5 ? 1 - first : first;
     for (let i = done.length; i < seq.length; i++) {
       const o = seq[i], team = o.action === 'decider' ? -1 : (o.team === 0 || o.team === 1 ? o.team : (first + i) % 2);
-      const now = i === done.length && (turn ? !(choosingSide && last && last.sideBy !== undefined) : done.length > 0);
+      const now = i === done.length && (turn ? !(choosingSide && last && last.sideBy !== undefined) : done.length > 0 && !(last && last.sideBy !== undefined));
       steps.push({ i, action: o.action, team, state: now ? 'now' : 'next' });
     }
     return steps;

@@ -141,6 +141,21 @@ export function validVeto(input: unknown, bestOf: 1 | 3 | 5, pool: MapName[], ve
 }
 
 /** The next step of a veto in progress: its action, and the team whose turn it is (as the HUD works it out). */
+/**
+ * Who chooses the side on the decider, as Esportra's veto does (VetoSequences.cs): in a best of 1 or 3 the team
+ * that acted first, in a best of 5 the other team.
+ */
+export function deciderSideTeam(bestOf: 1 | 3 | 5, first: 0 | 1): 0 | 1 {
+  return (bestOf === 5 ? 1 - first : first) as 0 | 1;
+}
+
+/** The step still waiting for its side: the last pick or the decider without one (the next step waits for it). */
+export function vetoNeedsSide(veto: VetoStep[]): number {
+  const i = veto.length - 1;
+  const v = veto[i];
+  return v && v.action !== 'ban' && !v.side ? i : -1;
+}
+
 export function nextVetoStep(veto: VetoStep[], bestOf: 1 | 3 | 5, vetoOrder?: VetoOrderStep[] | null, vetoFirst: 0 | 1 = 0): { action: VetoAction; team: 0 | 1 | -1 } | null {
   const order = orderOf(bestOf, vetoOrder);
   if (veto.length >= order.length) return null;
@@ -237,7 +252,7 @@ export function roomFields(md: MatchData, ev: EventData, progress: { mapsPlayed:
   // A veto followed from Esportra and then reset there leaves no maps: the old ones leave the graphics too.
   if (!maps.length && md.vetoSource === 'esportra') fields.series = [];
   if (maps.length) {
-    fields.series = maps.map((m) => ({ map: m.map, pick: m.pick, score: [0, 0], winner: null }));
+    fields.series = maps.map((m) => ({ map: m.map, pick: m.pick, side: m.side ?? null, score: [0, 0], winner: null }));
     const current = Math.min(progress.mapsPlayed + 1, maps.length);
     fields.map = { number: current, name: maps[current - 1]!.map };
   }

@@ -1414,6 +1414,7 @@ export class Production extends EventEmitter {
     if (keep === 'esportra') await this.esportraSync.followAgain(match);
   }
   vetoOutboxRetry() { this.vetoOutbox.retry(this.requireMatch()); }
+  vetoOutboxStart() { this.vetoOutbox.start(this.requireMatch()); }
 
   /** The buy phase running long: maybe a timeout nobody announced (approved mock 15 Nov). */
   readonly pauseHint = new PauseHint(() => this.emit('change'));

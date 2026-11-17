@@ -11,12 +11,11 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { Seg } from './Editors.tsx';
 import { Preview, overlayUrl } from './Preview.tsx';
+import { VetoPanel } from './veto/VetoPanel.tsx';
 
 type Tab = 'veto' | 'players' | 'event' | 'show';
 const TABS: Array<[Tab, string]> = [['veto', 'Maps and veto'], ['players', 'Players'], ['event', 'Event data'], ['show', 'Show text']];
 
-/** A map's tile colour (the app has no map pictures; the graphics do). */
-const tint = (m: string) => `hsl(${[...m].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)} 28% 30%)`;
 const title = (m: string) => m.charAt(0) + m.slice(1).toLowerCase();
 
 export function MatchData({ s, run, openFix }: { s: Snapshot; run: Run; openFix: () => void }) {
@@ -54,7 +53,7 @@ function EsportraVetoNote({ s, run }: { s: Snapshot; run: Run }) {
     <div className="stack" style={{ gap: 8 }}>
       {v.source === 'air'
         ? <div className="notice info between" role="status"><span>You entered this veto here, so Esportra’s is not followed.</span><button className="btn small" onClick={() => void run(() => air.vetoFollowEsportra())}>Follow Esportra again</button></div>
-        : <div className="notice info" role="status">Following Esportra{v.status ? ` · ${status[v.status] ?? v.status}` : ''}. Each ban and pick goes on air as the teams make it; a step entered here makes the veto yours.</div>}
+        : <div className="notice info" role="status">Two-way with Esportra{v.status ? ` · ${status[v.status] ?? v.status}` : ''}. Steps the teams make on the website go on air here; steps you enter here go to the match room too.</div>}
       {v.gone && <div className="notice" role="status">This match is no longer in your Esportra schedule. Its veto stays as it is.</div>}
       {since && <div className="notice" role="status">Esportra can’t be reached since {since}. The last veto stays on air.</div>}
       {v.unknownMaps.length > 0 && <div className="notice" role="status">Esportra’s veto has {v.unknownMaps.join(', ')}, which Air doesn’t know. It’s left out; enter the veto here if it matters.</div>}
@@ -67,31 +66,20 @@ export function VetoTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }
   const m = s.match!;
   const locked = !!s.gameLocked;
   const [pendingBo, setPendingBo] = useState<1 | 3 | 5 | null>(null);
-  const [side, setSide] = useState<'ATK' | 'DEF' | ''>('');
-  const next = nextVetoStep(md.veto, m.bestOf, md.vetoOrder, md.vetoFirst);
-  const ownOrder = !!md.vetoOrder?.length;
-  const starts = (md.veto[0] && md.veto[0].team !== -1 ? md.veto[0].team : md.vetoFirst ?? 0) as 0 | 1;
   const order = orderOf(m.bestOf, md.vetoOrder);
   const used = new Map(md.veto.map((v) => [v.map, v]));
   const tag = (t: number) => (t === 0 || t === 1 ? m.teams[t].tag : '');
-  const otherTag = (t: number) => (t === 0 || t === 1 ? m.teams[t === 0 ? 1 : 0].tag : '');
-  const pick = (map: MapName) => {
-    if (!next || used.has(map)) return;
-    void run(() => air.vetoStep({ map, ...(side && next.action !== 'ban' ? { side } : {}) })).then((ok) => { if (ok) setSide(''); });
-  };
   const togglePool = (map: MapName) => {
     const on = md.mapPool.includes(map);
     if (on && used.has(map)) return;
     void run(() => air.matchDataSave({ ...md, mapPool: on ? md.mapPool.filter((x) => x !== map) : [...md.mapPool, map] }));
   };
-  const maps = seriesMaps(md.veto);
-  const played = (s.readout?.series[0] ?? 0) + (s.readout?.series[1] ?? 0);
-  const current = Math.min(played + 1, m.bestOf);
   return (
     <div className="stack" style={{ gap: 14 }}>
       <EsportraVetoNote s={s} run={run} />
+      <VetoPanel s={s} run={run} md={md} />
       <div className="md-grid">
-        <div className="stack" style={{ gap: 14 }}>
+        <div className="stack" style={{ gap: 14, minWidth: 0 }}>
           <section className="card">
             <div className="card-head">
               <b>Format and map pool</b>
@@ -106,94 +94,39 @@ export function VetoTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }
                 <button className="btn quiet small" onClick={() => setPendingBo(null)}>Keep BO{m.bestOf}</button>
               </div>
             )}
-            {!ownOrder && (
-              <div className="body-pad row-gap" style={{ paddingTop: 0, flexWrap: 'wrap' }}>
-                <span className="faint t-sm">Who starts</span>
-                <Seg label="Who starts the veto" value={String(starts) as '0' | '1'} options={[['0', m.teams[0].tag || m.teams[0].name], ['1', m.teams[1].tag || m.teams[1].name]]} onChange={(v) => void run(() => air.vetoFirst(Number(v) as 0 | 1))} />
-                <button className="btn quiet small" onClick={() => void run(() => air.vetoToss())}>Coin toss</button>
-                <button className="btn quiet small" onClick={() => void run(() => air.vetoFirst(starts === 0 ? 1 : 0))}>Swap</button>
-                {md.veto.length > 0 && <span className="faint t-xs">Swapping also swaps the teams of the steps already entered.</span>}
-              </div>
-            )}
             <div className="body-pad stack" style={{ gap: 8, paddingTop: 0 }}>
-              <div className="md-pool" role="group" aria-label="Map pool">
-                {VALORANT_MAPS.map((map) => {
-                  const inPool = md.mapPool.includes(map), v = used.get(map);
-                  const pickable = inPool && !v && !!next;
-                  return (
-                    <button key={map} type="button" className={`md-map ${inPool ? '' : 'out'} ${v ? (v.action === 'ban' ? 'ban' : 'pick') : ''}`} style={{ ['--art' as string]: tint(map) }}
-                      aria-label={`${title(map)}${v ? ` · ${v.action === 'decider' ? 'decider' : `${tag(v.team)} ${v.action}`}` : inPool ? '' : ' · not in the pool'}`}
-                      title={pickable ? `${next!.action === 'decider' ? 'Decider' : `${tag(next!.team)} ${next!.action}s`} ${title(map)}` : inPool ? (v ? '' : 'The veto is complete') : 'Not in the pool'}
-                      onClick={() => (pickable ? pick(map) : undefined)}>
-                      <span>{map}</span>
-                      {v && <i>{v.action === 'decider' ? 'DECIDER' : `${tag(v.team)} ${v.action.toUpperCase()}`}</i>}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="row-gap" style={{ flexWrap: 'wrap' }}>
-                <span className="faint t-xs">{md.mapPool.length} maps in the pool · the veto needs {order.length}.</span>
-                <details className="md-pool-edit"><summary className="t-xs">Change the pool</summary>
-                  <div className="row-gap" style={{ flexWrap: 'wrap', marginTop: 8 }}>
-                    {VALORANT_MAPS.map((map) => <label key={map} className="t-xs row-gap"><input type="checkbox" checked={md.mapPool.includes(map)} disabled={used.has(map)} onChange={() => togglePool(map)} />{title(map)}</label>)}
+              <span className="faint t-xs">{md.mapPool.length} maps in the pool · the veto needs {order.length}.</span>
+              <details className="md-pool-edit"><summary className="t-xs">Change the pool</summary>
+                <div className="row-gap" style={{ flexWrap: 'wrap', marginTop: 8 }}>
+                  {VALORANT_MAPS.map((map) => <label key={map} className="t-xs row-gap"><input type="checkbox" checked={md.mapPool.includes(map)} disabled={used.has(map)} onChange={() => togglePool(map)} />{title(map)}</label>)}
+                </div>
+              </details>
+              {md.veto.length > 0 && (
+                <details className="md-pool-edit"><summary className="t-xs">Correct a step</summary>
+                  <div className="md-vlist" style={{ marginTop: 8 }}>
+                    {md.veto.map((v, i) => (
+                      <div className="md-vrow md-vedit" key={i}>
+                        <span className="mono faint">{String(i + 1).padStart(2, '0')}</span>
+                        <b className="cap">{v.action}</b>
+                        <span className="row-gap">
+                          <span>{v.action === 'decider' ? 'Decider' : tag(v.team)}</span>
+                          <select className="cell" aria-label={`Step ${i + 1} map`} value={v.map} onChange={(e) => void run(() => air.vetoEdit(i, { map: e.target.value }))}>
+                            {md.mapPool.filter((x) => x === v.map || !used.has(x)).map((x) => <option key={x} value={x}>{title(x)}</option>)}
+                          </select>
+                        </span>
+                        <span className="row-gap">
+                          {v.action !== 'ban' && (
+                            <select className="cell" aria-label={`Step ${i + 1} side`} value={v.side ?? ''} onChange={(e) => void run(() => air.vetoEdit(i, { side: (e.target.value || null) as 'ATK' | 'DEF' | null }))}>
+                              <option value="">Side later</option><option value="ATK">ATK</option><option value="DEF">DEF</option>
+                            </select>
+                          )}
+                        </span>
+                        <span />
+                      </div>
+                    ))}
                   </div>
                 </details>
-              </div>
-            </div>
-          </section>
-          <section className="card">
-            <div className="card-head">
-              <b>Veto</b>
-              <span className="row-gap">
-                <button className="btn quiet small" disabled={!md.veto.length} onClick={() => void run(() => air.vetoUndo())}>Undo last</button>
-                <button className="btn quiet small" disabled={!md.veto.length} onClick={() => void run(() => air.matchDataSave({ ...md, veto: [], vetoSource: 'air' }))}>Clear</button>
-              </span>
-            </div>
-            <div className="md-vlist">
-              {md.veto.map((v, i) => (
-                <div className="md-vrow md-vedit" key={i}>
-                  <span className="mono faint">{String(i + 1).padStart(2, '0')}</span>
-                  <b className="cap">{v.action}</b>
-                  <span className="row-gap">
-                    <span>{v.action === 'decider' ? 'Decider' : tag(v.team)}</span>
-                    <select className="cell" aria-label={`Step ${i + 1} map`} value={v.map} onChange={(e) => void run(() => air.vetoEdit(i, { map: e.target.value }))}>
-                      {md.mapPool.filter((x) => x === v.map || !used.has(x)).map((x) => <option key={x} value={x}>{title(x)}</option>)}
-                    </select>
-                  </span>
-                  <span className="row-gap">
-                    {v.action !== 'ban' && (
-                      <>
-                        <select className="cell" aria-label={`Step ${i + 1} side`} value={v.side ?? ''} onChange={(e) => void run(() => air.vetoEdit(i, { side: (e.target.value || null) as 'ATK' | 'DEF' | null }))}>
-                          <option value="">Side later</option><option value="ATK">ATK</option><option value="DEF">DEF</option>
-                        </select>
-                        {v.side && (
-                          <select className="cell" aria-label={`Step ${i + 1}: team that chose the side`} value={String(v.sideTeam ?? (v.action === 'decider' ? '' : v.team === 0 ? 1 : 0))} onChange={(e) => void run(() => air.vetoEdit(i, { sideTeam: e.target.value === '' ? null : (Number(e.target.value) as 0 | 1) }))}>
-                            {v.action === 'decider' && <option value="">Chosen by…</option>}
-                            <option value="0">{tag(0)} chose</option><option value="1">{tag(1)} chose</option>
-                          </select>
-                        )}
-                      </>
-                    )}
-                  </span>
-                  <span className="faint t-xs">on air</span>
-                </div>
-              ))}
-              {order.slice(md.veto.length).map((o, k) => {
-                const i = md.veto.length + k, now = k === 0;
-                // The match's own order names each team; the usual order alternates from whoever acted first.
-                const first = starts;
-                const team = o.action === 'decider' ? -1 : md.vetoOrder?.length ? o.team : (first + i) % 2;
-                return (
-                  <div className={`md-vrow ${now ? 'now' : 'next'}`} key={`n${i}`} style={now && team >= 0 ? { ['--c' as string]: m.teams[team as 0 | 1].color } : undefined}>
-                    <span className="mono faint">{String(i + 1).padStart(2, '0')}</span>
-                    <b className="cap">{o.action}</b>
-                    <span>{now ? (o.action === 'decider' ? 'The map left · click it' : `${m.teams[team as 0 | 1]?.name ?? 'Team'}’s turn · click a map`) : o.action === 'decider' ? 'The map left' : tag(team)}</span>
-                    <span>{now && o.action !== 'ban' && <Seg label="Side the other team starts on" value={side || 'later'} options={[['later', 'Side later'], ['ATK', 'ATK'], ['DEF', 'DEF']]} onChange={(v) => setSide(v === 'later' ? '' : v)} />}</span>
-                    <span />
-                  </div>
-                );
-              })}
-              {!order.length && <p className="faint t-sm body-pad">No veto for this format.</p>}
+              )}
             </div>
           </section>
         </div>
@@ -201,22 +134,6 @@ export function VetoTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }
           <section className="card">
             <div className="card-head"><b>On air · Map veto</b><span className="faint t-xs">this match</span></div>
             <div className="body-pad" style={{ paddingTop: 0 }}><Preview src={overlayUrl(s, 'map-veto', { match: m.code })} label="Map veto, this match" /></div>
-          </section>
-          <section className="card">
-            <div className="card-head"><b>The series</b><span className="faint t-xs">from the veto</span></div>
-            <div className="md-series body-pad" style={{ paddingTop: 0 }}>
-              {Array.from({ length: m.bestOf }, (_, i) => {
-                const x = maps[i];
-                return (
-                  <div key={i} className={`md-sm ${i + 1 === current ? 'cur' : ''}`}>
-                    <span className="cap">Map {i + 1}{i + 1 === current ? ' · now' : ''}</span>
-                    <b>{x ? x.map : '—'}</b>
-                    <small className="muted">{x ? (x.pick === -1 ? 'Decider' : `${tag(x.pick)} pick`) + (x.side ? ` · ${x.side}` : '') : 'after the veto'}</small>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="faint t-xs body-pad" style={{ paddingTop: 0 }}>Map being played: {current} of {m.bestOf}. It moves on when a map is counted, or with Fix data’s series score.</p>
           </section>
         </div>
       </div>
@@ -267,7 +184,7 @@ function PrepRow({ s, run, name, libraryId }: { s: Snapshot; run: Run; name: str
 
 // ── Event data ──
 
-function EventTab({ s, run }: { s: Snapshot; run: Run }) {
+export function EventTab({ s, run }: { s: Snapshot; run: Run }) {
   const m = s.match!;
   const saved = s.eventData ?? emptyEventData();
   const [ev, setEv] = useState<EventData>(saved);
@@ -363,7 +280,7 @@ function atTime(hhmm: string): number {
   return d.getTime();
 }
 
-function ShowTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }) {
+export function ShowTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }) {
   const m = s.match!;
   const [show, setShow] = useState(md.show);
   const [champion, setChampion] = useState(md.champion);

@@ -191,18 +191,25 @@ let failShot = async () => {};
   await page.waitForTimeout(2500);
   await shot('wizard-screens');
   await wizard.getByRole('button', { name: 'Create match · maps and veto' }).click();
-  // Maps and veto (approved mock, 16 Nov): who starts, a ban entered by clicking a map, then rehearse.
-  await wizard.getByRole('group', { name: 'Who starts the veto' }).getByRole('button').nth(1).click();
+  // Maps and veto (veto panel, approved mock 16 Nov): the coin toss, the winner defers, a ban by clicking a map tile.
+  await wizard.getByRole('button', { name: 'Flip coin' }).click();
+  await wizard.getByText(/won the toss/).waitFor();
+  const winner = (await call('snapshot')).matchData.vetoFirst;
+  await wizard.getByRole('button', { name: /^Defer/ }).click();
   await page.waitForTimeout(400);
-  await wizard.getByRole('button', { name: /^Bind/ }).click();
+  await wizard.getByRole('button', { name: 'Ban Bind' }).click();
   await page.waitForTimeout(600);
-  { const md = (await call('snapshot')).matchData; if (md.vetoFirst !== 1 || md.veto[0]?.map !== 'BIND' || md.veto[0]?.team !== 1) throw new Error('the veto starts with the team chosen: ' + JSON.stringify(md.veto)); }
+  { const md = (await call('snapshot')).matchData; if (md.vetoFirst !== 1 - winner || md.veto[0]?.map !== 'BIND' || md.veto[0]?.team !== 1 - winner) throw new Error('the toss winner deferred, so the other team bans first: ' + JSON.stringify(md.veto)); }
   await shot('wizard-veto');
   // Put it back: the match's Match data step enters the full veto later.
   await wizard.getByRole('button', { name: 'Undo last' }).click();
-  await wizard.getByRole('group', { name: 'Who starts the veto' }).getByRole('button').nth(0).click();
   await page.waitForTimeout(400);
-  await wizard.getByRole('button', { name: 'Continue · rehearse' }).click();
+  if ((await call('snapshot')).matchData.vetoFirst !== 0) { await wizard.getByRole('button', { name: 'Swap who starts' }).click(); await page.waitForTimeout(400); }
+  await wizard.getByRole('button', { name: 'Continue', exact: true }).click();
+  // Show text and event data: optional, in the wizard too (16 Nov).
+  await wizard.getByRole('tablist', { name: 'Show text and event data' }).waitFor();
+  await shot('wizard-show-text');
+  await wizard.getByRole('button', { name: 'Skip' }).click();
   // Rehearse: one big picture and the screens just picked, in show order.
   await wizard.getByRole('button', { name: /Play/ }).first().waitFor();
   { const snap = await call('snapshot'); if (!snap.rundown.some((r) => r.show === 'standings') || !snap.rundown.some((r) => r.show === 'map-veto')) throw new Error('the ticked screens are the Rundown'); }
@@ -262,19 +269,24 @@ let failShot = async () => {};
   await shot('match-talent');
   await page.getByRole('switch', { name: 'Omar Sheikh on air for this match' }).click();
   await page.getByRole('switch', { name: 'Omar Sheikh on air for this match', checked: true }).waitFor();
-  // Match data: the veto entered live, one map at a time, with a side for a pick; then undo.
+  // Match data: the veto entered live on the map tiles, the side chosen after the pick, Swap sides, then undo.
   await step('Match data');
   await page.getByRole('group', { name: 'Map pool' }).waitFor();
-  const vrows = page.locator('.md-vrow:not(.next):not(.now)');
-  const vetoMap = async (name) => { const before = await vrows.count(); await page.getByRole('group', { name: 'Map pool' }).getByRole('button', { name: new RegExp(`^${name}$`) }).click(); await vrows.nth(before).waitFor(); };
-  await vetoMap('Bind');
-  await vetoMap('Abyss');
-  await page.locator('.md-vrow.now').getByRole('button', { name: 'DEF' }).click();
-  await vetoMap('Lotus');
-  if ((await page.locator('.md-vrow').nth(2).locator('select').nth(1).inputValue()) !== 'DEF') throw new Error('the pick keeps its side, editable in place');
+  const vetoLen = async () => (await call('snapshot')).matchData.veto.length;
+  const tile = async (label) => { const before = await vetoLen(); await page.getByRole('group', { name: 'Map pool' }).getByRole('button', { name: label }).click(); for (let i = 0; i < 40 && (await vetoLen()) === before; i++) await page.waitForTimeout(100); };
+  await tile('Ban Bind');
+  await tile('Ban Abyss');
+  await tile('Pick Lotus');
+  await page.getByRole('region', { name: 'Side choice' }).getByRole('button', { name: /DEFENCE/ }).click();
+  await page.getByRole('region', { name: 'Side choice' }).waitFor({ state: 'detached' });
+  { const v = (await call('snapshot')).matchData.veto[2]; if (v.side !== 'DEF' || v.sideTeam !== 1 - v.team) throw new Error('the pick gets its side from the other team: ' + JSON.stringify(v)); }
   await shot('match-data-veto');
+  await page.getByRole('button', { name: 'Swap sides' }).first().click();
+  await page.waitForTimeout(500);
+  if ((await call('snapshot')).matchData.veto[2].side !== 'ATK') throw new Error('Swap sides flips the side');
   await btn('Undo last');
-  await page.locator('.md-vrow.now').getByText('PICK', { exact: false }).waitFor();
+  await page.waitForTimeout(500);
+  if ((await vetoLen()) !== 2) throw new Error('undo takes the pick back');
   await page.getByRole('tab', { name: 'Event data' }).click();
   await btn('Add team');
   await page.getByRole('textbox', { name: 'Standings row 1 team' }).fill('NIGHT OWLS');

@@ -96,7 +96,8 @@ export class VetoOutbox {
     const b = this.box(match.id);
     const waitsForSide = b.turnAction === 'pick_side' && !b.queue.some((e) => e.action === 'pick_side');
     const unsided = this.ctx.matchData.of(match).veto.findLast((v) => v.action !== 'ban' && !v.side)?.map ?? null;
-    return { waiting: b.queue.length, sentAt: b.sentAt, error: b.error, rewrite: b.rewrite, conflict: b.conflict, needsSide: waitsForSide ? unsided : null };
+    const toss = b.tossWinner === null ? null : { winner: b.tossWinner, pending: b.status === 'toss_choice_pending' };
+    return { waiting: b.queue.length, sentAt: b.sentAt, error: b.error, rewrite: b.rewrite, conflict: b.conflict, needsSide: waitsForSide ? unsided : null, toss };
   }
 
   /** What the match room said, from a poll or an answer: its step number, status and toss winner. */
@@ -152,6 +153,16 @@ export class VetoOutbox {
       Object.assign(b, { rewrite: false, conflict: null, error: null, needsSide: null, status: null, step: null });
       this.ctx.log('Veto · sending Air’s veto to the match room again');
     }
+    this.lastSend = 0;
+    this.ctx.save();
+    this.ctx.changed();
+  }
+
+  /** Starts the veto in the match room (Esportra then flips the coin), so the producer can ask the winner. */
+  start(match: Match) {
+    const b = this.box(match.id);
+    if (b.queue.some((e) => e.action === 'start') || (b.status && b.status !== 'not_started')) return;
+    b.queue.unshift({ key: key(), action: 'start' });
     this.lastSend = 0;
     this.ctx.save();
     this.ctx.changed();
