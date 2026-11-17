@@ -278,7 +278,7 @@ export class EsportraAccount {
 
   async roster(matchId: string) {
     if (!UUID.test(matchId)) throw new Error('Choose an Esportra match.');
-    type Side = { name: string; players: Array<{ displayName: string }>; lineup?: unknown };
+    type Side = { name: string; players: Array<{ displayName: string; userId?: string | null }>; lineup?: unknown };
     return this.json<{ team1: Side; team2: Side }>(`/api/air/broadcast/matches/${matchId}/roster`);
   }
 

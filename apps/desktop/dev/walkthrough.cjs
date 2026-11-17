@@ -310,6 +310,15 @@ let failShot = async () => {};
   await btn('Save · on air');
   await page.getByRole('button', { name: 'Save · on air', disabled: true }).waitFor();
   await shot('match-data-show');
+  // 17 Nov: the message is edited on the graphic itself; Enter puts it on air.
+  const showFrame = page.frameLocator('iframe[title="Show text preview"]');
+  await showFrame.locator('.ho .sub').click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('Back in five');
+  await page.keyboard.press('Enter');
+  await page.getByRole('textbox', { name: 'Message' }).and(page.locator('[value="Back in five"]')).waitFor();
+  await page.getByRole('button', { name: 'Save · on air', disabled: true }).waitFor();
+  await shot('match-data-show-edited');
   await btn('← Community Cup');
   await page.locator('.ev-match').first().waitFor();
   await shot('matches');
@@ -469,6 +478,8 @@ let failShot = async () => {};
   await shot('live');
   // 17 Nov: only what the Rundown has is listed, and every browser source of the show can be copied from Live.
   if (await page.locator('.cp-gi[disabled]').count()) throw new Error('Live lists graphics this match cannot use');
+  await page.getByRole('button', { name: /^Copy browser source for / }).first().click();
+  if (!/\/o\/[0-9a-f-]{36}\?only=/.test((await (await fetch(`${HOST}/dev/state`)).json()).clipboard ?? '')) throw new Error('the clip beside a graphic copied no browser source');
   await btn('Sources', { exact: true });
   const sources = page.getByRole('dialog', { name: 'Browser sources' });
   await sources.getByRole('button', { name: 'Copy' }).first().click();

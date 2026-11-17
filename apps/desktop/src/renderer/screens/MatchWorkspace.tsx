@@ -185,7 +185,7 @@ function Teams({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   const { teams, players } = s.library;
   return (
     <div className="stack" style={{ gap: 14 }}>
-      <div className="between"><p className="muted t-sm">Pick each side’s team, then who plays. The first five start; up to two more are substitutes.</p><button className="btn quiet small" onClick={() => go('teams')}>Open Teams/Players</button></div>
+      <div className="between"><p className="muted t-sm">Pick each side’s team, then who plays. The first five start; up to two more are substitutes.{m.source ? ' Riot IDs come from players’ verified accounts on Esportra.' : ''}</p><span className="row-gap">{m.source && !m.finishedAt && <button className="btn quiet small" onClick={() => void run(() => air.esportraLineupRefresh())}>Refresh from Esportra</button>}<button className="btn quiet small" onClick={() => go('teams')}>Open Teams/Players</button></span></div>
       <div className="cols2">
         {([0, 1] as const).map((t) => {
           const teamId = m.teamIds?.[t] ?? null;

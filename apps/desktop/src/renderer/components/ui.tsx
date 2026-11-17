@@ -44,6 +44,8 @@ export const ICONS = {
   studio: svg(<><path d="M4 20l4-1 10-10-3-3L5 16l-1 4z" /><path d="M13 7l3 3" /></>),
   data: svg(<><rect x="4" y="5" width="16" height="14" /><path d="M4 10h16M9 5v14" /></>),
   sync: svg(<><path d="M20 8a8 8 0 0 0-14-2M4 4v4h4" /><path d="M4 16a8 8 0 0 0 14 2M20 20v-4h-4" /></>),
+  clip: svg(<path d="M15.5 7.5l-6.4 6.4a1.8 1.8 0 0 0 2.5 2.5l7-7a3.5 3.5 0 0 0-5-5l-7.3 7.3a5.2 5.2 0 0 0 7.4 7.4l5.8-5.8" />),
+  check: svg(<path d="M5 12.5l4.5 4.5L19 7.5" />),
   setup: svg(<><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>),
 } as const;
 

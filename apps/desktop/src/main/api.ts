@@ -67,6 +67,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'vetoUndo': await p.vetoUndo(); break;
     case 'vetoReset': await p.vetoReset(); break;
     case 'esportraBracketRefresh': await p.esportraBracketRefresh(); break;
+    case 'esportraLineupRefresh': await p.esportraLineupRefresh(); break;
     case 'showTemplateApply': await p.showTemplateApply(String(a[0] ?? '')); break;
     case 'showTemplateSave': p.showTemplateSave(a[0] ?? {}); break;
     case 'showTemplateRename': p.showTemplateRename(String(a[0] ?? ''), a[1]); break;

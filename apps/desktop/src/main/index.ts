@@ -116,14 +116,21 @@ async function main() {
   window.webContents.on('will-navigate', (e) => e.preventDefault());
   await window.loadFile(join(__dirname, 'renderer/index.html'));
 
-  production.on('monitor', (frame) => window?.webContents.send(CHANNELS.monitor, frame));
-  production.on('notice', (message: string) => window?.webContents.send(CHANNELS.snapshot, { ...production.snapshot(), notice: message }));
+  // Nothing is sent once the window is gone (17 Nov: a snapshot timer firing during quit threw
+  // "Object has been destroyed" every time Air closed).
+  window.on('closed', () => { window = null; });
+  const send = (channel: string, data: unknown) => {
+    if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
+    window.webContents.send(channel, data);
+  };
+  production.on('monitor', (frame) => send(CHANNELS.monitor, frame));
+  production.on('notice', (message: string) => send(CHANNELS.snapshot, { ...production.snapshot(), notice: message }));
   let pending: ReturnType<typeof setTimeout> | null = null;
   production.on('change', () => {
-    if (pending) return;
+    if (pending || quitting) return;
     pending = setTimeout(() => {
       pending = null;
-      window?.webContents.send(CHANNELS.snapshot, production.snapshot());
+      send(CHANNELS.snapshot, production.snapshot());
     }, 150);
   });
 
@@ -143,14 +150,17 @@ async function main() {
     if (quitting) return;
     event.preventDefault();
     quitting = true;
+    if (pending) { clearTimeout(pending); pending = null; }
     void (async () => {
       let shutdown = false;
       if (engine.state === 'running' && engine.hasViewers()) {
-        const choice = await dialog.showMessageBox(window!, {
+        const opts: Electron.MessageBoxOptions = {
           type: 'question', buttons: ['Keep graphics on air', 'Stop graphics'], defaultId: 0, cancelId: 0, noLink: true,
           title: 'Graphics are on air', message: 'OBS is showing Air graphics.',
           detail: 'Keep them running after Air closes? They stay live and Air reconnects to them next time you open it.',
-        });
+        };
+        // The window may already be closed (closing it is what quits Air).
+        const choice = await (window && !window.isDestroyed() ? dialog.showMessageBox(window, opts) : dialog.showMessageBox(opts));
         shutdown = choice.response === 1;
       } else {
         shutdown = engine.state === 'running';

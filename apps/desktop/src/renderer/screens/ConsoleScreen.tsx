@@ -283,7 +283,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
         </div>
       )}
       <div className="cp-cols">
-        <GraphicList items={items} phase={phase} setPhase={setPhase} selected={sel?.id ?? null} select={setSelected} keymap={s.keymap} />
+        <GraphicList items={items} phase={phase} setPhase={setPhase} selected={sel?.id ?? null} select={setSelected} keymap={s.keymap} s={s} />
         <div className="stack cp-midcol">
           <GraphicDetail s={s} run={run} item={sel} cycle={cycle} />
           <LiveBoard s={s} />

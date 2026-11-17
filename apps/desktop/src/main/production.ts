@@ -129,7 +129,8 @@ export function validPlayers(input: unknown): Match['players'] {
       const photo = typeof p?.photo === 'string' ? p.photo : '';
       if (photo && !IMAGE.test(photo)) throw new Error(`${label}: choose the photo again.`);
       const puuid = isPuuid(p?.puuid) ? String(p.puuid).trim() : '';
-      return { id: typeof p?.id === 'string' && /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : randomUUID(), name: text(p?.name, 32, `${label} name`), realName: p?.realName ? text(p.realName, 60, `${label} real name`) : '', gameId, ...(puuid ? { puuid } : {}), photo };
+      const esportraId = typeof p?.esportraId === 'string' && /^[0-9a-f-]{36}$/i.test(p.esportraId) ? p.esportraId : '';
+      return { id: typeof p?.id === 'string' && /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : randomUUID(), name: text(p?.name, 32, `${label} name`), realName: p?.realName ? text(p.realName, 60, `${label} real name`) : '', gameId, ...(puuid ? { puuid } : {}), ...(esportraId ? { esportraId } : {}), photo };
     });
   }) as Match['players'];
 }
@@ -742,6 +743,20 @@ export class Production extends EventEmitter {
     this.deps.store.data.selectedMatchId = id;
     this.save();
     await this.syncEngine();
+    // An Esportra match reads its lineup again in the background: Riot IDs verified since come in (17 Nov).
+    const match = this.deps.store.data.matches.find((m) => m.id === id);
+    if (match?.source && this.esportraMatches) {
+      void this.esportraMatches.refreshLineup(match).then((changed) => changed && this.emit('change'), () => {});
+    }
+  }
+
+  /** Teams/Players › Refresh from Esportra: the lineup and Riot IDs, read now. */
+  async esportraLineupRefresh() {
+    const match = this.match;
+    if (!match?.source || !this.esportraMatches) throw new Error('This match is not from Esportra.');
+    if (match.finishedAt) throw new Error('A finished match keeps the lineup it was played with. Reopen it first.');
+    const changed = await this.esportraMatches.refreshLineup(match);
+    this.log.add(changed ? 'Lineup refreshed from Esportra' : 'Lineup already matches Esportra');
   }
 
   /** A new match starts with the event and sponsors of the latest match (of the same tournament, when there is one). */

@@ -175,6 +175,9 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
       if (typing) return;
       if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+      // Delete or Backspace removes the selected part from the graphic, like a layer in Photoshop (17 Nov).
+      // It stays in the list, struck through, and Ctrl Z or the eye brings it back.
+      if ((e.key === 'Delete' || e.key === 'Backspace') && sel && part?.[0] === sel && !draft.parts[sel]?.hidden) { e.preventDefault(); setPart(part[0], { hidden: true }); return; }
       const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (d && part) {
         e.preventDefault();
@@ -292,7 +295,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 {parts.map(([id, label]) => {
                   const p = draft.parts[id]; const present = !!rects[id];
                   return (
-                    <div key={id} className={`tpl-node ${id === sel ? 'on' : ''} ${present ? '' : 'absent'} ${dragging === id ? 'dragging' : ''} ${dropAt?.id === id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
+                    <div key={id} className={`tpl-node ${id === sel ? 'on' : ''} ${present || p?.hidden ? '' : 'absent'} ${p?.hidden ? 'deleted' : ''} ${dragging === id ? 'dragging' : ''} ${dropAt?.id === id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
                       draggable onDragStart={(e) => { setDragging(id); e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { setDragging(null); setDropAt(null); }}
                       onDragOver={(e) => { if (!dragging || dragging === id) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDropAt({ id, after: e.clientY > r.top + r.height / 2 }); }}
                       onDrop={(e) => { e.preventDefault(); if (dragging && dropAt) dropPart(dragging, dropAt.id, dropAt.after); setDragging(null); setDropAt(null); }}>
@@ -302,12 +305,13 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                       </button>
                       {!present && SHOWS_IN[id] && SAMPLES[draft.graphic]?.some((x) => x.id === SHOWS_IN[id]) && <button className="tpl-shows" onClick={() => { setSample(SHOWS_IN[id]!); setSel(id); }}>Shows in: {SAMPLES[draft.graphic]!.find((x) => x.id === SHOWS_IN[id])!.name} ›</button>}
                       <button className={`eye ${p?.hidden ? 'off' : ''}`} aria-label={p?.hidden ? `Show ${label}` : `Hide ${label}`} title={p?.hidden ? 'Show' : 'Hide'} onClick={() => setPart(id, { hidden: p?.hidden ? undefined : true })}>{p?.hidden ? '◌' : '●'}</button>
+                      {!p?.hidden && <button className="eye trash" aria-label={`Delete ${label}`} title="Delete (Del) · Ctrl Z brings it back" onClick={() => { setSel(id); setPart(id, { hidden: true }); }}>✕</button>}
                     </div>
                   );
                 })}
               </div>
             </div>
-            <p className="faint t-xs">The blue dot means you changed that part. Click a part on the picture to select it; click again to reach the part behind. Drag a part above or below another to put it in front or behind; layers only matter where parts overlap.</p>
+            <p className="faint t-xs">Select a part and press Delete to take it off the graphic; Ctrl Z or its eye brings it back. The blue dot means you changed that part. Click a part on the picture to select it; click again to reach the part behind. Drag a part above or below another to put it in front or behind; layers only matter where parts overlap.</p>
           </aside>
           <section className="tpl-mid">
             <div className="tpl-cvbar">

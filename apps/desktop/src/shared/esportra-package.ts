@@ -16,6 +16,10 @@ export interface EsportraPlayer {
   gameId: string;
   /** The player's Riot PUUID when Esportra has verified it (seats the player before the game lists them). */
   puuid: string;
+  /** Esportra's own name for the player and their Esportra user id (17 Nov: a lineup made from the roster
+   *  holds these names, so a later lineup with Riot names is still recognised as the same players). */
+  registered?: string;
+  esportraId?: string;
 }
 
 export interface EsportraSponsor { name: string; logoUrl: string; assetId: string }
@@ -116,7 +120,8 @@ export function readLineup(input: unknown): EsportraPlayer[] {
     const name = (riot.split('#')[0] ?? '').trim() || str(r.name, 40);
     // Esportra sends inGameName = `Name#TAG` and gameId = the PUUID (17 Nov: Air used to keep only the name
     // and put the PUUID where the Riot ID belongs, so players showed no Riot ID).
-    return { name: name.slice(0, 40), gameId: isRiotId(riot) ? riot : '', puuid: isPuuid(r.gameId) ? str(r.gameId, 100) : '' };
+    const id = str(r.playerId ?? r.userId, 40);
+    return { name: name.slice(0, 40), gameId: isRiotId(riot) ? riot : '', puuid: isPuuid(r.gameId) ? str(r.gameId, 100) : '', ...(str(r.name, 40) ? { registered: str(r.name, 40) } : {}), ...(UUID.test(id) ? { esportraId: id } : {}) };
   }).filter((p) => p.name);
 }
 

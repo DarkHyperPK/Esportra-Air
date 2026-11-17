@@ -27,6 +27,8 @@ export interface PlayerInfo {
   gameId: string;
   /** Riot's PUUID when Esportra has verified the account: seats the player before the game lists them. */
   puuid?: string;
+  /** The player's Esportra user id, for an Esportra match (finds them again when Esportra's lineup changes names). */
+  esportraId?: string;
   /** Photo URL served by the engine's asset store, or ''. */
   photo: string;
   /** The player in Teams/Players this lineup entry follows. */
@@ -49,6 +51,8 @@ export interface LibPlayer {
   gameId: string;
   /** Riot's PUUID, from Esportra's verified account (never typed). */
   puuid?: string;
+  /** Their Esportra user id, when an Esportra match brought them in. */
+  esportraId?: string;
   photo: string;
   role: string;
   teamId: string | null;
@@ -507,6 +511,8 @@ export interface AirApi {
   vetoReset(): Promise<Snapshot>;
   /** Event data › Refresh from Esportra: the tournament's standings and bracket, read now. */
   esportraBracketRefresh(): Promise<Snapshot>;
+  /** Teams/Players › Refresh from Esportra: the lineup and Riot IDs, read now. */
+  esportraLineupRefresh(): Promise<Snapshot>;
   /** Starts the selected match's show from a show template (rows, banner style, pause look). */
   showTemplateApply(id: string): Promise<Snapshot>;
   /** Keeps the selected match's show as a template (a new one, or replacing one of yours by id). */
