@@ -1377,7 +1377,19 @@
     HUD.subs.push(updateFeedTag); updateFeedTag(HUD.state);
     HUD.subs.push((s, opts) => mods.forEach(m => m.update(s, opts))); mods.forEach(m => m.update(HUD.state, {snapshot:true}));
     templates(root, list);
-    let lastT = 0; (function loop(t) { if (t - lastT > 90) { lastT = t; updateAirPause(HUD.state); mods.forEach(m => m.tick && m.tick(HUD.state)); } mods.forEach(m => m.frame && m.frame(HUD.state)); requestAnimationFrame(loop); })(0);
+    // A preview inside Air (an iframe) does no work while it is scrolled out of sight: no ticks, no frames and
+    // no CSS animations (17 Nov: twenty previews in the Rundown kept animating and made scrolling hitch).
+    // OBS outputs are never iframes, so on air nothing changes.
+    let lastT = 0, shown = true, looping = false;
+    const loop = t => { if (!shown) { looping = false; return; } looping = true; if (t - lastT > 90) { lastT = t; updateAirPause(HUD.state); mods.forEach(m => m.tick && m.tick(HUD.state)); } mods.forEach(m => m.frame && m.frame(HUD.state)); requestAnimationFrame(loop); };
+    loop(0);
+    if (window.parent !== window && 'IntersectionObserver' in window) {
+      const st = document.createElement('style'); st.textContent = '.air-offscreen *,.air-offscreen *::before,.air-offscreen *::after{animation-play-state:paused!important}'; document.head.appendChild(st);
+      new IntersectionObserver(([e]) => {
+        shown = !!(e && e.isIntersecting); document.documentElement.classList.toggle('air-offscreen', !shown);
+        if (shown && !looping) { looping = true; requestAnimationFrame(loop); }
+      }).observe(document.body);
+    }
     if (HUD.demo || SAMPLE_MOTION) demo();
     window.HUD_READY = true;
     if(window.parent!==window)window.parent.postMessage({type:'AIR_HUD_PREVIEW_READY'},'*');

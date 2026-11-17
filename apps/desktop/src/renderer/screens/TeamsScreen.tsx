@@ -1,5 +1,6 @@
 // Teams/Players (approved mocks, 12 Nov): teams and players kept once, with a Teams | Players filter.
 // Matches pick their two teams and starters from here; edits flow into every match that plays them.
+import { riotLabel } from '../../shared/riot.ts';
 import { useState } from 'react';
 import type { LibPlayer, LibTeam } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
@@ -68,7 +69,7 @@ export function TeamsScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
                   <div key={p.id} className="li tp-player">
                     <Face s={s} photo={p.photo} name={p.name} size={34} />
                     <b>{p.name}</b>
-                    <span className="mono faint t-xs">{p.gameId || 'No Riot ID'}</span>
+                    <span className="mono faint t-xs">{riotLabel(p)}</span>
                     <span className="muted t-sm">{p.role || '—'}</span>
                     <span className="row-gap">
                       <button className="btn quiet small" onClick={() => setPlayerEdit({ player: p })}>Edit</button>
@@ -98,7 +99,7 @@ export function TeamsScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
               <div key={p.id} className="li tp-row">
                 <Face s={s} photo={p.photo} name={p.name} size={34} />
                 <b>{p.name}</b>
-                <span className="mono faint t-xs">{p.gameId || 'No Riot ID'}</span>
+                <span className="mono faint t-xs">{riotLabel(p)}</span>
                 <span className="muted t-sm">{p.role || '—'}</span>
                 <select className="cell" aria-label={`Team of ${p.name}`} value={p.teamId ?? ''} onChange={(e) => void run(() => air.savePlayer({ ...p, teamId: e.target.value || null }))}>
                   <option value="">No team</option>

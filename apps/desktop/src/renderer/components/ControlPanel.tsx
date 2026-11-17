@@ -2,6 +2,7 @@
 // on the left; the selected graphic's options and data in the middle; the pause hint, Program, Cued and
 // Esportra results on the right. Keys, Cue/Take, autopilot and moments work as before (ConsoleScreen).
 import { lookOverlay } from '../../shared/look.ts';
+import { browserSource } from '../../shared/browser-source.ts';
 import { useState } from 'react';
 import type { LayerRow, Snapshot } from '../../shared/api.ts';
 import { SECTION_SCREENS } from '../../shared/autopilot.ts';
@@ -55,11 +56,18 @@ export function panelItems(s: Snapshot, run: Run, openForm: (f: 'toast' | 'poll'
   items.push({ id: 'toast', label: 'Toast', phase: 'extras', state: 'off', available: true, fire: () => openForm('toast') });
   items.push({ id: 'poll', label: 'Poll', phase: 'extras', state: s.triggers.poll ? 'onair' : 'off', available: true, fire: () => openForm('poll') });
   items.push({ id: 'replay', label: 'Replay', phase: 'extras', state: 'off', available: s.obs.state === 'connected', fire: () => void run(() => air.replay()) });
-  return items;
+  // Only what this match can use: a full-screen graphic outside the Rundown, or Replay without OBS, is left
+  // out rather than greyed (17 Nov). Something still on air stays, so it can be taken off.
+  return items.filter((x) => x.available || x.state !== 'off' || x.id === 'spotlight');
+}
+
+/** The phases that have something in them. */
+export function phasesWith(items: Item[]) {
+  return PHASES.filter(([id]) => items.some((x) => x.phase === id));
 }
 
 /** Top: the series with − / +, the map being played and its score, Close map and Fix data. */
-export function MatchBar({ s, run, openFix, openMatch }: { s: Snapshot; run: Run; openFix: () => void; openMatch?: () => void }) {
+export function MatchBar({ s, run, openFix, openMatch, openSources }: { s: Snapshot; run: Run; openFix: () => void; openMatch?: () => void; openSources?: () => void }) {
   const m = s.match;
   if (!m) return null;
   const r = s.readout;
@@ -92,6 +100,7 @@ export function MatchBar({ s, run, openFix, openMatch }: { s: Snapshot; run: Run
       </div>
       <div className="row-gap">
         {openMatch && <button className="btn small" title="Veto, players' prep, event data and show text, without leaving Live" onClick={openMatch}>Match <span className="kbd">{keyLabel(keyOf(s.keymap, 'match'))}</span></button>}
+        {openSources && <button className="btn small" title="Browser sources of this show, to paste into OBS" onClick={openSources}>Sources</button>}
         <button className="btn small" title="Keep this map's data for the post-game graphics without counting it" onClick={() => void run(() => air.closeMap())}>Close map {map}</button>
         <button className="btn small" onClick={openFix}>Fix data <span className="kbd">{keyLabel(keyOf(s.keymap, 'fix'))}</span></button>
       </div>
@@ -107,7 +116,7 @@ export function GraphicList({ items, phase, setPhase, selected, select, keymap }
   return (
     <nav className="cp-left" aria-label="Graphics">
       <div className="cp-phases" role="tablist" aria-label="Phase">
-        {PHASES.map(([id, label]) => <button key={id} role="tab" aria-selected={phase === id} onClick={() => setPhase(id)}>{label}<small>{items.filter((x) => x.phase === id).length}</small></button>)}
+        {phasesWith(items).map(([id, label]) => <button key={id} role="tab" aria-selected={phase === id} onClick={() => setPhase(id)}>{label}<small>{items.filter((x) => x.phase === id).length}</small></button>)}
       </div>
       <div className="cp-glist">
         {items.filter((x) => x.phase === phase).map((x) => (
@@ -115,6 +124,7 @@ export function GraphicList({ items, phase, setPhase, selected, select, keymap }
             <span>{x.label}</span>{tag[x.state][0] && <span className={`cp-state ${tag[x.state][1]}`}>{tag[x.state][0]}</span>}{keyFor(x) && <span className="kbd" aria-label={`Key ${keyFor(x)}`}>{keyLabel(keyFor(x))}</span>}
           </button>
         ))}
+        {!items.some((x) => x.phase === 'pre' || x.phase === 'post') && <p className="faint t-xs" style={{ padding: '8px 10px' }}>Full-screen graphics show here once they are in this match's Rundown.</p>}
       </div>
     </nav>
   );
@@ -196,9 +206,22 @@ export function GraphicDetail({ s, run, item, cycle }: { s: Snapshot; run: Run; 
             </select>
           </label>
         )}
+        {screen && <SourceLine s={s} screen={screen} />}
         {screen && POST_RECORD.has(screen) && rec?.record ? <RecordTable s={s} /> : screen ? <Preview key={`${screen}:${rowStyle(s, screen)}`} src={overlayUrl(s, lookOverlay(screen, s.setup.screens.find((x) => x.id === screen)?.overlay ?? screen, rowStyle(s, screen)), { match: m.code })} label={item.label} /> : null}
       </div>
     </section>
+  );
+}
+
+/** The selected full-screen graphic's browser source, copied in one click (the full list is Live › Sources). */
+function SourceLine({ s, screen }: { s: Snapshot; screen: string }) {
+  const [done, setDone] = useState(false);
+  const links = browserSource(s.engine.port ?? 0, s.setup.screens, { show: screen, style: rowStyle(s, screen) });
+  if (!links) return null;
+  return (
+    <span className="faint t-xs row-gap">Browser source in OBS:
+      <button className="btn quiet small" title={links.url} onClick={() => void air.copy(links.url).then(() => setDone(true), () => setDone(false))}>{done ? 'Copied' : 'Copy browser source'}</button>
+    </span>
   );
 }
 

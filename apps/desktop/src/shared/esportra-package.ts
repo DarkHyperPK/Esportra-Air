@@ -6,13 +6,16 @@
 //   GET  /api/air/broadcast/matches/{id}/bracket → the bracket snapshot on its own.
 // Anything malformed is skipped, never thrown: Esportra data only ever adds to a match Air can run without it.
 
+import { isPuuid, isRiotId } from './riot.ts';
 import { DEFAULT_POOL, VALORANT_MAPS, orderOf, validOrder, validVeto, type BracketMatch, type MapName, type StandingsRow, type VetoOrderStep, type VetoStep } from './match-data.ts';
 
 export interface EsportraPlayer {
   /** The name shown on air: the Riot name without its #tag, else the registered name. */
   name: string;
-  /** The player's Riot PUUID when Esportra has verified it (seats the player before the game lists them). */
+  /** The Riot ID `Name#TAG` when Esportra has a verified Riot account for the player, else ''. */
   gameId: string;
+  /** The player's Riot PUUID when Esportra has verified it (seats the player before the game lists them). */
+  puuid: string;
 }
 
 export interface EsportraSponsor { name: string; logoUrl: string; assetId: string }
@@ -111,7 +114,9 @@ export function readLineup(input: unknown): EsportraPlayer[] {
   return starters.slice(0, 5).map((r) => {
     const riot = str(r.inGameName, 60);
     const name = (riot.split('#')[0] ?? '').trim() || str(r.name, 40);
-    return { name: name.slice(0, 40), gameId: str(r.gameId, 100) };
+    // Esportra sends inGameName = `Name#TAG` and gameId = the PUUID (17 Nov: Air used to keep only the name
+    // and put the PUUID where the Riot ID belongs, so players showed no Riot ID).
+    return { name: name.slice(0, 40), gameId: isRiotId(riot) ? riot : '', puuid: isPuuid(r.gameId) ? str(r.gameId, 100) : '' };
   }).filter((p) => p.name);
 }
 
@@ -173,7 +178,7 @@ const teamName = (v: unknown) => { const n = str(obj(v).name, 40); return !n || 
  * The bracket snapshot as the HUD's standings rows and quarter-final / semi-final / grand final slots.
  * Uses the stage this match is in (else the last one). Rounds that do not fit 4 / 2 / 1 matches are left empty.
  */
-export function bracketFrom(snapshot: unknown, matchId: string): { standings: StandingsRow[]; bracket: { qf: BracketMatch[]; sf: BracketMatch[]; gf: BracketMatch[] } } | null {
+export function bracketFrom(snapshot: unknown, matchId: string): { standings: StandingsRow[]; bracket: { qf: BracketMatch[]; sf: BracketMatch[]; gf: BracketMatch[] }; format: string } | null {
   const s = obj(snapshot);
   const stages = arr(s.stages).map(obj);
   if (!stages.length) return null;
@@ -197,7 +202,7 @@ export function bracketFrom(snapshot: unknown, matchId: string): { standings: St
     });
   };
   const last = rounds.length - 1;
-  return { standings, bracket: { gf: slot(rounds[last], 1), sf: slot(rounds[last - 1], 2), qf: slot(rounds[last - 2], 4) } };
+  return { standings, bracket: { gf: slot(rounds[last], 1), sf: slot(rounds[last - 1], 2), qf: slot(rounds[last - 2], 4) }, format: str(stage.format, 30) };
 }
 
 /** Esportra's role words as Air's talent roles. */

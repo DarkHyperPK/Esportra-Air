@@ -40,16 +40,17 @@ export class OwnGraphics {
     return this.ctx.store.data.ownGraphics ?? [];
   }
 
-  /** The design: a 1920×1080 PNG up to 16 MB (any Photoshop export fits), stored exactly as exported. */
+  /** The design: a 16:9 PNG (1280×720 to 3840×2160) up to 16 MB, stored exactly as exported; it is drawn
+   * to fill the 1920×1080 frame, so the data boxes stay in 1080p coordinates whatever size it was. */
   async uploadArtwork(dataUrl: string): Promise<string> {
     // The type a browser gives is not trusted either way: the PNG check below reads the bytes.
     const m = /^data:[a-z0-9.+/-]*;base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl));
     if (!m) throw new Error('Export the design from Photoshop as a PNG.');
     const raw = Buffer.from(m[1]!, 'base64');
-    if (raw.length > 16_000_000) throw new Error('The design is larger than 16 MB, which a 1920 × 1080 PNG never is. Export it again as a PNG.');
+    if (raw.length > 16_000_000) throw new Error('The design is larger than 16 MB, which a 1080p PNG never is. Export it again as a PNG.');
     const size = pngSize(raw);
     if (!size) throw new Error('That file is not a PNG. Export the design from Photoshop as a PNG.');
-    if (size.width !== 1920 || size.height !== 1080) throw new Error(`The design is ${size.width} × ${size.height}. Export it at 1920 × 1080.`);
+    if (!designSizeOk(size.width, size.height)) throw new Error(`The design is ${size.width} × ${size.height}. Use a 16:9 size between 1280 × 720 and 3840 × 2160, such as 1920 × 1080 or 1600 × 900.`);
     const id = randomUUID();
     await this.ctx.putAsset(id, raw);
     return `/air-assets/${id}`;
@@ -133,4 +134,10 @@ export class OwnGraphics {
     const old = new Map(setup.screens.filter((x) => isOwnScreen(x.id)).map((x) => [x.id, x]));
     setup.screens = [...keep, ...this.list.map((g) => ownScreen(g, old.get(ownScreenId(g.id))?.enabled ?? false))];
   }
+}
+
+/** A 16:9 picture (within 1%) from 1280×720 to 3840×2160: 1600×900 and 2560×1440 scale cleanly to 1080p. */
+export function designSizeOk(width: number, height: number) {
+  if (width < 1280 || width > 3840 || height < 720 || height > 2160) return false;
+  return Math.abs(width / height - 16 / 9) <= (16 / 9) * 0.01;
 }

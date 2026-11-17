@@ -25,6 +25,8 @@ export interface PlayerInfo {
   realName: string;
   /** How the game reports them (Valorant: Riot ID `Name#TAG`), so live data can be matched to this player. */
   gameId: string;
+  /** Riot's PUUID when Esportra has verified the account: seats the player before the game lists them. */
+  puuid?: string;
   /** Photo URL served by the engine's asset store, or ''. */
   photo: string;
   /** The player in Teams/Players this lineup entry follows. */
@@ -43,7 +45,10 @@ export interface LibPlayer {
   id: string;
   name: string;
   realName: string;
+  /** Riot ID `Name#TAG`. */
   gameId: string;
+  /** Riot's PUUID, from Esportra's verified account (never typed). */
+  puuid?: string;
   photo: string;
   role: string;
   teamId: string | null;
@@ -500,6 +505,8 @@ export interface AirApi {
   vetoUndo(): Promise<Snapshot>;
   /** Empties the veto; for an Esportra match the match room's veto is reset too. */
   vetoReset(): Promise<Snapshot>;
+  /** Event data › Refresh from Esportra: the tournament's standings and bracket, read now. */
+  esportraBracketRefresh(): Promise<Snapshot>;
   /** Starts the selected match's show from a show template (rows, banner style, pause look). */
   showTemplateApply(id: string): Promise<Snapshot>;
   /** Keeps the selected match's show as a template (a new one, or replacing one of yours by id). */

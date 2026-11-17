@@ -147,20 +147,22 @@ function PlayersTab({ s, run }: { s: Snapshot; run: Run }) {
   const m = s.match!;
   const [side, setSide] = useState<'0' | '1'>('0');
   const lineup = m.players[Number(side) as 0 | 1];
+  const used = s.rundown.some((r) => r.enabled && r.show === 'player-profile');
   return (
     <section className="card">
       <div className="card-head">
-        <b>Player prep · kept in Teams/Players</b>
+        <span><b>Player stats</b><br /><span className="faint t-xs">Shown on Player profile before this match has numbers of its own · kept in Teams/Players</span></span>
         <Seg label="Team" value={side} options={[['0', m.teams[0].name], ['1', m.teams[1].name]]} onChange={setSide} />
       </div>
       <div className="body-pad" style={{ paddingTop: 0, overflowX: 'auto' }}>
+        {!used && <p className="notice t-sm" style={{ marginBottom: 10 }}>Player profile is not in this match’s Rundown, so these numbers are not shown on air. Add it in the Rundown step (Between maps or Pre-show) to use them. Filling them in is optional.</p>}
         {lineup.length ? (
           <table className="seg-table md-prep">
             <thead><tr><th>Player</th><th>Maps</th><th>Rating</th><th>KPR</th><th>ACS</th><th>HS%</th><th>Clutches</th><th>Quote</th></tr></thead>
             <tbody>{lineup.map((p) => <PrepRow key={p.id} s={s} run={run} name={p.name} libraryId={p.libraryId} />)}</tbody>
           </table>
         ) : <p className="muted t-sm">No lineup yet. Pick who plays in Teams/Players.</p>}
-        <p className="faint t-xs" style={{ marginTop: 10 }}>Empty numbers show a dash on air. Player profile uses these; after a map, the match’s own numbers take over. Each row saves when you leave it.</p>
+        <p className="faint t-xs" style={{ marginTop: 10 }}>Each player’s record before this match (from their season or an earlier stage), for the Player profile graphic. Empty numbers show a dash on air; after a map, the match’s own numbers take over. Each row saves when you leave it.</p>
       </div>
     </section>
   );
@@ -197,15 +199,16 @@ export function EventTab({ s, run }: { s: Snapshot; run: Run }) {
   return (
     <div className="stack" style={{ gap: 14 }}>
       <div className="between" style={{ flexWrap: 'wrap', gap: 10 }}>
-        <p className="muted t-sm" style={{ flex: '1 1 360px' }}>These belong to {event?.name ?? 'the event'}, so every match of the event shows them.{m.source ? ' Esportra refreshes the standings and bracket from the tournament; your changes stay until it sends new ones.' : ''}</p>
+        <p className="muted t-sm" style={{ flex: '1 1 360px' }}>These belong to {event?.name ?? 'the event'}, so every match of the event shows them.{m.source ? ' Esportra fills the standings and bracket from the tournament every 2 minutes; a part Esportra has nothing for keeps what you typed.' : ''}</p>
         <span className="row-gap">
+          {m.source && <button className="btn quiet small" onClick={() => void run(() => air.esportraBracketRefresh())}>Refresh from Esportra</button>}
           {dirty && <button className="btn quiet small" onClick={() => setEv(saved)}>Undo changes</button>}
           <button className="btn primary small" disabled={!dirty} onClick={() => void run(() => air.eventDataSave(m.eventId, ev))}>Save · on air</button>
         </span>
       </div>
       <div className="md-grid">
         <section className="card">
-          <div className="card-head"><b>Standings</b><button className="btn quiet small" disabled={ev.standings.length >= 32} onClick={() => setEv({ ...ev, standings: [...ev.standings, ['', '', '', '']] })}>Add team</button></div>
+          <div className="card-head"><span><b>Standings</b><br /><FromLine marks={saved.esportra} part="standings" esportra={!!m.source} /></span><button className="btn quiet small" disabled={ev.standings.length >= 32} onClick={() => setEv({ ...ev, standings: [...ev.standings, ['', '', '', '']] })}>Add team</button></div>
           <div className="body-pad" style={{ paddingTop: 0 }}>
             {ev.standings.length ? (
               <table className="seg-table">
@@ -239,7 +242,7 @@ export function EventTab({ s, run }: { s: Snapshot; run: Run }) {
             </div>
           </section>
           <section className="card">
-            <div className="card-head"><b>Bracket</b><span className="faint t-xs">QF · SF · GF</span></div>
+            <div className="card-head"><span><b>Bracket</b><br /><FromLine marks={saved.esportra} part="bracket" esportra={!!m.source} /></span><span className="faint t-xs">QF · SF · GF</span></div>
             <div className="body-pad md-bracket" style={{ paddingTop: 0 }}>
               {ROUNDS.map(([round, label, max]) => (
                 <div key={round} className="stack" style={{ gap: 6 }}>
@@ -264,6 +267,19 @@ export function EventTab({ s, run }: { s: Snapshot; run: Run }) {
       </div>
     </div>
   );
+}
+
+/** Where a part of the event data came from: Esportra (and when) or typed in Air. */
+function FromLine({ marks, part, esportra }: { marks?: EventData['esportra']; part: 'standings' | 'bracket'; esportra: boolean }) {
+  const at = marks?.[part];
+  if (at) return <span className="faint t-xs"><i className="dot ok" /> From Esportra · {ago(at)}</span>;
+  const why = part === 'standings' && esportra ? marks?.noStandings : undefined;
+  return <span className="faint t-xs">{why ?? 'Typed in Air'}</span>;
+}
+
+function ago(t: number) {
+  const min = Math.max(0, Math.round((Date.now() - t) / 60_000));
+  return min < 1 ? 'updated just now' : min < 60 ? `updated ${min} min ago` : `updated ${Math.round(min / 60)} h ago`;
 }
 
 // ── Show text ──

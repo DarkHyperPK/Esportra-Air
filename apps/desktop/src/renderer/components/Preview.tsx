@@ -1,5 +1,7 @@
 // A live graphic preview: the overlay page itself, scaled from 1920×1080 into a 16:9 card over a
-// gameplay-like backdrop. Pages are only loaded while the card is on screen.
+// gameplay-like backdrop. A page loads the first time its card comes on screen, once scrolling has
+// settled, and then stays loaded (17 Nov: removing and re-creating pages while scrolling made fast
+// scrolls hitch). Cards off screen are skipped by the browser's rendering (`content-visibility`).
 import { useEffect, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import { LIBRARY_ROOM } from '../../shared/library.ts';
@@ -15,22 +17,43 @@ export function screenUrl(s: Snapshot, screenId: string, overlay?: string | null
   return overlayUrl(s, overlay ?? s.setup.screens.find((x) => x.id === screenId)?.overlay ?? screenId);
 }
 
+// When the page last scrolled, anywhere: new previews wait until scrolling has paused.
+let lastScroll = 0;
+if (typeof document !== 'undefined') document.addEventListener('scroll', () => { lastScroll = performance.now(); }, { capture: true, passive: true });
+const SETTLE = 160;
+
 export function Preview({ src, label, backdrop = true }: { src: string; label: string; backdrop?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.2);
-  const [visible, setVisible] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setScale((e?.contentRect.width ?? 384) / 1920));
+    const ro = new ResizeObserver(([e]) => {
+      const next = (e?.contentRect.width ?? 384) / 1920;
+      setScale((cur) => (Math.abs(cur - next) > 0.0005 ? next : cur));
+    });
     ro.observe(el);
-    const io = new IntersectionObserver(([e]) => setVisible(!!e?.isIntersecting), { rootMargin: '200px' });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let seen = false;
+    const tryLoad = () => {
+      timer = null;
+      if (!seen) return;
+      const wait = lastScroll + SETTLE - performance.now();
+      if (wait > 0) { timer = setTimeout(tryLoad, wait); return; }
+      setLoaded(true);
+      io.disconnect();
+    };
+    const io = new IntersectionObserver(([e]) => {
+      seen = !!e?.isIntersecting;
+      if (seen && !timer) timer = setTimeout(tryLoad, 0);
+    }, { rootMargin: '150px' });
     io.observe(el);
-    return () => { ro.disconnect(); io.disconnect(); };
+    return () => { ro.disconnect(); io.disconnect(); if (timer) clearTimeout(timer); };
   }, []);
   return (
     <div ref={box} className={`pv ${backdrop ? 'pv-bg' : ''}`} aria-label={`Preview: ${label}`} role="img">
-      {visible && <iframe title={label} src={src} tabIndex={-1} style={{ transform: `scale(${scale})` }} />}
+      {loaded && <iframe title={label} src={src} tabIndex={-1} loading="lazy" style={{ transform: `scale(${scale})` }} />}
     </div>
   );
 }

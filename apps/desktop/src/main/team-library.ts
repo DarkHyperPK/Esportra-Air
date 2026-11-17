@@ -5,8 +5,8 @@
 import { randomUUID } from 'node:crypto';
 import { PLAYER_ROLES, type LibPlayer, type LibTeam, type Library, type Match, type PlayerInfo } from '../shared/api.ts';
 import { HEX, IMAGE, text } from './validate.ts';
+import { RIOT_ID, isPuuid } from '../shared/riot.ts';
 
-const RIOT_ID = /^[^#<>\x00-\x1f]{3,16}#[A-Za-z0-9]{2,5}$/;
 const COLORS = ['#22d3ee', '#f43f5e'];
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 /** A short tag from a name: initials of several words, or the first three letters of one. */
@@ -40,10 +40,13 @@ export function validPlayer(input: Partial<LibPlayer>, lib: Library): LibPlayer 
   if (photo && !IMAGE.test(photo)) throw new Error('Choose the photo again.');
   const role = typeof input?.role === 'string' && (PLAYER_ROLES as readonly string[]).includes(input.role) ? input.role : '';
   const teamId = typeof input?.teamId === 'string' && lib.teams.some((t) => t.id === input.teamId) ? input.teamId : null;
-  return { id, name, realName: input?.realName ? text(input.realName, 60, 'Real name') : '', gameId, photo, role, teamId };
+  // The PUUID comes from Esportra, never from the form: an edit keeps the one already known.
+  const known = lib.players.find((p) => p.id === id)?.puuid;
+  const puuid = isPuuid(input?.puuid) ? input.puuid.trim() : known;
+  return { id, name, realName: input?.realName ? text(input.realName, 60, 'Real name') : '', gameId, ...(puuid ? { puuid } : {}), photo, role, teamId };
 }
 
-const entry = (p: LibPlayer, id: string = randomUUID()): PlayerInfo => ({ id, name: p.name, realName: p.realName, gameId: p.gameId, photo: p.photo, libraryId: p.id });
+const entry = (p: LibPlayer, id: string = randomUUID()): PlayerInfo => ({ id, name: p.name, realName: p.realName, gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), photo: p.photo, libraryId: p.id });
 
 /**
  * Links a match to the library: each team by name, each player by Riot ID (or by name within that
@@ -61,14 +64,16 @@ export function linkMatch(match: Match, lib: Library) {
     ids[t] = team.id;
     for (const p of match.players[t]) {
       let found = (p.libraryId && lib.players.find((x) => x.id === p.libraryId))
+        || (p.puuid && lib.players.find((x) => x.puuid === p.puuid))
         || (p.gameId && lib.players.find((x) => x.gameId && same(x.gameId, p.gameId)))
         || lib.players.find((x) => x.teamId === team!.id && same(x.name, p.name));
       if (!found) {
-        found = { id: randomUUID(), name: p.name, realName: p.realName, gameId: p.gameId, photo: p.photo, role: '', teamId: team.id };
+        found = { id: randomUUID(), name: p.name, realName: p.realName, gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), photo: p.photo, role: '', teamId: team.id };
         lib.players.push(found);
       } else {
         if (!found.photo && p.photo) found.photo = p.photo;
         if (!found.gameId && p.gameId) found.gameId = p.gameId;
+        if (!found.puuid && p.puuid) found.puuid = p.puuid;
         found.teamId ??= team.id;
       }
       p.libraryId = found.id;
@@ -142,7 +147,7 @@ export function pushMatch(match: Match, lib: Library) {
     if (team) Object.assign(team, match.teams[t]);
     for (const p of match.players[t]) {
       const found = p.libraryId ? lib.players.find((x) => x.id === p.libraryId) : undefined;
-      if (found) Object.assign(found, { name: p.name, realName: p.realName, gameId: p.gameId, photo: p.photo });
+      if (found) Object.assign(found, { name: p.name, realName: p.realName, gameId: p.gameId, photo: p.photo }, p.puuid ? { puuid: p.puuid } : {});
     }
   }
   linkMatch(match, lib);

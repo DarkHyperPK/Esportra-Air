@@ -1065,7 +1065,8 @@ test('your own graphics: the design is kept as exported, its boxes reach the roo
     const code = production.match!.code;
     // The design: only a 1920×1080 PNG, stored byte for byte.
     const png = await blankPng(1920, 1080);
-    await assert.rejects(production.uploadArtwork(`data:image/png;base64,${(await blankPng(1280, 720)).toString('base64')}`), /1280 × 720\. Export it at 1920 × 1080/);
+    await assert.rejects(production.uploadArtwork(`data:image/png;base64,${(await blankPng(1600, 1000)).toString('base64')}`), /1600 × 1000\. Use a 16:9 size/);
+    assert.match(await production.uploadArtwork(`data:image/png;base64,${(await blankPng(1600, 900)).toString('base64')}`), /^\/air-assets\//);
     await assert.rejects(production.uploadArtwork('data:image/jpeg;base64,/9j/4AAQ'), /as a PNG/);
     const image = await production.uploadArtwork(`data:image/png;base64,${png.toString('base64')}`);
     assert.match(await production.uploadArtwork(`data:application/octet-stream;base64,${png.toString('base64')}`), /^\/air-assets\//, 'a PNG Windows gave no image type is still a PNG');

@@ -1,6 +1,7 @@
 // A match (approved 12 Nov): the team-light hero, then its steps in working order — Overview,
 // Teams/Players, Talent and sponsors, Rundown, OBS, Player PCs and cameras, Rehearse — and Go live.
 // Everything for this match is set up here.
+import { riotLabel, riotKnown } from '../../shared/riot.ts';
 import { useEffect, useState } from 'react';
 import type { ActionId, LibTeam, Snapshot, Team } from '../../shared/api.ts';
 import { ROLE_NAME, TIER_NAME, onAir } from '../../shared/model.ts';
@@ -39,7 +40,7 @@ function stepHealth(s: Snapshot, step: MatchStep): StepHealth {
   };
   switch (step) {
     case 'ready': { const counted = s.checks.filter((c) => !(c.id === 'esportra' && c.health === 'off')); return counted.every((c) => c.health === 'ok') ? 'ok' : null; }
-    case 'teams': return m.players.every((l) => l.length >= 5 && l.slice(0, 5).every((p) => p.gameId)) ? 'ok' : 'warn';
+    case 'teams': return m.players.every((l) => l.length >= 5 && l.slice(0, 5).every(riotKnown)) ? 'ok' : 'warn';
     case 'talent': return check('talent');
     case 'matchdata': return check('match-data');
     case 'rundown': return s.setup.screens.some((x) => x.enabled) ? 'ok' : 'warn';
@@ -209,7 +210,7 @@ function Teams({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
                 {lineup.map((p, i) => (
                   <div key={p.id} className="li lineup-pick">
                     <Face s={s} photo={p.photo} name={p.name} size={36} />
-                    <button className="ev-match-open" onClick={() => setPlayer({ team: t, index: i })} aria-label={`Edit ${p.name}`}><span><b>{p.name}</b><br /><span className="mono faint t-xs">{p.gameId || 'No Riot ID'}</span></span></button>
+                    <button className="ev-match-open" onClick={() => setPlayer({ team: t, index: i })} aria-label={`Edit ${p.name}`}><span><b>{p.name}</b><br /><span className="mono faint t-xs">{riotLabel(p)}</span></span></button>
                     <span className={`tag-pill ${i < 5 ? 'on' : ''}`}>{i < 5 ? 'Starter' : 'Sub'}</span>
                     {lib && p.libraryId ? <button className="btn quiet small" onClick={() => void run(() => air.setStarters(m.id, t, ids.filter((x) => x !== p.libraryId)))}>Leave out</button> : <span />}
                   </div>
@@ -223,7 +224,7 @@ function Teams({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
                     {bench.map((p) => (
                       <div key={p.id} className="li lineup-pick">
                         <Face s={s} photo={p.photo} name={p.name} size={36} />
-                        <span><b>{p.name}</b><br /><span className="mono faint t-xs">{p.gameId || 'No Riot ID'}</span></span>
+                        <span><b>{p.name}</b><br /><span className="mono faint t-xs">{riotLabel(p)}</span></span>
                         <span />
                         <button className="btn small" disabled={ids.length >= 7} onClick={() => void run(() => air.setStarters(m.id, t, [...ids, p.id]))}>Add to lineup</button>
                       </div>
