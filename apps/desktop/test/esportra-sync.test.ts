@@ -228,7 +228,7 @@ test('the Esportra veto as it happens: custom order, coin toss, turn, decider, r
     v.steps.push({ team: 1, action: 'ban', map: 'Bind', side: null });
     await production.esportraSync.pollVeto(production.match!);
     st = await room();
-    assert.deepEqual([st.veto[0].team, st.vetoOrder[0].team], [0, 0], 'Esportra team 2 is on the left here');
+    assert.deepEqual([st.veto[0].team, st.vetoOrder[0].team], [0, 1], 'Esportra team 2 is on the left here; the order stays relative to who acts first (T2 bans first in this order)');
 
     // The producer enters a step: it waits to go to the match room, and Esportra's older veto does not undo it.
     await production.vetoStep({ map: 'ABYSS' });
@@ -338,6 +338,8 @@ test('two-way veto: a Bo3 entered in Air reaches the match room in order and onc
     await production.vetoFirst(1);
     await production.vetoStep({ map: 'ABYSS' });
     await production.vetoStep({ map: 'BIND' });
+    // Air names the same teams as the match room will, before anything is sent (Esportra's order is relative to who goes first).
+    assert.deepEqual(production.matchData.of(match).veto.map((x) => x.team), [1, 0], 'the team that went first bans first, here as on Esportra');
     assert.equal(production.snapshot().esportraVeto!.outbox!.waiting, 2, 'two steps wait to be sent');
     assert.equal(production.matchData.of(match).vetoSource, 'esportra', 'the veto keeps following the match room');
     await flush();
@@ -397,5 +399,11 @@ test('two-way veto: a Bo3 entered in Air reaches the match room in order and onc
     await production.vetoOutboxResolve('air');
     await flush();
     assert.deepEqual(v2.steps.map((x) => x.map), ['Abyss', 'Bind']);
+
+    // Reset veto: empty here and in the match room.
+    await production.vetoReset();
+    assert.equal(production.matchData.of(m2).veto.length, 0);
+    await flush();
+    assert.deepEqual([v2.steps.length, v2.status], [0, 'not_started'], 'the match room veto is reset too');
   } finally { await stop(); }
 });

@@ -173,3 +173,18 @@ test('match data reaches the room: veto, maps, holding text, standings, ticker, 
     await engine.stop(true);
   }
 });
+
+test('Esportra\'s own order is relative to the team acting first: after a defer the other team acts, everywhere', async () => {
+  const { nextVetoStep, firstTeamOf } = await import('../src/shared/match-data.ts');
+  // Esportra's Bo3 order: T1 bans, T2 bans, T1 picks, T2 picks, T1 bans, T2 bans, decider.
+  const order = [{ action: 'ban', team: 0 }, { action: 'ban', team: 1 }, { action: 'pick', team: 0 }, { action: 'pick', team: 1 }, { action: 'ban', team: 0 }, { action: 'ban', team: 1 }, { action: 'decider', team: -1 }] as const;
+  // Team A won the toss and deferred: team B acts first.
+  assert.deepEqual(nextVetoStep([], 3, order as never, 1), { action: 'ban', team: 1 });
+  assert.deepEqual(nextVetoStep([{ team: 1, action: 'ban', map: 'BIND' }], 3, order as never, 1), { action: 'ban', team: 0 });
+  assert.deepEqual(nextVetoStep([{ team: 1, action: 'ban', map: 'BIND' }, { team: 0, action: 'ban', map: 'ABYSS' }], 3, order as never, 0), { action: 'pick', team: 1 }, 'once a step is in, it decides who went first');
+  // An order where T2 starts: the first step was made by T2.
+  assert.equal(firstTeamOf([{ team: 0, action: 'ban', map: 'BIND' }], [{ action: 'ban', team: 1 }] as never, 0), 1);
+  // The HUD draws the same teams.
+  (globalThis as any).window = {};
+});
+

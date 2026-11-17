@@ -18,6 +18,8 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
   const usesAutopilot = s.control !== 'companion';
   // Off until the producer ticks it: nothing goes up by itself unless they choose so.
   const [autopilot, setAutopilot] = useState(false);
+  // Adding Air's scenes to OBS is optional (17 Nov): crews with their own scenes paste the Rundown's browser sources.
+  const [toObs, setToObs] = useState(s.obs.state === 'connected');
   const [steps, setSteps] = useState<Steps>({ obs: 'waiting', data: 'waiting', autopilot: 'waiting' });
   const [notes, setNotes] = useState<Partial<Record<keyof Steps, string>>>({});
   const [busy, setBusy] = useState(false);
@@ -35,8 +37,9 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
     setBusy(true);
     // 1. The Rundown to OBS. While OBS streams, Air cannot rebuild (a reload would show on air); if the
     //    scenes are already there, the show goes on with them.
-    set('obs', 'working');
-    try {
+    if (!toObs) set('obs', 'skipped', 'Skipped: your own OBS scenes use the browser sources from the Rundown.');
+    else set('obs', 'working');
+    if (toObs) try {
       await air.installGraphics();
       set('obs', 'done', `In OBS as ESPORTRA · ${scenes}.`);
     } catch (e) {
@@ -71,8 +74,11 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
       <div className="dialog golive" role="dialog" aria-modal="true" aria-label="Go live" ref={ref}>
         <div className="between"><h2 className="title-lg" style={{ margin: 0 }}>Go live</h2><span className="muted t-sm">{s.match?.title}</span></div>
         <ol className="steplist">
-          <li>{tick(steps.obs, 1)}<span><b>Send {graphics} graphics to OBS</b><br /><span className="muted t-sm">{notes.obs ?? `ESPORTRA · ${scenes}. Your own scenes are not touched.`}</span>
-            {!obsReady && <><br /><button className="btn small" style={{ marginTop: 6 }} onClick={connectObs}>Connect OBS first</button></>}</span></li>
+          <li>{tick(steps.obs, 1)}<span><b>Add Air’s scenes to OBS</b> <span className="faint t-xs">optional</span><br />
+            {steps.obs === 'waiting'
+              ? <span className="row-gap t-sm muted"><Switch on={toObs} label="Add Air’s scenes to OBS" disabled={!obsReady} onChange={setToObs} />{toObs ? `ESPORTRA · ${scenes}, ${graphics} graphics. Your own scenes are not touched.` : obsReady ? 'Off: use the browser sources from the Rundown in your own scenes.' : 'OBS is not connected. Use the Rundown’s browser sources, or connect OBS.'}</span>
+              : <span className="muted t-sm">{notes.obs}</span>}
+            {!obsReady && steps.obs === 'waiting' && <><br /><button className="btn quiet small" style={{ marginTop: 6 }} onClick={connectObs}>Connect OBS</button></>}</span></li>
           <li>{tick(steps.data, 2)}<span><b>Start game data</b><br />
             {steps.data === 'waiting'
               ? <label className="consent"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I allow Air to read the match on this PC{s.setup.profile === 'player-pcs' ? ' and the player PCs' : ''}. It stays on our network.</label>
@@ -93,7 +99,7 @@ export function GoLiveDialog({ s, close, done, connectObs }: { s: Snapshot; clos
           <span className="row-gap">
             {finished
               ? <button className="btn primary big" onClick={done}>Open Live</button>
-              : <><button className="btn quiet" disabled={busy} onClick={close}>Cancel</button><button className="btn live big" disabled={busy || !obsReady} onClick={() => void go()}>{busy ? 'Going live…' : 'Go live'}</button></>}
+              : <><button className="btn quiet" disabled={busy} onClick={close}>Cancel</button><button className="btn live big" disabled={busy} onClick={() => void go()}>{busy ? 'Going live…' : 'Go live'}</button></>}
           </span>
         </div>
       </div>

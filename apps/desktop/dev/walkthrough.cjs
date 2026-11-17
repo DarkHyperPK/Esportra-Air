@@ -287,6 +287,12 @@ let failShot = async () => {};
   await btn('Undo last');
   await page.waitForTimeout(500);
   if ((await vetoLen()) !== 2) throw new Error('undo takes the pick back');
+  // Reset veto (17 Nov): asks first, then clears every step.
+  await page.getByRole('button', { name: 'Reset veto' }).first().click();
+  await page.getByRole('alertdialog', { name: 'Reset the veto' }).getByRole('button', { name: 'Reset veto' }).click();
+  for (let i = 0; i < 30 && (await vetoLen()) !== 0; i++) await page.waitForTimeout(100);
+  if ((await vetoLen()) !== 0) throw new Error('Reset veto clears the veto');
+  await shot('match-data-veto-reset');
   await page.getByRole('tab', { name: 'Event data' }).click();
   await btn('Add team');
   await page.getByRole('textbox', { name: 'Standings row 1 team' }).fill('NIGHT OWLS');
@@ -415,7 +421,7 @@ let failShot = async () => {};
   await page.setViewportSize({ width: 1600, height: 1000 });
   await btn('Go live', { exact: true });
   const golive = page.getByRole('dialog', { name: 'Go live' });
-  await golive.getByText('Send ').first().waitFor();
+  await golive.getByRole('switch', { name: 'Add Air’s scenes to OBS', checked: true }).waitFor(); // on: OBS is connected
   await golive.getByRole('switch', { name: 'Autopilot', checked: false }).waitFor(); // off until ticked
   await golive.getByRole('checkbox').check();
   await shot('go-live');
@@ -518,6 +524,15 @@ let failShot = async () => {};
   await section('Between maps').getByText(/^When I press Take/).first().waitFor();
   await btn('Use a starting template');
   await page.getByRole('menuitem', { name: /Standard show/ }).click();
+  // Browser source per row (17 Nov): Map result's source follows Air's Take, in the row's look.
+  if (await page.getByRole('button', { name: 'Browser source for Back to the game' }).count()) throw new Error('a row without its own graphic has no browser source');
+  await page.getByRole('button', { name: 'Browser source for Map result' }).first().click();
+  { const url = await page.getByRole('textbox', { name: 'Follows Air address' }).first().inputValue(); if (!/\/o\/[0-9a-f-]{36}\?only=map-result&style=(full|band)$/.test(url)) throw new Error('Map result has its own browser source: ' + url); }
+  await page.getByRole('group', { name: 'Browser source' }).getByRole('button', { name: 'Copy' }).first().click();
+  await page.getByRole('group', { name: 'Browser source' }).getByRole('button', { name: 'Copied' }).first().waitFor();
+  { const st = await (await fetch(`${HOST}/dev/state`)).json(); if (!/only=map-result/.test(st.clipboard ?? '')) throw new Error('the address is on the clipboard: ' + st.clipboard); }
+  await shot('rundown-browser-source');
+  await page.getByRole('button', { name: 'Browser source for Map result' }).first().click();
   await section('Between maps').getByText(/^By itself when the map ends/).waitFor();
   // Graphics › Templates: a look of our own for Map result over the game (approved mock, 13 Nov).
   await rail('Graphics studio');

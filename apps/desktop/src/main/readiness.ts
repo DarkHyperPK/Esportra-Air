@@ -47,13 +47,14 @@ export function checks(s: Snapshot): CheckItem[] {
   out.push(
     s.obs.state === 'connected'
       ? { id: 'obs', title: 'OBS', detail: `OBS ${s.obs.version ?? ''} on this PC · Connected`, health: 'ok' }
-      : { id: 'obs', title: 'OBS', detail: s.obs.error ?? 'OBS is not connected.', health: 'warn', action: { id: 'connect-obs', label: 'Connect OBS' } },
+      // Optional (17 Nov): Air can add its own scenes, or the crew copies browser sources from the Rundown into theirs.
+      : { id: 'obs', title: 'OBS', detail: s.obs.error ?? 'Optional. Connect OBS to let Air add its scenes, or copy browser sources from the Rundown into your own scenes.', health: 'off', action: { id: 'connect-obs', label: 'Connect OBS' } },
   );
   out.push(
     s.obs.installed
       ? { id: 'scenes', title: 'Scenes', detail: `${s.outputs.length} Esportra scenes are in your OBS collection.`, health: 'ok' }
       : s.obs.state === 'connected'
-        ? { id: 'scenes', title: 'Scenes', detail: s.obs.installError ? `Adding them stopped: ${s.obs.installError}` : s.obs.missingScenes.length ? `Not in OBS yet: ${s.obs.missingScenes.join(', ')}.` : `OBS changed since Air added its scenes: ${s.obs.missingSources.slice(0, 4).join(', ')}${s.obs.missingSources.length > 4 ? ' and more' : ''} missing. Rebuild puts them back without touching your own sources.`, health: s.obs.installError ? 'bad' : 'warn', action: { id: 'install-graphics', label: s.obs.installError ? 'Try again' : s.obs.missingScenes.length ? 'Add for me' : 'Rebuild' } }
+        ? { id: 'scenes', title: 'Scenes', detail: s.obs.installError ? `Adding them stopped: ${s.obs.installError}` : s.obs.missingScenes.length ? `Optional. Not in OBS yet: ${s.obs.missingScenes.join(', ')}. Or copy browser sources from the Rundown into your own scenes.` : `OBS changed since Air added its scenes: ${s.obs.missingSources.slice(0, 4).join(', ')}${s.obs.missingSources.length > 4 ? ' and more' : ''} missing. Rebuild puts them back without touching your own sources.`, health: s.obs.installError ? 'bad' : s.obs.missingScenes.length ? 'off' : 'warn', action: { id: 'install-graphics', label: s.obs.installError ? 'Try again' : s.obs.missingScenes.length ? 'Add for me' : 'Rebuild' } }
         : { id: 'scenes', title: 'Scenes', detail: 'Shown once OBS is connected.', health: 'off' },
   );
   const loading = s.outputs.filter((o) => o.connections > 0).length;

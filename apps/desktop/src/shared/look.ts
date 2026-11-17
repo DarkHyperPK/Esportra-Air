@@ -25,6 +25,13 @@ export const BAND_SCREENS = new Set(['match-intro', 'map-veto', 'agent-select', 
 /** The page that previews each one over the game. */
 export const bandOverlay = (id: string) => (id === 'schedule' ? 'schedule-band' : `${id}-band`);
 
+/** The page that shows a screen in a given look: the overlay bar version (or Break's frame) for style band, else its own page. */
+export function lookOverlay(screenId: string, overlay: string, style: 'full' | 'band' | undefined): string {
+  if (style !== 'band') return overlay;
+  if (screenId === 'holding') return 'break-frame';
+  return BAND_SCREENS.has(screenId) ? bandOverlay(screenId) : overlay;
+}
+
 export function lookOf(saved: Partial<Look> | undefined): Look {
   return { ...DEFAULT_LOOK, ...(saved ?? {}), timer: { ...DEFAULT_LOOK.timer, ...(saved?.timer ?? {}) } };
 }

@@ -168,6 +168,16 @@ export class VetoOutbox {
     this.ctx.changed();
   }
 
+  /** The producer reset the veto: whatever waits is dropped and the match room's veto is reset. */
+  reset(match: Match) {
+    if (!this.linked(match)) return;
+    const b = this.box(match.id);
+    Object.assign(b, { queue: [{ key: key(), action: 'reset' as const }], rewrite: false, conflict: null, error: null, needsSide: null });
+    this.lastSend = 0;
+    this.ctx.save();
+    this.ctx.changed();
+  }
+
   /** Try again after an error that stopped sending. */
   retry(match: Match) {
     const b = this.box(match.id);
@@ -229,7 +239,7 @@ export class VetoOutbox {
     const steps = readVetoSteps(raw.steps), order = readOrder(raw.sequence);
     const md = this.ctx.matchData.of(match);
     const pool = readPool(raw.mapPool);
-    return vetoFrom(flip ? flipVeto(steps) : steps, match.bestOf, pool.length ? pool : md.mapPool, order && flip ? flipVeto(order) : order ?? md.vetoOrder)?.veto ?? null;
+    return vetoFrom(flip ? flipVeto(steps) : steps, match.bestOf, pool.length ? pool : md.mapPool, order ?? md.vetoOrder)?.veto ?? null;
   }
 
   private failed(match: Match, b: SavedVetoOutbox, error: EsportraError) {

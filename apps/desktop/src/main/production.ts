@@ -1383,6 +1383,7 @@ export class Production extends EventEmitter {
   matchDataSave(input: unknown) { return this.matchData.save(input); }
   vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }) { return this.matchData.vetoStep(input); }
   vetoUndo() { return this.matchData.vetoUndo(); }
+  vetoReset() { return this.matchData.vetoReset(); }
   async showTemplateApply(id: string) { await this.shows.apply(id); this.emit('change'); }
   showTemplateSave(input: { name?: unknown; id?: unknown }) { const id = this.shows.save(input); this.emit('change'); return id; }
   showTemplateRename(id: string, name: unknown) { this.shows.rename(id, name); this.emit('change'); }

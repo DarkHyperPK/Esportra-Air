@@ -65,6 +65,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'matchDataSave': await p.matchDataSave(a[0]); break;
     case 'vetoStep': await p.vetoStep(a[0] ?? {}); break;
     case 'vetoUndo': await p.vetoUndo(); break;
+    case 'vetoReset': await p.vetoReset(); break;
     case 'showTemplateApply': await p.showTemplateApply(String(a[0] ?? '')); break;
     case 'showTemplateSave': p.showTemplateSave(a[0] ?? {}); break;
     case 'showTemplateRename': p.showTemplateRename(String(a[0] ?? ''), a[1]); break;

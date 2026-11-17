@@ -53,3 +53,24 @@ test('map veto keeps its template look and replays nothing while it updates', { 
     await browser.close();
   }
 });
+
+test('the veto graphic reads Esportra\'s order relative to the team acting first, like Air', { skip: !chromium && 'needs Playwright' }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(`file://${OVERLAYS}/map-veto.html?preview=1`);
+    await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
+    const teams = await page.evaluate(() => {
+      const f = (window as any).HUD.vetoSteps;
+      const order = [{ action: 'ban', team: 0 }, { action: 'ban', team: 1 }, { action: 'pick', team: 0 }, { action: 'pick', team: 1 }, { action: 'ban', team: 0 }, { action: 'ban', team: 1 }, { action: 'decider', team: -1 }];
+      return {
+        deferred: f([], 3, order, null, 1).map((x: any) => x.team),
+        started: f([{ team: 1, action: 'ban', map: 'BIND' }], 3, order, null, 0).map((x: any) => x.team),
+      };
+    });
+    assert.deepEqual(teams.deferred, [1, 0, 1, 0, 1, 0, -1], 'team B acts first after team A deferred');
+    assert.deepEqual(teams.started, [1, 0, 1, 0, 1, 0, -1], 'the first step entered decides who went first');
+  } finally {
+    await browser.close();
+  }
+});

@@ -1,6 +1,7 @@
 // The control panel (approved mock, 15 Nov) replaces Live's layout: the match bar on top; graphics by phase
 // on the left; the selected graphic's options and data in the middle; the pause hint, Program, Cued and
 // Esportra results on the right. Keys, Cue/Take, autopilot and moments work as before (ConsoleScreen).
+import { lookOverlay } from '../../shared/look.ts';
 import { useState } from 'react';
 import type { LayerRow, Snapshot } from '../../shared/api.ts';
 import { SECTION_SCREENS } from '../../shared/autopilot.ts';
@@ -195,13 +196,16 @@ export function GraphicDetail({ s, run, item, cycle }: { s: Snapshot; run: Run; 
             </select>
           </label>
         )}
-        {screen && POST_RECORD.has(screen) && rec?.record ? <RecordTable s={s} /> : screen ? <Preview src={overlayUrl(s, s.setup.screens.find((x) => x.id === screen)?.overlay ?? screen, { match: m.code })} label={item.label} /> : null}
+        {screen && POST_RECORD.has(screen) && rec?.record ? <RecordTable s={s} /> : screen ? <Preview key={`${screen}:${rowStyle(s, screen)}`} src={overlayUrl(s, lookOverlay(screen, s.setup.screens.find((x) => x.id === screen)?.overlay ?? screen, rowStyle(s, screen)), { match: m.code })} label={item.label} /> : null}
       </div>
     </section>
   );
 }
 
 /** What the post-game graphics show: the record's players, K / D / A and first kills. */
+/** The look the match's Rundown gives a screen (what Take puts on air): the overlay bar or the full screen. */
+const rowStyle = (s: Snapshot, screen: string) => (s.rundown.find((r) => r.show === screen && r.enabled)?.style === 'band' ? 'band' : 'full');
+
 function RecordTable({ s }: { s: Snapshot }) {
   const r = s.mapRecords?.record;
   if (!r) return null;
