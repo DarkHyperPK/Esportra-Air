@@ -55,7 +55,7 @@
       const label = v.action === 'decider' ? '<b class="acc">DECIDER</b><span>MAP</span>' : `<b>${esc(team ? team.tag : '')}</b><span>${v.action === 'ban' ? 'BAN' : 'PICK'} MAP</span>`;
       return `<div class="bd-vcol">${mapTile(v.map, v.action === 'ban' ? 'ban' : v.action === 'pick' ? 'pick' : 'dec', top)}<div class="bd-vlab ${v.action === 'decider' ? 'dec' : ''}" style="${team && v.action === 'pick' ? `--c:${esc(team.color)}` : ''}">${label}</div></div>`;
     }).join('');
-    return `<div class="bd-head"><span class="bd-title">MAP VETO <span class="acc">· ${esc(HUD.vetoCaption(s, steps, false).replace('VETO COMPLETE', 'COMPLETE'))}</span></span><span class="bd-cap">${esc([s.event.name, s.event.stage, `BO${s.event.bestOf}`].filter(Boolean).join(' · '))}</span><span class="bd-row">${mark(T[0], 40)}<span class="bd-vs">VS</span>${mark(T[1], 40)}</span></div><div class="bd-vgrid" style="--n:${Math.max(1, steps.length)}">${tiles}</div>`;
+    return `<div class="bd-head"><span class="bd-title">MAP VETO${(() => { const c = HUD.vetoCaption(s, steps, false); return /COMPLETE/.test(c) ? '' : ` <span class="acc">· ${esc(c)}</span>`; })()}</span><span class="bd-cap">${esc([s.event.name, s.event.stage, `BO${s.event.bestOf}`].filter(Boolean).join(' · '))}</span><span class="bd-row">${mark(T[0], 40)}<span class="bd-vs">VS</span>${mark(T[1], 40)}</span></div><div class="bd-vgrid" style="--n:${Math.max(1, steps.length)}">${tiles}</div>`;
   }, s => [s.veto, s.vetoOrder, s.vetoTurn && [s.vetoTurn.team, s.vetoTurn.action], s.vetoToss, s.vetoFirst, s.teams.map(t => [t.tag, t.color, t.logo]), s.event]);
 
   // 2 · Agent select: both lineups with their agents, the map in the middle. A player still choosing is
@@ -63,7 +63,8 @@
   const agentCard = (p, color, st, just) => {
     const url = portrait(p.agent), a = HUD.agent(p.agent);
     const line = st === 'locked' ? esc(a ? a.name : '') : st === 'choosing' ? `Choosing · ${esc(a ? a.name : '')}` : 'Choosing';
-    return `<div class="bd-ag ${st === 'locked' ? 'locked' : 'picking'}${just ? ' just' : ''}" style="--c:${esc(color)};${url ? `--p:url('${esc(url)}')` : ''}">${st === 'locked' ? '<span class="bd-lock">LOCKED</span>' : ''}<div class="who"><b>${esc(p.name)}</b><span>${line}</span></div><i class="ul"></i></div>`;
+    // The agent picture is its own layer (17 Nov): a template's card colour fills the card, never the picture.
+    return `<div class="bd-ag ${st === 'locked' ? 'locked' : 'picking'}${just ? ' just' : ''}" style="--c:${esc(color)}"><i class="bd-pic"${url ? ` style="--p:url('${esc(url)}')"` : ''}></i>${st === 'locked' ? '<span class="bd-lock">LOCKED</span>' : ''}<div class="who"><b>${esc(p.name)}</b><span>${line}</span></div><i class="ul"></i></div>`;
   };
   M.lineupsBand = root => {
     let was = null;

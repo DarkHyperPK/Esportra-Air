@@ -1,7 +1,7 @@
 // Match data (approved mock, 15 Nov): what the graphics show beyond the game's own data. Maps and veto
 // (entered live as the teams ban and pick, or followed from Esportra), player prep, the event's standings,
 // ticker and bracket, and the Starting soon / Break / Ending text. Saved changes go on air at once.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import {
   VALORANT_MAPS, emptyEventData, emptyPrep, nextVetoStep, orderOf, seriesMaps,
@@ -296,6 +296,45 @@ function atTime(hhmm: string): number {
   return d.getTime();
 }
 
+/**
+ * Show text on the graphic itself (17 Nov): the Starting soon / Break / Ending page, where clicking the message
+ * or the countdown edits it. A change goes on air when you press Enter or click away. The page is a preview
+ * (never an output) and only takes Air's messages with a one-off key; it sends the text back the same way.
+ */
+function ShowPreview({ s, show, onEdit }: { s: Snapshot; show: MatchData['show']; onEdit: (patch: Partial<MatchData['show']>) => void }) {
+  const m = s.match!;
+  const key = useMemo(() => crypto.randomUUID(), []);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.3);
+  const mode = show.mode === 'auto' ? 'starting' : show.mode;
+  const src = overlayUrl(s, 'holding', { preview: '1', showEdit: '1', editorKey: key, mode });
+  const draft = JSON.stringify({ type: 'AIR_SHOW_DRAFT', key, holding: { mode, message: show.message, minutes: show.minutes, target: show.target }, teams: m.teams, event: { name: s.event?.name ?? '', stage: m.stage ?? '', bestOf: m.bestOf } });
+  const send = () => frame.current?.contentWindow?.postMessage(JSON.parse(draft), '*');
+  useEffect(send, [draft]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setScale((e?.contentRect.width ?? 576) / 1920));
+    ro.observe(el);
+    const onMsg = (e: MessageEvent) => {
+      if (e.source !== frame.current?.contentWindow || e.data?.type !== 'AIR_SHOW_TEXT' || e.data.key !== key) return;
+      if (typeof e.data.message === 'string') onEdit({ message: e.data.message.slice(0, 120) });
+      if (typeof e.data.minutes === 'number') onEdit({ minutes: Math.max(0, Math.min(240, Math.round(e.data.minutes))), target: 0 });
+    };
+    window.addEventListener('message', onMsg);
+    return () => { ro.disconnect(); window.removeEventListener('message', onMsg); };
+  }, [key, onEdit]);
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <div ref={box} className="pv pv-bg pv-edit" aria-label="Show text preview: click the message or the countdown to edit">
+        <iframe ref={frame} title="Show text preview" src={src} onLoad={() => { send(); setTimeout(send, 400); }} style={{ transform: `scale(${scale})` }} />
+      </div>
+      <span className="faint t-xs">Click the message or the countdown on the graphic to edit it. Enter or clicking away puts it on air.</span>
+    </div>
+  );
+}
+
 export function ShowTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }) {
   const m = s.match!;
   const [show, setShow] = useState(md.show);
@@ -307,6 +346,7 @@ export function ShowTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }
       <section className="card">
         <div className="card-head"><b>Starting soon / Break / Ending</b><Seg label="Which text shows" value={show.mode} options={MODES} onChange={(mode) => setShow({ ...show, mode })} /></div>
         <div className="body-pad stack" style={{ paddingTop: 0, gap: 10 }}>
+          <ShowPreview s={s} show={show} onEdit={(patch) => { const next = { ...show, ...patch }; setShow(next); void run(() => air.matchDataSave({ ...md, show: next, champion })); }} />
           <label className="field"><span>Message</span><input maxLength={120} value={show.message} placeholder="The Grand Final is about to begin" onChange={(e) => setShow({ ...show, message: e.target.value })} /></label>
           <div className="grid2">
             <label className="field"><span>Countdown · minutes</span><input inputMode="numeric" value={show.minutes} disabled={!!show.target} onChange={(e) => setShow({ ...show, minutes: Math.min(240, Number(e.target.value.replace(/[^0-9]/g, '')) || 0) })} /></label>

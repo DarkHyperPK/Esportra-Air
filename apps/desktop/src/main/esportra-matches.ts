@@ -97,19 +97,53 @@ export class EsportraMatches {
   /** Fills Riot IDs and PUUIDs into a lineup typed earlier, or the whole lineup when it is empty. A player
    *  is the same by PUUID, then Riot ID, then name (with or without the #tag). */
   static fillLineup(players: Match['players'][0], from: EsportraPlayer[]) {
-    const fresh = (p: EsportraPlayer) => ({ id: randomUUID(), name: p.name, realName: '', gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), photo: '' });
+    const fresh = (p: EsportraPlayer) => ({ id: randomUUID(), name: p.name, realName: '', gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), ...(p.esportraId ? { esportraId: p.esportraId } : {}), photo: '' });
     if (!players.length) return from.map(fresh);
     const base = (s: string) => s.split('#')[0] ?? '';
+    const taken = new Set<EsportraPlayer>();
+    // Esportra id, then PUUID, then Riot ID, then any name Esportra or Riot gives the player (17 Nov: a lineup
+    // made from Esportra's roster holds Esportra names, which the Riot name alone never matched).
+    const tests: Array<(e: EsportraPlayer, p: Match['players'][0][0]) => boolean> = [
+      (e, p) => !!p.esportraId && e.esportraId === p.esportraId,
+      (e, p) => !!p.puuid && e.puuid === p.puuid,
+      (e, p) => !!p.gameId && !!e.gameId && same(e.gameId, p.gameId),
+      (e, p) => same(e.name, p.name) || (!!e.registered && same(e.registered, p.name)) || (!!e.gameId && same(base(e.gameId), p.name)),
+    ];
     for (const p of players) {
       splitRiot(p);
-      const found = (p.puuid && from.find((e) => e.puuid === p.puuid))
-        || (p.gameId && from.find((e) => e.gameId && same(e.gameId, p.gameId)))
-        || from.find((e) => same(e.name, p.name) || (!!e.gameId && same(base(e.gameId), p.name)));
+      let found: EsportraPlayer | undefined;
+      for (const t of tests) if (!found) found = from.find((e) => !taken.has(e) && t(e, p));
       if (!found) continue;
-      if (!p.gameId && found.gameId) p.gameId = found.gameId;
+      taken.add(found);
+      if (found.gameId && (!p.gameId || !p.puuid)) p.gameId = found.gameId;
       if (found.puuid) p.puuid = found.puuid;
+      if (found.esportraId) p.esportraId = found.esportraId;
     }
     return players;
+  }
+
+  /** The lineup Esportra has now: the roster's registered lineup (verified Riot accounts), or its player names. */
+  private async rosterLineups(matchId: string): Promise<[EsportraPlayer[], EsportraPlayer[]]> {
+    const roster = await this.account.roster(matchId);
+    const names = (t: { players: Array<{ displayName: string; userId?: string | null }>; lineup?: unknown }) => (readLineup(t.lineup).length ? readLineup(t.lineup) : t.players.slice(0, 5).map((p) => ({ name: String(p.displayName).slice(0, 40), gameId: '', puuid: '', registered: String(p.displayName).slice(0, 40), ...(p.userId ? { esportraId: String(p.userId) } : {}) })));
+    return [names(roster.team1), names(roster.team2)];
+  }
+
+  /**
+   * Opening an Esportra match reads its lineup again (17 Nov): Riot IDs players verified since, or that an
+   * older Air missed, reach the lineup and Teams/Players. A finished match keeps the lineup it was played with.
+   * Returns true when something changed.
+   */
+  async refreshLineup(match: Match): Promise<boolean> {
+    if (!match.source || match.finishedAt || this.account.view().state === 'denied') return false;
+    const before = JSON.stringify(match.players);
+    const lineups = await this.rosterLineups(match.source.matchId);
+    match.players = [EsportraMatches.fillLineup(match.players[0], lineups[0]), EsportraMatches.fillLineup(match.players[1], lineups[1])];
+    linkMatch(match, this.ctx.library());
+    if (JSON.stringify(match.players) === before) return false;
+    this.ctx.save();
+    await this.ctx.syncEngine();
+    return true;
   }
 
   /** Makes an Esportra match the match on this PC: teams, tags, logos, best-of and tournament name. */
@@ -133,9 +167,7 @@ export class EsportraMatches {
     }
     if (!players[0].length && !players[1].length) {
       try {
-        const roster = await account.roster(matchId);
-        const names = (t: { players: Array<{ displayName: string }>; lineup?: unknown }) => (readLineup(t.lineup).length ? readLineup(t.lineup) : t.players.slice(0, 5).map((p) => ({ name: String(p.displayName).slice(0, 40), gameId: '', puuid: '' })));
-        players = [names(roster.team1), names(roster.team2)];
+        players = await this.rosterLineups(matchId);
       } catch {
         // The lineup is a convenience; the match works without it.
       }

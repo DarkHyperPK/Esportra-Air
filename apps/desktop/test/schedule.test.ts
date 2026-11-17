@@ -34,8 +34,10 @@ test('a match is prepared when both lineups can be found in game data and someon
   const p = (gameId: string) => ({ id: gameId || 'x', name: 'P', realName: '', gameId, photo: '' });
   const five = Array.from({ length: 5 }, (_, i) => p(`P${i}#EU1`));
   const event = { id: 'e', talent: [{ id: 't1' }], sponsors: [] } as unknown as EventInfo;
-  assert.equal(prepState({ players: [five, five.slice(0, 4)], talentOff: [], sponsorsOff: [] }, event).label, 'Lineups missing');
-  assert.equal(prepState({ players: [five, [...five.slice(0, 4), p('')]], talentOff: [], sponsorsOff: [] }, event).label, 'Lineups missing', 'a player without an in-game name cannot be matched');
+  assert.equal(prepState({ players: [five, five.slice(0, 4)], talentOff: [], sponsorsOff: [] }, event).label, 'Team B: 4 players');
+  const teams = [{ name: 'SYNCX' }, { name: 'Player11' }] as never;
+  assert.equal(prepState({ teams, players: [five, [...five.slice(0, 3), p(''), p('')]], talentOff: [], sponsorsOff: [] }, event).label, 'Player11: 3 of 5 Riot IDs', 'names what is missing (17 Nov)');
+  assert.equal(prepState({ teams, players: [five, [...five.slice(0, 4), { ...p(''), puuid: 'x'.repeat(40) }]], talentOff: [], sponsorsOff: [] }, event).label, 'Prepared', 'an Esportra-verified account counts');
   assert.equal(prepState({ players: [five, five], talentOff: ['t1'], sponsorsOff: [] }, event).label, 'Nobody on air');
   assert.deepEqual(prepState({ players: [five, five], talentOff: [], sponsorsOff: [] }, event), { label: 'Prepared', health: 'ok' });
 });

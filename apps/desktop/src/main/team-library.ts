@@ -43,10 +43,11 @@ export function validPlayer(input: Partial<LibPlayer>, lib: Library): LibPlayer 
   // The PUUID comes from Esportra, never from the form: an edit keeps the one already known.
   const known = lib.players.find((p) => p.id === id)?.puuid;
   const puuid = isPuuid(input?.puuid) ? input.puuid.trim() : known;
-  return { id, name, realName: input?.realName ? text(input.realName, 60, 'Real name') : '', gameId, ...(puuid ? { puuid } : {}), photo, role, teamId };
+  const esportraId = lib.players.find((p) => p.id === id)?.esportraId;
+  return { id, name, realName: input?.realName ? text(input.realName, 60, 'Real name') : '', gameId, ...(puuid ? { puuid } : {}), ...(esportraId ? { esportraId } : {}), photo, role, teamId };
 }
 
-const entry = (p: LibPlayer, id: string = randomUUID()): PlayerInfo => ({ id, name: p.name, realName: p.realName, gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), photo: p.photo, libraryId: p.id });
+const entry = (p: LibPlayer, id: string = randomUUID()): PlayerInfo => ({ id, name: p.name, realName: p.realName, gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), ...(p.esportraId ? { esportraId: p.esportraId } : {}), photo: p.photo, libraryId: p.id });
 
 /**
  * Links a match to the library: each team by name, each player by Riot ID (or by name within that
@@ -64,16 +65,18 @@ export function linkMatch(match: Match, lib: Library) {
     ids[t] = team.id;
     for (const p of match.players[t]) {
       let found = (p.libraryId && lib.players.find((x) => x.id === p.libraryId))
+        || (p.esportraId && lib.players.find((x) => x.esportraId === p.esportraId))
         || (p.puuid && lib.players.find((x) => x.puuid === p.puuid))
         || (p.gameId && lib.players.find((x) => x.gameId && same(x.gameId, p.gameId)))
         || lib.players.find((x) => x.teamId === team!.id && same(x.name, p.name));
       if (!found) {
-        found = { id: randomUUID(), name: p.name, realName: p.realName, gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), photo: p.photo, role: '', teamId: team.id };
+        found = { id: randomUUID(), name: p.name, realName: p.realName, gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), ...(p.esportraId ? { esportraId: p.esportraId } : {}), photo: p.photo, role: '', teamId: team.id };
         lib.players.push(found);
       } else {
         if (!found.photo && p.photo) found.photo = p.photo;
         if (!found.gameId && p.gameId) found.gameId = p.gameId;
         if (!found.puuid && p.puuid) found.puuid = p.puuid;
+        if (!found.esportraId && p.esportraId) found.esportraId = p.esportraId;
         found.teamId ??= team.id;
       }
       p.libraryId = found.id;
@@ -147,7 +150,7 @@ export function pushMatch(match: Match, lib: Library) {
     if (team) Object.assign(team, match.teams[t]);
     for (const p of match.players[t]) {
       const found = p.libraryId ? lib.players.find((x) => x.id === p.libraryId) : undefined;
-      if (found) Object.assign(found, { name: p.name, realName: p.realName, gameId: p.gameId, photo: p.photo }, p.puuid ? { puuid: p.puuid } : {});
+      if (found) Object.assign(found, { name: p.name, realName: p.realName, gameId: p.gameId, photo: p.photo }, p.puuid ? { puuid: p.puuid } : {}, p.esportraId ? { esportraId: p.esportraId } : {});
     }
   }
   linkMatch(match, lib);

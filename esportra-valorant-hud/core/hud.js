@@ -10,6 +10,9 @@
 
   const PREVIEW = Q.get('preview') === '1';
   const EMPTY_PREVIEW = PREVIEW && Q.get('empty') === '1';
+  // Match data › Show text (17 Nov): Air's preview of Starting soon / Break / Ending, where the message and the
+  // countdown are edited on the graphic itself. Preview pages only, with Air's one-off key; never an output.
+  const SHOW_EDIT = PREVIEW && Q.get('showEdit') === '1' && !!Q.get('editorKey');
   const SAMPLE_MOTION = PREVIEW && !EMPTY_PREVIEW && Q.get('sampleMotion') === '1';
   let previewPatch = {};
   // A template being edited or previewed in Air ({ template, brand }); never on an OBS output.
@@ -922,13 +925,27 @@
     chrome(m, ''); const lf = E('div', 'left', m); const mk = E('img', 'mark', lf); mk.src = '../core/brand/lockup-mark.png';
     const big = E('div', 'big disp hl', lf), sub = E('div', 'sub', lf), cd = E('div', 'cd', lf), cdl = E('div', 'cdl mono', lf), nx = E('div', 'next', m), sch = E('div', 'sch', m), soc = E('div', 'soc mono', m); sceneFx(sc);
     const mode = s => Q.get('mode') || document.body.dataset.mode || s.holding.mode;
-    return { update(s) { if (same(this, s)) return;
+    if (SHOW_EDIT) {
+      const st2 = document.createElement('style');
+      st2.textContent = '.ho [data-edit]{pointer-events:auto;position:relative;z-index:5;cursor:text;border-radius:6px;outline:2px dashed transparent;outline-offset:8px;transition:outline-color .15s}.ho [data-edit]:hover{outline-color:rgba(255,255,255,.45)}.ho [data-edit]:focus{outline-color:#f05a78;outline-style:solid}';
+      document.head.appendChild(st2);
+      const post = m => window.parent.postMessage({ type: 'AIR_SHOW_TEXT', key: Q.get('editorKey'), ...m }, '*');
+      const editable = (el, title, done) => {
+        el.dataset.edit = '1'; el.contentEditable = 'plaintext-only'; el.spellcheck = false; el.title = title;
+        el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } if (e.key === 'Escape') { el.dataset.cancel = '1'; el.blur(); } });
+        el.addEventListener('blur', () => { if (el.dataset.cancel) { delete el.dataset.cancel; HUD.subs.forEach(f => f(HUD.state)); return; } done(el.textContent.trim()); });
+      };
+      editable(sub, 'Click to edit the message', text => post({ message: text.slice(0, 120) }));
+      editable(cd, 'Click to change the countdown (minutes)', text => { const n = parseInt(text.split(':')[0], 10); if (n >= 0) post({ minutes: Math.min(240, n) }); });
+      cd.addEventListener('focus', () => { const sel = getSelection(); const r = document.createRange(); r.selectNodeContents(cd); sel.removeAllRanges(); sel.addRange(r); });
+    }
+    return { update(s) { if (same(this, s) && !SHOW_EDIT) return;
       const md = mode(s); const W = { starting: ['STARTING SOON', 'Stay locked in.', 'BROADCAST BEGINS IN'], brb: ['BE RIGHT BACK', 'Grab a drink, don\u2019t go far.', 'WE RETURN IN'], ending: ['THANKS FOR WATCHING', 'GG to both teams.', 'SEE YOU NEXT TIME'] }[md] || ['STARTING SOON', '', ''];
-      txt(big, W[0]); txt(sub, (s.holding.mode === md && s.holding.message) || W[1]); txt(cdl, W[2]); cd.style.display = md === 'ending' ? 'none' : '';
+      txt(big, W[0]); if (document.activeElement !== sub) txt(sub, (s.holding.mode === md && s.holding.message) || W[1]); txt(cdl, W[2]); cd.style.display = md === 'ending' ? 'none' : '';
       const [a, b] = s.teams; nx.innerHTML = `<div class="k mono">${md === 'ending' ? 'FINAL' : 'UP NEXT'}   /   ${s.event.stage}</div><div class="m"><span class="t" style="color:${a.color}">${a.tag}</span><span class="v">vs</span><span class="t" style="color:${b.color}">${b.tag}</span></div><div class="s mono">${a.name}  /  ${b.name}${EMPTY_PREVIEW ? '' : ' · BO'+s.event.bestOf}</div>`;
       sch.innerHTML = s.schedule.map(x => `<div class="r ${x.done ? 'done' : ''}"><span class="tm num">${x.time}</span><span>${x.a && x.b ? x.a + '  VS  ' + x.b : ''}</span><span class="lab mono">${x.label}</span></div>`).join('');
       txt(soc, `${s.event.handle}   /   ${s.event.site}`);
-    }, tick(s) { const t = s.holding.target ? (s.holding.target - HUD.now()) / 1000 : (s.holding.minutes || 0) * 60; const v = fmt(t); txt(cd, t <= 0 ? '0:00' : v.length < 5 ? '0' + v : v); } };
+    }, tick(s) { if (document.activeElement === cd) return; const t = s.holding.target ? (s.holding.target - HUD.now()) / 1000 : (s.holding.minutes || 0) * 60; const v = fmt(t); txt(cd, t <= 0 ? '0:00' : v.length < 5 ? '0' + v : v); } };
   };
 
   M.casters = root => {
@@ -1467,6 +1484,12 @@
       if (d.type === 'AIR_TEMPLATE_PLAY' && HUD.templatePlay) HUD.templatePlay();
       if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); }
       if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS' || d.type === 'AIR_TEMPLATE_SAMPLE') && HUD.templateRects) { sendRects(d.id); watchRects(); }
+      return;
+    }
+    // Show text: Air's draft (mode, message, countdown and this match's teams) shown on the editable preview.
+    if (event.data?.type === 'AIR_SHOW_DRAFT' && SHOW_EDIT && !OUTPUT && event.data.key === Q.get('editorKey')) {
+      const d = event.data;
+      receive(mergePatch(clone(sourceState), { holding: d.holding || {}, ...(d.teams ? { teams: d.teams } : {}), ...(d.event ? { event: d.event } : {}) }));
       return;
     }
     if (event.data?.type === 'AIR_HUD_PREVIEW_PROBE' && window.HUD_READY)

@@ -33,12 +33,20 @@ export function groupByWhen<T extends { at: string | null; createdAt?: number }>
   }));
 }
 
-export type PrepState = { label: string; health: 'ok' | 'warn' };
+export type PrepState = { label: string; health: 'ok' | 'warn'; detail?: string };
 
-/** A quick view of how prepared a match is, from data alone (OBS and live checks are in Readiness). */
-export function prepState(match: Pick<Match, 'players' | 'talentOff' | 'sponsorsOff'>, event: EventInfo | null): PrepState {
-  const short = match.players.some((team) => team.filter((p) => p.gameId || p.puuid).length < 5);
-  if (short) return { label: 'Lineups missing', health: 'warn' };
+/**
+ * A quick view of how prepared a match is, from data alone (OBS and live checks are in Readiness). It names
+ * what is missing (17 Nov): "SYNCX: 4 players" or "Player11: 2 of 5 Riot IDs".
+ */
+export function prepState(match: Pick<Match, 'players' | 'talentOff' | 'sponsorsOff'> & { teams?: Match['teams'] }, event: EventInfo | null): PrepState {
+  const gaps = match.players.flatMap((team, t) => {
+    const name = match.teams?.[t]?.name ?? `Team ${t ? 'B' : 'A'}`;
+    if (team.length < 5) return [`${name}: ${team.length} ${team.length === 1 ? 'player' : 'players'}`];
+    const known = team.slice(0, 5).filter((p) => p.gameId || p.puuid).length;
+    return known < 5 ? [`${name}: ${known} of 5 Riot IDs`] : [];
+  });
+  if (gaps.length) return { label: gaps.join(' · '), health: 'warn', detail: 'A player without a Riot ID cannot be matched to the game’s data. Add it in Teams/Players, or have the player verify it on Esportra.' };
   if (!onAir(match, event).talent.length) return { label: 'Nobody on air', health: 'warn' };
   return { label: 'Prepared', health: 'ok' };
 }

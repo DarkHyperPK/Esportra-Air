@@ -30,7 +30,9 @@ export function Preview({ src, label, backdrop = true }: { src: string; label: s
     const el = box.current;
     if (!el) return;
     const ro = new ResizeObserver(([e]) => {
-      const next = (e?.contentRect.width ?? 384) / 1920;
+      // The smaller of width and height, so a box squeezed out of 16:9 never cuts the graphic off.
+      const r = e?.contentRect;
+      const next = Math.min((r?.width ?? 384) / 1920, r?.height ? r.height / 1080 : Infinity);
       setScale((cur) => (Math.abs(cur - next) > 0.0005 ? next : cur));
     });
     ro.observe(el);

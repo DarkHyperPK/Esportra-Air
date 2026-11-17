@@ -182,7 +182,7 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
                   <span className="mono t-sm">{when(m.source?.scheduledAt ?? null, m.createdAt)}</span>
                   <button className="ev-match-open" onClick={() => openMatch(m)}><TeamMark s={s} team={m.teams[0]} size={24} /><b>{m.teams[0].name}</b><span className="faint">vs</span><b>{m.teams[1].name}</b><TeamMark s={s} team={m.teams[1]} size={24} /></button>
                   <span className="muted t-sm">{[m.stage, `Bo${m.bestOf}`].filter(Boolean).join(' · ')}</span>
-                  <span className={`state ${st.health}`}><i className={`dot ${st.health}`} />{st.label}</span>
+                  <span className={`state ${st.health}`} title={'detail' in st ? st.detail : undefined}><i className={`dot ${st.health}`} />{st.label}</span>
                   <span className="row-gap">
                     <button className="btn small" onClick={() => openMatch(m)}>Open</button>
                     <DeleteButton label="Delete" ask={m.source ? 'Remove from Air? (Stays in Esportra)' : 'Delete this match?'} onDelete={() => void run(() => air.deleteMatch(m.id))} />

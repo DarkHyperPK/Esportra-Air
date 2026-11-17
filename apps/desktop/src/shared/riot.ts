@@ -15,6 +15,6 @@ export function splitRiot(p: { gameId: string; puuid?: string }): boolean {
 }
 
 /** What a player's Riot line says in the interface. */
-export const riotLabel = (p: { gameId: string; puuid?: string }) => p.gameId || (p.puuid ? 'Riot account linked on Esportra' : 'No Riot ID');
+export const riotLabel = (p: { gameId: string; puuid?: string; esportraId?: string }) => p.gameId || (p.puuid ? 'Riot account linked on Esportra' : p.esportraId ? 'No verified Riot ID on Esportra' : 'No Riot ID');
 /** Live data can find this player: a Riot ID or an Esportra-verified PUUID. */
 export const riotKnown = (p: { gameId: string; puuid?: string }) => !!(p.gameId || p.puuid);

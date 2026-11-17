@@ -12,6 +12,7 @@ import { keyLabel, keyOf } from '../../shared/keymap.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { Preview, overlayUrl } from './Preview.tsx';
+import { ICONS } from './ui.tsx';
 
 export type Phase = 'pre' | 'ingame' | 'post' | 'lower' | 'extras';
 export const PHASES: Array<[Phase, string]> = [['pre', 'Pre-game'], ['ingame', 'In-game'], ['post', 'Post-game'], ['lower', 'Lower 3rds'], ['extras', 'Extras']];
@@ -109,7 +110,7 @@ export function MatchBar({ s, run, openFix, openMatch, openSources }: { s: Snaps
 }
 
 /** Left: graphics by phase, each marked On air, Cued or Auto. */
-export function GraphicList({ items, phase, setPhase, selected, select, keymap }: { items: Item[]; phase: Phase; setPhase: (p: Phase) => void; selected: string | null; select: (id: string) => void; keymap?: Snapshot['keymap'] }) {
+export function GraphicList({ items, phase, setPhase, selected, select, keymap, s }: { items: Item[]; phase: Phase; setPhase: (p: Phase) => void; selected: string | null; select: (id: string) => void; keymap?: Snapshot['keymap']; s?: Snapshot }) {
   // Each graphic's key, so it can be pressed straight away without opening All graphics.
   const keyFor = (x: Item) => (x.row ? keyOf(keymap, `layer:${x.row.id}`) : '');
   const tag = { onair: ['ON AIR', 'onair'], cued: ['CUED', 'cued'], auto: ['AUTO', 'auto'], off: ['', ''] } as const;
@@ -120,9 +121,13 @@ export function GraphicList({ items, phase, setPhase, selected, select, keymap }
       </div>
       <div className="cp-glist">
         {items.filter((x) => x.phase === phase).map((x) => (
-          <button key={x.id} className={`cp-gi ${selected === x.id ? 'sel' : ''}`} aria-current={selected === x.id ? 'true' : undefined} disabled={!x.available} onClick={() => select(x.id)}>
-            <span>{x.label}</span>{tag[x.state][0] && <span className={`cp-state ${tag[x.state][1]}`}>{tag[x.state][0]}</span>}{keyFor(x) && <span className="kbd" aria-label={`Key ${keyFor(x)}`}>{keyLabel(keyFor(x))}</span>}
-          </button>
+          <div key={x.id} className={`cp-gi-row ${selected === x.id ? 'sel' : ''}`}>
+            <button className={`cp-gi ${selected === x.id ? 'sel' : ''}`} aria-current={selected === x.id ? 'true' : undefined} disabled={!x.available} onClick={() => select(x.id)}>
+              <span>{x.label}</span>{tag[x.state][0] && <span className={`cp-state ${tag[x.state][1]}`}>{tag[x.state][0]}</span>}
+            </button>
+            {s && <ClipSource s={s} item={x} />}
+            {keyFor(x) && <span className="kbd" aria-label={`Key ${keyFor(x)}`}>{keyLabel(keyFor(x))}</span>}
+          </div>
         ))}
         {!items.some((x) => x.phase === 'pre' || x.phase === 'post') && <p className="faint t-xs" style={{ padding: '8px 10px' }}>Full-screen graphics show here once they are in this match's Rundown.</p>}
       </div>
@@ -206,22 +211,25 @@ export function GraphicDetail({ s, run, item, cycle }: { s: Snapshot; run: Run; 
             </select>
           </label>
         )}
-        {screen && <SourceLine s={s} screen={screen} />}
         {screen && POST_RECORD.has(screen) && rec?.record ? <RecordTable s={s} /> : screen ? <Preview key={`${screen}:${rowStyle(s, screen)}`} src={overlayUrl(s, lookOverlay(screen, s.setup.screens.find((x) => x.id === screen)?.overlay ?? screen, rowStyle(s, screen)), { match: m.code })} label={item.label} /> : null}
       </div>
     </section>
   );
 }
 
-/** The selected full-screen graphic's browser source, copied in one click (the full list is Live › Sources). */
-function SourceLine({ s, screen }: { s: Snapshot; screen: string }) {
+/** A graphic's browser source, copied with the clip beside its name (17 Nov): full-screen graphics and your
+ *  designs, in the row's look, shown while Air has them on air. */
+function ClipSource({ s, item }: { s: Snapshot; item: Item }) {
   const [done, setDone] = useState(false);
-  const links = browserSource(s.engine.port ?? 0, s.setup.screens, { show: screen, style: rowStyle(s, screen) });
+  // In-game parts all live on the one HUD page, which Live › Sources copies; each full-screen graphic has its own.
+  const screen = item.row?.id.startsWith('fs:') ? item.row.id.slice(3) : null;
+  const links = screen ? browserSource(s.engine.port ?? 0, s.setup.screens, { show: screen, style: rowStyle(s, screen) }) : null;
   if (!links) return null;
+  const copy = () => void air.copy(links.url).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }, () => setDone(false));
   return (
-    <span className="faint t-xs row-gap">Browser source in OBS:
-      <button className="btn quiet small" title={links.url} onClick={() => void air.copy(links.url).then(() => setDone(true), () => setDone(false))}>{done ? 'Copied' : 'Copy browser source'}</button>
-    </span>
+    <button type="button" className={`cp-clip ${done ? 'done' : ''}`} title={done ? 'Copied' : 'Copy browser source'} aria-label={`Copy browser source for ${item.label}`} onClick={copy}>
+      {done ? ICONS.check : ICONS.clip}
+    </button>
   );
 }
 

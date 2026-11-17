@@ -641,7 +641,7 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .pack-list [role='option'][aria-selected='true'] { background: rgba(255, 255, 255, 0.09); }
 .pack-stage { display: flex; flex-direction: column; justify-content: safe center; align-items: center; gap: 12px; padding: 22px; background: #0d1116; min-width: 0; min-height: 0; overflow: auto; }
 .pack-stage > section { align-self: stretch; }
-.pack-stage .pv { width: 100%; border: 1px solid var(--hair-strong); }
+.pack-stage .pv { width: 100%; flex: none; max-width: max(320px, calc((min(720px, 100vh - 80px) - 320px) * 16 / 9)); border: 1px solid var(--hair-strong); } /* 17 Nov: never squashed, so the graphic is never cut off */
 .pack-details { display: flex; flex-direction: column; gap: 10px; padding: 18px 16px; border-left: 1px solid var(--hair); min-height: 0; overflow: auto; }
 .pack-details .spacer { flex: 1; }
 .pack-facts { display: grid; grid-template-columns: 56px 1fr; gap: 6px 10px; margin: 6px 0 0; font-size: 12.5px; }
@@ -1184,6 +1184,17 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .cp-gi:disabled { opacity: 0.45; cursor: default; }
 .cp-gi > span:first-child { flex: 1; min-width: 0; }
 .cp-gi .kbd { flex: none; }
+/* 17 Nov: one row = the graphic, its clip (copy browser source) and its key */
+.cp-gi-row { display: flex; align-items: center; gap: 4px; padding-right: 8px; border-radius: var(--r-md); }
+.cp-gi-row:hover, .cp-gi-row.sel { background: var(--raised); }
+.cp-gi-row.sel { box-shadow: inset 0 0 0 1px var(--hair-strong); }
+.cp-gi-row .cp-gi { flex: 1; min-width: 0; background: transparent; box-shadow: none; }
+.cp-gi-row > .kbd { flex: none; }
+.cp-clip { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-3, #8b8b95); cursor: pointer; opacity: 0.55; }
+.cp-clip svg { width: 15px; height: 15px; }
+.cp-gi-row:hover .cp-clip, .cp-clip:focus-visible { opacity: 1; }
+.cp-clip:hover { background: var(--hair); color: var(--text); }
+.cp-clip.done { opacity: 1; color: var(--ok, #34d399); }
 .cp-state { flex: none; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 4px; }
 .cp-state.onair { background: var(--rose); color: #fff; }
 .cp-state.cued { background: var(--wash-warn); color: var(--amber); border: 1px solid var(--edge-warn); }
@@ -1316,3 +1327,11 @@ button.ev-add:hover, button.ev-add:focus-visible { border-color: var(--white); c
 /* Live › Browser sources */
 .live-src { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .live-src li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--hair); border-radius: 10px; }
+
+/* Match data › Show text: the graphic itself is editable (17 Nov) */
+.pv.pv-edit iframe { pointer-events: auto; }
+
+/* Graphics studio: a deleted part stays listed, struck through (17 Nov) */
+.tpl-node.deleted > button[role=option] span { text-decoration: line-through; opacity: .55; }
+.tpl-node .eye.trash { opacity: 0; }
+.tpl-node:hover .eye.trash, .tpl-node.on .eye.trash { opacity: .7; }
