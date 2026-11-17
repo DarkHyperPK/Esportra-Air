@@ -935,7 +935,6 @@
         el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } if (e.key === 'Escape') { el.dataset.cancel = '1'; el.blur(); } });
         el.addEventListener('blur', () => { if (el.dataset.cancel) { delete el.dataset.cancel; HUD.subs.forEach(f => f(HUD.state)); return; } done(el.textContent.trim()); });
       };
-      editable(sub, 'Click to edit the message', text => post({ message: text.slice(0, 120) }));
       editable(cd, 'Click to change the countdown (minutes)', text => { const n = parseInt(text.split(':')[0], 10); if (n >= 0) post({ minutes: Math.min(240, n) }); });
       cd.addEventListener('focus', () => { const sel = getSelection(); const r = document.createRange(); r.selectNodeContents(cd); sel.removeAllRanges(); sel.addRange(r); });
     }

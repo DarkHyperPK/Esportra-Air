@@ -14,6 +14,8 @@ export interface ApiContext {
   /** Saves the manual as a PDF where the producer chooses (the app), or next to the dev data (dev host). */
   saveManualPdf?: () => Promise<string | null>;
   pickVideo?: () => Promise<string | null>;
+  /** A still picture of an overlay preview page, for lists (see thumbnails.ts). */
+  thumbnail?: (url: string, key: string) => Promise<string | null>;
 }
 
 export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void | { id: string; name: string; url: string }> {
@@ -49,6 +51,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'holdGlobalKeys': p.holdGlobalKeys(a[0] === true); break;
     case 'saveManualPdf': return ctx.saveManualPdf ? ctx.saveManualPdf() : null;
     case 'pickVideo': return ctx.pickVideo ? ctx.pickVideo() : null;
+    case 'thumbnail': return ctx.thumbnail ? ctx.thumbnail(String(a[0] ?? ''), String(a[1] ?? '')) : null;
     case 'chooseGame': await p.chooseGame(String(a[0]) as GameId); break;
     case 'chooseProfile': await p.chooseProfile(String(a[0]) as Profile); break;
     case 'finishOnboarding': await p.finishOnboarding(); break;

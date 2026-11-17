@@ -3,7 +3,7 @@ import type { Snapshot } from '../../shared/api.ts';
 import { LIBRARY, inShow } from '../../shared/library.ts';
 import { PackWindow } from '../components/PackWindow.tsx';
 import { air } from '../bridge.ts';
-import { Preview, overlayUrl } from '../components/Preview.tsx';
+import { Preview, overlayUrl, StillPreview, stillKey } from '../components/Preview.tsx';
 import type { PageProps, Run } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
 import { GRAPHICS, graphicTitle, type BrandKit, type Template } from '../../shared/templates.ts';
@@ -16,7 +16,7 @@ import { ShowTemplateManager } from '../components/ShowTemplates.tsx';
 export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit }) {
   const brand = kit ?? brandOfMatch(s);
   const extra: Record<string, string> = { ...(graphic.endsWith('|full') ? {} : { bg: '1' }), ...(template ? { template: JSON.stringify(template) } : {}), ...(brand ? { brand: JSON.stringify(brand) } : {}) };
-  return <Preview src={templatePreviewUrl(s, graphic, extra)} label={label} backdrop={false} />;
+  return <StillPreview src={templatePreviewUrl(s, graphic, extra)} label={label} backdrop={false} stamp={stillKey(s)} />;
 }
 
 const SCENE = (g: string) => g.startsWith('holding|') || g.startsWith('casters|');
@@ -45,7 +45,7 @@ function OwnTab({ s, run }: { s: Snapshot; run: Run }) {
         : <div className="tpl-grid">
             {s.ownGraphics.map((g) => (
               <div key={g.id} className="card tpl-card">
-                <Preview src={overlayUrl(s, 'own', { own: g.id })} label={g.name} />
+                <StillPreview src={overlayUrl(s, 'own', { own: g.id })} label={g.name} stamp={`${stillKey(s)}·${JSON.stringify(g)}`} />
                 <div className="tpl-meta">
                   <span className="between"><b>{g.name}</b>{inRundown(g.id) && <span className="tally ready">In this match</span>}</span>
                   <span className="faint t-xs">{purpose(g.purpose)} · {g.boxes.length} box{g.boxes.length === 1 ? '' : 'es'}</span>

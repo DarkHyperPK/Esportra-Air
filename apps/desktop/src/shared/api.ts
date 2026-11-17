@@ -487,6 +487,8 @@ export interface AirApi {
   saveManualPdf(): Promise<string | null>;
   /** Opens the system file picker for a video on this PC; its path, or null when cancelled. */
   pickVideo(): Promise<string | null>;
+  /** A still picture of an overlay preview page (a data URL), or null to show the live page instead. */
+  thumbnail(url: string, key: string): Promise<string | null>;
   chooseProfile(profile: Profile): Promise<Snapshot>;
   finishOnboarding(): Promise<Snapshot>;
   restartOnboarding(): Promise<Snapshot>;

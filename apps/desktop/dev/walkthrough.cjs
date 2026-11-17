@@ -305,19 +305,17 @@ let failShot = async () => {};
   await page.getByRole('tab', { name: 'Players' }).click();
   await shot('match-data-players');
   await page.getByRole('tab', { name: 'Show text' }).click();
-  await page.getByRole('group', { name: 'Which text shows' }).getByRole('button', { name: 'Break' }).click();
-  await page.getByRole('textbox', { name: 'Message' }).fill('Back after the break');
+  await page.getByRole('group', { name: 'Which screen' }).getByRole('button', { name: 'Break' }).click();
   await btn('Save · on air');
   await page.getByRole('button', { name: 'Save · on air', disabled: true }).waitFor();
+  if (await page.getByText('Champion', { exact: true }).count()) throw new Error('Show text no longer asks for the champion (17 Nov)');
   await shot('match-data-show');
-  // 17 Nov: the message is edited on the graphic itself; Enter puts it on air.
+  // 17 Nov: the countdown is changed on the graphic itself; Enter puts it on air.
   const showFrame = page.frameLocator('iframe[title="Show text preview"]');
-  await showFrame.locator('.ho .sub').click();
-  await page.keyboard.press('Control+A');
-  await page.keyboard.type('Back in five');
+  await showFrame.locator('.ho .cd').click();
+  await page.keyboard.type('7');
   await page.keyboard.press('Enter');
-  await page.getByRole('textbox', { name: 'Message' }).and(page.locator('[value="Back in five"]')).waitFor();
-  await page.getByRole('button', { name: 'Save · on air', disabled: true }).waitFor();
+  await page.getByRole('textbox', { name: 'Countdown · minutes' }).and(page.locator('[value="7"]')).waitFor();
   await shot('match-data-show-edited');
   await btn('← Community Cup');
   await page.locator('.ev-match').first().waitFor();
@@ -479,6 +477,7 @@ let failShot = async () => {};
   // 17 Nov: only what the Rundown has is listed, and every browser source of the show can be copied from Live.
   if (await page.locator('.cp-gi[disabled]').count()) throw new Error('Live lists graphics this match cannot use');
   await page.getByRole('button', { name: /^Copy browser source for / }).first().click();
+  await page.getByRole('button', { name: /^Copy browser source for / }).and(page.locator('.done')).first().waitFor();
   if (!/\/o\/[0-9a-f-]{36}\?only=/.test((await (await fetch(`${HOST}/dev/state`)).json()).clipboard ?? '')) throw new Error('the clip beside a graphic copied no browser source');
   await btn('Sources', { exact: true });
   const sources = page.getByRole('dialog', { name: 'Browser sources' });

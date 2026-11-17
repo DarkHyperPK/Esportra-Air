@@ -899,7 +899,10 @@ button.pack-card:hover .pv { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3), 0 1
 .tpl-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 236px minmax(0, 1fr) 312px; }
 .tpl-left { border-right: 1px solid var(--hair); padding: 14px 12px; display: flex; flex-direction: column; gap: 14px; overflow: auto; }
 .tpl-tree { display: grid; gap: 1px; }
-.tpl-node { display: grid; grid-template-columns: 1fr 26px; align-items: center; border-radius: 7px; }
+.tpl-node { display: grid; grid-template-columns: 1fr 26px 26px; align-items: center; border-radius: 7px; }
+.tpl-node > .tpl-shows { grid-column: 1 / -1; }
+.tpl-node.child > button:first-child { padding-left: 24px; }
+.tpl-node.child > button:first-child span:first-child::before { content: '└ '; color: var(--text-3); }
 .tpl-node > button:first-child { display: grid; grid-template-columns: 1fr auto 8px; gap: 8px; align-items: center; height: 30px; padding: 0 8px; border: 0; background: transparent; color: var(--text-2); font-size: var(--t-sm); text-align: left; }
 .tpl-node:hover { background: rgba(255, 255, 255, 0.04); }
 .tpl-node.on { background: var(--sel-soft); box-shadow: inset 2px 0 0 var(--sel); }
@@ -1334,4 +1337,12 @@ button.ev-add:hover, button.ev-add:focus-visible { border-color: var(--white); c
 /* Graphics studio: a deleted part stays listed, struck through (17 Nov) */
 .tpl-node.deleted > button[role=option] span { text-decoration: line-through; opacity: .55; }
 .tpl-node .eye.trash { opacity: 0; }
+.tpl-node .eye.trash:disabled { visibility: hidden; }
 .tpl-node:hover .eye.trash, .tpl-node.on .eye.trash { opacity: .7; }
+
+/* List cards show a still picture of the graphic (17 Nov) */
+.pv.pv-still img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; z-index: 1; }
+
+/* Graphics studio: words typed on the picture, and why match words can't be (17 Nov) */
+.tpl-words { position: absolute; z-index: 6; padding: 4px 8px; border: 2px solid var(--sel); border-radius: 6px; background: rgba(9, 9, 11, 0.92); color: #fff; font: 600 15px/1.2 inherit; }
+.tpl-datanote { position: absolute; z-index: 6; max-width: 340px; padding: 10px 12px; border: 1px solid var(--hair-strong); border-radius: 8px; background: #141418; color: var(--text-2); font-size: var(--t-xs); line-height: 1.45; box-shadow: 0 8px 24px rgba(0,0,0,.4); }

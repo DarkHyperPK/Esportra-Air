@@ -86,7 +86,7 @@ const withParts = (base: Part[], extra: Part[]) => { const out = base.slice(); f
 export const GRAPHICS: Record<string, { title: string; parts: Part[] }> = {
   'map-veto|full': { title: 'Map veto', parts: [...FULL, ['cards', 'Map cards'], ['stamps', 'Ban stamps', 1], ['decider', 'Decider line']] },
   'match-intro|full': { title: 'Match intro', parts: [...FULL, ['sides', 'Team halves'], ['teamnames', 'Team names'], ['teamstats', 'Team lines'], ['logos', 'Logos'], ['vs', 'VS', 1], ['event', 'Event name'], ['stage', 'Stage'], ['maps', 'Map list']] },
-  'agent-select|full': { title: 'Agent select', parts: [...FULL, ['vs', 'VS', 1], ['teamheads', 'Team names'], ['columns', 'Team columns'], ['cards', 'Player cards']] },
+  'agent-select|full': { title: 'Agent select', parts: [...FULL, ['vs', 'VS', 1], ['teamheads', 'Team names'], ['columns', 'Team columns'], ['cards', 'Player cards'], ['cards.picture', 'Agent picture'], ['cards.player', 'Player name'], ['cards.agent', 'Agent name'], ['cards.lock', 'Locked tag'], ['cards.strip', 'Name strip']] },
   'map-result|full': { title: 'Map result', parts: [...FULL, ['mapart', 'Map picture'], ['score', 'Score block'], ['bignumber', 'Big score'], ['mvp', 'MVP panel'], ['mvpname', 'MVP name'], ['performers', 'Top performers']] },
   'series|full': { title: 'Series', parts: [...FULL, ['cards', 'Map cards'], ['mapnames', 'Map names'], ['results', 'Results'], ['bars', 'Winner bars'], ['live', 'Live tag', 1]] },
   'halftime|full': { title: 'Halftime', parts: [...FULL, ['score', 'Score'], ['halves', 'Halves table'], ['rounds', 'Round by round'], ['note', 'Side switch note'], ['stats', 'Side stats']] },
@@ -95,11 +95,11 @@ export const GRAPHICS: Record<string, { title: string; parts: Part[] }> = {
   'schedule|full': { title: "Today's schedule", parts: [...FULL, ['list', 'List'], ['rows', 'Rows'], ['times', 'Times'], ['labels', 'Labels']] },
   'champion|full': { title: 'Champion', parts: [...FULL, ['kicker', 'Event line'], ['team', 'Team name'], ['line', 'Result line'], ['roster', 'Roster']] },
   'cam-grid|full': { title: 'Camera grid', parts: [['wall', 'Camera wall'], ['title', 'Title', 1], ['rows', 'Rows'], ['cams', 'Cameras'], ['observed', 'Observed camera']] },
-  'holding|full': { title: 'Starting soon · Break · Ending', parts: [...FULL.filter((p) => !['title', 'subtitle', 'toplabel'].includes(p[0])), ['mark', 'Logo'], ['headline', 'Headline'], ['message', 'Message'], ['countdown', 'Countdown'], ['countlabel', 'Countdown label'], ['next', 'Up next panel'], ['nextteams', 'Up next teams'], ['schedule', 'Schedule'], ['schedrows', 'Schedule rows'], ['social', 'Social line']] },
+  'holding|full': { title: 'Starting soon · Break · Ending', parts: [...FULL.filter((p) => !['title', 'subtitle', 'toplabel'].includes(p[0])), ['mark', 'Logo'], ['headline', 'Headline', 1], ['message', 'Message', 1], ['countdown', 'Countdown'], ['countlabel', 'Countdown label', 1], ['next', 'Up next panel'], ['nextteams', 'Up next teams'], ['schedule', 'Schedule'], ['schedrows', 'Schedule rows'], ['social', 'Social line']] },
   'holding|band': { title: 'Break frame', parts: [['frame', 'Frame'], ['windows', 'Windows'], ['clock', 'Clock'], ['title', 'Event line'], ['eventmark', 'Event logo'], ['bottom', 'Score row'], ['marks', 'Logos'], ['teamnames', 'Team names'], ['scores', 'Scores'], ['vs', 'VS'], ['next', 'Next line']] },
   'casters|full': { title: 'Desk', parts: [['corners', 'Corner marks'], ['crest', 'Crest'], ['topline', 'Top line'], ['toplabel', 'Top label', 1], ['clock', 'Clock'], ['heading', 'Heading'], ['subheading', 'Match line'], ['frames', 'Camera frames'], ['plates', 'Name plates'], ['names', 'Names'], ['handles', 'Handles']] },
   'map-veto|band': { title: 'Map veto', parts: withParts(BAND, [['title', 'Title', 1], ['labels', 'Action labels'], ['decider', 'Decider label'], ['pickcaps', 'Pick captions']]) },
-  'agent-select|band': { title: 'Agent select', parts: [...BAND, ['teams', 'Team names'], ['sides', 'Side tags'], ['agents', 'Agent cards'], ['agentnames', 'Player names'], ['series', 'Series box']] },
+  'agent-select|band': { title: 'Agent select', parts: [...BAND, ['teams', 'Team names'], ['sides', 'Side tags'], ['agents', 'Agent cards'], ['agents.picture', 'Agent picture'], ['agents.player', 'Player name'], ['agents.agent', 'Agent name'], ['agents.lock', 'Locked tag'], ['agents.line', 'Team underline'], ['agentnames', 'Name strip'], ['series', 'Series box']] },
   'match-intro|band': { title: 'Match intro', parts: [...BAND, ['teamnames', 'Team names'], ['lineup', 'Lineup row'], ['faces', 'Faces'], ['players', 'Player names']] },
   'map-result|band': { title: 'Map result', parts: [...BAND] },
   'series|band': { title: 'Series', parts: [...BAND] },
@@ -132,6 +132,8 @@ export const graphicTitle = (graphic: string) => {
   return graphic === 'hud' || graphic.startsWith('holding|') || graphic.startsWith('casters|') ? g.title : `${g.title} · ${graphicStyle(graphic) === 'band' ? 'Overlay bar' : 'Full screen'}`;
 };
 export const partsOf = (graphic: string) => GRAPHICS[graphic]?.parts ?? [];
+/** Layers drawn inside another (17 Nov): "agents.picture" sits under "agents" in the layers list. */
+export const parentOf = (id: string) => (id.includes('.') ? id.split('.')[0]! : id === 'agentnames' ? 'agents' : null);
 
 const HEX = /^#[0-9a-f]{6}$/i;
 const ID = /^[A-Za-z0-9_-]{1,40}$/;

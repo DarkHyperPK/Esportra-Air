@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import { LIBRARY_ROOM } from '../../shared/library.ts';
+import { air } from '../bridge.ts';
 
 export function overlayUrl(s: Snapshot, overlay: string, extra: Record<string, string> = {}) {
   const q = new URLSearchParams({ match: LIBRARY_ROOM, screen: '1', ...extra });
@@ -75,6 +76,41 @@ export function Composite({ srcs, label, image }: { srcs: string[]; label: strin
     <div ref={box} className={`pv ${image ? '' : 'pv-bg'}`} aria-label={label} role="img">
       {image && <img src={image} alt="" className="pv-frame" />}
       {srcs.map((src) => <iframe key={src} title={label} src={src} tabIndex={-1} style={{ transform: `scale(${scale})` }} />)}
+    </div>
+  );
+}
+
+/** What the sample pages show depends on the selected match (its teams, colours, logos and banner style). */
+export function stillKey(s: Snapshot) {
+  const m = s.match;
+  return m ? [m.id, m.theme, ...m.teams.map((t) => `${t.name}|${t.tag}|${t.color}|${t.logo}`)].join('·') : '';
+}
+
+/**
+ * A list card's preview as a still picture (17 Nov): the page is rendered once by Air off screen and kept, so a
+ * long list scrolls like any other. It falls back to the live page when no picture can be made.
+ */
+export function StillPreview({ src, label, backdrop = true, stamp = '' }: { src: string; label: string; backdrop?: boolean; stamp?: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [image, setImage] = useState<string | null | 'live'>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => { if (e?.isIntersecting) { setNear(true); io.disconnect(); } }, { rootMargin: '400px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!near) return;
+    let gone = false;
+    air.thumbnail(src, stamp).then((data) => { if (!gone) setImage(data ?? 'live'); }, () => { if (!gone) setImage('live'); });
+    return () => { gone = true; };
+  }, [near, src, stamp]);
+  if (image === 'live') return <Preview src={src} label={label} backdrop={backdrop} />;
+  return (
+    <div ref={box} className={`pv ${backdrop ? 'pv-bg' : ''} pv-still`} aria-label={`Preview: ${label}`} role="img">
+      {image && <img src={image} alt="" draggable={false} />}
     </div>
   );
 }
