@@ -1,4 +1,4 @@
-// Your own graphics (approved mock, 14 Nov): import the finished design (a 1920×1080 PNG from
+// Your own graphics (approved mock, 14 Nov): import the finished design (a 16:9 PNG from
 // Photoshop), then drag fields onto it as data boxes. "With data" shows the overlay page itself
 // (overlays/own.html, preview only) filled from the sample room with this match's teams.
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -155,7 +155,7 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
         {step === 'import' ? (
           <div className="own-import">
             <label className={`own-drop ${g.image ? 'has' : ''}`}>
-              {g.image ? <img src={asset(g.image)} alt="Your design" /> : <span className="own-drop-in"><b>{busy ? 'Checking the design…' : 'Choose the design (PNG)'}</b><span className="faint t-sm">1920 × 1080, up to 16 MB, exported from Photoshop with see-through areas where the game should show.</span></span>}
+              {g.image ? <img src={asset(g.image)} alt="Your design" /> : <span className="own-drop-in"><b>{busy ? 'Checking the design…' : 'Choose the design (PNG)'}</b><span className="faint t-sm">Any 16:9 size (1920 × 1080, 1600 × 900, 2560 × 1440…), up to 16 MB, exported from Photoshop with see-through areas where the game should show.</span></span>}
               <input type="file" accept="image/png" aria-label="Design PNG" hidden onChange={(e) => void importDesign(e.target.files?.[0])} />
             </label>
             <div className="stack" style={{ gap: 14 }}>
@@ -167,7 +167,7 @@ export function OwnGraphicEditor({ s, run, start, close }: { s: Snapshot; run: R
                 <button aria-pressed={g.style === 'band'} onClick={() => change({ style: 'band' })}>Overlay bar</button>
               </div></div>
               <ul className="own-checks">
-                <li className={g.image ? 'ok' : ''}>{g.image ? '✓' : '·'} 1920 × 1080 PNG, up to 16 MB</li>
+                <li className={g.image ? 'ok' : ''}>{g.image ? '✓' : '·'} 16:9 PNG, up to 16 MB</li>
                 <li className="warn">! Text that is part of the picture stays as it is: put a box over anything that should change.</li>
               </ul>
               <span className="row-gap" style={{ justifyContent: 'flex-end' }}>

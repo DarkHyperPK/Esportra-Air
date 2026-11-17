@@ -38,7 +38,7 @@ export interface EsportraSyncContext {
   store: Store;
   /** The selected match. */
   match(): Match | null;
-  matchData: { of(match: Match): MatchData; setVeto(veto: VetoStep[], mapPool?: string[], vetoOrder?: VetoOrderStep[] | null): Promise<void>; setFirst(team: 0 | 1): Promise<void>; eventData(eventId: string | null): EventData; saveEvent(eventId: string, input: unknown): Promise<void> };
+  matchData: { of(match: Match): MatchData; setVeto(veto: VetoStep[], mapPool?: string[], vetoOrder?: VetoOrderStep[] | null): Promise<void>; setFirst(team: 0 | 1): Promise<void>; eventData(eventId: string | null): EventData; saveEvent(eventId: string, input: unknown, from?: 'air' | 'esportra'): Promise<void> };
   /** Game data or a test round is running (the veto is over). */
   live(): boolean;
   health(): Health;
@@ -190,12 +190,41 @@ export class EsportraSync {
     await this.ctx.patch({ vetoTurn: t, vetoToss: c });
   }
 
+  /**
+   * Esportra's standings and bracket go into the event's data. Each part replaces Air's only when Esportra sent
+   * some (17 Nov: an elimination stage has no standings, which used to wipe the ones typed in Air), and is
+   * marked as from Esportra so Event data can say so.
+   */
   private async applyBracket(match: Match, snapshot: unknown) {
     const fields = bracketFrom(snapshot, match.source!.matchId);
-    if (!fields || (!fields.standings.length && !fields.bracket.gf.length && !fields.bracket.sf.length && !fields.bracket.qf.length)) return;
+    if (!fields) return;
     const ev = this.ctx.matchData.eventData(match.eventId);
-    if (JSON.stringify([ev.standings, ev.bracket]) === JSON.stringify([fields.standings, fields.bracket])) return;
-    await this.ctx.matchData.saveEvent(match.eventId, { ...ev, standings: fields.standings, bracket: fields.bracket });
+    const now = this.ctx.now();
+    const hasRounds = !!(fields.bracket.gf.length || fields.bracket.sf.length || fields.bracket.qf.length);
+    const marks = { ...(ev.esportra ?? {}), checkedAt: now };
+    const next = { ...ev };
+    if (fields.standings.length) {
+      next.standings = fields.standings;
+      marks.standings = JSON.stringify(ev.standings) === JSON.stringify(fields.standings) && ev.esportra?.standings ? ev.esportra.standings : now;
+      delete marks.noStandings;
+    } else {
+      marks.noStandings = /elimination|bracket|single|double/i.test(fields.format) || hasRounds
+        ? 'Esportra has no standings for this stage (an elimination bracket).'
+        : 'Esportra has no standings for this stage yet.';
+    }
+    if (hasRounds) {
+      next.bracket = fields.bracket;
+      marks.bracket = JSON.stringify(ev.bracket) === JSON.stringify(fields.bracket) && ev.esportra?.bracket ? ev.esportra.bracket : now;
+    }
+    next.esportra = marks;
+    await this.ctx.matchData.saveEvent(match.eventId, next, 'esportra').catch(() => {});
+  }
+
+  /** Event data › Refresh from Esportra: reads the tournament's standings and bracket now. */
+  async refreshBracket() {
+    const match = this.ctx.match();
+    if (!match?.source || !this.account) throw new Error('This match is not from Esportra.');
+    await this.applyBracket(match, await this.account.bracket(match.source.matchId));
   }
 
   /** Sponsors and casters from Esportra, only into an event that has none of its own. */

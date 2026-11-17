@@ -14,7 +14,8 @@ import { pagesForScene, type ScenePage } from '../../shared/scenes.ts';
 import { Composite } from '../components/Preview.tsx';
 import { Cap, Tally } from '../components/ui.tsx';
 import { AutopilotCard } from '../components/Autopilot.tsx';
-import { GraphicDetail, GraphicList, LiveBoard, MatchBar, PauseHint, ResultsCard, panelItems, type Phase } from '../components/ControlPanel.tsx';
+import { LiveSources } from '../components/LiveSources.tsx';
+import { GraphicDetail, GraphicList, LiveBoard, MatchBar, PauseHint, ResultsCard, panelItems, phasesWith, type Phase } from '../components/ControlPanel.tsx';
 import type { PageProps } from '../App.tsx';
 import { MatchData } from '../components/MatchData.tsx';
 
@@ -37,6 +38,12 @@ function useNow(active: boolean) {
     return () => clearInterval(t);
   }, [active]);
   return now;
+}
+
+/** A ticking countdown that re-renders only itself twice a second (17 Nov: the whole of Live used to). */
+function Countdown({ to }: { to: number }) {
+  const now = useNow(true);
+  return <>{clock(to - now)}</>;
 }
 
 interface Moment { id: string; label: string; detail: string; state: 'idle' | 'live' | 'warn' | 'cued'; built: boolean; fire: () => void }
@@ -121,7 +128,8 @@ function OnAirMonitor({ s, image }: { s: Snapshot; image: string | null }) {
 function AllGraphics({ s, run, cycle, close, openForm }: Pick<PageProps, 's' | 'run'> & { cycle: (row: LayerRow) => void; close: () => void; openForm: (f: 'toast' | 'poll') => void }) {
   const [q, setQ] = useState('');
   const match = (text: string) => !q.trim() || text.toLowerCase().includes(q.trim().toLowerCase());
-  const rows = (g: LayerRow['group']) => s.layers.filter((l) => l.group === g && match(l.label));
+  // Only what this match can use (17 Nov): a full-screen graphic outside the Rundown is left out unless on air.
+  const rows = (g: LayerRow['group']) => s.layers.filter((l) => l.group === g && (l.available || l.mode !== 'off' || !!l.cued) && match(l.label));
   const talent = s.match ? onAir(s.match, s.event).talent.filter((t) => match(t.name)) : [];
   const sponsors = sponsorsOn(s).filter((x) => match(x.name));
   const observed = s.readout?.observed ?? null;
@@ -171,10 +179,10 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   const [drawer, setDrawer] = useState(false);
   // The match's own setup over Live (approved mock 16 Nov): veto, players' prep, event data, show text.
   const [matchDrawer, setMatchDrawer] = useState(false);
-  const [phase, setPhase] = useState<Phase>(() => (s.feed.state === 'live' || s.testRound.running ? 'ingame' : s.mapRecords?.maps.length ? 'post' : 'pre'));
+  const [sources, setSources] = useState(false);
+  const [chosenPhase, setPhase] = useState<Phase>(() => (s.feed.state === 'live' || s.testRound.running ? 'ingame' : s.mapRecords?.maps.length ? 'post' : 'pre'));
   const [selected, setSelected] = useState<string | null>(null);
   const frame = useMonitor(s.obs.state === 'connected');
-  const now = useNow(!!s.readout);
   const cued = s.cue.pending.length > 0;
 
   const moment = (id: string, snap: Snapshot): Moment => {
@@ -203,7 +211,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target)) return;
-      if (e.key === 'Escape') { if (form) setForm(null); else if (drawer) setDrawer(false); else if (matchDrawer) setMatchDrawer(false); return; }
+      if (e.key === 'Escape') { if (form) setForm(null); else if (drawer) setDrawer(false); else if (matchDrawer) setMatchDrawer(false); else if (sources) setSources(false); return; }
       if (e.repeat) return;
       const snap = ref.current;
       const id = actionFor(snap.keymap, e);
@@ -235,6 +243,8 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
 
   const items = panelItems(s, run, setForm);
   // The selected graphic, or the phase's first (what is on air first) so the middle is never empty.
+  const shown = phasesWith(items);
+  const phase = shown.some(([id]) => id === chosenPhase) ? chosenPhase : (shown[0]?.[0] ?? 'ingame');
   const inPhase = items.filter((x) => x.phase === phase);
   const sel = items.find((x) => x.id === selected && x.phase === phase) ?? inPhase.find((x) => x.state === 'onair') ?? inPhase[0] ?? null;
   const cuedZone = (
@@ -260,7 +270,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
   return (
     <div className="cp">
       {!s.match && <div className="notice">No match selected. <button className="btn fix" onClick={() => go('ready')}>Choose a match</button></div>}
-      <MatchBar s={s} run={run} openFix={openFix} openMatch={() => setMatchDrawer(true)} />
+      <MatchBar s={s} run={run} openFix={openFix} openMatch={() => setMatchDrawer(true)} openSources={() => setSources(true)} />
       {s.match && s.mapStopped && (
         <div className="card warn stack" role="alert" style={{ gap: 8, padding: 14 }}>
           <span><b>Map {s.mapStopped.map} ended at {s.mapStopped.scores[0]}–{s.mapStopped.scores[1]} before it was finished.</b> What was it?</span>
@@ -305,9 +315,9 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
           <div className="datastrip" aria-label="Live data">
             {live && r ? (
               <>
-                <span><b>Round {r.round ?? '—'}</b> · {(r.phase ?? '—')}{r.clockEndsAt && ['live', 'buy', 'planted'].includes(r.phase ?? '') ? ` · ~${clock(r.clockEndsAt - now)}` : ''}</span>
+                <span><b>Round {r.round ?? '—'}</b> · {(r.phase ?? '—')}{r.clockEndsAt && ['live', 'buy', 'planted'].includes(r.phase ?? '') ? <> · ~<Countdown to={r.clockEndsAt} /></> : ''}</span>
                 <span><b>Alive</b> {r.alive[0]} v {r.alive[1]}</span>
-                {r.spikePlanted && r.clockEndsAt && <span style={{ color: 'var(--amber)' }}>Spike (inferred) ~{clock(r.clockEndsAt - now)}</span>}
+                {r.spikePlanted && r.clockEndsAt && <span style={{ color: 'var(--amber)' }}>Spike (inferred) ~<Countdown to={r.clockEndsAt} /></span>}
                 {s.testRound.running && <Tally kind="covered">Test round</Tally>}
               </>
             ) : <span className="muted">Waiting for game data</span>}
@@ -329,6 +339,7 @@ export function ConsoleScreen({ s, run, go, openFix, openCasters }: PageProps) {
           </div>
         </div>
       )}
+      {sources && <LiveSources s={s} close={() => setSources(false)} />}
       {drawer && <AllGraphics s={s} run={run} cycle={cycle} close={() => setDrawer(false)} openForm={setForm} />}
     </div>
   );

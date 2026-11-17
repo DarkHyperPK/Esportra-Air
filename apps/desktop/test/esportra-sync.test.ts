@@ -12,6 +12,9 @@ const BINARY = join(ROOT, 'engine/target/release', process.platform === 'win32' 
 const freePort = () => new Promise<number>((done) => { const s = createServer().listen(0, '127.0.0.1', () => { const { port } = s.address() as { port: number }; s.close(() => done(port)); }); });
 class FakeCapture extends EventEmitter { state: 'off' = 'off'; reason = null; start() {} stop() {} }
 
+const P1 = 'vgd1A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5xY_z';
+const P3 = 'hlx3Z9y8X7w6V5Z9y8X7w6V5Z9y8X7w6V5Z9y8X7w6V5Z9y8X7w6V5Z9y8X7w6V5Z9y8X7w6V5q-Rs';
+
 test('an Esportra match end to end: package, lineup Riot ids, live veto, bracket, sponsors, results reviewed, heartbeat', { skip: !existsSync(BINARY) && 'build the engine first', timeout: 60_000 }, async () => {
   const { EngineSupervisor } = await import('../src/main/engine-supervisor.ts');
   const { realProcess, engineEnv } = await import('../src/main/process.ts');
@@ -33,8 +36,8 @@ test('an Esportra match end to end: package, lineup Riot ids, live veto, bracket
   const production = new Production({ store, engine, obs: new ObsLink(() => new FakeObs()), capture: new FakeCapture() as never, ingest: { target: () => {} }, esportra, version: 'test' });
   production.setup.game = 'valorant';
   const wanted = backend.matches[0]!;
-  backend.riot.set('VGD One', 'puuid-vgd-1');
-  backend.riot.set('HLX Three', 'puuid-hlx-3');
+  backend.riot.set('VGD One', P1);
+  backend.riot.set('HLX Three', P3);
   // The teams have started banning on Esportra.
   const veto = backend.vetoOf(wanted.id);
   veto.status = 'in_progress';
@@ -47,16 +50,29 @@ test('an Esportra match end to end: package, lineup Riot ids, live veto, bracket
 
     // The package: the lineup with Riot ids (seated before the game lists the players).
     assert.ok(match.source?.packageId, 'the package is kept for result proposals');
-    assert.deepEqual(match.players[0].map((p) => p.gameId), ['puuid-vgd-1', '', '', '', '']);
+    // 17 Nov: the Riot ID (Name#TAG) and the PUUID each in their own place.
+    assert.deepEqual(match.players[0].map((p) => p.gameId), ['VGDOne#VGD', '', '', '', '']);
+    assert.deepEqual(match.players[0].map((p) => p.puuid ?? ''), [P1, '', '', '', '']);
     assert.equal(match.players[0][0]!.name, 'VGDOne');
-    assert.equal(match.players[1][2]!.gameId, 'puuid-hlx-3');
-    assert.equal(store.data.players!.find((p) => p.gameId === 'puuid-vgd-1')?.name, 'VGDOne', 'Teams/Players learns the Riot id');
+    assert.equal(match.players[1][2]!.gameId, 'HLXThree#HLX');
+    assert.equal(match.players[1][2]!.puuid, P3);
+    const learnt = store.data.players!.find((p) => p.puuid === P1);
+    assert.equal(learnt?.name, 'VGDOne', 'Teams/Players learns the Riot account');
+    assert.equal(learnt?.gameId, 'VGDOne#VGD');
     // The veto so far, on air.
     let st = await room();
     assert.deepEqual(st.veto.map((s: any) => `${s.team}:${s.action}:${s.map}`), ['0:ban:BIND', '1:ban:ABYSS']);
     // The bracket from Esportra.
     assert.deepEqual(st.bracket.sf[0], ['Vanguard Esports', 0, 'Helix Gaming', 0]);
     assert.deepEqual(st.bracket.gf[0], ['Night Owls', 0, 'TBD', 0]);
+    // 17 Nov: an elimination stage has no standings; the ones typed in Air stay, and each part says where it came from.
+    const ev0 = production.matchData.eventData(match.eventId);
+    assert.ok(ev0.esportra?.bracket, 'the bracket is marked as from Esportra');
+    assert.match(ev0.esportra?.noStandings ?? '', /no standings for this stage/);
+    await production.eventDataSave(match.eventId, { ...ev0, standings: [['Typed Team', '2–0', '+4', '+20']] });
+    assert.equal(production.matchData.eventData(match.eventId).esportra?.bracket, ev0.esportra?.bracket, 'saving standings keeps the bracket’s mark');
+    await production.esportraBracketRefresh();
+    assert.deepEqual(production.matchData.eventData(match.eventId).standings, [['Typed Team', '2–0', '+4', '+20']], 'Esportra sent no standings, so the typed ones stay');
     // Sponsors and casters, into an event that had none (an uploaded logo is fetched into the engine).
     const event = production.eventOf(match)!;
     assert.deepEqual(event.sponsors.map((s) => s.name), ['Northwind', 'Bluefin']);

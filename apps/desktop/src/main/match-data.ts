@@ -178,9 +178,18 @@ export class MatchDataService {
     this.ctx.log('Veto · following Esportra again');
   }
 
-  async saveEvent(eventId: string, input: unknown) {
+  /** The producer's save (`air`) drops the "from Esportra" mark of a section they changed by hand. */
+  async saveEvent(eventId: string, input: unknown, from: 'air' | 'esportra' = 'air') {
     if (!this.ctx.store.data.events.some((e) => e.id === eventId)) throw new Error('That event is no longer available.');
-    (this.ctx.store.data.eventData ??= {})[eventId] = validEventData(input);
+    const next = validEventData(input);
+    if (from === 'air') {
+      const before = this.eventData(eventId);
+      const m = { ...(before.esportra ?? {}) };
+      if (JSON.stringify(before.standings) !== JSON.stringify(next.standings)) delete m.standings;
+      if (JSON.stringify(before.bracket) !== JSON.stringify(next.bracket)) delete m.bracket;
+      if (Object.keys(m).length) next.esportra = m; else delete next.esportra;
+    }
+    (this.ctx.store.data.eventData ??= {})[eventId] = next;
     this.ctx.save();
     if (this.ctx.eventId() === eventId) await this.publish();
   }

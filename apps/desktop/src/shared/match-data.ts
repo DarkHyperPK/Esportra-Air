@@ -56,6 +56,17 @@ export interface EventData {
   bracket: { qf: BracketMatch[]; sf: BracketMatch[]; gf: BracketMatch[] };
   handle: string;
   site: string;
+  /** What came from Esportra and when (17 Nov): Event data shows "From Esportra · 2 min ago" or "Typed in Air". */
+  esportra?: EsportraMarks;
+}
+
+export interface EsportraMarks {
+  /** When Esportra last sent standings / bracket rounds that are shown now. */
+  standings?: number;
+  bracket?: number;
+  /** When Air last read the tournament, and why Esportra has no standings for this stage (if so). */
+  checkedAt?: number;
+  noStandings?: string;
 }
 
 /** What a player has done before this match, for Player profile and the pre-match matchup. */
@@ -222,7 +233,20 @@ export function validEventData(input: unknown): EventData {
     bracket: { qf: round(b.qf, 4, 'Quarter-final'), sf: round(b.sf, 2, 'Semi-final'), gf: round(b.gf, 1, 'Grand final') },
     handle: text(r.handle, 40, 'The handle'),
     site: text(r.site, 60, 'The website'),
+    ...(marks(r.esportra) ? { esportra: marks(r.esportra)! } : {}),
   };
+}
+
+function marks(input: unknown): EsportraMarks | null {
+  if (!input || typeof input !== 'object') return null;
+  const r = input as Record<string, unknown>;
+  const t = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+  const out: EsportraMarks = {};
+  if (t(r.standings)) out.standings = t(r.standings);
+  if (t(r.bracket)) out.bracket = t(r.bracket);
+  if (t(r.checkedAt)) out.checkedAt = t(r.checkedAt);
+  if (typeof r.noStandings === 'string' && r.noStandings) out.noStandings = r.noStandings.slice(0, 120);
+  return Object.keys(out).length ? out : null;
 }
 
 export function validPrep(input: unknown): PlayerPrep {

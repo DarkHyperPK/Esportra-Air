@@ -57,7 +57,14 @@ function useSection(): [string, (id: string) => void] {
   const [current, setCurrent] = useState<string>(SECTIONS[0][0]);
   const [pinned, setPinned] = useState(0);
   useEffect(() => {
+    // At most once a frame: each check measures every section (17 Nov).
+    let queued = false;
     const onScroll = (e: Event) => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; check(e); });
+    };
+    const check = (e: Event) => {
       if (Date.now() < pinned) return;
       const scroller = e.target instanceof HTMLElement ? e.target : document.scrollingElement;
       const els = SECTIONS.map(([id]) => document.getElementById(`set-${id}`)).filter((el): el is HTMLElement => !!el);

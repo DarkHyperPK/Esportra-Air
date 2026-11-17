@@ -37,7 +37,7 @@ export type PrepState = { label: string; health: 'ok' | 'warn' };
 
 /** A quick view of how prepared a match is, from data alone (OBS and live checks are in Readiness). */
 export function prepState(match: Pick<Match, 'players' | 'talentOff' | 'sponsorsOff'>, event: EventInfo | null): PrepState {
-  const short = match.players.some((team) => team.filter((p) => p.gameId).length < 5);
+  const short = match.players.some((team) => team.filter((p) => p.gameId || p.puuid).length < 5);
   if (short) return { label: 'Lineups missing', health: 'warn' };
   if (!onAir(match, event).talent.length) return { label: 'Nobody on air', health: 'warn' };
   return { label: 'Prepared', health: 'ok' };

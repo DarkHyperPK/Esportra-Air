@@ -3,7 +3,7 @@
 // themselves; scene rows (Starting soon, Break, Desk, Ending) are switched in OBS; the in-game HUD is
 // one row with its parts as switches.
 import { useState } from 'react';
-import type { Snapshot } from '../../shared/api.ts';
+import { BANNER_THEMES, type Snapshot } from '../../shared/api.ts';
 import { HUD_ROW, PRESETS, SECTIONS, SECTION_LABEL, WHEN_LABEL, rowTitle, takesItself, type Preset, type RundownRow, type Section } from '../../shared/autopilot.ts';
 import { SCENES } from '../../shared/scenes.ts';
 import { air } from '../bridge.ts';
@@ -46,10 +46,18 @@ function HudLook({ s, run, row }: { s: Snapshot; run: Run; row: RundownRow }) {
   const look = lookOf(s.setup.look);
   return (
     <details className="hud-adjust">
-      <summary className="muted t-sm">Look of the HUD and the pause</summary>
+      <summary className="muted t-sm">Look of the HUD, banners and the pause</summary>
       <div className="stack" style={{ gap: 10, marginTop: 10 }}>
         <LookPicker s={s} screen={HUD_ROW} label="Look of the in-game HUD" value={{ style: 'full', ...(row.template ? { template: row.template } : {}) }} onPick={(l) => void run(() => air.rundownSave({ ...row, template: l.template }))} />
         <span className="faint t-xs">A HUD template restyles the scorebug, player cards, killfeed and the rest together, and lines the scorebug's window up with the game's timer.</span>
+        {s.match && (
+          <div className="hud-adjust-body">
+            <span className="t-sm">Banner style</span>
+            <span className="rb-chips" role="radiogroup" aria-label="Banner style">
+              {BANNER_THEMES.map((t) => <button key={t} type="button" role="radio" aria-checked={(s.match!.theme ?? s.setup.package) === t} className="rb-chip" onClick={() => void run(() => air.updateMatch(s.match!.id, { theme: t }))}>{t[0]!.toUpperCase() + t.slice(1)}</button>)}
+            </span>
+          </div>
+        )}
         <div className="hud-adjust-body">
           <span className="t-sm">Pause and timeout</span>
           <span className="rb-chips" role="radiogroup" aria-label="Pause style">

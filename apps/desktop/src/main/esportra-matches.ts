@@ -2,6 +2,7 @@
 // Production gives it a small context; the account (HTTP, tokens, access) is src/main/esportra.ts.
 import { randomUUID } from 'node:crypto';
 import { readLineup, readPackage, type EsportraPackage, type EsportraPlayer } from '../shared/esportra-package.ts';
+import { splitRiot } from '../shared/riot.ts';
 import { gameName } from '../shared/games.ts';
 import type { Library, Match, Team } from '../shared/api.ts';
 import type { EsportraAccount } from './esportra.ts';
@@ -93,12 +94,20 @@ export class EsportraMatches {
     return readPackage(await this.account.prepare(matchId, randomUUID()));
   }
 
-  /** Fills Riot ids into a lineup typed earlier (by name), or the whole lineup when it is empty. */
-  private static fillLineup(players: Match['players'][0], from: EsportraPlayer[]) {
-    if (!players.length) return from.map((p) => ({ id: randomUUID(), name: p.name, realName: '', gameId: p.gameId, photo: '' }));
+  /** Fills Riot IDs and PUUIDs into a lineup typed earlier, or the whole lineup when it is empty. A player
+   *  is the same by PUUID, then Riot ID, then name (with or without the #tag). */
+  static fillLineup(players: Match['players'][0], from: EsportraPlayer[]) {
+    const fresh = (p: EsportraPlayer) => ({ id: randomUUID(), name: p.name, realName: '', gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), photo: '' });
+    if (!players.length) return from.map(fresh);
+    const base = (s: string) => s.split('#')[0] ?? '';
     for (const p of players) {
-      const found = from.find((e) => same(e.name, p.name));
-      if (found && !p.gameId && found.gameId) p.gameId = found.gameId;
+      splitRiot(p);
+      const found = (p.puuid && from.find((e) => e.puuid === p.puuid))
+        || (p.gameId && from.find((e) => e.gameId && same(e.gameId, p.gameId)))
+        || from.find((e) => same(e.name, p.name) || (!!e.gameId && same(base(e.gameId), p.name)));
+      if (!found) continue;
+      if (!p.gameId && found.gameId) p.gameId = found.gameId;
+      if (found.puuid) p.puuid = found.puuid;
     }
     return players;
   }
@@ -125,7 +134,7 @@ export class EsportraMatches {
     if (!players[0].length && !players[1].length) {
       try {
         const roster = await account.roster(matchId);
-        const names = (t: { players: Array<{ displayName: string }>; lineup?: unknown }) => (readLineup(t.lineup).length ? readLineup(t.lineup) : t.players.slice(0, 5).map((p) => ({ name: String(p.displayName).slice(0, 40), gameId: '' })));
+        const names = (t: { players: Array<{ displayName: string }>; lineup?: unknown }) => (readLineup(t.lineup).length ? readLineup(t.lineup) : t.players.slice(0, 5).map((p) => ({ name: String(p.displayName).slice(0, 40), gameId: '', puuid: '' })));
         players = [names(roster.team1), names(roster.team2)];
       } catch {
         // The lineup is a convenience; the match works without it.

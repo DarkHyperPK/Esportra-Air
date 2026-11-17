@@ -13,6 +13,7 @@ import type { SavedRundown } from './autopilot/rundown.ts';
 import type { SavedEsportra } from './esportra.ts';
 import type { EventInfo } from '../shared/model.ts';
 import { DEFAULT_ACCENT, migrateToEvents } from './event-model.ts';
+import { splitRiot } from '../shared/riot.ts';
 import { linkMatch } from './team-library.ts';
 
 export interface Saved {
@@ -187,6 +188,9 @@ export class Store {
       }
       old.players ??= [0, 1].map((t) => (old.source?.lineups?.[t] ?? []).map((name) => ({ id: randomUUID(), name, realName: '', gameId: '', photo: '' }))) as Match['players'];
     }
+    // 17 Nov: an Esportra PUUID kept where the Riot ID goes moves to `puuid`, so screens show the Riot ID again.
+    for (const m of matches) for (const team of m.players ?? []) for (const p of team) splitRiot(p);
+    for (const p of this.data.players ?? []) splitRiot(p);
     // Match v3: talent and sponsors belong to events; a match switches the ones it does not use off.
     this.data.events = migrateToEvents(matches, Array.isArray(this.data.events) ? this.data.events : [], setup.name || 'My event');
     for (const e of this.data.events) {

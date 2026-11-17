@@ -56,6 +56,7 @@ import { CONTROL_MODES, companionValues, type ControlMode } from '../shared/comp
 import { ROLE_NAME, type SponsorSpace } from '../shared/model.ts';
 import { SponsorSpaces } from './sponsor-spaces.ts';
 import { HEX, IMAGE, text } from './validate.ts';
+import { RIOT_ID, isPuuid, splitRiot } from '../shared/riot.ts';
 import { checks } from './readiness.ts';
 import { CueDeck, type GraphicAction } from './cue-deck.ts';
 import { OwnGraphics } from './own-graphics-service.ts';
@@ -98,7 +99,6 @@ export interface ProductionDeps {
 
 export { tagFor, tagsFor } from './team-tags.ts';
 
-const RIOT_ID = /^[^#<>\x00-\x1f]{3,16}#[A-Za-z0-9]{2,5}$/;
 
 /** Two lineups of up to seven players each, plain text, optional Riot ID and photo. */
 /** Two teams: name, tag, colour and logo. */
@@ -128,7 +128,8 @@ export function validPlayers(input: unknown): Match['players'] {
       if (gameId && !RIOT_ID.test(gameId)) throw new Error(`${label}: write the in-game name as Name#TAG.`);
       const photo = typeof p?.photo === 'string' ? p.photo : '';
       if (photo && !IMAGE.test(photo)) throw new Error(`${label}: choose the photo again.`);
-      return { id: typeof p?.id === 'string' && /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : randomUUID(), name: text(p?.name, 32, `${label} name`), realName: p?.realName ? text(p.realName, 60, `${label} real name`) : '', gameId, photo };
+      const puuid = isPuuid(p?.puuid) ? String(p.puuid).trim() : '';
+      return { id: typeof p?.id === 'string' && /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : randomUUID(), name: text(p?.name, 32, `${label} name`), realName: p?.realName ? text(p.realName, 60, `${label} real name`) : '', gameId, ...(puuid ? { puuid } : {}), photo };
     });
   }) as Match['players'];
 }
@@ -518,7 +519,7 @@ export class Production extends EventEmitter {
     // Map records: what the post-game graphics show.
     await this.client.patch(`/api/${code}`, this.mapRecords.room() ?? {});
     // The lineups: the engine puts display names and photos on the players the game reports.
-    await this.client.patch(`/api/${code}`, { airRoster: match.players.map((team) => team.map((p) => ({ gameId: p.gameId, name: p.name, photo: p.photo }))) });
+    await this.client.patch(`/api/${code}`, { airRoster: match.players.map((team) => team.map((p) => ({ gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), name: p.name, photo: p.photo }))) });
     // Setup decides where each layer starts; after that the console owns them for the match.
     await this.act('layers.init', { modes: this.initialModes() }, false);
     await this.cams.push();
@@ -1384,6 +1385,7 @@ export class Production extends EventEmitter {
   vetoStep(input: { map: string; side?: 'ATK' | 'DEF' }) { return this.matchData.vetoStep(input); }
   vetoUndo() { return this.matchData.vetoUndo(); }
   vetoReset() { return this.matchData.vetoReset(); }
+  esportraBracketRefresh() { return this.esportraSync.refreshBracket(); }
   async showTemplateApply(id: string) { await this.shows.apply(id); this.emit('change'); }
   showTemplateSave(input: { name?: unknown; id?: unknown }) { const id = this.shows.save(input); this.emit('change'); return id; }
   showTemplateRename(id: string, name: unknown) { this.shows.rename(id, name); this.emit('change'); }
@@ -1608,7 +1610,7 @@ export class Production extends EventEmitter {
       actions.push({ name: 'spotlight.set', args: { team: observed.team, player: observed.player } });
       // What this player has done before (Teams/Players prep): Player profile's season numbers and quote.
       const puuid = this.room?.players?.[observed.team]?.[observed.player]?.puuid;
-      const lineup = this.match?.players.flat().find((p) => (puuid && p.gameId === puuid) || p.name === observed.name);
+      const lineup = this.match?.players.flat().find((p) => (puuid && (p.puuid === puuid || p.gameId === puuid)) || p.name === observed.name);
       await this.client.patch(`/api/${encodeURIComponent(this.match!.code)}`, { spotlight: this.matchData.spotlightFields(lineup?.libraryId) }).catch(() => {});
     }
     if (on && screenId === 'cam-grid' && this.cams.layout === 'ingame') {
