@@ -59,6 +59,8 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   // Double-click on the picture: words a template may replace are typed in place (17 Nov).
   const [wordsAt, setWordsAt] = useState<{ id: string; box: number[] } | null>(null);
   const [dataNote, setDataNote] = useState<{ box: number[]; label: string } | null>(null);
+  // Layers in groups (17 Nov): each part's own layers sit under it, folded until opened or selected.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [rects, setRects] = useState<Rects>({});
   const [compare, setCompare] = useState<'mine' | 'default'>('mine');
   const [backdrop, setBackdrop] = useState<'game' | 'desk' | 'picture' | 'clear'>('game');
@@ -295,15 +297,30 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
             {!isNew && <p className="faint t-xs">A template stays with its graphic. For another graphic, start a new template.</p>}
             <div className="stack g-1"><span className="cap">Parts</span>
               <div className="tpl-tree" role="listbox" aria-label="Parts">
-                {parts.map(([id, label]) => {
+                {(() => {
+                  const ids = new Set(parts.map((x) => x[0]));
+                  const top = parts.filter((x) => { const par = parentOf(x[0]); return !par || !ids.has(par); });
+                  const kids = (id: string) => parts.filter((x) => parentOf(x[0]) === id && ids.has(id) && x[0] !== id);
+                  const selParent = parentOf(sel);
+                  return top.flatMap((x) => {
+                    const children = kids(x[0]);
+                    const open = openGroups.has(x[0]) || selParent === x[0];
+                    return [{ part: x, children: children.length, open }, ...(open ? children.map((c) => ({ part: c, children: 0, open: false })) : [])];
+                  });
+                })().map(({ part: [id, label], children, open }) => {
                   const p = draft.parts[id]; const present = !!rects[id];
+                  const fold = children ? (
+                    <span role="button" tabIndex={0} className="tpl-fold" aria-expanded={open} aria-label={`${open ? 'Fold' : 'Show'} the ${children} layers of ${label}`}
+                      onClick={(e) => { e.stopPropagation(); setOpenGroups((g) => { const n = new Set(g); if (n.has(id)) n.delete(id); else n.add(id); return n; }); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLElement).click(); } }}>{open ? '▾' : '▸'}</span>
+                  ) : null;
                   return (
-                    <div key={id} className={`tpl-node ${parentOf(id) ? 'child' : ''} ${id === sel ? 'on' : ''} ${present || p?.hidden ? '' : 'absent'} ${p?.hidden ? 'deleted' : ''} ${dragging === id ? 'dragging' : ''} ${dropAt?.id === id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
+                    <div key={id} className={`tpl-node ${parentOf(id) && parts.some((x) => x[0] === parentOf(id)) ? 'child' : ''} ${children ? 'group' : ''} ${id === sel ? 'on' : ''} ${present || p?.hidden ? '' : 'absent'} ${p?.hidden ? 'deleted' : ''} ${dragging === id ? 'dragging' : ''} ${dropAt?.id === id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
                       draggable onDragStart={(e) => { setDragging(id); e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { setDragging(null); setDropAt(null); }}
                       onDragOver={(e) => { if (!dragging || dragging === id) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDropAt({ id, after: e.clientY > r.top + r.height / 2 }); }}
                       onDrop={(e) => { e.preventDefault(); if (dragging && dropAt) dropPart(dragging, dropAt.id, dropAt.after); setDragging(null); setDropAt(null); }}>
                       <button role="option" aria-selected={id === sel} onClick={() => setSel(id)} title={present ? label : `${label} (not in this sample)`}>
-                        <span>{label}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
+                        <span>{fold}{label}{children ? <small className="faint"> · {children}</small> : null}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
                         <i className={`chg ${p ? 'on' : ''}`} aria-label={p ? 'changed' : undefined} />
                       </button>
                       <button className={`eye ${p?.hidden ? 'off' : ''}`} aria-label={p?.hidden ? `Show ${label}` : `Hide ${label}`} title={p?.hidden ? 'Show' : 'Hide'} onClick={() => setPart(id, { hidden: p?.hidden ? undefined : true })}>{p?.hidden ? '◌' : '●'}</button>

@@ -2,7 +2,7 @@
 // Loads each graphic's preview page (and each HUD/holding sample) from a running dev host's engine and lists the
 // visible texts, pictures and filled shapes that no part reaches on its own: a part must match the element itself,
 // or a wrapper around nothing else that is visible. Prints a report; exits 1 when anything is uncovered.
-//   node dev/host.ts &   then   node dev/parts-audit.cjs [host url] [--json file]
+//   node dev/host.ts &   then   node dev/parts-audit.cjs [host url] [--json file]      (or --files: pages from disk)
 'use strict';
 const { chromium } = require('playwright');
 
@@ -19,13 +19,9 @@ async function audit(page, graphic) {
   return page.evaluate((g) => {
     const T = window.AirTemplates;
     const parts = T.partsOf(g);
-    const shown = (el) => {
-      const cs = getComputedStyle(el);
-      if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 2 && r.height > 2;
-    };
-    const visible = (el) => { for (let x = el; x && x !== document.body; x = x.parentElement) if (!shown(x)) return false; return true; };
+    const shown = (el) => { const cs = getComputedStyle(el); return !(cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0); };
+    // The element has a size of its own; its wrappers only need to be shown (some are zero-height boxes).
+    const visible = (el) => { const r = el.getBoundingClientRect(); if (r.width <= 2 || r.height <= 2 || r.right < 0 || r.bottom < 0 || r.left > 1920 || r.top > 1080) return false; for (let x = el; x && x !== document.body; x = x.parentElement) if (!shown(x)) return false; return true; };
     const ownText = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
     const filled = (el) => {
       const cs = getComputedStyle(el);
@@ -57,19 +53,20 @@ async function audit(page, graphic) {
 }
 
 (async () => {
-  const state = await (await fetch(`${HOST}/dev/state`)).json();
-  const port = state.enginePort;
+  // --files: the overlay pages straight from disk (the test); otherwise a running dev host's engine.
+  const files = process.argv.includes('--files');
+  const base = files ? `file://${require('node:path').resolve(__dirname, '../../../esportra-valorant-hud/overlays')}/` : `http://127.0.0.1:${(await (await fetch(`${HOST}/dev/state`)).json()).enginePort}/overlays/`;
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   await page.route(/media\.valorant-api\.com|vdo\.ninja/, (r) => r.abort('internetdisconnected'));
-  await page.goto(`http://127.0.0.1:${port}/overlays/ingame.html?preview=1&screen=1`);
+  await page.goto(`${base}ingame.html?preview=1&screen=1`);
   const graphics = await page.evaluate(() => Object.keys(window.AirTemplates.GRAPHICS));
   const report = {};
   let gaps = 0;
   for (const g of graphics) {
     for (const sample of SAMPLES[g] || ['']) {
       const q = new URLSearchParams({ preview: '1', screen: '1', ...(sample && g === 'hud' ? { sample } : {}), ...(sample && g !== 'hud' ? { mode: sample } : {}) });
-      await page.goto(`http://127.0.0.1:${port}/overlays/${PAGE(g)}.html?${q}`);
+      await page.goto(`${base}${PAGE(g)}.html?${q}`);
       await page.waitForFunction(() => window.HUD_READY, null, { timeout: 5000 }).catch(() => {});
       await page.waitForTimeout(1600);
       const r = await audit(page, g);
