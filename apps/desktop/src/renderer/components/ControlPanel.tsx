@@ -202,6 +202,16 @@ export function GraphicDetail({ s, run, item, cycle }: { s: Snapshot; run: Run; 
             ))}
           </>
         )}
+        {screen === 'champion' && s.matchData && (
+          <label className="field"><span>Champion</span>
+            {/* 17 Nov: chosen here, after the series, not while setting the match up. */}
+            <select value={String(s.matchData.champion)} onChange={(e) => void run(() => air.matchDataSave({ ...s.matchData!, champion: Number(e.target.value) as -1 | 0 | 1 }))}>
+              <option value="-1">The series winner</option>
+              <option value="0">{m.teams[0].name}</option>
+              <option value="1">{m.teams[1].name}</option>
+            </select>
+          </label>
+        )}
         {space && (
           <label className="field"><span>Sponsor on this graphic · {SPACE_NAME[space]}</span>
             <select value={spaceValue} onChange={(e) => void run(() => air.matchSpaceSet(space, e.target.value === 'event' ? 'event' as never : e.target.value === 'none' ? null : e.target.value))}>

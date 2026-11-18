@@ -8,7 +8,7 @@ import { HUD_ROW, rowTitle, takesItself, type RundownRow, type Segment } from '.
 import { BEATS, SPEEDS, type RehearsalOptions } from '../../shared/rehearsal.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
-import { Composite, Preview, screenUrl } from './Preview.tsx';
+import { Composite, Preview, screenUrl, StillPreview, stillKey } from './Preview.tsx';
 
 type ItemState = 'done' | 'now' | 'next' | '';
 
@@ -131,7 +131,7 @@ export function RehearsePanel({ s, run, focus = null }: { s: Snapshot; run: Run;
             return (
               <li key={row.id}>
                 <button type="button" className={`reh2-item ${st}`} aria-current={st === 'now' ? 'step' : undefined} onClick={() => void show(row)}>
-                  <span className="reh2-th"><Preview src={screenUrl(s, id)} label={rowTitle(row.show, row.section, titleOf)} /></span>
+                  <span className="reh2-th"><StillPreview src={screenUrl(s, id)} label={rowTitle(row.show, row.section, titleOf)} stamp={stillKey(s)} /></span>
                   <span><b>{rowTitle(row.show, row.section, titleOf)}</b><span>{label(row, st)}</span></span>
                 </button>
               </li>

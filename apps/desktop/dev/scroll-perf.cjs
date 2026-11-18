@@ -72,6 +72,11 @@ async function measure(page, label, scroller) {
   await rail('HUD library');
   await page.waitForTimeout(1500);
   out.library = await measure(page, 'HUD library', 'main.page, .page');
+  await rail('Graphics studio');
+  await page.waitForTimeout(3000);
+  out.studio = await measure(page, 'Graphics studio', 'main.page, .page');
+  await page.waitForTimeout(1500);
+  out.studioAgain = await measure(page, 'Graphics studio, again', 'main.page, .page');
   await rail('Teams/Players');
   await page.waitForTimeout(1500);
   out.teams = await measure(page, 'Teams/Players', 'main.page, .page');

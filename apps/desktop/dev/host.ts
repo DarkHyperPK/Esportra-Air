@@ -12,6 +12,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { dispatch } from '../src/main/api.ts';
+import { Thumbnails } from '../src/main/thumbnails.ts';
 import { FakeShortcuts } from './fake-shortcuts.ts';
 import { EngineSupervisor } from '../src/main/engine-supervisor.ts';
 import { wsIngest } from '../src/main/ws-ingest.ts';
@@ -97,7 +98,22 @@ const saveManualPdf = async () => {
     await browser.close();
   }
 };
-const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; }, saveManualPdf };
+// List cards' still pictures, rendered by the walkthrough's Chromium (the app uses a hidden Electron window).
+let shots: Promise<any> | null = null;
+const thumbs = new Thumbnails(async (url) => {
+  shots ??= createRequire(import.meta.url)('playwright').chromium.launch();
+  const page = await (await shots).newPage({ viewport: { width: 1280, height: 720 } });
+  try {
+    await page.route(/media\.valorant-api\.com|vdo\.ninja/, (r: any) => r.abort('internetdisconnected'));
+    await page.goto(url);
+    await page.waitForFunction(() => (window as any).HUD_READY, null, { timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(1300);
+    return `data:image/png;base64,${(await page.screenshot({ type: 'png', omitBackground: true })).toString('base64')}`;
+  } finally {
+    await page.close();
+  }
+});
+const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; }, saveManualPdf, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 // Keys over the game: F12 stands for a key another app holds (Windows keeps F12 for debuggers).
 const shortcuts = new FakeShortcuts(new Set(['F12']));
 production.attachKeys(shortcuts, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });

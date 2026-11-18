@@ -3,6 +3,7 @@ import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeI
 import { randomBytes, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { Thumbnails } from './thumbnails.ts';
 import { manualHtml } from '../shared/manual.ts';
 import { gameOf } from '../shared/games.ts';
 import { join, resolve } from 'node:path';
@@ -92,7 +93,22 @@ async function main() {
     const choice = await dialog.showOpenDialog(window!, { title: 'Choose the sponsor video', properties: ['openFile'], filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'flv', 'ts', 'm4v'] }] });
     return choice.canceled ? null : choice.filePaths[0] ?? null;
   };
-  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf, pickVideo };
+  // Still pictures for list cards: each preview page is rendered once in a hidden 1280×720 window (thumbnails.ts).
+  const thumbs = new Thumbnails(async (url) => {
+    const page = new BrowserWindow({ show: false, width: 1280, height: 720, useContentSize: true, transparent: true, backgroundColor: '#00000000', webPreferences: { offscreen: true, sandbox: true, backgroundThrottling: false } });
+    try {
+      page.webContents.setFrameRate(10);
+      await page.loadURL(url);
+      // Ready once the page drew its graphic, then a moment for pictures, fonts and entrances.
+      for (let i = 0; i < 40 && !(await page.webContents.executeJavaScript('!!window.HUD_READY').catch(() => false)); i++) await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 1300));
+      const image = await page.webContents.capturePage();
+      return `data:image/png;base64,${image.toPNG().toString('base64')}`;
+    } finally {
+      page.destroy();
+    }
+  });
+  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf, pickVideo, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 
   // Keys over the game (F-keys and Ctrl/Alt keys): a press runs the same call as inside Air.
   production.attachKeys(globalShortcut, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });

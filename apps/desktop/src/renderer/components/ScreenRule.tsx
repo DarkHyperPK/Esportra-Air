@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import { SECTION_LABEL, SECTION_SCREENS, WHEN, WHEN_LABEL, rowTitle, takesItself, type RowInput, type RowMap, type RundownRow, type Section, type When } from '../../shared/autopilot.ts';
-import { Preview, overlayUrl, screenUrl } from './Preview.tsx';
+import { Preview, overlayUrl, screenUrl, StillPreview, stillKey } from './Preview.tsx';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { EditorDrawer } from './Editors.tsx';
@@ -61,7 +61,7 @@ export function ScreenRule({ s, run, row, section, close }: { s: Snapshot; run: 
         <div className="sr-tiles" role="radiogroup" aria-label="Screen">
           {tiles.map(([id, name, overlay]) => (
             <button key={id ?? 'game'} type="button" role="radio" aria-checked={d.show === id} aria-label={name} className="sr-tile" onClick={() => set({ show: id })}>
-              <span className="sr-thumb" aria-hidden="true">{overlay && id ? <Preview src={screenUrl(s, id, overlay)} label={name} /> : 'GAME'}</span>
+              <span className="sr-thumb" aria-hidden="true">{overlay && id ? <StillPreview src={screenUrl(s, id, overlay)} label={name} stamp={stillKey(s)} /> : 'GAME'}</span>
               <span>{name}</span>
             </button>
           ))}

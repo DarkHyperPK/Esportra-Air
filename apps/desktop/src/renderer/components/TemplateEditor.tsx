@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import {
-  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicTitle, newTemplateId, partsOf, validTemplate,
+  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicTitle, newTemplateId, parentOf, partsOf, validTemplate,
   type BrandKit, type ColorRef, type PartStyle, type Template,
 } from '../../shared/templates.ts';
 import { air } from '../bridge.ts';
@@ -56,6 +56,11 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const [isNew, setIsNew] = useState(!saved);
   const [baseline, setBaseline] = useState(JSON.stringify(initial));
   const [sel, setSel] = useState<string>(partsOf(initial.graphic)[0]?.[0] ?? '');
+  // Double-click on the picture: words a template may replace are typed in place (17 Nov).
+  const [wordsAt, setWordsAt] = useState<{ id: string; box: number[] } | null>(null);
+  const [dataNote, setDataNote] = useState<{ box: number[]; label: string } | null>(null);
+  // Layers in groups (17 Nov): each part's own layers sit under it, folded until opened or selected.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [rects, setRects] = useState<Rects>({});
   const [compare, setCompare] = useState<'mine' | 'default'>('mine');
   const [backdrop, setBackdrop] = useState<'game' | 'desk' | 'picture' | 'clear'>('game');
@@ -292,26 +297,41 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
             {!isNew && <p className="faint t-xs">A template stays with its graphic. For another graphic, start a new template.</p>}
             <div className="stack g-1"><span className="cap">Parts</span>
               <div className="tpl-tree" role="listbox" aria-label="Parts">
-                {parts.map(([id, label]) => {
+                {(() => {
+                  const ids = new Set(parts.map((x) => x[0]));
+                  const top = parts.filter((x) => { const par = parentOf(x[0]); return !par || !ids.has(par); });
+                  const kids = (id: string) => parts.filter((x) => parentOf(x[0]) === id && ids.has(id) && x[0] !== id);
+                  const selParent = parentOf(sel);
+                  return top.flatMap((x) => {
+                    const children = kids(x[0]);
+                    const open = openGroups.has(x[0]) || selParent === x[0];
+                    return [{ part: x, children: children.length, open }, ...(open ? children.map((c) => ({ part: c, children: 0, open: false })) : [])];
+                  });
+                })().map(({ part: [id, label], children, open }) => {
                   const p = draft.parts[id]; const present = !!rects[id];
+                  const fold = children ? (
+                    <span role="button" tabIndex={0} className="tpl-fold" aria-expanded={open} aria-label={`${open ? 'Fold' : 'Show'} the ${children} layers of ${label}`}
+                      onClick={(e) => { e.stopPropagation(); setOpenGroups((g) => { const n = new Set(g); if (n.has(id)) n.delete(id); else n.add(id); return n; }); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLElement).click(); } }}>{open ? '▾' : '▸'}</span>
+                  ) : null;
                   return (
-                    <div key={id} className={`tpl-node ${id === sel ? 'on' : ''} ${present || p?.hidden ? '' : 'absent'} ${p?.hidden ? 'deleted' : ''} ${dragging === id ? 'dragging' : ''} ${dropAt?.id === id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
+                    <div key={id} className={`tpl-node ${parentOf(id) && parts.some((x) => x[0] === parentOf(id)) ? 'child' : ''} ${children ? 'group' : ''} ${id === sel ? 'on' : ''} ${present || p?.hidden ? '' : 'absent'} ${p?.hidden ? 'deleted' : ''} ${dragging === id ? 'dragging' : ''} ${dropAt?.id === id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
                       draggable onDragStart={(e) => { setDragging(id); e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { setDragging(null); setDropAt(null); }}
                       onDragOver={(e) => { if (!dragging || dragging === id) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDropAt({ id, after: e.clientY > r.top + r.height / 2 }); }}
                       onDrop={(e) => { e.preventDefault(); if (dragging && dropAt) dropPart(dragging, dropAt.id, dropAt.after); setDragging(null); setDropAt(null); }}>
                       <button role="option" aria-selected={id === sel} onClick={() => setSel(id)} title={present ? label : `${label} (not in this sample)`}>
-                        <span>{label}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
+                        <span>{fold}{label}{children ? <small className="faint"> · {children}</small> : null}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
                         <i className={`chg ${p ? 'on' : ''}`} aria-label={p ? 'changed' : undefined} />
                       </button>
-                      {!present && SHOWS_IN[id] && SAMPLES[draft.graphic]?.some((x) => x.id === SHOWS_IN[id]) && <button className="tpl-shows" onClick={() => { setSample(SHOWS_IN[id]!); setSel(id); }}>Shows in: {SAMPLES[draft.graphic]!.find((x) => x.id === SHOWS_IN[id])!.name} ›</button>}
                       <button className={`eye ${p?.hidden ? 'off' : ''}`} aria-label={p?.hidden ? `Show ${label}` : `Hide ${label}`} title={p?.hidden ? 'Show' : 'Hide'} onClick={() => setPart(id, { hidden: p?.hidden ? undefined : true })}>{p?.hidden ? '◌' : '●'}</button>
-                      {!p?.hidden && <button className="eye trash" aria-label={`Delete ${label}`} title="Delete (Del) · Ctrl Z brings it back" onClick={() => { setSel(id); setPart(id, { hidden: true }); }}>✕</button>}
+                      <button className="eye trash" disabled={!!p?.hidden} aria-label={`Delete ${label}`} title="Delete (Del) · Ctrl Z brings it back" onClick={() => { setSel(id); setPart(id, { hidden: true }); }}>✕</button>
+                      {!present && SHOWS_IN[id] && SAMPLES[draft.graphic]?.some((x) => x.id === SHOWS_IN[id]) && <button className="tpl-shows" onClick={() => { setSample(SHOWS_IN[id]!); setSel(id); }}>Shows in: {SAMPLES[draft.graphic]!.find((x) => x.id === SHOWS_IN[id])!.name} ›</button>}
                     </div>
                   );
                 })}
               </div>
             </div>
-            <p className="faint t-xs">Select a part and press Delete to take it off the graphic; Ctrl Z or its eye brings it back. The blue dot means you changed that part. Click a part on the picture to select it; click again to reach the part behind. Drag a part above or below another to put it in front or behind; layers only matter where parts overlap.</p>
+            <p className="faint t-xs">Double-click words on the picture to replace them. Select a part and press Delete to take it off the graphic; Ctrl Z or its eye brings it back. The blue dot means you changed that part. Click a part on the picture to select it; click again to reach the part behind. Drag a part above or below another to put it in front or behind; layers only matter where parts overlap.</p>
           </aside>
           <section className="tpl-mid">
             <div className="tpl-cvbar">
@@ -357,12 +377,25 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                   src={templatePreviewUrl(s, draft.graphic, { editorKey: key, canvas: '1', ...(backdrop === 'game' ? { bg: '1' } : { clear: '1' }) })}
                   style={{ transform: `scale(${scale})` }} />
                 <div className="tpl-safe" aria-hidden="true"><span>TITLE SAFE</span></div>
-                <div className="tpl-hits" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
+                <div className="tpl-hits" onPointerDown={(e) => { setDataNote(null); onDown(e); }} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+                  onDoubleClick={() => { const pt = parts.find((x) => x[0] === sel); const b = pt && union(pt[0]); if (!pt || !b) return; if (pt[2]) setWordsAt({ id: pt[0], box: b }); else setDataNote({ box: b, label: pt[1] }); }}>
                   {compare === 'mine' && parts.map(([id, label]) => (rects[id] ?? []).map((r, i) => (
                     <div key={id + i} className={`tpl-hot ${id === sel ? 'on' : ''}`} data-label={i === 0 ? label : undefined}
                       style={{ left: r[0]! * scale, top: r[1]! * scale, width: r[2]! * scale, height: r[3]! * scale }} />
                   )))}
                   {compare === 'mine' && box && <div className="tpl-box" style={{ left: box[0]! * scale, top: box[1]! * scale, width: box[2]! * scale, height: box[3]! * scale }}><i data-handle="scale" className="h br" title="Drag to scale" /></div>}
+                  {wordsAt && (
+                    <input className="tpl-words" autoFocus aria-label="Words" maxLength={40} defaultValue={draft.parts[wordsAt.id]?.label ?? ''} placeholder="The graphic's own words"
+                      style={{ left: wordsAt.box[0]! * scale, top: wordsAt.box[1]! * scale, width: Math.max(160, wordsAt.box[2]! * scale), minHeight: Math.max(28, wordsAt.box[3]! * scale) }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { e.stopPropagation(); setWordsAt(null); } }}
+                      onBlur={(e) => { const v = e.target.value.replace(/[<>]/g, '').trim(); setPart(wordsAt.id, { label: v || undefined }); setWordsAt(null); }} />
+                  )}
+                  {dataNote && (
+                    <div className="tpl-datanote" style={{ left: dataNote.box[0]! * scale, top: (dataNote.box[1]! + dataNote.box[3]!) * scale + 6 }} onPointerDown={(e) => e.stopPropagation()}>
+                      <b>{dataNote.label}</b> shows the match's own words (teams, players, agents, scores), so they can't be typed here. Change its font, size and colour on the right, or the words in Teams/Players and Match data.
+                    </div>
+                  )}
                   {guide?.v !== undefined && <div className="tpl-guide v" style={{ left: guide.v * scale }} />}
                   {guide?.h !== undefined && <div className="tpl-guide h" style={{ top: guide.h * scale }} />}
                 </div>

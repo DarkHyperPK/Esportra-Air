@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { BannerTheme, Snapshot } from '../../shared/api.ts';
 import type { Preset } from '../../shared/autopilot.ts';
 import { BANNER_THEMES } from '../../shared/api.ts';
-import { Preview, screenUrl } from './Preview.tsx';
+import { Preview, screenUrl, StillPreview, stillKey } from './Preview.tsx';
 import { BAND_SCREENS } from '../../shared/look.ts';
 
 export interface PickScreen { id: string; overlay: string; title: string; when: string; yours?: boolean }
@@ -83,7 +83,7 @@ export function ScreenPicker({ s, picked, onPick, point, onPoint, theme, onTheme
               return (
                 <div key={x.id} className={`pick ${ticked ? 'on' : ''}`}>
                   <button type="button" className="pick-hit" role="checkbox" aria-checked={ticked} aria-label={x.title} disabled={fixed} onClick={() => toggle(x.id)}>
-                    <Preview src={screenUrl(s, x.id, x.overlay)} label={x.title} />
+                    <StillPreview src={screenUrl(s, x.id, x.overlay)} label={x.title} stamp={stillKey(s)} />
                     <span className="pick-tick" aria-hidden>✓</span>
                     {x.yours && <span className="pick-badge pick-yours">Yours</span>}
                     <span className="pick-meta"><b>{x.title}</b><span className="faint">{x.when}</span></span>

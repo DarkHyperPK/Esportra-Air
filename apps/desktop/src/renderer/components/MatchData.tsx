@@ -327,42 +327,37 @@ function ShowPreview({ s, show, onEdit }: { s: Snapshot; show: MatchData['show']
   }, [key, onEdit]);
   return (
     <div className="stack" style={{ gap: 6 }}>
-      <div ref={box} className="pv pv-bg pv-edit" aria-label="Show text preview: click the message or the countdown to edit">
+      <div ref={box} className="pv pv-bg pv-edit" aria-label="Show text preview: click the countdown to change it">
         <iframe ref={frame} title="Show text preview" src={src} onLoad={() => { send(); setTimeout(send, 400); }} style={{ transform: `scale(${scale})` }} />
       </div>
-      <span className="faint t-xs">Click the message or the countdown on the graphic to edit it. Enter or clicking away puts it on air.</span>
+      <span className="faint t-xs">Click the countdown on the graphic to change it. Enter or clicking away puts it on air.</span>
     </div>
   );
 }
 
 export function ShowTab({ s, run, md }: { s: Snapshot; run: Run; md: MatchData }) {
-  const m = s.match!;
   const [show, setShow] = useState(md.show);
-  const [champion, setChampion] = useState(md.champion);
-  useEffect(() => { setShow(md.show); setChampion(md.champion); }, [JSON.stringify([md.show, md.champion])]); // eslint-disable-line react-hooks/exhaustive-deps
-  const dirty = JSON.stringify([show, champion]) !== JSON.stringify([md.show, md.champion]);
+  useEffect(() => { setShow(md.show); }, [JSON.stringify(md.show)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = JSON.stringify(show) !== JSON.stringify(md.show);
+  // 17 Nov: only the countdown is set here. The words on these screens are a look (Graphics studio › Starting
+  // soon · Break · Ending, picked in the Rundown), and the champion is chosen on Live's Champion graphic.
   return (
     <div className="stack" style={{ gap: 14 }}>
       <section className="card">
-        <div className="card-head"><b>Starting soon / Break / Ending</b><Seg label="Which text shows" value={show.mode} options={MODES} onChange={(mode) => setShow({ ...show, mode })} /></div>
+        <div className="card-head"><b>Starting soon / Break / Ending</b><Seg label="Which screen" value={show.mode} options={MODES} onChange={(mode) => setShow({ ...show, mode })} /></div>
         <div className="body-pad stack" style={{ paddingTop: 0, gap: 10 }}>
-          <ShowPreview s={s} show={show} onEdit={(patch) => { const next = { ...show, ...patch }; setShow(next); void run(() => air.matchDataSave({ ...md, show: next, champion })); }} />
-          <label className="field"><span>Message</span><input maxLength={120} value={show.message} placeholder="The Grand Final is about to begin" onChange={(e) => setShow({ ...show, message: e.target.value })} /></label>
+          <ShowPreview s={s} show={show} onEdit={(patch) => { const next = { ...show, ...patch }; setShow(next); void run(() => air.matchDataSave({ ...md, show: next })); }} />
           <div className="grid2">
             <label className="field"><span>Countdown · minutes</span><input inputMode="numeric" value={show.minutes} disabled={!!show.target} onChange={(e) => setShow({ ...show, minutes: Math.min(240, Number(e.target.value.replace(/[^0-9]/g, '')) || 0) })} /></label>
             <label className="field"><span>Or count down to a time</span><input type="time" value={clock(show.target)} onChange={(e) => setShow({ ...show, target: e.target.value ? atTime(e.target.value) : 0 })} /><span className="hint">Leave empty to count the minutes from when it shows.</span></label>
           </div>
-          <p className="faint t-xs">Auto: Starting soon before map 1, Break between maps, Ending once the series is won.</p>
+          <p className="faint t-xs">Auto: Starting soon before map 1, Break between maps, Ending once the series is won. To change the words on these screens, make a look in Graphics studio and pick it on the row in the Rundown.</p>
+          <div className="row-gap" style={{ justifyContent: 'flex-end' }}>
+            {dirty && <button className="btn quiet small" onClick={() => setShow(md.show)}>Undo changes</button>}
+            <button className="btn primary small" disabled={!dirty} onClick={() => void run(() => air.matchDataSave({ ...md, show }))}>Save · on air</button>
+          </div>
         </div>
       </section>
-      <section className="card">
-        <div className="card-head"><b>Champion</b><Seg label="Champion" value={String(champion) as '-1' | '0' | '1'} options={[['-1', 'Series winner'], ['0', m.teams[0].name], ['1', m.teams[1].name]]} onChange={(v) => setChampion(Number(v) as -1 | 0 | 1)} /></div>
-        <p className="faint t-xs body-pad" style={{ paddingTop: 0 }}>The Champion graphic shows the team that won the series, unless you choose one.</p>
-      </section>
-      <div className="row-gap" style={{ justifyContent: 'flex-end' }}>
-        {dirty && <button className="btn quiet small" onClick={() => { setShow(md.show); setChampion(md.champion); }}>Undo changes</button>}
-        <button className="btn primary small" disabled={!dirty} onClick={() => void run(() => air.matchDataSave({ ...md, show, champion }))}>Save · on air</button>
-      </div>
     </div>
   );
 }
