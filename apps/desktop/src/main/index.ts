@@ -1,9 +1,9 @@
 // Esportra Air main process (ow-electron). Kept thin: the graphics engine is a separate process.
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, safeStorage, shell } from 'electron';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
-import { mkdirSync, statSync, writeFileSync } from 'node:fs';
-import { Thumbnails } from './thumbnails.ts';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { Thumbnails, pruneStills } from './thumbnails.ts';
 import { manualHtml } from '../shared/manual.ts';
 import { gameOf } from '../shared/games.ts';
 import { join, resolve } from 'node:path';
@@ -94,19 +94,40 @@ async function main() {
     return choice.canceled ? null : choice.filePaths[0] ?? null;
   };
   // Still pictures for list cards: each preview page is rendered once in a hidden 1280×720 window (thumbnails.ts).
-  const thumbs = new Thumbnails(async (url) => {
-    const page = new BrowserWindow({ show: false, width: 1280, height: 720, useContentSize: true, transparent: true, backgroundColor: '#00000000', webPreferences: { offscreen: true, sandbox: true, backgroundThrottling: false } });
+  // 19 Nov: an offscreen window's capturePage can come back blank on some Windows GPUs, so the picture is taken from
+  // its own paint events first, then capturePage, then once more from a hidden normal window. Pictures are kept on
+  // disk, and a page that cannot be pictured shows a plain card, never the live page.
+  const settle = async (page: BrowserWindow) => {
+    for (let i = 0; i < 40 && !(await page.webContents.executeJavaScript('!!window.HUD_READY').catch(() => false)); i++) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 1300));
+  };
+  const shoot = async (url: string, offscreen: boolean) => {
+    const page = new BrowserWindow({ show: false, width: 1280, height: 720, useContentSize: true, transparent: true, frame: false, skipTaskbar: true, paintWhenInitiallyHidden: true, backgroundColor: '#00000000', webPreferences: { offscreen, sandbox: true, backgroundThrottling: false } });
+    let painted: Electron.NativeImage | null = null;
+    if (offscreen) page.webContents.on('paint', (_e, _dirty, image) => { if (!image.isEmpty()) painted = image; });
     try {
-      page.webContents.setFrameRate(10);
+      if (offscreen) page.webContents.setFrameRate(10);
       await page.loadURL(url);
-      // Ready once the page drew its graphic, then a moment for pictures, fonts and entrances.
-      for (let i = 0; i < 40 && !(await page.webContents.executeJavaScript('!!window.HUD_READY').catch(() => false)); i++) await new Promise((r) => setTimeout(r, 100));
-      await new Promise((r) => setTimeout(r, 1300));
-      const image = await page.webContents.capturePage();
+      await settle(page);
+      let image = await page.webContents.capturePage();
+      if (image.isEmpty() && painted) image = painted;
+      if (image.isEmpty()) throw new Error(`blank picture (${offscreen ? 'offscreen' : 'hidden window'})`);
       return `data:image/png;base64,${image.toPNG().toString('base64')}`;
     } finally {
       page.destroy();
     }
+  };
+  const stillDir = join(app.getPath('userData'), 'thumbs');
+  mkdirSync(stillDir, { recursive: true });
+  pruneStills(stillDir, 600);
+  // The app version is part of the name: a new version redraws graphics that may have changed.
+  const stillFile = (id: string) => join(stillDir, `${createHash('sha1').update(`${app.getVersion()}\n${id}`).digest('hex')}.png`);
+  const thumbs = new Thumbnails(async (url) => shoot(url, true).catch(() => shoot(url, false)), {
+    store: {
+      read: (id) => { try { return `data:image/png;base64,${readFileSync(stillFile(id)).toString('base64')}`; } catch { return null; } },
+      write: (id, data) => writeFileSync(stillFile(id), Buffer.from(data.slice(data.indexOf(',') + 1), 'base64')),
+    },
+    log: (url, e) => console.warn(`[thumbnails] ${url.replace(/key=[^&]+/, 'key=…')}: ${e instanceof Error ? e.message : String(e)}`),
   });
   const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf, pickVideo, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 

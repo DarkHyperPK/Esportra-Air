@@ -3,7 +3,7 @@ import type { Snapshot } from '../../shared/api.ts';
 import { LIBRARY, inShow } from '../../shared/library.ts';
 import { PackWindow } from '../components/PackWindow.tsx';
 import { air } from '../bridge.ts';
-import { Preview, overlayUrl, StillPreview, stillKey } from '../components/Preview.tsx';
+import { overlayUrl, StillPreview, stillKey } from '../components/Preview.tsx';
 import type { PageProps, Run } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
 import { GRAPHICS, graphicTitle, type BrandKit, type Template } from '../../shared/templates.ts';
@@ -140,7 +140,7 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
         <h2 className="title-sm">Graphics</h2>
         <div className="packs">
           <button className="pack-card" onClick={() => setOpen(true)} aria-label="Open ESPORTRA HUD: preview every graphic">
-            <Preview src={overlayUrl(s, 'ingame')} label="ESPORTRA HUD" />
+            <StillPreview src={overlayUrl(s, 'ingame')} label="ESPORTRA HUD" stamp={stillKey(s)} />
             <span className="between"><span><b>ESPORTRA HUD</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in this show · open to preview each one</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
           </button>
         </div>
