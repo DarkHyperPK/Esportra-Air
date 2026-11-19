@@ -1341,6 +1341,9 @@ button.ev-add:hover, button.ev-add:focus-visible { border-color: var(--white); c
 .tpl-node:hover .eye.trash, .tpl-node.on .eye.trash { opacity: .7; }
 
 /* List cards show a still picture of the graphic (17 Nov) */
+.pv-none { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 8px; color: var(--muted); font-size: 12px; }
+.pv-none b { color: var(--text); font-size: 13px; }
+.pv-retry { color: var(--text); text-decoration: underline; cursor: pointer; }
 .pv.pv-still img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; z-index: 1; }
 
 /* Graphics studio: words typed on the picture, and why match words can't be (17 Nov) */
