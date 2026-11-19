@@ -5,8 +5,11 @@ not a build. Air is a broadcast graphics tool for several games; a battle royale
 (a lobby of 12–25 teams playing several games, scored by placement and eliminations), so it gets its own system,
 not Valorant's with new words.
 
-Not checked yet: no PMGO, PMGC or FFWS broadcast was watched frame by frame. Items marked * come from vendor or
-press descriptions and must be confirmed against broadcast stills before anything is designed.
+**Sources.** On 19 Nov the producer shared PUBG Mobile's official partner kit (Google Drive, "PUBG MOBILE Assets
+Library"). It contains the logos, raw assets, the brand logo guidelines, the tournament licence guideline, the
+livestream visuals guide, the third-party support deck (updated 9 Jan 2026) and the **PC OB API document (v3.0.0)**.
+Sections 1, 3 and 4 below follow the kit. Items still marked * come only from vendor or press descriptions and are
+not in the kit's examples. Nothing from Free Fire has been received yet.
 
 ## 1. Where the data can come from
 
@@ -16,6 +19,31 @@ press descriptions and must be confirmed against broadcast stills before anythin
 | Free Fire | No public observer or live data API found. | Ask Garena's esports partnerships team. Until then: Esportra results plus typed data. |
 | Esportra (built) | BR groups, lobbies and games; `br_lobby_results` per team or participant (placement, kills, placement and kill points); leaderboards (`BrLeaderboardModels`: total points, kills, wins, best placement); scoring settings per stage (`BrScoringSettings`: placement table, kill points, kill cap); map pool or fixed map (`BrMapConfig`); `BRHub` for live updates. | Ours. Not sent to Air yet (section 5). |
 
+### 1a. PC OB live match API (official document, v3.0.0)
+
+- **How to get it:** the organiser needs an approved tournament licence with a livestream, then asks for PCOB access by email to the PUBG Mobile esports team, with the spectator accounts' OpenIDs. Each OpenID logs in to one PCOB client. Live match API use follows PCOB approval.
+- **How it runs:** on each observer PC, "API Enable" is clicked in the PCOB client, and the tool `WinClient_OB\ObToolsNew\launch.bat` is kept running. Data is served at `http://<observer PC>:10086/<route>`. The kit asks organisers to enable the API on only a reasonable number of PCOB clients, to avoid overloading the server.
+- **Routes:**
+  - `gettotalplayerlist`
+  - `getteaminfolist`
+  - `isingame`
+  - `getkillinfo`: the knock and kill feed, with causer, victim, 1 knocked / 2 killed, game time and distance.
+  - `getgameglobalinfo`: circles as X, Y and size, plus the plane's start and stop. It must run on a PC watching a player's POV, not God view.
+  - `setcircleinfo`: circle status 0 wait / 1 delay / 2 move, index, counter and max time.
+  - `getobservingplayer`
+  - Added in 2.5–2.9:
+    - `getteambackpackinfo`: weapons, ammo and consumables per player.
+    - `getplayerweapondetailinfo`: per-weapon hits, kills and damage.
+    - `getairdropboxinfo`
+    - `getplayersaminfo`: level-3 gear and ghillie pickups, healing items used.
+    - `getplayerssightusageinfo`: time spent on each scope.
+    - `gettdmresultinfo`: Team Deathmatch results.
+- **Players:** `uId`, `playerName`, `playerOpenId`, `teamId`, `teamName`, `posX/Y/Z` (cm), `health`/`healthMax`, `liveState` (0 normal, 1 plane, 2 parachute, 3 vehicle, 4 knocked, 5 dead, 6 disconnected), `killNum`, `killNumBeforeDie`, `damage`, `maxKillDistance` (cm), `gotAirDropNum`, `rank` (0 while still playing), `isOutSideBlueCircle`, `curWeaponID`.
+  - The following stay 0 until the game ends: assists, knockouts, headshots, heal, damage taken, survival time, drive and march distance, rescues, grenades used, time outside the zone.
+- **Teams:** `teamId`, `teamName`, `killNum`, `liveMemberNum` (0–4), `logoPicUrl` (marked "not stable"), plus `GameStartTime`, `FightingStartTime`, `FinishedStartTime` (when WWCD appears), `GameID` and `CurrentTime`.
+- **Timing:** the server gathers data every 2 s on two channels: base info (location, health, state, kills) and real-time stats. The PCOB client updates its local list whenever either arrives, so Air should poll about once a second and merge.
+- **Not in the API:** team logos that can be relied on (Air uses its own), and the tournament's points (Air works them out from `rank` and kills with the event's scoring).
+
 ## 2. Scoring (set per tournament, never hard-coded)
 
 - **PMGC 2025:** 10, 6, 5, 4, 3, 2, 1, 1 for 1st–8th, then 0; 1 point per elimination. Tiebreaks: wins (WWCD), placement points, elimination points, most recent game. Grand Finals Day 3 "Smash rule": the threshold is the leader's points after match 12 plus 10, and the first team over it that wins a game is champion. Sources (secondary, no rulebook found): [Esportsverse](https://www.esportsverse.in/tournaments/pubg-mobile/pubg-mobile-global-championship-2025), [Liquipedia (PCL, same table)](https://liquipedia.net/pubg/PUBG_Champions_League/2025/Spring), [Sportskeeda](https://widgets.sportskeeda.com/esports/news-pmgc-2025-grand-finals-day-2-overall-standings-overview).
@@ -23,8 +51,24 @@ press descriptions and must be confirmed against broadcast stills before anythin
 
 ## 3. Graphics a BR broadcast uses
 
-From [LHM.gg's PUBG Mobile HUD](https://lhm.gg/overlays/premium-pubg-mobile-hud), broadcast guides and PMGO 2025
-production notes. Free Fire has the same shape, with 12 teams of 4, Booyah instead of Chicken Dinner, and its own maps.
+**PUBG Mobile's own examples.** The support deck lists the broadcast assets a licensed tournament shows:
+- Waiting Lobby (countdown);
+- Online Caster Scene;
+- Today's Matches;
+- In-game Match: team list down the right side, match label at the bottom left, CI logo at the bottom left;
+- Match Standings ("Match Rankings": rank, team, place points, elims, total points, two columns of 8);
+- Champion Scene.
+
+The livestream guide's good examples add:
+- Prize pool distribution;
+- WWCD, the match winner, with players, match number and map;
+- Today's matches with map pictures;
+- MVP rankings (eliminations, damage, survival time);
+- Stream will be right back.
+
+These, plus [LHM.gg's PUBG Mobile HUD](https://lhm.gg/overlays/premium-pubg-mobile-hud) and PMGO 2025 production
+notes, make the list below. Free Fire has the same shape, with 12 teams of 4, Booyah instead of Chicken Dinner, and
+its own maps.
 
 **Over the game**
 1. Match info: match N of M, map, teams alive, players alive.
@@ -57,9 +101,33 @@ Already generic in Air: lower thirds, sponsors, ticker, schedule, desk.
 
 ## 4. Official assets
 
-- **PUBG Mobile:** a press kit of logos, the 2022 brand guideline and fonts on Tencent's public Google Drive (only an archived copy was found; the producer has the current link). Licensed organisers also get Krafton's asset resources.
+- **PUBG Mobile kit, received 19 Nov:**
+  - `01. Assets`:
+    - CI logos: General, Taiwan and Vietnam versions, as PNG/PSD/AI.
+    - The PUBG MOBILE Esports logo and the PUBG MOBILE logo in black, white and yellow, at 64–2048 px.
+    - RAW assets: characters, maps and scenes (map pictures for Erangel, Miramar, Sanhok, Vikendi, Livik, Karakin, Nusa, Rondo), vehicles, crates, UC and the pan.
+    - Wallpapers.
+    - The brand logo guidelines (minimum digital size 120 px, clear space, colours).
+  - `02. Guideline`: the licence guideline, the visuals guide, offline event guidance and the third-party support deck.
+- **Rules from the kit (they decide how Air's PUBG pack works):**
+  1. Show the PUBG MOBILE Esports logo (preferred) or the PUBG MOBILE logo, always the 2026 version. The guide places it top left on social media; its broadcast examples put the logo top left.
+  2. The CI logo (three logos) goes at the bottom left.
+  3. Use only the kit's assets: no PUBG (PC) content, no content from other games, nothing from Korean, Japanese or Chinese teams.
+  4. Never modify a logo or game asset (the helmet stays whole).
+  5. Keep sponsors clearly apart from the CI logo.
+  6. Tournaments with a livestream and over USD 3,000 must send their broadcast visual package for review (3–5 working days) before the event.
+
+  So each tournament has **its own look built from these assets**. There is no single official template to copy.
 - **Free Fire:** Garena's brand page (`ff.garena.com/en/brand`). Logos must keep their original form, and there is no public licence beyond the page.
 - **Rule for Air:** nothing official is committed to this repository or shipped in the installer. Air gets "Import game pack": the producer points it at the kit they downloaded and Air stores it in the engine's asset store, so the licence stays with the organiser. Graphics use only the kit's colours, fonts and logos. Where the kit has no picture (weapons, map art), the graphic shows text; nothing is drawn to look official.
+
+## 4a. What the licence means for Esportra
+
+- **Tiers** go by prize pool: Community < $500, Mini $500–3,000, Medium $3,000–30,000, Major > $30,000.
+- **Live match data API** support is listed for every tier. PCOB access needs a livestream.
+- **Esportra as a platform:** the licence guideline names "Tournament Platforms" as Medium-tier organisers. Only the organiser may apply, so Esportra would apply for its own tournaments, or help its organisers apply.
+- **After the event:** an after-report is due within one month, or the organiser is banned from new licences for 6 months.
+- **Content rights:** the organiser licenses all broadcast content to the PUBG Mobile esports team.
 
 ## 5. Missing in the Esportra backend
 
@@ -92,6 +160,6 @@ Already generic in Air: lower thirds, sponsors, ticker, schedule, desk.
 5. The PCOB adapter and Player app poller. Testing against the real PCOB needs the licence and the Windows observer PC.
 
 Needed from the producer:
-- the current PUBG Mobile asset Drive link;
-- stills, or a VOD link with timestamps, for the items marked *;
-- a decision on applying to Krafton's third-party program.
+- stills, or a VOD link with timestamps, for the items still marked *;
+- the Free Fire brand kit, if Garena provides one;
+- a decision on applying for a PUBG Mobile tournament licence, which comes with PCOB and the live API.
