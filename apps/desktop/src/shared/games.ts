@@ -1,7 +1,7 @@
 // The game modules (docs/SPEC.md section 10). Generic screens read these fields, so no game's wording
 // appears outside its own module. Games that are not ready show as "coming later", never faked.
 
-export type GameId = 'valorant' | 'cs2' | 'lol' | 'dota2';
+export type GameId = 'valorant' | 'pubgm' | 'freefire' | 'cs2' | 'lol' | 'dota2';
 
 export interface GameDef {
   id: GameId;
@@ -16,9 +16,15 @@ export interface GameDef {
   playerPcData: string | null;
   /** The graphics pack for this game. */
   pack: string;
+  /** Head-to-head (two teams, maps, a series) or a lobby (many teams, games scored by placement and eliminations). */
+  shape: 'versus' | 'lobby';
+  /** Lobby games' own words: what one round of the lobby is called, and a win. */
+  words?: { game: string; win: string; elim: string };
+  /** The scoring preset new lobbies start from (src/shared/br.ts). */
+  scoring?: 'pmgc' | 'ffws';
 }
 
-const coming = (id: GameId, name: string): GameDef => ({ id, name, available: false, identity: null, matchData: '', playerPcData: null, pack: '' });
+const coming = (id: GameId, name: string): GameDef => ({ id, name, available: false, identity: null, matchData: '', playerPcData: null, pack: '', shape: 'versus' });
 
 export const GAMES: GameDef[] = [
   {
@@ -27,6 +33,24 @@ export const GAMES: GameDef[] = [
     matchData: 'Score, rounds, kills, spike plants and economy',
     playerPcData: 'Health, abilities and ultimate charge for each player',
     pack: 'Esportra Broadcast',
+    shape: 'versus',
+  },
+  {
+    // 20 Nov: results are typed or come from Esportra; the observer's live data (PCOB) and the pack come next.
+    id: 'pubgm', name: 'PUBG MOBILE', available: true,
+    identity: { label: 'In-game name', placeholder: 'Name', help: 'As it shows in the game. Air uses it to match the observer’s data to this player.' },
+    matchData: 'Placements and eliminations per game (typed for now; live from the observer client later)',
+    playerPcData: null,
+    pack: 'PUBG MOBILE official kit',
+    shape: 'lobby', words: { game: 'Match', win: 'WWCD', elim: 'Elims' }, scoring: 'pmgc',
+  },
+  {
+    id: 'freefire', name: 'Free Fire', available: true,
+    identity: { label: 'In-game name', placeholder: 'Name', help: 'As it shows in the game.' },
+    matchData: 'Placements and kills per game (typed)',
+    playerPcData: null,
+    pack: 'Esportra Broadcast',
+    shape: 'lobby', words: { game: 'Match', win: 'Booyah', elim: 'Kills' }, scoring: 'ffws',
   },
   coming('cs2', 'Counter-Strike 2'),
   coming('lol', 'League of Legends'),

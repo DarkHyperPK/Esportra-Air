@@ -101,6 +101,21 @@ export interface Match {
   };
 }
 
+/** A battle royale lobby (20 Nov): many teams, several games, scored by placement and eliminations (src/shared/br.ts). */
+export interface Lobby {
+  id: string;
+  /** Room code on the engine; the lobby's graphics read this room. */
+  code: string;
+  eventId: string;
+  game: GameId;
+  title: string;
+  stage: string;
+  teams: import('./br.ts').LobbyTeam[];
+  games: import('./br.ts').LobbyGame[];
+  scoring: import('./br.ts').Scoring;
+  createdAt: number;
+}
+
 export interface Screen {
   /** Stable id for the screen in Air. */
   id: string;
@@ -394,6 +409,9 @@ export interface Snapshot {
   /** Agent, weapon and map pictures on this PC (downloaded once from media.valorant-api.com). */
   art: { total: number; have: number; downloading: boolean; lastError: string | null; unavailable: string[] };
   /** Game packs (official pictures hosted by Esportra) and whether an event confirmed their licence. */
+  /** Battle royale lobbies and the selected one (src/shared/br.ts works out their standings). */
+  lobbies: Lobby[];
+  selectedLobbyId: string | null;
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
   /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
   recovery: string | null;
@@ -569,6 +587,13 @@ export interface AirApi {
   artDownload(): Promise<Snapshot>;
   eventLicence(eventId: string, game: string, input: { confirmed?: boolean; number?: string }): Promise<Snapshot>;
   packDownload(game: string): Promise<Snapshot>;
+  lobbyCreate(input: { eventId: string; game: GameId; title?: string; games?: number; maps?: string[] }): Promise<Snapshot>;
+  lobbyUpdate(id: string, patch: { title?: string; stage?: string; scoring?: import('./br.ts').Scoring; games?: Array<{ map: string; startsAt?: string }> }): Promise<Snapshot>;
+  lobbyTeams(id: string, teamIds: string[]): Promise<Snapshot>;
+  lobbyResult(id: string, game: number, rows: import('./br.ts').TeamResult[]): Promise<Snapshot>;
+  lobbyClearResult(id: string, game: number): Promise<Snapshot>;
+  lobbySelect(id: string | null): Promise<Snapshot>;
+  lobbyDelete(id: string): Promise<Snapshot>;
   packAssets(game: string): Promise<Array<import('./game-assets.ts').GameAsset & { src: string; thumbSrc: string }>>;
   /** Forgets this match's autopilot progress so the rundown starts again from the first step. */
   autopilotRestart(): Promise<Snapshot>;

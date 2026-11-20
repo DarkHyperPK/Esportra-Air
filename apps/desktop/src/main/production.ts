@@ -28,6 +28,7 @@ import { HUD_ROW, defaultSection, type Section } from '../shared/autopilot.ts';
 import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { GamePacks } from './game-packs.ts';
+import { Lobbies } from './br-lobbies.ts';
 import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
 import { Rehearsal } from './rehearsal.ts';
 import type { EsportraAccount } from './esportra.ts';
@@ -146,6 +147,7 @@ export class Production extends EventEmitter {
   readonly stats: CaptureStats;
   readonly art: ArtCache;
   readonly packs: GamePacks;
+  readonly lobbies: Lobbies;
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
@@ -172,6 +174,12 @@ export class Production extends EventEmitter {
       offer: async (game) => { if (!deps.esportra) throw new Error('Sign in to Esportra to download the game pack.'); return deps.esportra.gamePack(game); },
     });
     this.packs.on('change', () => this.emit('change'));
+    // Battle royale lobbies (20 Nov): src/main/br-lobbies.ts.
+    this.lobbies = new Lobbies({
+      store: deps.store, log: (t) => this.log.add(t), changed: () => this.emit('change'),
+      patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
+      live: (id) => !!this.gameLocked() && deps.store.data.selectedLobbyId === id,
+    });
     void this.startPacks();
     this.rehearsal = new Rehearsal({
       client: () => deps.engine.client, store: deps.store, match: () => this.match, screens: () => this.setup.screens,
@@ -497,6 +505,7 @@ export class Production extends EventEmitter {
     const setup = this.setup;
     const outputs = setup.screens.filter((s) => s.enabled && !s.hosted).map((s) => ({ id: s.outputId, overlay: s.overlay, matchCode: match?.code ?? 'MAIN' }));
     await this.client.put('/control/outputs', { outputs });
+    await this.lobbies.publish().catch(() => {});
     this.deps.ingest.target(match ? this.client.ingestUrl(match.code) : null);
     if (!match) {
       this.log.target(null);
@@ -921,6 +930,7 @@ export class Production extends EventEmitter {
     }
     this.save();
     if (selected) await this.syncEngine();
+    this.lobbies.refresh();
   }
 
   async saveTeam(input: Partial<LibTeam>) {
@@ -1839,6 +1849,8 @@ export class Production extends EventEmitter {
       recovery: this.recoveryText(),
       art: this.art.status,
       packs: this.packsView(),
+      lobbies: this.lobbies.list(),
+      selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),
     };
     snapshot.checks = checks(snapshot);

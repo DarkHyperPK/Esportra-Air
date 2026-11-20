@@ -26,6 +26,9 @@ export interface Saved {
   teams?: import('../shared/api.ts').LibTeam[];
   players?: import('../shared/api.ts').LibPlayer[];
   selectedMatchId: string | null;
+  /** Battle royale lobbies (20 Nov) and the one selected for lobby games. */
+  lobbies?: import('../shared/api.ts').Lobby[];
+  selectedLobbyId?: string | null;
   owned: Owned;
   enginePort: number;
   /** The producer's rundown rows, per match (older saves hold edits and are migrated). Whether autopilot is on is never saved. */

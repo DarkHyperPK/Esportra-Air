@@ -38,6 +38,13 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'eventLicence': await p.eventLicence(String(a[0]), String(a[1]), a[2] && typeof a[2] === 'object' ? a[2] : {}); break;
     case 'packDownload': await p.packDownload(String(a[0])); break;
     case 'packAssets': return p.packAssets(String(a[0]));
+    case 'lobbyCreate': await p.lobbies.create((a[0] ?? {}) as Parameters<typeof p.lobbies.create>[0]); break;
+    case 'lobbyUpdate': p.lobbies.update(String(a[0]), (a[1] ?? {}) as Record<string, unknown>); break;
+    case 'lobbyTeams': p.lobbies.setTeams(String(a[0]), a[1]); break;
+    case 'lobbyResult': p.lobbies.setResult(String(a[0]), Number(a[1]), a[2]); break;
+    case 'lobbyClearResult': p.lobbies.clearResult(String(a[0]), Number(a[1])); break;
+    case 'lobbySelect': await p.lobbies.select(a[0] === null ? null : String(a[0])); break;
+    case 'lobbyDelete': p.lobbies.remove(String(a[0])); break;
     case 'autopilotRestart': p.autopilotRestart(); break;
     case 'recoveryDismiss': p.dismissRecovery(); break;
     case 'rehearsalStart': await p.rehearsal.start(a[0] && typeof a[0] === 'object' ? a[0] : {}); break;
