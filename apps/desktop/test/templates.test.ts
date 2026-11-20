@@ -97,3 +97,11 @@ test('Break and Desk rows keep a look; for Break, over the game is the frame', (
   assert.equal(d.template, 'tpl-d');
   assert.throws(() => validRow({ ...base, template: 'tpl-d' }, 'b', 3, ['holding'], [frame, desk]), /different graphic/);
 });
+
+test('layers: order among siblings and lock are kept; the HUD draws only the order (20 Nov)', () => {
+  const t = validTemplate({ ...ok, parts: { panel: { z: 12, locked: true }, title: { z: -3 } } });
+  assert.deepEqual(t.parts.panel, { z: 12, locked: true });
+  assert.throws(() => validTemplate({ ...ok, parts: { panel: { z: 140 } } }), /layer must be between -99 and 99/);
+  assert.throws(() => validTemplate({ ...ok, parts: { panel: { locked: 'yes' } } }), /locked or not/);
+  assert.deepEqual(hud.styles({ z: 12, locked: true }), { 'z-index': '12' }, 'lock is an editor setting only');
+});

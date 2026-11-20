@@ -23,8 +23,12 @@ export interface Entrance { kind: 'rise' | 'fade' | 'slide' | 'wipe'; ms: number
 
 /** The settings for one part; anything left out keeps the graphic's own look. */
 export interface PartStyle {
-  x?: number; y?: number; scale?: number; z?: number;
+  x?: number; y?: number; scale?: number;
+  /** Layer order among its siblings (higher is in front), set by dragging in the Layers panel. */
+  z?: number;
   hidden?: boolean; opacity?: number;
+  /** Editor only: a locked layer can't be picked on the picture (20 Nov). */
+  locked?: boolean;
   fill?: Fill;
   color?: ColorRef; font?: FontId; weight?: number; size?: number; spacing?: number; caps?: 'upper' | 'none';
   border?: Border; radius?: number; depth?: 'none' | 'soft' | 'strong';
@@ -181,15 +185,16 @@ const drop = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o)
 export function validPart(input: unknown, label: string, words: boolean): PartStyle {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(`${label}: settings are missing.`);
   const p = input as Record<string, unknown>;
-  const known = new Set(['x', 'y', 'scale', 'z', 'hidden', 'opacity', 'fill', 'color', 'font', 'weight', 'size', 'spacing', 'caps', 'border', 'radius', 'depth', 'label', 'entrance']);
+  const known = new Set(['x', 'y', 'scale', 'z', 'hidden', 'locked', 'opacity', 'fill', 'color', 'font', 'weight', 'size', 'spacing', 'caps', 'border', 'radius', 'depth', 'label', 'entrance']);
   for (const k of Object.keys(p)) if (!known.has(k)) throw new Error(`${label}: unknown setting “${k}”.`);
   const out: PartStyle = {
     x: range(p.x, -1920, 1920, `${label} · X`), y: range(p.y, -1080, 1080, `${label} · Y`), scale: range(p.scale, 0.25, 3, `${label} · scale`),
-    z: p.z === undefined ? undefined : Math.round(range(p.z, -9, 9, `${label} · layer`)!), opacity: range(p.opacity, 0, 1, `${label} · opacity`),
+    z: p.z === undefined ? undefined : Math.round(range(p.z, -99, 99, `${label} · layer`)!), opacity: range(p.opacity, 0, 1, `${label} · opacity`),
     color: colorOf(p.color, `${label} · text colour`), weight: range(p.weight, 400, 900, `${label} · weight`), size: range(p.size, 6, 240, `${label} · size`),
     spacing: range(p.spacing, -0.1, 0.6, `${label} · spacing`), radius: range(p.radius, 0, 80, `${label} · corners`),
   };
   if (p.hidden !== undefined) { if (typeof p.hidden !== 'boolean') throw new Error(`${label}: shown or hidden.`); if (p.hidden) out.hidden = true; }
+  if (p.locked !== undefined) { if (typeof p.locked !== 'boolean') throw new Error(`${label}: locked or not.`); if (p.locked) out.locked = true; }
   if (p.font !== undefined) { if (!FONTS.some((f) => f.id === p.font)) throw new Error(`${label}: choose one of the fonts Air has.`); out.font = p.font as FontId; }
   if (out.weight !== undefined) out.weight = snapWeight(out.font, Math.round(out.weight / 100) * 100);
   if (p.caps !== undefined) { if (p.caps !== 'upper' && p.caps !== 'none') throw new Error(`${label}: capitals or as typed.`); out.caps = p.caps; }

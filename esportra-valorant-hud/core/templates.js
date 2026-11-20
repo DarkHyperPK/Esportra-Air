@@ -122,7 +122,7 @@
     const x = num(p.x, -1920, 1920), y = num(p.y, -1080, 1080), sc = num(p.scale, 0.25, 3);
     if (x || y) out.translate = `${x || 0}px ${y || 0}px`;
     if (sc != null && sc !== 1) out.scale = String(sc);
-    const z = num(p.z, -9, 9), op = num(p.opacity, 0, 1), size = num(p.size, 6, 240), sp = num(p.spacing, -0.1, 0.6), rad = num(p.radius, 0, 80);
+    const z = num(p.z, -99, 99), op = num(p.opacity, 0, 1), size = num(p.size, 6, 240), sp = num(p.spacing, -0.1, 0.6), rad = num(p.radius, 0, 80);
     if (z != null) out['z-index'] = String(Math.round(z));
     if (p.hidden === true) out.visibility = 'hidden';
     if (op != null) out.opacity = String(op);
