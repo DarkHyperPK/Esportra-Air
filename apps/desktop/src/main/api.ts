@@ -18,7 +18,7 @@ export interface ApiContext {
   thumbnail?: (url: string, key: string) => Promise<string | null>;
 }
 
-export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void | { id: string; name: string; url: string }> {
+export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void | { id: string; name: string; url: string } | unknown[]> {
   const p = ctx.production;
   const a = args as any[];
   switch (method) {
@@ -35,6 +35,9 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
       if (missing > 0) throw new Error(`${missing} picture${missing === 1 ? ' is' : 's are'} still missing. ${a.lastError ?? 'Riot’s picture server could not be reached.'}`);
       break;
     }
+    case 'eventLicence': await p.eventLicence(String(a[0]), String(a[1]), a[2] && typeof a[2] === 'object' ? a[2] : {}); break;
+    case 'packDownload': await p.packDownload(String(a[0])); break;
+    case 'packAssets': return p.packAssets(String(a[0]));
     case 'autopilotRestart': p.autopilotRestart(); break;
     case 'recoveryDismiss': p.dismissRecovery(); break;
     case 'rehearsalStart': await p.rehearsal.start(a[0] && typeof a[0] === 'object' ? a[0] : {}); break;

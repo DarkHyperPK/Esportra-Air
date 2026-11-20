@@ -393,6 +393,8 @@ export interface Snapshot {
   checks: CheckItem[];
   /** Agent, weapon and map pictures on this PC (downloaded once from media.valorant-api.com). */
   art: { total: number; have: number; downloading: boolean; lastError: string | null; unavailable: string[] };
+  /** Game packs (official pictures hosted by Esportra) and whether an event confirmed their licence. */
+  packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
   /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
   recovery: string | null;
   /** The private rehearsal of the selected match (never on air). */
@@ -565,6 +567,9 @@ export interface AirApi {
   libraryPlay(on: boolean): Promise<Snapshot>;
   /** Downloads any agent, weapon and map pictures not yet on this PC. */
   artDownload(): Promise<Snapshot>;
+  eventLicence(eventId: string, game: string, input: { confirmed?: boolean; number?: string }): Promise<Snapshot>;
+  packDownload(game: string): Promise<Snapshot>;
+  packAssets(game: string): Promise<Array<import('./game-assets.ts').GameAsset & { src: string; thumbSrc: string }>>;
   /** Forgets this match's autopilot progress so the rundown starts again from the first step. */
   autopilotRestart(): Promise<Snapshot>;
   recoveryDismiss(): Promise<Snapshot>;

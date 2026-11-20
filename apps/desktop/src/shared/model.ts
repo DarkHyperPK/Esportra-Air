@@ -94,6 +94,8 @@ export interface EventInfo {
   sponsors: Sponsor[];
   /** Set for events that come from an Esportra tournament. */
   tournamentId: string | null;
+  /** Game packs that need a tournament licence (PUBG MOBILE): confirmed by the producer for this event (20 Nov). */
+  gameLicence?: Partial<Record<string, { confirmedAt: number; number?: string }>>;
 }
 
 export type EventPatch = Partial<Pick<EventInfo, 'name' | 'stages' | 'logo' | 'logoLight' | 'accent'>>;

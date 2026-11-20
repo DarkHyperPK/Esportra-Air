@@ -5,6 +5,7 @@
 // the match list, prepare (configurationJson is a JSON string), the live veto, the bracket, result
 // proposals and their review, heartbeats and logos uploaded on Esportra.
 import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { fakePack } from './fake-pack.ts';
 import { generateKeyPairSync, randomUUID, sign, constants } from 'node:crypto';
 
 export interface FakeMatch {
@@ -40,6 +41,8 @@ export class FakeEsportra {
   request: { id: string; note: string; status: 'pending' | 'granted' | 'declined' | 'withdrawn'; reason: string | null; createdAt: string; decidedAt: string | null } | null = null;
   /** Simulates the backend being unreachable (connections are dropped). */
   down = false;
+  /** The PUBG Mobile game pack Esportra hosts (stand-in pictures, never the real kit). */
+  pack = fakePack('pubgm');
   /** Token lifetime in seconds. */
   tokenSeconds = 3600;
   matches: FakeMatch[] = [];
@@ -250,6 +253,14 @@ export class FakeEsportra {
       res.end(JSON.stringify(body));
     };
     const body = await this.body(req);
+    // Game pack files: the short-lived links Esportra hands out (no sign-in on the link itself).
+    const packFile = /^GET \/fake-pack\/([0-9a-f]{64})$/.exec(route);
+    if (packFile) {
+      const bytes = this.pack.files.get(packFile[1]!);
+      if (!bytes) return send(404, {});
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': bytes.length });
+      return res.end(bytes);
+    }
     if (route === 'POST /api/auth/desktop-login') {
       return body.email === this.email && body.password === this.password ? send(200, this.tokens()) : send(401, { error: 'Invalid email or password.' });
     }
@@ -261,6 +272,12 @@ export class FakeEsportra {
     const auth = /^Bearer access-(\d+)$/.exec(String(req.headers.authorization ?? ''));
     if (!auth || this.expired.has(auth[1]!)) return send(401, { error: 'Unauthorized' });
     const deviceId = String(req.headers['x-air-device-id'] ?? '');
+    const packRoute = /^GET \/api\/air\/game-packs\/([a-z0-9]{2,16})$/.exec(route);
+    if (packRoute) {
+      if (!this.allowed) return send(403, { error: 'An active Air account is required.' });
+      if (packRoute[1] !== 'pubgm') return send(404, { error: 'There is no pack for this game yet.' });
+      return send(200, { manifest: this.pack.manifest, urls: Object.fromEntries([...this.pack.files.keys()].map((sha) => [sha, `${this.url}/fake-pack/${sha}`])) });
+    }
     if (/^GET \/api\/air\/assets\/[0-9a-f-]{36}$/.test(route)) {
       if (!this.draft.sponsors.some((s) => route.endsWith(String(s.assetId)))) return send(404, {});
       res.writeHead(200, { 'Content-Type': 'image/png' });

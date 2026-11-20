@@ -27,6 +27,8 @@ import { isOwnScreen, ownScreen, ownScreenId, pngSize, validOwn, type OwnGraphic
 import { HUD_ROW, defaultSection, type Section } from '../shared/autopilot.ts';
 import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
+import { GamePacks } from './game-packs.ts';
+import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
 import { Rehearsal } from './rehearsal.ts';
 import type { EsportraAccount } from './esportra.ts';
 import { JoinHost } from './join.ts';
@@ -143,6 +145,7 @@ export class Production extends EventEmitter {
   readonly autopilot: Autopilot;
   readonly stats: CaptureStats;
   readonly art: ArtCache;
+  readonly packs: GamePacks;
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
@@ -163,6 +166,13 @@ export class Production extends EventEmitter {
     this.stats = deps.stats ?? new CaptureStats();
     this.art = new ArtCache({ catalogue: join(deps.engine.hudRoot, 'core', 'catalog.js'), dir: join(deps.engine.dataDir, 'art'), fetch: deps.artFetch, ...(deps.artOrigin ? { origin: deps.artOrigin } : {}) });
     this.art.on('change', () => this.emit('change'));
+    // Game packs (20 Nov): official pictures hosted by Esportra, downloaded once a licence is confirmed.
+    this.packs = new GamePacks({
+      dir: join(deps.engine.dataDir, 'packs'), fetch: deps.artFetch,
+      offer: async (game) => { if (!deps.esportra) throw new Error('Sign in to Esportra to download the game pack.'); return deps.esportra.gamePack(game); },
+    });
+    this.packs.on('change', () => this.emit('change'));
+    void this.startPacks();
     this.rehearsal = new Rehearsal({
       client: () => deps.engine.client, store: deps.store, match: () => this.match, screens: () => this.setup.screens,
       seed: (room) => this.seedSample(room, { banner: false, firstMap: true }), feedLive: () => deps.capture.state === 'live', changed: () => this.emit('change'),
@@ -1070,6 +1080,50 @@ export class Production extends EventEmitter {
     this.save();
   }
 
+  // ── game packs: src/main/game-packs.ts ──
+
+  /** Whether any event confirmed a licence for this game's pack. */
+  packLicensed(game: string) { return this.deps.store.data.events.some((e) => !!e.gameLicence?.[game]); }
+
+  private async startPacks() {
+    for (const game of Object.keys(LICENSED_PACKS)) {
+      await this.packs.load(game);
+      if (this.packLicensed(game)) this.packs.start(game);
+    }
+  }
+
+  /** The producer confirms the event's tournament licence for a game's pack; the download starts. */
+  async eventLicence(eventId: string, game: string, input: { confirmed?: unknown; number?: unknown } = {}) {
+    if (!LICENSED_PACKS[game]) throw new Error('This game has no licensed pack.');
+    const event = this.requireEvent(eventId);
+    const licences = { ...(event.gameLicence ?? {}) };
+    if (input.confirmed === false) delete licences[game];
+    else {
+      const number = typeof input.number === 'string' ? input.number.replace(/[<>]/g, '').trim().slice(0, 40) : '';
+      licences[game] = { confirmedAt: Date.now(), ...(number ? { number } : {}) };
+    }
+    await this.putEvent({ ...event, gameLicence: licences });
+    if (this.packLicensed(game)) this.packs.start(game);
+  }
+
+  /** Tries the pack's download again now. */
+  async packDownload(game: string) {
+    if (!this.packLicensed(game)) throw new Error('Confirm the tournament licence on an event first.');
+    await this.packs.sync(game);
+    const st = this.packs.statusOf(game);
+    if (st.waiting) throw new Error(st.waiting);
+  }
+
+  /** The pack's pictures with their addresses on the graphics engine (for the asset browser). */
+  packAssets(game: string) {
+    const port = this.deps.engine.port;
+    return this.packs.assets(game).map((a) => ({ ...a, src: assetSrc(port, game, a), thumbSrc: assetSrc(port, game, a, true) }));
+  }
+
+  private packsView(): Array<PackStatus & { licensed: boolean; licence: string; rules: string[] }> {
+    return Object.entries(LICENSED_PACKS).map(([game, p]) => ({ ...this.packs.statusOf(game), licensed: this.packLicensed(game), licence: p.licence, rules: p.rules }));
+  }
+
   async updateEvent(id: string, patch: EventPatch) {
     await this.putEvent(applyEventPatch(this.requireEvent(id), patch ?? {}));
   }
@@ -1415,7 +1469,11 @@ export class Production extends EventEmitter {
   // ── Esportra: src/main/esportra-matches.ts ──
 
   readonly esportraMatches: EsportraMatches;
-  esportraSignIn(email: string, password: string) { return this.esportraMatches.signIn(email, password); }
+  async esportraSignIn(email: string, password: string) {
+    await this.esportraMatches.signIn(email, password);
+    // A pack that waited for a sign-in downloads now.
+    for (const game of Object.keys(LICENSED_PACKS)) if (this.packLicensed(game)) this.packs.start(game);
+  }
   async esportraSignOut() { this.esportraMatches.signOut(); }
   esportraRefresh() { return this.esportraMatches.refresh(); }
   esportraCheck() { return this.esportraMatches.check(); }
@@ -1780,6 +1838,7 @@ export class Production extends EventEmitter {
       checks: [],
       recovery: this.recoveryText(),
       art: this.art.status,
+      packs: this.packsView(),
       rehearsal: this.rehearsal.view(),
     };
     snapshot.checks = checks(snapshot);

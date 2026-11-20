@@ -332,6 +332,19 @@ export class EsportraAccount {
     }
   }
 
+  /** A game's official pictures as Esportra hosts them: the manifest and a short-lived download link per file (20 Nov). */
+  async gamePack(game: string) {
+    if (!/^[a-z0-9]{2,16}$/.test(game)) throw new Error('Choose a game.');
+    try {
+      return await this.json<{ manifest: unknown; urls: Record<string, string> }>(`/api/air/game-packs/${game}`);
+    } catch (e) {
+      const status = (e as EsportraError).status;
+      if (status === 401) throw new Error('Sign in to Esportra to download the game pack.');
+      if (status === 404) throw new Error('Esportra has no pack for this game yet.');
+      throw e;
+    }
+  }
+
   /** A logo uploaded on Esportra (PNG, JPEG or WebP, up to 5 MB). */
   async asset(assetId: string): Promise<{ bytes: Buffer; type: string }> {
     if (!UUID.test(assetId)) throw new Error('Choose a logo again.');

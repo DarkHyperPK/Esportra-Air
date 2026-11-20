@@ -11,6 +11,7 @@ import { brandOfMatch, openTemplateEditor, templatePreviewUrl } from '../compone
 import { OwnGraphicEditor, blankOwn } from '../components/OwnGraphicEditor.tsx';
 import { OWN_PURPOSES, ownScreenId, type OwnGraphic } from '../../shared/own-graphics.ts';
 import { ShowTemplateManager } from '../components/ShowTemplates.tsx';
+import { GameAssets } from '../components/GameAssets.tsx';
 
 /** A live thumbnail of a graphic with a template (or its default look). */
 export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit }) {
@@ -152,18 +153,19 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
 
 /** Graphics studio (16 Nov): editing only. Looks for Air's graphics, and your own designs. */
 export function StudioScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const [tab, setTab] = useState<'templates' | 'own'>('templates');
+  const [tab, setTab] = useState<'templates' | 'own' | 'assets'>('templates');
   useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id]);
   return (
     <div className="stack" style={{ gap: 26 }}>
-      <PageHeader eyebrow="Graphics studio" title={tab === 'own' ? 'Your designs' : 'Looks'}>
-        {tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : 'Change how Air’s graphics look. A look is used wherever a show picks it; saving updates every match using it.'}
+      <PageHeader eyebrow="Graphics studio" title={tab === 'own' ? 'Your designs' : tab === 'assets' ? 'Game assets' : 'Looks'}>
+        {tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : tab === 'assets' ? 'The game’s official pictures (characters, maps, vehicles, items, logos), ready to put on any graphic.' : 'Change how Air’s graphics look. A look is used wherever a show picks it; saving updates every match using it.'}
       </PageHeader>
       <div className="seg tabs-seg" role="tablist" aria-label="Graphics studio">
         <button role="tab" aria-selected={tab === 'templates'} aria-pressed={tab === 'templates'} onClick={() => setTab('templates')}>Looks{s.templates.length ? ` · ${s.templates.length}` : ''}</button>
         <button role="tab" aria-selected={tab === 'own'} aria-pressed={tab === 'own'} onClick={() => setTab('own')}>Your designs{s.ownGraphics.length ? ` · ${s.ownGraphics.length}` : ''}</button>
+        <button role="tab" aria-selected={tab === 'assets'} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}>Game assets</button>
       </div>
-      {tab === 'own' ? <OwnTab s={s} run={run} /> : <TemplatesTab s={s} />}
+      {tab === 'own' ? <OwnTab s={s} run={run} /> : tab === 'assets' ? <GameAssets s={s} run={run} /> : <TemplatesTab s={s} />}
     </div>
   );
 }
