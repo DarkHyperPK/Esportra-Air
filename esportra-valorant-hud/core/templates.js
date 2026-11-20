@@ -115,6 +115,22 @@
   }
   const withAlpha = (c, a) => (a == null || a >= 1 ? c : `color-mix(in srgb, ${c} ${Math.round(a * 100)}%, transparent)`);
 
+  // Picture slots (20 Nov): parts whose picture a template may replace with one from a game pack or the producer's
+  // own uploads. Data pictures (agents, team logos) are never slots: the game fills them. Air lists the same.
+  const SLOTS = {};
+  function slotsOf(graphic) {
+    const own = SLOTS[graphic] || {};
+    const auto = /\|full$/.test(graphic) && partsOf(graphic).some(p => p[0] === 'background') ? { background: 'background' } : {};
+    return Object.assign({}, auto, own);
+  }
+  /** Only pack files and the producer's uploads, both served by the graphics engine. */
+  const PIC = /^\/(packs\/[a-z0-9]{2,16}\/[0-9a-f]{64}\.(png|jpg|webp)|air-assets\/[0-9a-f-]{36})$/;
+  function picture(p) {
+    const pic = p && p.picture;
+    if (!pic || typeof pic !== 'object' || typeof pic.src !== 'string' || !PIC.test(pic.src)) return null;
+    return { src: pic.src, fit: pic.fit === 'contain' ? 'contain' : 'cover', flip: pic.flip === true };
+  }
+
   /** The inline styles for one part's settings. Anything unknown or out of range is left out. */
   function styles(p) {
     const out = {};
@@ -149,6 +165,20 @@
     }
     if (rad != null) out['border-radius'] = rad + 'px';
     if (DEPTH[p.depth]) out['box-shadow'] = DEPTH[p.depth];
+    const pic = picture(p);
+    if (pic) {
+      out['background-image'] = `url("${pic.src}")`;
+      out['background-size'] = pic.fit; out['background-position'] = 'center'; out['background-repeat'] = 'no-repeat';
+      if (pic.flip) out.transform = 'scaleX(-1)';
+    }
+    return out;
+  }
+  /** The same picture for an <img> part: its content is replaced, so no markup changes. */
+  function imgStyles(css, p) {
+    const pic = picture(p); if (!pic) return css;
+    const out = {};
+    for (const k in css) if (!k.startsWith('background-')) out[k] = css[k];
+    out.content = `url("${pic.src}")`; out['object-fit'] = pic.fit;
     return out;
   }
   const words = v => (typeof v === 'string' && v.length <= 40 && !/[<>]/.test(v) ? v : null);
@@ -165,15 +195,18 @@
     const same = BY_OBJECT && BY_OBJECT.get(template);
     if (same && same.graphic === graphic) return same.list;
     const key = `${graphic}|${template.id}|${template.updatedAt}`;
-    const hit = template.id && template.updatedAt ? COMPILED.get(key) : null;
+    // An editor draft keeps its id and save time while it changes, so it is compiled per message (by object) only.
+    const saved = template.id && template.updatedAt && !template.draft;
+    const hit = saved ? COMPILED.get(key) : null;
     if (hit) { BY_OBJECT && BY_OBJECT.set(template, { graphic, list: hit }); return hit; }
     const list = [];
     for (const [id, , sel, fixed] of partsOf(graphic)) {
       const p = template.parts[id]; if (!p) continue;
       const css = styles(p);
-      list.push({ sel, css, keys: Object.keys(css), label: fixed ? words(p.label) : null, entrance: p.entrance && ENTER[p.entrance.kind] ? p.entrance : null });
+      const img = picture(p) ? imgStyles(css, p) : null;
+      list.push({ sel, css, keys: Object.keys(css), img, imgKeys: img ? Object.keys(img) : null, label: fixed ? words(p.label) : null, entrance: p.entrance && ENTER[p.entrance.kind] ? p.entrance : null });
     }
-    if (template.id && template.updatedAt) { if (COMPILED.size > 40) COMPILED.clear(); COMPILED.set(key, list); }
+    if (saved) { if (COMPILED.size > 40) COMPILED.clear(); COMPILED.set(key, list); }
     if (BY_OBJECT) BY_OBJECT.set(template, { graphic, list });
     return list;
   }
@@ -216,10 +249,12 @@
     list.forEach((c, i) => {
       reach(rootEl, c.sel, roots).forEach(el => {
         const w = want.get(el);
+        const asImg = c.img && el.tagName === 'IMG';
+        const css = asImg ? c.img : c.css;
         // One part on an element shares its compiled styles; a second part makes a merged copy.
-        if (!w) { want.set(el, { css: c.css, keys: c.keys, own: false, label: c.label, sig: i }); return; }
+        if (!w) { want.set(el, { css, keys: asImg ? c.imgKeys : c.keys, own: false, label: c.label, sig: i }); return; }
         if (!w.own) { w.css = { ...w.css }; w.own = true; }
-        Object.assign(w.css, c.css); w.keys = null; if (c.label != null) w.label = c.label; w.sig += ',' + i;
+        Object.assign(w.css, css); w.keys = null; if (c.label != null) w.label = c.label; w.sig += ',' + i;
       });
     });
     const seen = changedUnder(rootEl);
@@ -314,5 +349,5 @@
   /** The graphic a page shows: the full-screen host's current one, or the HUD. */
   const graphicOf = (screen, style) => (screen ? `${screen}|${style === 'band' ? 'band' : 'full'}` : 'hud');
 
-  return { GRAPHICS, FONTS: [...Object.keys(FONTS), 'poppins'], WEIGHTS, BRAND, ENTRANCES: Object.keys(ENTER), styles, apply, enter, appear, brand, graphicOf, partsOf, owned };
+  return { GRAPHICS, SLOTS, slotsOf, FONTS: [...Object.keys(FONTS), 'poppins'], WEIGHTS, BRAND, ENTRANCES: Object.keys(ENTER), styles, apply, enter, appear, brand, graphicOf, partsOf, owned };
 });

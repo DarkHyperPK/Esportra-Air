@@ -1479,7 +1479,7 @@
     // Air's app page is a file, so its origin is not usable: the parent and a one-off key in the URL are checked.
     if (/^AIR_TEMPLATE_/.test(event.data?.type || '') && !OUTPUT && PREVIEW && Q.get('editorKey') && event.data.key === Q.get('editorKey')) {
       const d = event.data;
-      if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template || null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
+      if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template ? Object.assign(d.template, { draft: true }) : null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
       if (d.type === 'AIR_TEMPLATE_PLAY' && HUD.templatePlay) HUD.templatePlay();
       if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); }
       if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS' || d.type === 'AIR_TEMPLATE_SAMPLE') && HUD.templateRects) { sendRects(d.id); watchRects(); }

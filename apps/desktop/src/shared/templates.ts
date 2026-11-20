@@ -34,6 +34,8 @@ export interface PartStyle {
   border?: Border; radius?: number; depth?: 'none' | 'soft' | 'strong';
   /** New words for a fixed label (parts marked `words`). */
   label?: string;
+  /** A picture from a game pack or the producer's uploads, on a part listed in SLOTS (20 Nov). */
+  picture?: PartPicture;
   entrance?: Entrance;
 }
 
@@ -160,6 +162,26 @@ const EXTRA: Record<string, Part[]> = {
 for (const [g, parts] of Object.entries(EXTRA)) GRAPHICS[g]!.parts.push(...parts);
 // ‹ FINE LAYERS
 export const partsOf = (graphic: string) => GRAPHICS[graphic]?.parts ?? [];
+
+// ── Picture slots (20 Nov): parts whose picture a template may replace. Same as SLOTS in core/templates.js. ──
+export type SlotKind = 'character' | 'map' | 'vehicle' | 'item' | 'background' | 'logo-esports' | 'logo-game' | 'logo-ci' | 'any';
+export interface PartPicture { src: string; kind: import('./game-assets.ts').AssetKind; fit?: 'cover' | 'contain'; flip?: boolean }
+export const SLOTS: Record<string, Record<string, SlotKind>> = {};
+export function slotsOf(graphic: string): Record<string, SlotKind> {
+  const auto: Record<string, SlotKind> = graphic.endsWith('|full') && partsOf(graphic).some((p) => p[0] === 'background') ? { background: 'background' } : {};
+  return { ...auto, ...(SLOTS[graphic] ?? {}) };
+}
+/** Only pack files and the producer's uploads, both served by the graphics engine. */
+export const PICTURE_SRC = /^\/(packs\/[a-z0-9]{2,16}\/[0-9a-f]{64}\.(png|jpg|webp)|air-assets\/[0-9a-f-]{36})$/;
+/** Which asset kinds fit a slot: logos only in their own slot; a background takes wallpapers, maps and the producer's own. */
+export function slotFits(slot: SlotKind, kind: import('./game-assets.ts').AssetKind): boolean {
+  if (slot.startsWith('logo-') || kind.startsWith('logo-')) return slot === kind;
+  if (slot === 'any') return true;
+  if (slot === 'background') return kind === 'wallpaper' || kind === 'map' || kind === 'other';
+  return slot === kind || kind === 'other';
+}
+/** Kit art (from a game pack) is used as it is: no fill, colour or fading over it; logos never shrink below half. */
+export const isKitPicture = (p: PartPicture | undefined) => !!p && p.src.startsWith('/packs/');
 /** Layers drawn inside another (17 Nov): "agents.picture" sits under "agents" in the layers list. */
 export const parentOf = (id: string) => (id.includes('.') ? id.split('.')[0]! : id === 'agentnames' ? 'agents' : null);
 
@@ -182,10 +204,10 @@ function colorOf(v: unknown, what: string): ColorRef | undefined {
 const drop = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
 /** One part's settings, checked and trimmed to what the HUD understands. */
-export function validPart(input: unknown, label: string, words: boolean): PartStyle {
+export function validPart(input: unknown, label: string, words: boolean, slot?: SlotKind): PartStyle {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(`${label}: settings are missing.`);
   const p = input as Record<string, unknown>;
-  const known = new Set(['x', 'y', 'scale', 'z', 'hidden', 'locked', 'opacity', 'fill', 'color', 'font', 'weight', 'size', 'spacing', 'caps', 'border', 'radius', 'depth', 'label', 'entrance']);
+  const known = new Set(['x', 'y', 'scale', 'z', 'hidden', 'locked', 'opacity', 'fill', 'color', 'font', 'weight', 'size', 'spacing', 'caps', 'border', 'radius', 'depth', 'label', 'entrance', 'picture']);
   for (const k of Object.keys(p)) if (!known.has(k)) throw new Error(`${label}: unknown setting “${k}”.`);
   const out: PartStyle = {
     x: range(p.x, -1920, 1920, `${label} · X`), y: range(p.y, -1080, 1080, `${label} · Y`), scale: range(p.scale, 0.25, 3, `${label} · scale`),
@@ -219,6 +241,19 @@ export function validPart(input: unknown, label: string, words: boolean): PartSt
     if (typeof p.label !== 'string' || p.label.length > 40 || /[<>]/.test(p.label)) throw new Error(`${label}: up to 40 characters, without < or >.`);
     out.label = p.label;
   }
+  if (p.picture !== undefined) {
+    const pic = p.picture as Record<string, unknown>;
+    if (!slot) throw new Error(`${label}: this part's picture comes from the graphic and can't be changed.`);
+    if (!pic || typeof pic !== 'object' || typeof pic.src !== 'string' || !PICTURE_SRC.test(pic.src)) throw new Error(`${label}: choose a picture from the game pack or your uploads.`);
+    const kind = pic.kind as import('./game-assets.ts').AssetKind;
+    if (typeof kind !== 'string' || !slotFits(slot, kind)) throw new Error(`${label}: that kind of picture doesn't fit here.`);
+    out.picture = drop({ src: pic.src, kind, fit: pic.fit === 'contain' ? 'contain' as const : pic.fit === 'cover' ? 'cover' as const : undefined, flip: pic.flip === true ? true : undefined });
+    if (isKitPicture(out.picture)) {
+      if (out.fill && out.fill.kind !== 'none') throw new Error(`${label}: kit pictures are used as they are (no fill over them).`);
+      if (out.color || (out.opacity !== undefined && out.opacity < 1)) throw new Error(`${label}: kit pictures are used as they are (no colour or fading).`);
+      if (kind.startsWith('logo-') && out.scale !== undefined && out.scale < 0.5) throw new Error(`${label}: the logo can't be made that small.`);
+    }
+  }
   if (p.entrance !== undefined) {
     const e = p.entrance as Record<string, unknown>;
     if (!e || typeof e !== 'object' || !['rise', 'fade', 'slide', 'wipe'].includes(e.kind as string)) throw new Error(`${label}: choose rise, fade, slide or wipe.`);
@@ -240,7 +275,7 @@ export function validTemplate(input: unknown, now = Date.now()): Template {
   for (const [id, v] of Object.entries(raw)) {
     const part = partsOf(t.graphic).find((p) => p[0] === id);
     if (!part) throw new Error(`“${id}” is not a part of ${graphicTitle(t.graphic)}.`);
-    const style = validPart(v, part[1], !!part[2]);
+    const style = validPart(v, part[1], !!part[2], slotsOf(t.graphic)[id]);
     if (Object.keys(style).length) parts[id] = style;
   }
   const out: Template = { id: t.id, name, graphic: t.graphic, parts, createdAt: typeof t.createdAt === 'number' ? t.createdAt : now, updatedAt: now };

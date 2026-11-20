@@ -105,3 +105,22 @@ test('layers: order among siblings and lock are kept; the HUD draws only the ord
   assert.throws(() => validTemplate({ ...ok, parts: { panel: { locked: 'yes' } } }), /locked or not/);
   assert.deepEqual(hud.styles({ z: 12, locked: true }), { 'z-index': '12' }, 'lock is an editor setting only');
 });
+
+test('picture slots: the same in Air and the HUD; only pack or upload pictures, of a kind that fits, kit art kept as it is (20 Nov)', async () => {
+  const { slotsOf, SLOTS } = await import('../src/shared/templates.ts');
+  for (const g of Object.keys(GRAPHICS)) assert.deepEqual(hud.slotsOf(g), slotsOf(g), g);
+  assert.deepEqual(hud.SLOTS, SLOTS);
+  const pack = `/packs/pubgm/${'a'.repeat(64)}.png`;
+  const base = { id: 'look1', name: 'Look', graphic: 'map-result|full' };
+  const t = validTemplate({ ...base, parts: { background: { picture: { src: pack, kind: 'wallpaper', flip: true } } } });
+  assert.deepEqual(t.parts.background, { picture: { src: pack, kind: 'wallpaper', flip: true } });
+  assert.throws(() => validTemplate({ ...base, parts: { background: { picture: { src: 'https://example.com/x.png', kind: 'wallpaper' } } } }), /game pack or your uploads/);
+  assert.throws(() => validTemplate({ ...base, parts: { background: { picture: { src: pack, kind: 'logo-ci' } } } }), /doesn't fit here/);
+  assert.throws(() => validTemplate({ ...base, parts: { background: { picture: { src: pack, kind: 'wallpaper' }, opacity: 0.4 } } }), /used as they are/);
+  assert.throws(() => validTemplate({ ...base, parts: { title: { picture: { src: pack, kind: 'wallpaper' } } } }), /comes from the graphic/);
+  // The producer's own upload may be faded.
+  validTemplate({ ...base, parts: { background: { picture: { src: '/air-assets/7d8c2c55-3a4e-4a8c-9f0e-1b2a3c4d5e6f', kind: 'other' }, opacity: 0.4 } } });
+  const css = hud.styles(t.parts.background);
+  assert.equal(css['background-image'], `url("${pack}")`);
+  assert.equal(css.transform, 'scaleX(-1)');
+});

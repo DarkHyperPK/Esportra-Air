@@ -6,10 +6,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import {
-  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicTitle, newTemplateId, parentOf, partsOf, validTemplate,
+  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicTitle, newTemplateId, parentOf, partsOf, validTemplate, slotsOf, isKitPicture,
   type BrandKit, type ColorRef, type PartStyle, type Template,
 } from '../../shared/templates.ts';
 import { air } from '../bridge.ts';
+import { AssetPicker } from './AssetPicker.tsx';
+import { KIND_LABEL } from '../../shared/game-assets.ts';
 import type { Run } from '../App.tsx';
 
 export type EditorStart = { id?: string; graphic?: string; from?: Template; returnTo?: string };
@@ -99,6 +101,9 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const usable = (id: string) => !draft.parts[id]?.locked && !draft.parts[compOf(id)]?.locked && !draft.parts[id]?.hidden;
   const labelOf = (id: string) => parts.find((x) => x[0] === id)?.[1] ?? id;
   const [here, setHere] = useState<{ x: number; y: number; ids: string[] } | null>(null);
+  // Picture slots (20 Nov): parts whose picture can be changed from a game pack.
+  const slots = useMemo(() => slotsOf(draft.graphic), [draft.graphic]);
+  const [picking, setPicking] = useState(false);
 
   /** Every edit goes through here: one undo step, or one per gesture when `coalesce` names it. */
   const change = useCallback((fn: (t: Template) => Template, coalesce?: string) => {
@@ -339,6 +344,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
               : <><span>{isNew ? 'Discard this new template?' : `Delete “${draft.name}”?${(s.templateUse?.[draft.id] ?? 0) > 0 ? ` It is used in ${s.templateUse[draft.id]} ${s.templateUse[draft.id] === 1 ? 'match' : 'matches'};` : ''} Rundown rows that use it go back to the default look.`}</span><button className="btn small" onClick={() => setConfirm(null)}>Cancel</button><button className="btn danger small" onClick={() => void remove()}>{isNew ? 'Discard' : 'Delete'}</button></>}
           </div>
         )}
+        {picking && part && slots[part[0]] && <AssetPicker s={s} slot={slots[part[0]]!} current={ps.picture} pick={(pic) => { const kit = pic.src.startsWith('/packs/'); setPart(part[0], kit ? { picture: pic, fill: undefined, color: undefined, opacity: undefined } : { picture: pic }); }} close={() => setPicking(false)} />}
         <div className="tpl-body">
           <aside className="tpl-left">
             <label className="stack g-1"><span className="cap">Graphic</span>
@@ -374,7 +380,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                       onDragOver={(e) => { if (!dragging || dragging === id || !siblingsOf(dragging).includes(id)) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDropAt({ id, after: e.clientY > r.top + r.height / 2 }); }}
                       onDrop={(e) => { e.preventDefault(); if (dragging && dropAt) dropPart(dragging, dropAt.id, dropAt.after); setDragging(null); setDropAt(null); }}>
                       <button role="option" aria-selected={id === sel} onClick={() => setSel(id)} title={present ? label : `${label} (not in this sample)`}>
-                        <span>{fold}{label}{children ? <small className="faint"> · {children}</small> : null}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
+                        <span>{fold}{slots[id] ? <span aria-label="picture" title="Picture you can change">🖼 </span> : null}{label}{children ? <small className="faint"> · {children}</small> : null}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
                         <i className={`chg ${p ? 'on' : ''}`} aria-label={p ? 'changed' : undefined} />
                       </button>
                       <button className={`eye ${p?.hidden ? 'off' : ''}`} aria-label={p?.hidden ? `Show ${label}` : `Hide ${label}`} title={p?.hidden ? 'Show' : 'Hide'} onClick={() => setPart(id, { hidden: p?.hidden ? undefined : true })}>{p?.hidden ? '◌' : '●'}</button>
@@ -481,11 +487,27 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                   <Row label="Scale"><Num label="%" value={Math.round((ps.scale ?? 1) * 100)} lo={25} hi={300} onChange={(v) => set({ scale: v === 100 ? undefined : v / 100 }, 'scale')} /><Reset k="scale" /></Row>
                   <Row label="Layer"><div className="row g-1"><button className="chipbtn" onClick={() => step(part[0], -1)}>Back</button><span className="mono t-xs" style={{ whiteSpace: 'nowrap' }} title="Place from the front among its neighbours">{siblingsOf(part[0]).indexOf(part[0]) + 1}/{siblingsOf(part[0]).length}</span><button className="chipbtn" onClick={() => step(part[0], 1)}>Front</button></div><Reset k="z" /></Row>
                 </Group>
+                {slots[part[0]] && (
+                  <Group title="Picture">
+                    <div className="tpl-pic">
+                      <span className="tpl-pic-thumb" style={ps.picture ? { backgroundImage: `url(http://127.0.0.1:${s.engine.port}${ps.picture.src})` } : undefined}>{ps.picture ? '' : 'The graphic’s own'}</span>
+                      <span className="stack g-1"><button className="btn small" onClick={() => setPicking(true)}>Change picture</button>
+                        <span className="faint t-xs">{ps.picture ? `${KIND_LABEL[ps.picture.kind]}${isKitPicture(ps.picture) ? ' · from the official pack' : ''}` : `Takes ${slots[part[0]] === 'background' ? 'wallpapers and maps' : slots[part[0]]!.startsWith('logo-') ? 'the kit’s own logo' : KIND_LABEL[slots[part[0]] as keyof typeof KIND_LABEL]?.toLowerCase() ?? 'pictures'}`}</span></span>
+                    </div>
+                    {ps.picture && (
+                      <>
+                        <Row label="Fit"><Chips value={ps.picture.fit ?? 'cover'} options={[['cover', 'Fill'], ['contain', 'Whole picture']]} onPick={(v) => set({ picture: { ...ps.picture!, fit: v === 'contain' ? 'contain' : undefined } })} /><span /></Row>
+                        <Row label="Flip"><Chips value={ps.picture.flip ? 'on' : 'off'} options={[['off', 'As it is'], ['on', 'Mirrored']]} onPick={(v) => set({ picture: { ...ps.picture!, flip: v === 'on' ? true : undefined } })} /><button type="button" className="tpl-rd set" aria-label="Back to the graphic's own picture" title="Back to the graphic's own picture" onClick={() => set({ picture: undefined })} /></Row>
+                      </>
+                    )}
+                    {isKitPicture(ps.picture) && <p className="faint t-xs">Kit pictures are used as they are: no fill, colour or fading over them. Move, scale and flip are fine.</p>}
+                  </Group>
+                )}
                 <Group title="Visibility and opacity">
                   <Row label="Show"><Chips value={ps.hidden ? 'hidden' : 'shown'} options={[['shown', 'Shown'], ['hidden', 'Hidden']]} onPick={(v) => set({ hidden: v === 'hidden' ? true : undefined })} /><Reset k="hidden" /></Row>
-                  <Row label="Opacity"><Slider value={Math.round((ps.opacity ?? 1) * 100)} onChange={(v) => set({ opacity: v === 100 ? undefined : v / 100 }, 'opacity')} /><Reset k="opacity" /></Row>
+                  {!isKitPicture(ps.picture) && <Row label="Opacity"><Slider value={Math.round((ps.opacity ?? 1) * 100)} onChange={(v) => set({ opacity: v === 100 ? undefined : v / 100 }, 'opacity')} /><Reset k="opacity" /></Row>}
                 </Group>
-                <Group title="Fill">
+                {!isKitPicture(ps.picture) && <Group title="Fill">
                   <Row label="Type"><Chips value={ps.fill?.kind ?? 'own'} options={[['own', 'Own'], ['solid', 'Solid'], ['gradient', 'Gradient'], ['none', 'Clear']]} onPick={(v) => set({ fill: v === 'own' ? undefined : v === 'none' ? { kind: 'none' } : { kind: v as 'solid' | 'gradient', a: ps.fill?.a ?? 'brand.panel', ...(v === 'gradient' ? { b: ps.fill?.b ?? '#05060c', angle: ps.fill?.angle ?? 180 } : {}), alpha: ps.fill?.alpha ?? 0.92 } })} /><Reset k="fill" /></Row>
                   {ps.fill && ps.fill.kind !== 'none' && (
                     <>
@@ -495,7 +517,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                       {ps.fill.kind === 'gradient' && <Row label="Angle"><Num label="°" value={ps.fill.angle ?? 180} lo={0} hi={360} onChange={(v) => set({ fill: { ...ps.fill!, angle: v } }, 'fill-angle')} /><span /></Row>}
                     </>
                   )}
-                </Group>
+                </Group>}
                 <Group title="Text">
                   <ColorPick s={s} brand={brand} label="Colour" value={ps.color} own onPick={(c) => set({ color: c }, 'color')} reset={changed('color') ? () => set({ color: undefined }) : undefined} />
                   <Row label="Font"><select className="cell" aria-label="Font" value={ps.font ?? ''} onChange={(e) => { const font = (e.target.value || undefined) as PartStyle['font']; set({ font, ...(ps.weight && font ? { weight: snapWeight(font, ps.weight) } : {}) }); }}><option value="">Own</option>{FONTS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select><Reset k="font" /></Row>
