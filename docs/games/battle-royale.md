@@ -99,6 +99,30 @@ its own maps.
 
 Already generic in Air: lower thirds, sponsors, ticker, schedule, desk.
 
+## 3a. What the PCOB observer already draws (official PCOB guideline, its screenshots)
+
+| On screen in PCOB | Where | Air builds it? |
+|---|---|---|
+| Players alive and teams left ("Alive 62 · Team 16") with the PUBG MOBILE logo | top left | No |
+| Observed team panel: team kills, each player's name and health bar | top left, below the counters | No |
+| Compass | top centre | No |
+| Minimap with the zone timer, alive count and game time | top right | No |
+| Observed player: team number, name, health, kills, weapon | bottom centre | No |
+| Killfeed with team logos instead of flags (`KillInfoPath`); F8 hides it | game's feed | No |
+| Team number and name tags over players, team logos and colours (`TeamLogoAndColor.ini`) | in the world | No |
+| Full map with players (M), players' menu (L), teams' live status (Tab), replay timeline (J), damage numbers (N), bullet paths (B), see-through (X), item and grenade info (B+team, Shift+B) | on demand | No |
+| Match result after the game (E) | full screen | No; Air's match rankings add the tournament points |
+| Esports livestream mode (F7) hides unnecessary UI; F6 hides all UI | | |
+
+What the game can't know is the tournament: points, standings, match point, event, sponsors.
+
+**What Air builds over the game:**
+- the lobby leaderboard with points (this match and overall);
+- the match and event bar;
+- moments with points: team eliminated with place and points, team wipes, first blood, kill leader, match point, WWCD sting.
+
+**Where Air's pieces go:** the space PCOB leaves free, which is the right edge below the minimap, the bottom left, the bottom right and a band under the compass for moments.
+
 ## 4. Official assets
 
 - **PUBG Mobile kit, received 19 Nov:**
