@@ -12,6 +12,8 @@ import { StageLight } from '../components/FirstRun.tsx';
 import { EventBranding, EventLogo, EventTalent } from './EventScreen.tsx';
 import { AccessRequest } from '../components/AccessRequest.tsx';
 import { TeamMark } from './MatchWorkspace.tsx';
+import { LobbyList, LobbyScreen } from './LobbyScreen.tsx';
+import { gameOf } from '../../shared/games.ts';
 
 export type EventTab = 'matches' | 'branding' | 'talent';
 /** Which event is open: a local event id, `esp:<tournament id>` for an Esportra tournament, or none. */
@@ -151,6 +153,11 @@ function MatchLine({ s, m, label, done }: { s: PageProps['s']; m: Match; label: 
 function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, openRemote, newMatch }: Pick<PageProps, 's' | 'run'> & {
   event: EventInfo; tab: EventTab; setTab: (t: EventTab) => void; back: () => void; remote: EsportraMatch[]; openMatch: (m: Match) => void; openRemote: (e: EsportraMatch) => void; newMatch: () => void;
 }) {
+  // Battle royale games (21 Nov): the event holds lobbies, not matches.
+  const lobbyGame = gameOf(s.setup.game)?.shape === 'lobby';
+  const [lobbyId, setLobbyId] = useState<string | null>(null);
+  const lobby = lobbyId ? s.lobbies.find((l) => l.id === lobbyId) ?? null : null;
+  if (lobbyGame && lobby) return <LobbyScreen s={s} run={run} lobby={lobby} back={() => setLobbyId(null)} />;
   // Finished matches go last; the rest by schedule, then newest first.
   const matches = s.matches.filter((m) => m.eventId === event.id).sort((a, b) => Number(!!a.finishedAt) - Number(!!b.finishedAt) || (a.source?.scheduledAt ?? '').localeCompare(b.source?.scheduledAt ?? '') || b.createdAt - a.createdAt);
   return (
@@ -163,15 +170,16 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
         </div>
         <div className="row-gap">
           <DeleteButton label="Delete event" ask={matches.length ? `Delete ${event.name} and its ${matches.length} match${matches.length === 1 ? '' : 'es'}?` : `Delete ${event.name}?`} onDelete={() => void run(async () => { await air.deleteEvent(event.id); back(); })} />
-          <button className="btn primary" onClick={newMatch}>New match</button>
+          {!lobbyGame && <button className="btn primary" onClick={newMatch}>New match</button>}
         </div>
       </header>
       <div className="tabs" role="tablist" aria-label="Event">
-        {([['matches', 'Matches'], ['branding', 'Branding'], ['talent', 'Talent and sponsors']] as Array<[EventTab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+        {([['matches', lobbyGame ? 'Lobbies' : 'Matches'], ['branding', 'Branding'], ['talent', 'Talent and sponsors']] as Array<[EventTab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
       {tab === 'branding' && <EventBranding s={s} run={run} event={event} />}
       {tab === 'talent' && <EventTalent s={s} run={run} event={event} />}
-      {tab === 'matches' && (
+      {tab === 'matches' && lobbyGame && <LobbyList s={s} run={run} eventId={event.id} open={setLobbyId} />}
+      {tab === 'matches' && !lobbyGame && (
         <section className="stack" style={{ gap: 8 }}>
           {!matches.length && !remote.length && <p className="muted ap-empty">No matches in this event yet. Press New match to add one.</p>}
           <div className="lst">
