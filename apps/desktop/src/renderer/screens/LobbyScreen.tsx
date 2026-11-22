@@ -7,8 +7,9 @@ import { SCORING_PRESETS, gamePoints, standings, type Scoring, type TeamResult }
 import { gameOf } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
+import { LobbyGraphics } from '../components/LobbyGraphics.tsx';
 
-type Tab = 'results' | 'teams' | 'games' | 'scoring';
+type Tab = 'results' | 'teams' | 'games' | 'scoring' | 'graphics';
 type Draft = Record<string, { place: string; elims: string }>;
 
 const MAPS: Record<string, string[]> = { pubgm: ['Erangel', 'Miramar', 'Sanhok', 'Vikendi', 'Livik', 'Rondo', 'Nusa', 'Karakin'], freefire: ['Bermuda', 'Purgatory', 'Kalahari', 'Alpine', 'Nexterra'] };
@@ -34,12 +35,13 @@ export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lo
           : <button className="btn primary" onClick={() => void run(() => air.lobbySelect(lobby.id))}>Use this lobby on the graphics</button>}
       </header>
       <div className="tabs" role="tablist" aria-label="Lobby">
-        {([['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['games', `${word}es and maps`], ['scoring', 'Scoring']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+        {([['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['games', `${word}es and maps`], ['scoring', 'Scoring'], ['graphics', 'Graphics']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
       {tab === 'results' && <Results run={run} lobby={lobby} word={word} goTeams={() => setTab('teams')} />}
       {tab === 'teams' && <Teams s={s} run={run} lobby={lobby} />}
       {tab === 'games' && <Games run={run} lobby={lobby} word={word} />}
       {tab === 'scoring' && <ScoringTab run={run} lobby={lobby} />}
+      {tab === 'graphics' && <LobbyGraphics s={s} run={run} lobby={lobby} />}
     </div>
   );
 }
@@ -74,7 +76,7 @@ function Results({ run, lobby, word, goTeams }: { run: Run; lobby: Lobby; word: 
   };
   const canSave = rows.length > 0 && !dup.size && !outOfRange && changed;
   return (
-    <div className="lb-grid">
+    <div className="lbs-grid">
       <section className="card" aria-label="Results">
         <div className="lb-head"><h2 className="title-sm">{word} {game.n}{game.map ? ` · ${game.map}` : ''}</h2>{changed && <span className="chip warn">Not saved</span>}<span style={{ flex: 1 }} />
           {!!game.results?.length && <button className="btn small" onClick={() => void run(() => air.lobbyClearResult(lobby.id, game.n))}>Clear</button>}

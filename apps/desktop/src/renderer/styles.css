@@ -1384,8 +1384,8 @@ button.ev-add:hover, button.ev-add:focus-visible { border-color: var(--white); c
 /* Battle royale lobby (approved mock, 21 Nov) */
 .lb-title { font: 700 26px/1.2 var(--font, inherit); background: none; border: 0; color: var(--text); padding: 0; width: min(560px, 90vw); }
 .lb-title:focus { outline: 1px dashed var(--line); }
-.lb-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 1100px) { .lb-grid { grid-template-columns: 1fr; } }
+.lbs-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .lbs-grid { grid-template-columns: 1fr; } }
 .lb-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line, #2a2f3a); }
 .lb-games { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line, #2a2f3a); }
 .lb-g { display: grid; gap: 1px; text-align: left; min-width: 96px; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--line, #2a2f3a); background: transparent; color: var(--text-2); font-size: var(--t-sm); cursor: pointer; }
@@ -1408,3 +1408,16 @@ button.ev-add:hover, button.ev-add:focus-visible { border-color: var(--white); c
 .lb-team { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line, #2a2f3a); border-radius: 8px; cursor: pointer; }
 .lb-team.on { border-color: var(--sel); background: var(--sel-soft); }
 .lb-team small { margin-left: auto; }
+
+/* Lobby › Graphics (22 Nov): the battle royale HUD layouts and full screens. */
+.lbg-note { margin: 0; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--hair-strong); color: var(--text-2); }
+.lbg-note.warn { border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.07); color: var(--text); }
+.lbg-hud { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.lbg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.lbg-card { display: grid; gap: 8px; align-content: start; padding: 10px; text-align: left; color: var(--text); font: inherit; }
+button.lbg-card { cursor: pointer; }
+.lbg-card.sel { border-color: var(--sel); box-shadow: inset 0 0 0 1px var(--sel); }
+.lbg-card.live { border-color: var(--rose); box-shadow: inset 0 0 0 1px var(--rose); }
+.lbg-acts { flex-wrap: wrap; }
+.lbg-acts select { max-width: 150px; }
+@media (max-width: 1000px) { .lbg-hud { grid-template-columns: minmax(0, 1fr); } }

@@ -113,8 +113,11 @@ export interface Lobby {
   teams: import('./br.ts').LobbyTeam[];
   games: import('./br.ts').LobbyGame[];
   scoring: import('./br.ts').Scoring;
+  /** How the lobby's graphics look (22 Nov): the HUD layout, the strip's pop-up, a template per graphic. */
+  look?: LobbyLook;
   createdAt: number;
 }
+export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; templates: Record<string, string> }
 
 export interface Screen {
   /** Stable id for the screen in Air. */
@@ -412,6 +415,8 @@ export interface Snapshot {
   /** Battle royale lobbies and the selected one (src/shared/br.ts works out their standings). */
   lobbies: Lobby[];
   selectedLobbyId: string | null;
+  /** The full screen Air last took on the selected lobby's room (src/main/br-graphics.ts). */
+  lobbyOnAir: string | null;
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
   /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
   recovery: string | null;
@@ -594,6 +599,9 @@ export interface AirApi {
   lobbyClearResult(id: string, game: number): Promise<Snapshot>;
   lobbySelect(id: string | null): Promise<Snapshot>;
   lobbyDelete(id: string): Promise<Snapshot>;
+  lobbyLook(id: string, look: Partial<LobbyLook>): Promise<Snapshot>;
+  /** Take one of the lobby's full screens on its room, or clear with null. */
+  lobbyTake(id: string, screen: string | null): Promise<Snapshot>;
   packAssets(game: string): Promise<Array<import('./game-assets.ts').GameAsset & { src: string; thumbSrc: string }>>;
   /** Forgets this match's autopilot progress so the rundown starts again from the first step. */
   autopilotRestart(): Promise<Snapshot>;

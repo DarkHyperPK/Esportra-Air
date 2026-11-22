@@ -42,6 +42,29 @@ const NAMES = ['NIGHT OWLS','CRIMSON FIVE','IRON PINE','DUNE RUNNERS','SILVER FO
   if (JSON.stringify(top) !== JSON.stringify([['IRON PINE', 17], ['NIGHT OWLS', 15], ['NORTH TIDE', 11]])) throw new Error('room standings: ' + JSON.stringify(top));
   if (snap.selectedLobbyId !== l.id) throw new Error('the new lobby is not on the graphics');
   if (SHOTS) await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-results.png') });
+  // Graphics (22 Nov): pick the grid HUD, take Overall standings, then clear it; the room follows each step.
+  const roomNow = async () => { const r = await (await fetch(`http://127.0.0.1:${ENGINE}/api/${l.code}`)).json(); return r.state ?? r; };
+  await p.getByRole('tab', { name: 'Graphics' }).click();
+  await p.waitForTimeout(800); // the stills settle
+  const grid = p.getByRole('radio', { name: /Points grid/ });
+  for (let i = 0; i < 3 && (await grid.getAttribute('aria-checked')) !== 'true'; i++) { await grid.click(); await p.waitForTimeout(400); }
+  for (let i = 0; i < 20 && (await roomNow()).layout?.brHud !== 'grid'; i++) await p.waitForTimeout(150);
+  if ((await roomNow()).layout?.brHud !== 'grid') { await p.screenshot({ path: '/tmp/claude-0/-home-user/1e8df9ea-c779-5a1d-81d3-11e615499255/scratchpad/br5/fail.png' }); throw new Error('the HUD layout did not reach the room: ' + JSON.stringify((await call('snapshot')).lobbies[0].look)); }
+  const card = p.locator('.lbg-card').filter({ hasText: 'Overall standings' });
+  await card.getByRole('button', { name: 'Take' }).click();
+  await card.getByText('On air').waitFor();
+  if ((await roomNow()).airFullscreen !== 'br-overall') throw new Error('Take did not reach the room: ' + (await roomNow()).airFullscreen);
+  // The full-screen host on the lobby's room draws the lobby's real standings.
+  const fs = await b.newPage({ viewport: { width: 1920, height: 1080 } });
+  await fs.goto(`http://127.0.0.1:${ENGINE}/overlays/fullscreen.html?match=${l.code}`);
+  await fs.locator('.brf-overall .brf-pc.first .n').waitFor({ timeout: 8000 });
+  const leader = await fs.locator('.brf-overall .brf-pc.first .n').textContent();
+  if (leader !== 'IRON PINE') throw new Error('the host shows ' + leader);
+  if (SHOTS) { await fs.waitForTimeout(1500); await fs.screenshot({ path: require('node:path').join(SHOTS, 'lobby-overall-on-air.png') }); await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-graphics.png') }); }
+  await fs.close();
+  await card.getByRole('button', { name: 'Clear' }).click();
+  for (let i = 0; i < 20 && (await roomNow()).airFullscreen; i++) await p.waitForTimeout(150);
+  if ((await roomNow()).airFullscreen) throw new Error('Clear did not reach the room');
   if (errs.length) throw new Error('page errors: ' + errs.join('; '));
   console.log('Lobby walk complete');
   await b.close();

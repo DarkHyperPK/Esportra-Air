@@ -16,6 +16,8 @@ export interface LobbyContext {
   live: (lobbyId: string) => boolean;
   log: (text: string) => void;
   changed: () => void;
+  /** Room fields the lobby graphics read besides `br` (src/main/br-graphics.ts). */
+  extra?: (lobby: Lobby) => Record<string, unknown>;
 }
 
 const MAX_TEAMS = 25, MAX_GAMES = 24;
@@ -132,6 +134,9 @@ export class Lobbies {
     if (won && !champion(l)) this.ctx.log(`${l.title}: ${l.teams.find((t) => t.id === won.team)?.name ?? 'A team'} took the title in game ${won.game} (match point)`);
   }
 
+  /** How the lobby's graphics look (validated by br-graphics.ts `validLook`). */
+  setLook(id: string, look: Lobby['look']) { this.put({ ...this.find(id), look }); }
+
   clearResult(id: string, n: number) {
     const l = this.find(id);
     this.put({ ...l, games: l.games.map((g) => (g.n === n ? { n: g.n, map: g.map, ...(g.startsAt ? { startsAt: g.startsAt } : {}) } : g)) });
@@ -172,6 +177,6 @@ export class Lobbies {
 
   async publish() {
     const l = this.selected;
-    if (l) await this.ctx.patch(l.code, Lobbies.roomField(l));
+    if (l) await this.ctx.patch(l.code, { ...(this.ctx.extra?.(l) ?? {}), ...Lobbies.roomField(l) });
   }
 }

@@ -29,6 +29,7 @@ import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { GamePacks } from './game-packs.ts';
 import { Lobbies } from './br-lobbies.ts';
+import { BrGraphics, validLook as validLobbyLook } from './br-graphics.ts';
 import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
 import { Rehearsal } from './rehearsal.ts';
 import type { EsportraAccount } from './esportra.ts';
@@ -148,6 +149,7 @@ export class Production extends EventEmitter {
   readonly art: ArtCache;
   readonly packs: GamePacks;
   readonly lobbies: Lobbies;
+  readonly brGraphics: BrGraphics;
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
@@ -179,7 +181,17 @@ export class Production extends EventEmitter {
       store: deps.store, log: (t) => this.log.add(t), changed: () => this.emit('change'),
       patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
       live: (id) => !!this.gameLocked() && deps.store.data.selectedLobbyId === id,
+      extra: (l) => this.brGraphics.roomFields(l),
     });
+    // Lobby graphics on air (22 Nov): src/main/br-graphics.ts.
+    this.brGraphics = new BrGraphics({
+      action: async (room, name, args) => { if (!deps.engine.status) throw new Error('The graphics engine is not running.'); await this.client.post('/control/action', { match: room, name, args }); },
+      assets: (l) => (deps.store.data.events.find((e) => e.id === l.eventId)?.gameLicence?.[l.game] ? this.packs.assets(l.game) : []),
+      templates: (l) => ({ ...this.looks.state(), airBrand: this.brandOf(deps.store.data.events.find((e) => e.id === l.eventId) ?? null) }),
+      templateGraphic: (id) => this.looks.templates.find((t) => t.id === id)?.graphic ?? null,
+      eventName: (l) => deps.store.data.events.find((e) => e.id === l.eventId)?.name ?? '',
+    });
+    this.packs.on('change', () => void this.lobbies.publish().catch(() => {}));
     void this.startPacks();
     this.rehearsal = new Rehearsal({
       client: () => deps.engine.client, store: deps.store, match: () => this.match, screens: () => this.setup.screens,
@@ -1006,8 +1018,28 @@ export class Production extends EventEmitter {
 
   readonly looks: Looks;
   get templates(): Template[] { return this.looks.templates; }
-  templateSave(input: unknown) { return this.looks.save(input); }
-  templateDelete(id: string) { return this.looks.delete(id); }
+  templateSave(input: unknown) { const r = this.looks.save(input); void this.lobbies.publish().catch(() => {}); return r; }
+  templateDelete(id: string) {
+    const r = this.looks.delete(id);
+    // A deleted look leaves every lobby that used it.
+    for (const l of this.lobbies.list()) { const t = l.look?.templates ?? {}; if (Object.values(t).includes(id)) this.lobbies.setLook(l.id, { ...BrGraphics.lookOf(l), templates: Object.fromEntries(Object.entries(t).filter(([, v]) => v !== id)) }); }
+    void this.lobbies.publish().catch(() => {});
+    return r;
+  }
+
+  // ── battle royale lobbies on air: src/main/br-graphics.ts ──
+  lobbyLook(id: string, patch: unknown) {
+    const l = this.lobbies.find(id);
+    const p = (patch ?? {}) as Record<string, unknown>;
+    const cur = BrGraphics.lookOf(l);
+    this.lobbies.setLook(id, validLobbyLook({ ...cur, ...p, templates: p.templates === undefined ? cur.templates : { ...cur.templates, ...(p.templates as object) } }, (t) => this.looks.templates.find((x) => x.id === t)?.graphic ?? null));
+  }
+  async lobbyTake(id: string, screen: string | null) {
+    const l = this.lobbies.find(id);
+    if (this.deps.store.data.selectedLobbyId !== id) await this.lobbies.select(id);
+    await this.brGraphics.take(l, screen);
+    this.emit('change');
+  }
   private breakLook() { return this.looks.breakLook(); }
   /** Holders Air adds: Break's windows only with the frame look; a desk camera holder only for talent with a camera. */
   private slotWanted(id: string) {
@@ -1037,6 +1069,7 @@ export class Production extends EventEmitter {
       m.sponsorsOff = m.sponsorsOff.filter((id) => next.sponsors.some((s) => s.id === id));
     }
     this.save();
+    void this.lobbies.publish().catch(() => {});
     if (this.match?.eventId === next.id) await this.syncEngine();
   }
 
@@ -1850,6 +1883,7 @@ export class Production extends EventEmitter {
       art: this.art.status,
       packs: this.packsView(),
       lobbies: this.lobbies.list(),
+      lobbyOnAir: this.lobbies.selected ? this.brGraphics.onAir(this.lobbies.selected) : null,
       selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),
     };
