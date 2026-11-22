@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
+import { gameOf } from '../../shared/games.ts';
 import { LIBRARY, inShow } from '../../shared/library.ts';
 import { PackWindow } from '../components/PackWindow.tsx';
 import { air } from '../bridge.ts';
 import { overlayUrl, StillPreview, stillKey } from '../components/Preview.tsx';
 import type { PageProps, Run } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
-import { GRAPHICS, graphicTitle, type BrandKit, type Template } from '../../shared/templates.ts';
+import { GRAPHICS, graphicTitle, graphicsFor, type BrandKit, type Template } from '../../shared/templates.ts';
 import { brandOfMatch, openTemplateEditor, templatePreviewUrl } from '../components/TemplateEditor.tsx';
 import { OwnGraphicEditor, blankOwn } from '../components/OwnGraphicEditor.tsx';
 import { OWN_PURPOSES, ownScreenId, type OwnGraphic } from '../../shared/own-graphics.ts';
@@ -25,7 +26,7 @@ const GROUPS: Array<[string, string, (g: string) => boolean]> = [
   ['band', 'Overlay bar', (g) => g.endsWith('|band') && !SCENE(g)],
   ['full', 'Full screen', (g) => g.endsWith('|full') && !SCENE(g)],
   ['scene', 'Scene screens', SCENE],
-  ['hud', 'In-game HUD', (g) => g === 'hud'],
+  ['hud', 'In-game HUD', (g) => g === 'hud' || g === 'brhud'],
 ];
 
 /** Graphics › Templates: your saved looks by graphic, the built-in looks to start from, and New template. */
@@ -67,7 +68,8 @@ function OwnTab({ s, run }: { s: Snapshot; run: Run }) {
 }
 
 function TemplatesTab({ s }: { s: Snapshot }) {
-  const [graphic, setGraphic] = useState('map-veto|band');
+  const shown = graphicsFor(gameOf(s.setup.game)?.shape ?? 'versus');
+  const [graphic, setGraphic] = useState(() => shown[0] ?? 'map-veto|band');
   const [show, setShow] = useState<'all' | 'builtin' | 'yours'>('all');
   const uses = (id: string) => s.templateUse?.[id] ?? 0;
   return (
@@ -79,14 +81,15 @@ function TemplatesTab({ s }: { s: Snapshot }) {
             {([['all', 'All'], ['builtin', 'Built in'], ['yours', 'Yours']] as const).map(([v, l]) => <button key={v} aria-pressed={show === v} onClick={() => setShow(v)}>{l}</button>)}
           </div>
           <select className="cell" aria-label="Graphic for a new template" value={graphic} onChange={(e) => setGraphic(e.target.value)}>
-            {GROUPS.map(([k, label, fits]) => <optgroup key={k} label={label}>{Object.keys(GRAPHICS).filter(fits).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>)}
+            {GROUPS.map(([k, label, fits]) => <optgroup key={k} label={label}>{shown.filter(fits).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>)}
           </select>
           <button className="btn primary" onClick={() => openTemplateEditor({ graphic })}>+ New template</button>
         </span>
       </div>
       {GROUPS.map(([k, label, fits]) => {
-        const mine = show === 'builtin' ? [] : s.templates.filter((t) => fits(t.graphic));
-        const builtin = show === 'yours' ? [] : Object.keys(GRAPHICS).filter(fits);
+        const mine = show === 'builtin' ? [] : s.templates.filter((t) => fits(t.graphic) && shown.includes(t.graphic));
+        const builtin = show === 'yours' ? [] : shown.filter(fits);
+        if (!mine.length && !builtin.length) return null;
         return (
           <section key={k} className="stack g-2" aria-label={label}>
             <span className="cap">{label}</span>

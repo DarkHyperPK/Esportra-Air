@@ -9,10 +9,11 @@ const { chromium } = require('playwright');
 const HOST = process.argv.find((a) => a.startsWith('http')) || 'http://127.0.0.1:5320';
 const jsonOut = process.argv.includes('--json') ? process.argv[process.argv.indexOf('--json') + 1] : null;
 
-const PAGE = (g) => (g === 'hud' ? 'ingame' : (() => { const [screen, style] = g.split('|'); return style === 'band' ? (screen === 'holding' ? 'break-frame' : `${screen}-band`) : screen; })());
+const PAGE = (g) => (g === 'hud' ? 'ingame' : g === 'brhud' ? 'br-hud' : (() => { const [screen, style] = g.split('|'); return style === 'band' ? (screen === 'holding' ? 'break-frame' : `${screen}-band`) : screen; })());
 const SAMPLES = {
   hud: ['', 'spike', 'pause', 'timeout', 'banner', 'poll', 'scoreboard', 'economy', 'recap', 'duel', 'compare', 'lowerthird', 'sponsor'],
   'holding|full': ['starting', 'brb', 'ending'],
+  brhud: ['rail', 'grid', 'strip'],
 };
 
 async function audit(page, graphic) {

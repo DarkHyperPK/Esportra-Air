@@ -6,12 +6,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import {
-  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicTitle, newTemplateId, parentOf, partsOf, validTemplate, slotsOf, isKitPicture,
+  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicsFor, graphicTitle, newTemplateId, parentOf, partsOf, validTemplate, slotsOf, isKitPicture,
   type BrandKit, type ColorRef, type PartStyle, type Template,
 } from '../../shared/templates.ts';
 import { air } from '../bridge.ts';
 import { AssetPicker } from './AssetPicker.tsx';
 import { KIND_LABEL } from '../../shared/game-assets.ts';
+import { gameOf } from '../../shared/games.ts';
 import type { Run } from '../App.tsx';
 
 export type EditorStart = { id?: string; graphic?: string; from?: Template; returnTo?: string };
@@ -311,7 +312,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const changed = (k: keyof PartStyle) => ps[k] !== undefined;
   const Reset = ({ k }: { k: keyof PartStyle }) => <button type="button" className={`tpl-rd ${changed(k) ? 'set' : ''}`} title="Back to the graphic's own" aria-label={`Reset ${String(k)}`} disabled={!changed(k)} onClick={() => set({ [k]: undefined })} />;
   const box = part ? union(part[0]) : null;
-  const graphicsList = Object.keys(GRAPHICS);
+  const graphicsList = graphicsFor(gameOf(s.setup.game)?.shape ?? 'versus');
 
   return (
     <div className="scrim tpl-scrim" role="dialog" aria-modal="true" aria-label={`Template editor: ${draft.name}`}>
@@ -352,7 +353,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 <optgroup label="Overlay bar">{graphicsList.filter((g) => g.endsWith('|band') && !g.startsWith('holding|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
                 <optgroup label="Full screen">{graphicsList.filter((g) => g.endsWith('|full') && !g.startsWith('holding|') && !g.startsWith('casters|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
                 <optgroup label="Scene screens">{graphicsList.filter((g) => g.startsWith('holding|') || g.startsWith('casters|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
-                <optgroup label="In-game HUD"><option value="hud">In-game HUD</option></optgroup>
+                <optgroup label="In-game HUD">{graphicsList.filter((g) => g === 'hud' || g === 'brhud').map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
               </select>
             </label>
             {!isNew && <p className="faint t-xs">A template stays with its graphic. For another graphic, start a new template.</p>}
@@ -402,10 +403,10 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
               </div>
               {SAMPLES[draft.graphic] && (
                 <span className="tpl-anchor">
-                  <button className="btn small" aria-haspopup="menu" aria-expanded={menu === 'sample'} onClick={() => setMenu(menu === 'sample' ? null : 'sample')}>Sample: {SAMPLES[draft.graphic]!.find((x) => x.id === sample)?.name ?? (draft.graphic === 'hud' ? 'Round live' : 'Starting soon')} ▾</button>
+                  <button className="btn small" aria-haspopup="menu" aria-expanded={menu === 'sample'} onClick={() => setMenu(menu === 'sample' ? null : 'sample')}>Sample: {SAMPLES[draft.graphic]!.find((x) => x.id === sample)?.name ?? SAMPLES[draft.graphic]![0]!.name} ▾</button>
                   {menu === 'sample' && (
                     <div className="tpl-menu" role="menu" aria-label="Sample">
-                      <span className="cap">{draft.graphic === 'hud' ? 'In-game HUD' : 'Screen'}</span>
+                      <span className="cap">{draft.graphic === 'hud' || draft.graphic === 'brhud' ? 'In-game HUD' : 'Screen'}</span>
                       {SAMPLES[draft.graphic]!.map((x) => <button key={x.id} role="menuitemradio" aria-checked={(sample || SAMPLES[draft.graphic]![0]!.id) === x.id} onClick={() => { setSample(x.id); setMenu(null); }}>{x.name}</button>)}
                     </div>
                   )}
