@@ -323,7 +323,8 @@ body.full #shade.on{display:block}
   await ui.zoomTo(f, 1, 0, 0, 10);
   await ui.click(f, app.getByRole('button', { name: /Teams\/Players/ }).first(), { frames: 10, after: 24 });
   await f.until(14);
-  await rail('Events').click(); await app.waitForTimeout(500);
+  await app.reload(); await app.locator('nav.rail').waitFor(); await ui.dress();
+  await rail('Events').click(); await app.locator('.ev-card').filter({ hasText: 'Friday Scrims' }).waitFor({ timeout: 20000 });
   f = shot('standalone');
   await f.scene('win', { k: 'TWO WAYS IN', t: 'Or a standalone match <em>in seconds</em>', s: 'Your own event, your saved teams. Nothing to set up twice.' });
   f.use(app);
