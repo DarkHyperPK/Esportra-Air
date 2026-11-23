@@ -187,3 +187,7 @@ Needed from the producer:
 - stills, or a VOD link with timestamps, for the items still marked *;
 - the Free Fire brand kit, if Garena provides one;
 - a decision on applying for a PUBG Mobile tournament licence, which comes with PCOB and the live API.
+
+## 8. Built (24 Nov)
+
+The PCOB feed is built in Air itself (not the Player app, not a Rust parser): PCOB already serves structured JSON on the network, so Air polls it after the consent tick and writes `brLive` into the lobby room every second. See the "PUBG MOBILE live data" row in `CLAUDE.md`.

@@ -46,6 +46,9 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'lobbySelect': await p.lobbies.select(a[0] === null ? null : String(a[0])); break;
     case 'lobbyDelete': p.lobbies.remove(String(a[0])); break;
     case 'lobbyLook': p.lobbyLook(String(a[0]), a[1]); break;
+    case 'pcobConnect': p.pcobConnect(a[0], a[1]); break;
+    case 'pcobDisconnect': p.pcobDisconnect(); break;
+    case 'pcobSeat': p.pcobSeat(String(a[0]), a[1], a[2]); break;
     case 'lobbyPreview': return p.lobbyPreview(String(a[0]), a[1]);
     case 'lobbyTake': await p.lobbyTake(String(a[0]), a[1] === null ? null : String(a[1])); break;
     case 'autopilotRestart': p.autopilotRestart(); break;

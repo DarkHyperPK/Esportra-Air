@@ -1428,3 +1428,17 @@ button.ev-add:hover, button.ev-add:focus-visible { border-color: var(--white); c
 .bt-colour input[type=color] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line, #333); border-radius: 6px; background: none; cursor: pointer; }
 .bt-actions { flex-wrap: wrap; padding-top: 6px; }
 @media (max-width: 1180px) { .bt { grid-template-columns: 1fr; } .bt-side { position: static; } }
+
+/* Live › Game data (PCOB, 24 Nov) */
+.pcob-btn .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--faint, #666); vertical-align: middle; }
+.pcob-btn.live .dot, .pcob-state.live b { color: var(--ok, #34d399); }
+.pcob-btn.live .dot { background: var(--ok, #34d399); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok, #34d399) 25%, transparent); }
+.pcob-btn.waiting .dot { background: var(--accent, #60a5fa); }
+.pcob-btn.error .dot { background: var(--rose, #f43f5e); }
+.pcob-state.error { border-color: color-mix(in srgb, var(--rose, #f43f5e) 45%, transparent); }
+.pcob-slots { display: grid; gap: 4px; max-height: 46vh; overflow: auto; }
+.pcob-slot { display: grid; grid-template-columns: 40px minmax(0, 1fr) 200px; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 6px; background: var(--surface-2, rgba(255,255,255,.03)); }
+.pcob-slot small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcob-slot.open { outline: 1px solid color-mix(in srgb, var(--amber, #fbbf24) 55%, transparent); }
+.warn-text { color: var(--amber, #fbbf24); }
+.pcob-state { padding: 12px 14px; }

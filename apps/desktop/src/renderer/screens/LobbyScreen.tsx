@@ -76,13 +76,17 @@ export function Results({ run, lobby, word, goTeams }: { run: Run; lobby: Lobby;
   return (
     <div className="lbs-grid">
       <section className="card" aria-label="Results">
-        <div className="lb-head"><h2 className="title-sm">{word} {game.n}{game.map ? ` · ${game.map}` : ''}</h2>{changed && <span className="chip warn">Not saved</span>}<span style={{ flex: 1 }} />
+        <div className="lb-head"><h2 className="title-sm">{word} {game.n}{game.map ? ` · ${game.map}` : ''}</h2>{changed && <span className="chip warn">Not saved</span>}
+          {!changed && game.source === 'pcob' && <span className="chip ok" title="Places and team kills from the observer PC. Edit any number and save to correct it.">From the game · edit to correct</span>}
+          {!changed && game.source === 'producer' && game.gameResults && <span className="chip" title="You changed what the game gave; the game's own results are kept.">Edited · the game&rsquo;s copy kept</span>}
+          {!changed && game.feed && !game.results?.length && <span className="chip warn" title="The game ended without a place for every team; its players' numbers are saved.">Players saved · type the places</span>}
+          <span style={{ flex: 1 }} />
           {!!game.results?.length && <button className="btn small" onClick={() => void run(() => air.lobbyClearResult(lobby.id, game.n))}>Clear</button>}
           <button className="btn primary small" disabled={!canSave} onClick={() => void run(() => air.lobbyResult(lobby.id, game.n, rows))}>Save and put on air</button></div>
         <div className="lb-games" role="tablist" aria-label={`${word}es`}>
           {lobby.games.map((g) => (
             <button key={g.n} role="tab" aria-selected={g.n === n} className={`lb-g ${g.results?.length ? 'done' : ''} ${g.n === n ? 'on' : ''}`} onClick={() => setN(g.n)}>
-              {word} {g.n}{g.map ? ` · ${g.map}` : ''}<small>{g.results?.length ? 'Saved' : g.n === n ? 'Entering' : 'To play'}</small>
+              {word} {g.n}{g.map ? ` · ${g.map}` : ''}<small>{g.results?.length ? (g.source === 'pcob' ? 'From the game' : 'Saved') : g.n === n ? 'Entering' : 'To play'}</small>
             </button>
           ))}
         </div>

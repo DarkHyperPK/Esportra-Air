@@ -20,8 +20,16 @@ export const SCORING_PRESETS: Record<'pmgc' | 'ffws', { name: string; scoring: S
 };
 
 export interface TeamResult { team: string; place: number; elims: number }
-export interface LobbyTeam { teamId: string | null; id: string; name: string; tag: string; color: string; logo: string; players: string[]; /** Each player's Teams/Players photo, '' for none (the graphics draw a grey shadow). */ photos?: string[] }
-export interface LobbyGame { n: number; map: string; startsAt?: string; results?: TeamResult[]; finishedAt?: number }
+export interface LobbyTeam { teamId: string | null; id: string; name: string; tag: string; color: string; logo: string; players: string[]; /** Each player's Teams/Players photo, '' for none (the graphics draw a grey shadow). */ photos?: string[]; /** PCOB OpenIDs Teams/Players has learned for these players (seat the team at once). */ openIds?: string[] }
+export interface LobbyGame {
+  n: number; map: string; startsAt?: string; results?: TeamResult[]; finishedAt?: number;
+  /** Where the results came from (24 Nov): the observer feed, or the producer (typed, or an edit of the game's). */
+  source?: 'pcob' | 'producer';
+  /** The game's own results, kept when the producer edits them. */
+  gameResults?: TeamResult[];
+  /** What the observer feed gave for this game: every player's final numbers, the kill feed, the circles. */
+  feed?: import('./br-stats.ts').GameFeed;
+}
 export interface LobbyCore { teams: LobbyTeam[]; games: LobbyGame[]; scoring: Scoring }
 
 export interface Standing {

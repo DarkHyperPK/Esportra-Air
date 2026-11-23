@@ -4,7 +4,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { LibTeam, LibPlayer, Lobby } from '../shared/api.ts';
-import { SCORING_PRESETS, champion, standings, validResults, validScoring, type LobbyTeam, type Scoring } from '../shared/br.ts';
+import { SCORING_PRESETS, champion, standings, validResults, validScoring, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
+import type { GameFeed } from '../shared/br-stats.ts';
 import { gameOf, type GameId } from '../shared/games.ts';
 import type { Store } from './store.ts';
 
@@ -105,7 +106,8 @@ export class Lobbies {
     const roster = (this.data.players ?? []).filter((p: LibPlayer) => p.teamId === t.id);
     const players = roster.map((p) => p.gameId || p.name);
     const photos = roster.map((p) => p.photo || '');
-    return { id: keepId ?? randomUUID(), teamId: t.id, name: t.name, tag: t.tag, color: t.color, logo: t.logo, players, ...(photos.some(Boolean) ? { photos } : {}) };
+    const openIds = roster.map((p) => p.openId || '');
+    return { id: keepId ?? randomUUID(), teamId: t.id, name: t.name, tag: t.tag, color: t.color, logo: t.logo, players, ...(photos.some(Boolean) ? { photos } : {}), ...(openIds.some(Boolean) ? { openIds } : {}) };
   }
 
   /** Teams/Players changed: every lobby follows its teams' names, colours, logos and players. */
@@ -127,7 +129,9 @@ export class Lobbies {
     const game = l.games.find((g) => g.n === n);
     if (!game) throw new Error('That game is not in this lobby.');
     const results = validResults(rows, l.teams);
-    const next = { ...l, games: l.games.map((g) => (g.n === n ? { ...g, results, finishedAt: Date.now() } : g)) };
+    // Typed by the producer; a game the feed filled keeps its own copy beside the edit.
+    const mark = (g: LobbyGame): LobbyGame => ({ ...g, results, finishedAt: Date.now(), source: 'producer', ...(g.source === 'pcob' && g.results ? { gameResults: g.results } : {}) });
+    const next = { ...l, games: l.games.map((g) => (g.n === n ? mark(g) : g)) };
     this.put(next);
     const top = standings(next)[0];
     const lead = top ? l.teams.find((t) => t.id === top.team) : null;
@@ -136,12 +140,54 @@ export class Lobbies {
     if (won && !champion(l)) this.ctx.log(`${l.title}: ${l.teams.find((t) => t.id === won.team)?.name ?? 'A team'} took the title in game ${won.game} (match point)`);
   }
 
+  /**
+   * A game the observer feed finished (src/main/br-live.ts): its results go in unless the producer already typed
+   * this game (then the game's copy is kept beside them), and its players' numbers are kept either way.
+   */
+  saveFeed(id: string, n: number, rows: TeamResult[] | null, feed: GameFeed) {
+    const l = this.find(id);
+    const game = l.games.find((g) => g.n === n);
+    if (!game) throw new Error('That game is not in this lobby.');
+    const results = rows ? validResults(rows, l.teams) : null;
+    const next = (g: LobbyGame): LobbyGame => {
+      if (g.source === 'producer' && g.results?.length) return { ...g, feed, ...(results ? { gameResults: results } : {}) };
+      return results ? { ...g, results, source: 'pcob', finishedAt: Date.now(), feed } : { ...g, feed };
+    };
+    this.put({ ...l, games: l.games.map((g) => (g.n === n ? next(g) : g)) });
+  }
+
+  /** The producer pairs a PCOB team slot with a lobby team (null: back to automatic). */
+  setSeat(id: string, pcobTeamId: number, team: string | null) {
+    const l = this.find(id);
+    if (team !== null && !l.teams.some((t) => t.id === team)) throw new Error('That team is not in this lobby.');
+    const seats = { ...(l.pcobSeats ?? {}) };
+    for (const [k, v] of Object.entries(seats)) if (v === team) delete seats[k];
+    if (team === null) delete seats[String(pcobTeamId)]; else seats[String(pcobTeamId)] = team;
+    this.put({ ...l, pcobSeats: seats });
+  }
+
+  /** Teams/Players learns each seated player's OpenID (matched by in-game name, then name, within the team). */
+  learnOpenIds(id: string, seen: Array<{ team: string; name: string; openId: string }>) {
+    const l = this.find(id);
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    let any = false;
+    for (const s of seen) {
+      const teamId = l.teams.find((t) => t.id === s.team)?.teamId;
+      if (!teamId) continue;
+      const p = (this.data.players ?? []).find((x) => x.teamId === teamId && (norm(x.gameId) === norm(s.name) || norm(x.name) === norm(s.name)));
+      if (p && p.openId !== s.openId && !(this.data.players ?? []).some((x) => x.openId === s.openId && x.id !== p.id)) { p.openId = s.openId; any = true; }
+    }
+    if (any) { this.ctx.store.save(); this.refresh(); }
+  }
+
   /** How the lobby's graphics look (validated by br-graphics.ts `validLook`). */
   setLook(id: string, look: Lobby['look']) { this.put({ ...this.find(id), look }); }
 
   clearResult(id: string, n: number) {
     const l = this.find(id);
-    this.put({ ...l, games: l.games.map((g) => (g.n === n ? { n: g.n, map: g.map, ...(g.startsAt ? { startsAt: g.startsAt } : {}) } : g)) });
+    // The results go; what the observer feed gave (its own results and the players' numbers) stays with the game.
+    const keep = (g: LobbyGame): LobbyGame => ({ n: g.n, map: g.map, ...(g.startsAt ? { startsAt: g.startsAt } : {}), ...(g.feed ? { feed: g.feed } : {}), ...(g.source === 'pcob' && g.results ? { gameResults: g.results } : g.gameResults ? { gameResults: g.gameResults } : {}) });
+    this.put({ ...l, games: l.games.map((g) => (g.n === n ? keep(g) : g)) });
   }
 
   async select(id: string | null) {

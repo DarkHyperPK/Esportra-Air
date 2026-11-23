@@ -56,6 +56,8 @@ export interface LibPlayer {
   photo: string;
   role: string;
   teamId: string | null;
+  /** The player's PUBG MOBILE OpenID, learned from the observer feed (seats their team in later lobbies). */
+  openId?: string;
 }
 
 export interface Library {
@@ -115,6 +117,8 @@ export interface Lobby {
   scoring: import('./br.ts').Scoring;
   /** How the lobby's graphics look (22 Nov): the HUD layout, the strip's pop-up, a template per graphic. */
   look?: LobbyLook;
+  /** The producer's pairs of PCOB team slots (by PCOB team id) to lobby teams. */
+  pcobSeats?: Record<string, string>;
   createdAt: number;
 }
 export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; templates: Record<string, string>; theme?: import('./br-screens.ts').BrTheme }
@@ -417,6 +421,8 @@ export interface Snapshot {
   selectedLobbyId: string | null;
   /** The full screen Air last took on the selected lobby's room (src/main/br-graphics.ts). */
   lobbyOnAir: string | null;
+  /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
+  pcob: import('./pcob-status.ts').PcobStatus;
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
   /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
   recovery: string | null;
@@ -602,6 +608,11 @@ export interface AirApi {
   lobbyLook(id: string, look: Partial<LobbyLook>): Promise<Snapshot>;
   /** What the lobby's graphics read (pictures, theme, emblem, sponsors), with a draft theme, for the theme editor's preview. */
   lobbyPreview(id: string, theme?: unknown): Promise<Record<string, unknown>>;
+  /** Reads the PUBG MOBILE observer client's API (PCOB) on this PC or the local network; consent every time. */
+  pcobConnect(host: string, consent: boolean): Promise<Snapshot>;
+  pcobDisconnect(): Promise<Snapshot>;
+  /** Pairs a PCOB team slot with a lobby team (null: automatic). */
+  pcobSeat(lobbyId: string, pcobTeamId: number, team: string | null): Promise<Snapshot>;
   /** Take one of the lobby's full screens on its room, or clear with null. */
   lobbyTake(id: string, screen: string | null): Promise<Snapshot>;
   packAssets(game: string): Promise<Array<import('./game-assets.ts').GameAsset & { src: string; thumbSrc: string }>>;

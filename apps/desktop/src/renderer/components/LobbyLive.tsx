@@ -2,6 +2,7 @@
 // the left, the selected graphic in the middle, Program on the right), run on the lobby chosen for the graphics.
 // Events keeps the lobby's structure (teams, matches, scoring); HUD library is where the HUD layout is chosen;
 // everything that goes on air during the show is done here.
+import { PcobPanel, pcobLabel } from './PcobPanel.tsx';
 import { useEffect, useState } from 'react';
 import type { Lobby, Snapshot } from '../../shared/api.ts';
 import { standings } from '../../shared/br.ts';
@@ -105,8 +106,9 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   const [selected, setSelected] = useState<string | null>(null);
   const [results, setResults] = useState(false);
   const [sources, setSources] = useState(false);
+  const [data, setData] = useState(false);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setResults(false); setSources(false); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setResults(false); setSources(false); setData(false); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -132,7 +134,8 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
           <span className="muted">{played} played</span>
         </div>
         <div className="row-gap">
-          <button className="btn small" title="Type a match's places and elims without leaving Live" onClick={() => setResults(true)}>Results</button>
+          <button className={`btn small pcob-btn ${s.pcob.state}`} title="Read the game from the PUBG MOBILE observer client (PCOB)" onClick={() => setData(true)}><i className="dot" />Game data · {pcobLabel(s)}</button>
+          <button className="btn small" title="Places and elims per match: from the game, or typed" onClick={() => setResults(true)}>Results</button>
           <button className="btn small" onClick={() => setSources(true)}>Sources</button>
           {s.lobbyOnAir && <button className="btn small" onClick={() => void run(() => air.lobbyTake(l.id, null))}>Clear full screen</button>}
         </div>
@@ -150,7 +153,7 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
             <Composite srcs={[lobbyPage(port, l.code, 'br-hud', '&screen=1'), lobbyPage(port, l.code, 'fullscreen', '&screen=1')]} label="Graphics on air" image={null} />
             <figcaption className="mono muted"><span>What viewers see</span><span>{s.lobbyOnAir ? BR_SCREEN_NAME[s.lobbyOnAir as BrScreen] ?? 'Full screen' : 'HUD'}</span></figcaption>
           </figure>
-          <p className="faint t-sm">Live data (alive, knocks, live points) comes from the observer PC once its feed is connected. Until then the HUD shows the standings from Results.</p>
+          <p className="faint t-sm">{s.pcob.state === 'live' ? 'Live from the observer PC: alive, knocked, eliminations and live points. The match saves itself when it ends.' : 'Connect Game data to read the observer PC. Until then the HUD shows the standings from Results.'}</p>
         </aside>
       </div>
       {results && (
@@ -162,6 +165,7 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
         </div>
       )}
       {sources && <Sources s={s} l={l} close={() => setSources(false)} />}
+      {data && <PcobPanel s={s} run={run} l={l} close={() => setData(false)} />}
     </div>
   );
 }

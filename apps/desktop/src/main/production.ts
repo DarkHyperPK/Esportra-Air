@@ -30,6 +30,7 @@ import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { GamePacks } from './game-packs.ts';
 import { Lobbies } from './br-lobbies.ts';
 import { BrGraphics, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
+import { BrLiveFeed } from './br-live.ts';
 import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
 import { Rehearsal } from './rehearsal.ts';
 import type { EsportraAccount } from './esportra.ts';
@@ -88,6 +89,8 @@ export interface ProductionDeps {
   /** Overrides for tests. */
   lanAddresses?: () => string[];
   artFetch?: typeof fetch;
+  /** How Air reads the PUBG MOBILE observer client (tests pass their own). */
+  pcobFetch?: typeof fetch;
   /** Where agent and map pictures are downloaded from (tests use a stand-in). */
   artOrigin?: string;
   ingest: Pick<IngestClient, 'target'>;
@@ -150,6 +153,8 @@ export class Production extends EventEmitter {
   readonly packs: GamePacks;
   readonly lobbies: Lobbies;
   readonly brGraphics: BrGraphics;
+  /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
+  readonly brLive: BrLiveFeed;
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
@@ -180,7 +185,7 @@ export class Production extends EventEmitter {
     this.lobbies = new Lobbies({
       store: deps.store, log: (t) => this.log.add(t), changed: () => this.emit('change'),
       patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
-      live: (id) => !!this.gameLocked() && deps.store.data.selectedLobbyId === id,
+      live: (id) => (!!this.gameLocked() || this.brLive.live) && deps.store.data.selectedLobbyId === id,
       extra: (l) => this.brGraphics.roomFields(l),
     });
     // Lobby graphics on air (22 Nov): src/main/br-graphics.ts.
@@ -191,6 +196,15 @@ export class Production extends EventEmitter {
       templateGraphic: (id) => this.looks.templates.find((t) => t.id === id)?.graphic ?? null,
       eventName: (l) => deps.store.data.events.find((e) => e.id === l.eventId)?.name ?? '',
       event: (l) => deps.store.data.events.find((e) => e.id === l.eventId) ?? null,
+    });
+    // PUBG MOBILE live data (24 Nov): src/main/br-live.ts.
+    this.brLive = new BrLiveFeed({
+      lobby: () => this.lobbies.selected,
+      patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
+      save: (id, n, results, feed) => this.lobbies.saveFeed(id, n, results, feed),
+      learn: (id, seen) => this.lobbies.learnOpenIds(id, seen),
+      log: (t) => this.log.add(t), changed: () => this.emit('change'),
+      fetch: deps.pcobFetch,
     });
     this.packs.on('change', () => void this.lobbies.publish().catch(() => {}));
     void this.startPacks();
@@ -1039,6 +1053,18 @@ export class Production extends EventEmitter {
     const l = this.lobbies.find(id);
     const f = this.brGraphics.roomFields(theme === undefined ? l : { ...l, look: { ...BrGraphics.lookOf(l), theme: validTheme(theme) } });
     return { airPack: f.airPack, airBrTheme: f.airBrTheme, brEmblem: f.brEmblem, brEvent: f.brEvent, brSponsors: f.brSponsors };
+  }
+  pcobConnect(host: unknown, consent: unknown) {
+    if (!this.lobbies.selected) throw new Error('Choose the lobby on the graphics first.');
+    this.brLive.connect(String(host ?? ''), consent === true);
+    this.deps.store.data.pcobHost = this.brLive.status.host;
+    this.deps.store.save();
+  }
+  pcobDisconnect() { this.brLive.disconnect(); }
+  pcobSeat(lobbyId: string, pcobTeamId: unknown, team: unknown) {
+    const id = Number(pcobTeamId);
+    if (!Number.isInteger(id) || id < 0 || id > 999) throw new Error('That team slot is not valid.');
+    this.lobbies.setSeat(lobbyId, id, typeof team === 'string' && team ? team : null);
   }
   async lobbyTake(id: string, screen: string | null) {
     const l = this.lobbies.find(id);
@@ -1890,6 +1916,7 @@ export class Production extends EventEmitter {
       packs: this.packsView(),
       lobbies: this.lobbies.list(),
       lobbyOnAir: this.lobbies.selected ? this.brGraphics.onAir(this.lobbies.selected) : null,
+      pcob: { ...this.brLive.status, host: this.brLive.status.host || this.deps.store.data.pcobHost || '127.0.0.1:10086' },
       selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),
     };

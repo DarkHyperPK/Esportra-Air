@@ -28,6 +28,8 @@ export interface Saved {
   selectedMatchId: string | null;
   /** Battle royale lobbies (20 Nov) and the one selected for lobby games. */
   lobbies?: import('../shared/api.ts').Lobby[];
+  /** The PCOB observer address last used (the consent is asked every time). */
+  pcobHost?: string;
   selectedLobbyId?: string | null;
   owned: Owned;
   enginePort: number;
