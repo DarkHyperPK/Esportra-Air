@@ -195,8 +195,8 @@ async function card(browser, title, sub, secs) {
   await hold(2);
   await click(app.locator('.pack-card').first(), 1.2);
   for (const name of ['Starting soon', "Today's matches", 'Overall standings', 'Champions']) {
-    await click(app.locator('.pack-list [role=option]').filter({ hasText: name }), 0.3);
     await dress(app, 'HUD library', { 'Starting soon': 'Starting soon: the countdown over a tilted map, the plane riding its flight path.', "Today's matches": 'Today’s matches: each map as a disc along the flight path, winners marked.', 'Overall standings': 'Overall standings: the points race with the match-point line.', Champions: 'Champions: the title winners and their road through the day.' }[name], true);
+    await click(app.locator('.pack-list [role=option]').filter({ hasText: name }), 0.3);
     await app.waitForTimeout(1600); await hold(2.2);
   }
   await click(app.locator('.pack-list [role=option]').filter({ hasText: 'In-game HUD' }), 0.3);
@@ -214,15 +214,15 @@ async function card(browser, title, sub, secs) {
   await dress(app, 'Graphics studio › Event theme', 'Graphics studio is where you edit. The event theme sets the colour world of every graphic at once.', true);
   await hold(2.5);
   for (const [preset, words] of [['Jungle', 'Jungle: deep green and antique gold.'], ['Inferno', 'Inferno: ember red and molten gold.'], ['Sky', 'Sky: bright blue with white cards.']]) {
-    await click(app.locator('.bt-preset').filter({ hasText: preset }), 0.2);
     await dress(app, 'Graphics studio › Event theme', words, true);
+    await click(app.locator('.bt-preset').filter({ hasText: preset }), 0.2);
     await app.waitForTimeout(1500); await hold(2);
   }
   await click(app.getByRole('tab', { name: 'Overall standings' }), 0.2); await app.waitForTimeout(1500);
   await dress(app, 'Graphics studio › Event theme', 'Swap the background for another kit wallpaper, or upload the event’s own picture.', true);
   await hold(1);
   await click(app.getByRole('button', { name: 'Kit wallpaper…' }), 0.8);
-  await click(app.locator('.ap-grid .ga-card').nth(3), 0.2);
+  await click(app.locator('.ap-grid .ga-card').nth(1), 0.2);
   await app.waitForTimeout(1500); await hold(2);
   await click(app.getByRole('tab', { name: 'Starting soon' }), 0.2); await app.waitForTimeout(1500);
   await dress(app, 'Graphics studio › Event theme', 'Props are yours too: the airdrop crate and parachutes, on either side, or off.', true);
