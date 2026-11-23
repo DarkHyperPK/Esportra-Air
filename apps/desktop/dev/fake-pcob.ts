@@ -27,7 +27,13 @@ type Ev =
 
 interface P { team: number; name: string; uid: number; openId: string; key: number; state: number; health: number; kills: number; knocks: number; assists: number; damage: number; taken: number; heal: number; hs: number; rescues: number; diedAt: number | null; maxDist: number; airdrops: number }
 
-function rng(seed: number) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+/** xorshift32 from a mixed seed (nearby seeds would otherwise start alike), warmed up before use. */
+function rng(seed: number) {
+  let s = (Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 0) || 1;
+  const next = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  for (let i = 0; i < 12; i++) next();
+  return next;
+}
 
 export class FakePcob {
   readonly opts: Required<Omit<FakePcobOptions, 'now'>> & { now: () => number };
@@ -96,7 +102,11 @@ export class FakePcob {
       t += Math.max(2, (span / total) * (0.4 + r() * 1.2) * (left / total + 0.3));
       const alive = ps.map((_, i) => i).filter((i) => !dead.has(i) && !knocked.has(i));
       const victims = alive.length ? alive : [...knocked];
-      const victim = victims[Math.floor(r() * victims.length)]!;
+      // Fights finish off squads that are already down players (as real lobbies do), so teams fall through the game.
+      const standing = (i: number) => ps.filter((p, k) => p.team === ps[i]!.team && !dead.has(k)).length;
+      const weak = victims.filter((i) => standing(i) < 4);
+      const pool = weak.length && r() < 0.7 ? weak : victims;
+      const victim = pool[Math.floor(r() * pool.length)]!;
       const killers = alive.filter((i) => ps[i]!.team !== ps[victim]!.team);
       if (!killers.length) break;
       const by = killers[Math.floor(r() * killers.length)]!;

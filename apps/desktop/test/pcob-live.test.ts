@@ -60,8 +60,8 @@ test('a whole game: live brLive, moments, then results and every player saved by
     assert.equal(s.feed.status.state, 'live');
     assert.equal(s.feed.status.game, 1, 'the first match without results');
     let sawLive = false, sawOut = false;
-    for (let t = 0; t < s.pcob.gameEnd + 10; t += 15) {
-      await s.step(15);
+    for (let t = 0; t < s.pcob.gameEnd + 40; t += 10) {
+      await s.step(10);
       const live = s.patches.filter((p) => p.fields.brLive).at(-1)?.fields.brLive;
       if (live && live.teamsAlive < 16) sawLive = true;
       if (live?.lastOut) { sawOut = true; assert.ok(live.lastOut.place > 1 && live.lastOut.place <= 16); }
@@ -107,7 +107,7 @@ test('generic PCOB names seat by players; the producer pairs the rest; typed res
     assert.equal(s.feed.status.slots.filter((x) => x.seat).length, 16);
     // The producer types match 1 before it ends: the feed keeps the typed results and stores its own beside them.
     s.lobbies.setResult(lobby.id, 1, lobby.teams.map((t, i) => ({ team: t.id, place: i + 1, elims: 0 })));
-    for (let t = 0; t < s.pcob.gameEnd + 10; t += 30) await s.step(30);
+    for (let t = 0; t < s.pcob.gameEnd + 40; t += 10) await s.step(10);
     const g = s.lobby().games[0]!;
     assert.equal(g.source, 'producer');
     assert.equal(g.results![0]!.team, team(0), 'typed results kept');
