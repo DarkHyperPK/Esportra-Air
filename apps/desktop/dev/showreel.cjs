@@ -78,9 +78,11 @@ body.full #shade.on{display:block}
   await call('chooseGame', ['valorant']); await call('finishOnboarding');
   await call('esportraSignIn', ['producer@example.com', 'correct horse battery']);
   await call('artDownload');
+  await call('chooseGame', ['pubgm']); // PUBG MOBILE players have in-game names, not Riot IDs
   for (const [i, n] of NAMES.entries()) await call('saveTeam', [{ name: n, tag: TAGS[i], color: COLORS[i % COLORS.length], logo: '' }]);
   let snap = await call('snapshot');
   for (const t of snap.library.teams) { const i = NAMES.indexOf(t.name); for (const p of ['ACE', 'ROOK', 'VEX', 'KAI']) await call('savePlayer', [{ name: `${TAGS[i]}_${p}`, realName: '', gameId: `${TAGS[i]}_${p}`, photo: '', role: '', teamId: t.id }]); }
+  await call('chooseGame', ['valorant']);
   await call('createEvent', ['Friday Scrims']);
   await call('chooseGame', ['pubgm']);
   await call('createEvent', ['Air Showcase Cup']);
