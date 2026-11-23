@@ -7,6 +7,7 @@ import { LOGO } from './components/ui.tsx';
 import { ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
 import { FixData } from './components/FixData.tsx';
 import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
+import { LobbyLive } from './components/LobbyLive.tsx';
 import { ReadyScreen } from './screens/ReadyScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { LibraryScreen, StudioScreen } from './screens/LibraryScreen.tsx';
@@ -220,7 +221,7 @@ export function App() {
             {page === 'ready' && <ReadyScreen {...props} command={command} open={matchOpen} setOpen={setMatchOpen} openEvent={openEvent} start={() => { setStarted(true); setPage('console'); }} />}
             {page === 'event' && <EventsScreen s={s} run={run} openSignIn={() => setSignIn(true)} view={eventView} setView={setEventView} openMatch={(m) => void openMatch(m)} openRemote={(e) => void openRemote(e)} newMatch={newMatch} />}
             {page === 'help' && <HelpScreen s={s} run={run} />}
-            {page === 'console' && <ConsoleScreen {...props} />}
+            {page === 'console' && (s.game?.shape === 'lobby' ? <LobbyLive {...props} /> : <ConsoleScreen {...props} />)}
             {page === 'teams' && <TeamsScreen s={s} run={run} />}
             {page === 'library' && <LibraryScreen {...props} />}
             {page === 'studio' && <StudioScreen {...props} />}

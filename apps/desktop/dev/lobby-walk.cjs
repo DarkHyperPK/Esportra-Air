@@ -42,29 +42,35 @@ const NAMES = ['NIGHT OWLS','CRIMSON FIVE','IRON PINE','DUNE RUNNERS','SILVER FO
   if (JSON.stringify(top) !== JSON.stringify([['IRON PINE', 17], ['NIGHT OWLS', 15], ['NORTH TIDE', 11]])) throw new Error('room standings: ' + JSON.stringify(top));
   if (snap.selectedLobbyId !== l.id) throw new Error('the new lobby is not on the graphics');
   if (SHOTS) await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-results.png') });
-  // Graphics (22 Nov): pick the grid HUD, take Overall standings, then clear it; the room follows each step.
+  // Same flow as a match (23 Nov): the lobby page is structure only; the HUD's layout is chosen in HUD library;
+  // graphics go on air from Live. The room follows each step.
   const roomNow = async () => { const r = await (await fetch(`http://127.0.0.1:${ENGINE}/api/${l.code}`)).json(); return r.state ?? r; };
-  await p.getByRole('tab', { name: 'Graphics' }).click();
-  await p.waitForTimeout(800); // the stills settle
-  const grid = p.getByRole('radio', { name: /Points grid/ });
-  for (let i = 0; i < 3 && (await grid.getAttribute('aria-checked')) !== 'true'; i++) { await grid.click(); await p.waitForTimeout(400); }
+  if (await p.getByRole('tab', { name: 'Graphics' }).count()) throw new Error('the lobby page still has a Graphics tab');
+  await p.locator('nav.rail').getByRole('button', { name: /HUD library/ }).click();
+  await p.locator('.pack-card').first().click();
+  const grid = p.locator('.br-layout').filter({ hasText: 'Points grid' });
+  await grid.click();
   for (let i = 0; i < 20 && (await roomNow()).layout?.brHud !== 'grid'; i++) await p.waitForTimeout(150);
-  if ((await roomNow()).layout?.brHud !== 'grid') { await p.screenshot({ path: '/tmp/claude-0/-home-user/1e8df9ea-c779-5a1d-81d3-11e615499255/scratchpad/br5/fail.png' }); throw new Error('the HUD layout did not reach the room: ' + JSON.stringify((await call('snapshot')).lobbies[0].look)); }
-  const card = p.locator('.lbg-card').filter({ hasText: 'Overall standings' });
-  await card.getByRole('button', { name: 'Take' }).click();
-  await card.getByText('On air').waitFor();
-  if ((await roomNow()).airFullscreen !== 'br-overall') throw new Error('Take did not reach the room: ' + (await roomNow()).airFullscreen);
+  if ((await roomNow()).layout?.brHud !== 'grid') throw new Error('the HUD layout chosen in HUD library did not reach the room');
+  if (SHOTS) { await p.waitForTimeout(1200); await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-library.png') }); }
+  await p.keyboard.press('Escape');
+  await p.locator('nav.rail').getByRole('button', { name: 'Live' }).click();
+  await p.getByRole('tab', { name: /Post-game/ }).click();
+  await p.locator('.cp-gi').filter({ hasText: 'Overall standings' }).click();
+  await p.getByRole('button', { name: 'Put on air' }).click();
+  await p.locator('.cp-gi').filter({ hasText: 'Overall standings' }).getByText('ON AIR').waitFor();
+  if ((await roomNow()).airFullscreen !== 'br-overall') throw new Error('Live did not put it on air: ' + (await roomNow()).airFullscreen);
   // The full-screen host on the lobby's room draws the lobby's real standings.
   const fs = await b.newPage({ viewport: { width: 1920, height: 1080 } });
   await fs.goto(`http://127.0.0.1:${ENGINE}/overlays/fullscreen.html?match=${l.code}`);
   await fs.locator('.brf-overall .brf-pc.first .n').waitFor({ timeout: 8000 });
   const leader = await fs.locator('.brf-overall .brf-pc.first .n').textContent();
   if (leader !== 'IRON PINE') throw new Error('the host shows ' + leader);
-  if (SHOTS) { await fs.waitForTimeout(1500); await fs.screenshot({ path: require('node:path').join(SHOTS, 'lobby-overall-on-air.png') }); await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-graphics.png') }); }
+  if (SHOTS) { await fs.waitForTimeout(1500); await fs.screenshot({ path: require('node:path').join(SHOTS, 'lobby-overall-on-air.png') }); await p.waitForTimeout(1200); await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-live.png') }); }
   await fs.close();
-  await card.getByRole('button', { name: 'Clear' }).click();
+  await p.getByRole('button', { name: 'Take off' }).click();
   for (let i = 0; i < 20 && (await roomNow()).airFullscreen; i++) await p.waitForTimeout(150);
-  if ((await roomNow()).airFullscreen) throw new Error('Clear did not reach the room');
+  if ((await roomNow()).airFullscreen) throw new Error('Take off did not reach the room');
   if (errs.length) throw new Error('page errors: ' + errs.join('; '));
   console.log('Lobby walk complete');
   await b.close();

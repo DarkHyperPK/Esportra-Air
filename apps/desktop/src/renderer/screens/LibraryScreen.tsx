@@ -3,6 +3,7 @@ import type { Snapshot } from '../../shared/api.ts';
 import { gameOf } from '../../shared/games.ts';
 import { LIBRARY, inShow } from '../../shared/library.ts';
 import { PackWindow } from '../components/PackWindow.tsx';
+import { BrPackWindow } from '../components/BrPackWindow.tsx';
 import { air } from '../bridge.ts';
 import { overlayUrl, StillPreview, stillKey } from '../components/Preview.tsx';
 import type { PageProps, Run } from '../App.tsx';
@@ -132,24 +133,32 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const items = LIBRARY[game?.id ?? 'valorant'];
   const chosen = items.filter((i) => inShow(s.setup, i)).length;
   const theme = s.match?.theme ?? s.setup.package;
+  const lobbyGame = game?.shape === 'lobby';
   // The sample room follows the selected match's teams, players and banner style.
   useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id, theme, s.match?.teams.map((t) => t.name + t.logo + t.color).join()]);
   return (
     <div className="stack" style={{ gap: 26 }}>
       <PageHeader eyebrow={`HUD library · ${game?.name ?? 'no game chosen'}`} title="Choose what your shows use">
-        Pick a show template for {s.match ? <b>{s.match.title}</b> : 'a match'}, or open the HUD to preview and choose graphic by graphic. Editing a look happens in Graphics studio.
+        {lobbyGame ? <>Open the HUD to preview each graphic and choose the HUD&rsquo;s layout for {s.lobbies.find((l) => l.id === s.selectedLobbyId)?.title ?? 'your lobby'}. Graphics go on air from Live; editing a look happens in Graphics studio.</> : <>Pick a show template for {s.match ? <b>{s.match.title}</b> : 'a match'}, or open the HUD to preview and choose graphic by graphic. Editing a look happens in Graphics studio.</>}
       </PageHeader>
-      <ShowTemplateManager s={s} run={run} />
+      {!lobbyGame && <ShowTemplateManager s={s} run={run} />}
       <section className="stack" style={{ gap: 10 }}>
         <h2 className="title-sm">Graphics</h2>
         <div className="packs">
-          <button className="pack-card" onClick={() => setOpen(true)} aria-label="Open ESPORTRA HUD: preview every graphic">
-            <StillPreview src={overlayUrl(s, 'ingame')} label="ESPORTRA HUD" stamp={stillKey(s)} />
-            <span className="between"><span><b>ESPORTRA HUD</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in this show · open to preview each one</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
-          </button>
+          {lobbyGame ? (
+            <button className="pack-card" onClick={() => setOpen(true)} aria-label="Open ESPORTRA HUD: preview every graphic">
+              <StillPreview src={templatePreviewUrl(s, 'brhud', { mode: s.lobbies.find((l) => l.id === s.selectedLobbyId)?.look?.hud ?? 'rail' })} label="ESPORTRA HUD" stamp="br" />
+              <span className="between"><span><b>ESPORTRA HUD</b><br /><span className="muted t-sm">8 graphics · the HUD in three layouts and seven full screens · open to preview and choose</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
+            </button>
+          ) : (
+            <button className="pack-card" onClick={() => setOpen(true)} aria-label="Open ESPORTRA HUD: preview every graphic">
+              <StillPreview src={overlayUrl(s, 'ingame')} label="ESPORTRA HUD" stamp={stillKey(s)} />
+              <span className="between"><span><b>ESPORTRA HUD</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in this show · open to preview each one</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
+            </button>
+          )}
         </div>
       </section>
-      {open && <PackWindow s={s} run={run} close={() => setOpen(false)} />}
+      {open && (lobbyGame ? <BrPackWindow s={s} run={run} close={() => setOpen(false)} /> : <PackWindow s={s} run={run} close={() => setOpen(false)} />)}
     </div>
   );
 }

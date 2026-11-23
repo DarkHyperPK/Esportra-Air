@@ -10,14 +10,7 @@ import type { GameAsset } from '../shared/game-assets.ts';
 import { packPath } from '../shared/game-assets.ts';
 import { isLobbyGraphic } from '../shared/templates.ts';
 
-/** The full screens a lobby can take (core/hud.js FULLSCREEN, the engine's allowlist). */
-export const BR_SCREENS = ['br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion'] as const;
-export type BrScreen = (typeof BR_SCREENS)[number];
-export const BR_SCREEN_NAME: Record<BrScreen, string> = {
-  'br-lobby': 'Waiting lobby', 'br-today': "Today's matches", 'br-rankings': 'Match rankings', 'br-overall': 'Overall standings',
-  'br-wwcd': 'Match winner', 'br-mvp': 'MVP rankings', 'br-champion': 'Champions',
-};
-export const HUD_LAYOUTS = ['rail', 'grid', 'strip'] as const;
+import { BR_SCREENS, HUD_LAYOUTS, type BrScreen } from '../shared/br-screens.ts';
 export const DEFAULT_LOOK: LobbyLook = { hud: 'rail', popup: false, templates: {} };
 
 export interface BrGraphicsContext {
