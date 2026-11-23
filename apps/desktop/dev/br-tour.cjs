@@ -37,7 +37,7 @@ const chapter = (title) => chapters.push([clock, title]);
 const CHROME = `
 #tour-cap{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);max-width:1360px;padding:18px 30px;background:rgba(8,9,12,.9);border:1px solid rgba(255,255,255,.14);border-left:4px solid #FFB60E;color:#fff;font:500 28px/1.35 Poppins,system-ui,sans-serif;letter-spacing:.005em;z-index:2147483646;box-shadow:0 18px 50px rgba(0,0,0,.5);pointer-events:none}
 #tour-cap:empty{display:none}
-#tour-ch{position:fixed;left:28px;top:22px;padding:8px 14px;background:#FFB60E;color:#111;font:800 17px/1 Poppins,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;z-index:2147483646;pointer-events:none}
+#tour-ch{position:fixed;left:96px;top:62px;padding:8px 14px;background:#FFB60E;color:#111;font:800 17px/1 Poppins,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;z-index:2147483646;pointer-events:none}
 #tour-ch:empty{display:none}
 #tour-ptr{position:fixed;left:0;top:0;width:30px;height:30px;z-index:2147483647;pointer-events:none;transition:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.6))}
 #tour-ptr.down::after{content:'';position:absolute;left:-14px;top:-14px;width:28px;height:28px;border-radius:50%;border:3px solid #FFB60E}`;
