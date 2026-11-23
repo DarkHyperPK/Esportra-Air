@@ -316,7 +316,7 @@ body.full #shade.on{display:block}
   await f.scene('win', { k: 'TWO WAYS IN', t: 'Import your <em>Esportra</em> tournament', s: 'Teams, players, Riot IDs, best-of and the veto arrive by themselves. No spreadsheets.' });
   f.use(app);
   await f.run(app, 14);
-  await ui.click(f, app.locator('.ev-card').filter({ hasText: 'Community Cup' }).getByRole('button', { name: /Open event/ }), { frames: 12, after: 10 });
+  await ui.click(f, app.locator('.ev-card').filter({ hasText: 'Community Cup' }), { frames: 12, after: 10 });
   await ui.click(f, app.getByRole('button', { name: 'Open' }).first(), { frames: 12, after: 30 });
   await ui.zoomTo(f, 1.28, 640, 110, 16);
   await f.run(app, 26);
@@ -328,7 +328,7 @@ body.full #shade.on{display:block}
   await f.scene('win', { k: 'TWO WAYS IN', t: 'Or a standalone match <em>in seconds</em>', s: 'Your own event, your saved teams. Nothing to set up twice.' });
   f.use(app);
   await f.run(app, 8);
-  await ui.click(f, app.locator('.ev-card').filter({ hasText: 'Friday Scrims' }).getByRole('button', { name: /Open event/ }), { frames: 10, after: 8 });
+  await ui.click(f, app.locator('.ev-card').filter({ hasText: 'Friday Scrims' }), { frames: 10, after: 8 });
   await ui.click(f, app.getByRole('button', { name: 'New match' }), { frames: 10, after: 10 });
   const wiz = app.getByRole('dialog', { name: 'New match' });
   await ui.click(f, wiz.getByRole('button', { name: 'Best of 3' }), { frames: 8, after: 4 });
