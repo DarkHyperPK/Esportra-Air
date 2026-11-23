@@ -237,10 +237,12 @@ async function card(browser, title, sub, secs) {
   await click(app.getByRole('button', { name: '+ New template' }), 1);
   await app.waitForTimeout(2500);
   await hold(1.5);
+  await click(app.locator('.tpl-tree .tpl-fold[aria-label$=" layers of Header"]'), 0.4);
   await click(app.locator('.tpl-tree [role=option]').filter({ hasText: /^Title$/ }), 0.6);
   await dress(app, 'Graphics studio › Looks', 'Every text, picture and shape is a layer. Change the title’s words…', true);
   await type(app.locator('.tpl-right').getByLabel('Words'), 'POINTS RACE');
   await app.waitForTimeout(800); await hold(1.5);
+  await click(app.locator('.tpl-tree .tpl-fold[aria-label$=" layers of Table"]'), 0.4);
   await click(app.locator('.tpl-tree [role=option]').filter({ hasText: /^Bar fills$/ }), 0.6);
   await dress(app, 'Graphics studio › Looks', '…or a colour. Pictures change from the kit, and Ctrl Z takes any change back.', true);
   await click(app.locator('.tpl-right .sw').nth(2), 0.3);
