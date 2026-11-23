@@ -307,6 +307,8 @@ body.full #shade.on{display:block}
 
   // ═════ 2 · Two ways in (Valorant): Esportra import, then a standalone match ═════
   await call('chooseGame', ['valorant']); await app.waitForTimeout(600);
+  // The long recording can outlast the fake Esportra's session: check again so its tournament is listed.
+  for (let i = 0; i < 20 && (await call('snapshot')).esportra.state !== 'online'; i++) { await call('esportraCheck').catch(() => {}); await call('esportraRefresh').catch(() => {}); await sleep(500); }
   await rail('Events').click(); await app.waitForTimeout(600);
   f = shot('import');
   await f.scene('win', { k: 'TWO WAYS IN', t: 'Import your <em>Esportra</em> tournament', s: 'Teams, players, Riot IDs, best-of and the veto arrive by themselves. No spreadsheets.' });
