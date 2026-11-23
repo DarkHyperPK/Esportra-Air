@@ -50,6 +50,7 @@ body.win #txt{left:72px;top:0;bottom:0;width:370px;display:flex;flex-direction:c
 body.mon #txt{left:160px;top:44px;right:160px}
 body.full #txt{left:72px;bottom:70px}
 body.title #txt{inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+body.title #txt{animation:tdrift 5s linear both}@keyframes tdrift{0%{transform:scale(.97)}100%{transform:scale(1.06)}}
 .k{display:inline-block;align-self:flex-start;padding:7px 13px;background:#ffb60e;color:#0b0b0f;font:800 15px/1 Poppins;letter-spacing:.2em;animation:up .42s cubic-bezier(.2,.8,.2,1) both}
 body.title .k{align-self:center}
 .t{display:block;margin-top:16px;font:800 52px/1.04 Poppins;letter-spacing:-.02em;animation:up .55s .08s cubic-bezier(.2,.8,.2,1) both}
@@ -181,7 +182,7 @@ body.full #shade.on{display:block}
           const img = document.getElementById('img');
           if (b64) { img.src = 'data:image/jpeg;base64,' + b64; await img.decode().catch(() => {}); }
           const L = document.getElementById('layer'), mode = document.body.className;
-          const s = 1 + Math.min(cam, 600) * (mode === 'full' || mode === 'title' ? 0.0004 : 0.00007);
+          const s = 1 + Math.min(cam, 600) * (mode === 'title' ? 0.0009 : mode === 'full' ? 0.0004 : 0.00007);
           L.style.transform = mode === 'win' ? `perspective(2400px) rotateY(-3deg) scale(${s})` : `scale(${s})`;
           L.style.transformOrigin = mode === 'win' ? '30% 50%' : '50% 50%';
         }, [buf ? buf.toString('base64') : null, cam]);
