@@ -38,13 +38,16 @@ const frames = (beats) => Math.round(beats * BEAT * FPS);
   for (const t of snap.library.teams) { const i = NAMES.indexOf(t.name); for (const p of ['ACE', 'ROOK', 'VEX', 'KAI']) await call('savePlayer', [{ name: `${TAGS[i]}_${p}`, realName: '', gameId: `${TAGS[i]}_${p}`, photo: '', role: '', teamId: t.id }]); }
 
   const browser = await chromium.launch();
+  // The app is recorded at 1280×720 with 1.5× pixels: the same 1920×1080 frame, with the interface big enough to read.
+  const FONTS = kit.fontCss();
+  const appCtx = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.5 });
   const ctx = await browser.newContext({ viewport: { width: W, height: HGT } });
-  await kit.prepare(ctx);
-  const app = await ctx.newPage();
+  await kit.prepare(appCtx); await kit.prepare(ctx);
+  const app = await appCtx.newPage();
   const errs = []; app.on('pageerror', (e) => errs.push(e.message));
   await app.goto(`${H}/?host=${H}`); await app.locator('nav.rail').waitFor();
   await app.evaluate(() => document.fonts.ready);
-  const ui = kit.chrome(app);
+  const ui = kit.chrome(app, FONTS);
   await ui.dress();
   const rail = (name) => app.locator('nav.rail').getByRole('button', { name });
 
@@ -132,7 +135,8 @@ const frames = (beats) => Math.round(beats * BEAT * FPS);
   const base = states[0][1];
   await patchRoom(REPLAY, base);
   const wall = base.airPack?.wallpaper?.[1] || base.airPack?.wallpaper?.[0] || '';
-  const stageHtml = (mode) => `<!doctype html><html><head><style>
+  const stageHtml = (mode) => `<!doctype html><html><head><style>${FONTS}
+    .mon{animation:kb 24s linear both}@keyframes kb{0%{transform:scale(1)}100%{transform:scale(1.06)}}
     body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#06070a;font-family:Poppins,system-ui,sans-serif;color:#fff}
     .mon{position:absolute;overflow:hidden;background:#000 url('${ENG}${wall}') center/cover}
     .mon iframe{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:0 0;background:transparent}
@@ -214,7 +218,7 @@ const frames = (beats) => Math.round(beats * BEAT * FPS);
   await ui.caption('Insights', 'Every player. <em>Every number.</em>');
   await ui.click(ins, app.getByRole('button', { name: /^Insights/ }), { after: 10 });
   await ui.click(ins, app.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Match 1' }), { after: 12 });
-  await ui.zoomTo(ins, 1.18, 1100, 380, 14);
+  await ui.zoomTo(ins, 1.22, 730, 250, 14);
   await ins.run(app, 18);
   await ui.zoomTo(ins, 1, 0, 0, 10);
   const scroller = app.locator('.cp-ins');
@@ -239,7 +243,7 @@ const frames = (beats) => Math.round(beats * BEAT * FPS);
   // ═════ 6 · End card ═════
   const end = kit.recorder(path.join(OUT, 's6'));
   const card = await ctx.newPage();
-  await card.setContent(`<!doctype html><html><body style="margin:0;width:1920px;height:1080px;display:grid;place-items:center;background:radial-gradient(120% 120% at 70% 0%,#1b2130,#06070a 68%);color:#fff;font-family:Poppins,system-ui,sans-serif"><style>@keyframes up{0%{opacity:0;transform:translateY(40px)}100%{opacity:1;transform:none}}</style>
+  await card.setContent(`<!doctype html><html><body style="margin:0;width:1920px;height:1080px;display:grid;place-items:center;background:radial-gradient(120% 120% at 70% 0%,#1b2130,#06070a 68%);color:#fff;font-family:Poppins,system-ui,sans-serif"><style>${FONTS}@keyframes up{0%{opacity:0;transform:translateY(40px)}100%{opacity:1;transform:none}}</style>
     <div style="text-align:center"><div style="font:800 26px Poppins;letter-spacing:.34em;color:#ffb60e;animation:up .5s both">ESPORTRA AIR</div>
     <div style="font:800 96px/1.02 Poppins;letter-spacing:-.02em;margin:24px 0 20px;animation:up .6s .12s both">Broadcast graphics<br>that run themselves.</div>
     <div style="font:500 30px Poppins;color:#b8bcc6;animation:up .6s .3s both">PUBG MOBILE · Valorant · Free Fire</div></div></body></html>`);

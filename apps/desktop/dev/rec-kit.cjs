@@ -9,6 +9,13 @@
 const fs = require('node:fs'), path = require('node:path'), { execFileSync, spawnSync } = require('node:child_process');
 
 const FPS = 30, DT = 1000 / FPS;
+
+/** Poppins from core/fonts as data URLs (pages made for a recording load nothing cross-origin). */
+function fontCss() {
+  const dir = path.join(__dirname, '../../../esportra-valorant-hud/core/fonts');
+  return [['Medium', 500], ['SemiBold', 600], ['Bold', 700], ['ExtraBold', 800], ['Black', 900]].map(([n, w]) =>
+    `@font-face{font-family:Poppins;font-weight:${w};src:url(data:font/ttf;base64,${fs.readFileSync(path.join(dir, `Poppins-${n}.ttf`)).toString('base64')}) format('truetype')}`).join('');
+}
 const BPM = 128, BEAT = 60 / BPM;
 
 /** Runs in every page and frame before its own scripts: a clock the recorder can pin. */
@@ -79,15 +86,15 @@ const CHROME_CSS = `
 #rk-ptr i{position:absolute;left:-18px;top:-18px;width:36px;height:36px;border-radius:50%;border:3px solid #ffb60e;opacity:0;transform:scale(.4)}
 #rk-ptr.down i{animation:rk-ring .45s cubic-bezier(.2,.8,.2,1) forwards}
 @keyframes rk-ring{0%{opacity:1;transform:scale(.4)}100%{opacity:0;transform:scale(1.6)}}
-#rk-cap{position:fixed;left:72px;bottom:64px;z-index:2147483646;pointer-events:none;font-family:Poppins,system-ui,sans-serif;color:#fff}
-#rk-cap .k{display:inline-block;padding:6px 12px;background:#ffb60e;color:#0b0b0f;font:800 18px/1 Poppins,system-ui;letter-spacing:.18em;text-transform:uppercase;animation:rk-in .38s cubic-bezier(.2,.8,.2,1) both}
-#rk-cap .t{display:block;margin-top:12px;font:800 64px/1.02 Poppins,system-ui;letter-spacing:-.015em;text-shadow:0 6px 30px rgba(0,0,0,.65);animation:rk-in .5s .08s cubic-bezier(.2,.8,.2,1) both}
+#rk-cap{position:fixed;left:48px;bottom:40px;z-index:2147483646;pointer-events:none;font-family:Poppins,system-ui,sans-serif;color:#fff}
+#rk-cap .k{display:inline-block;padding:5px 10px;background:#ffb60e;color:#0b0b0f;font:800 13px/1 Poppins,system-ui;letter-spacing:.18em;text-transform:uppercase;animation:rk-in .38s cubic-bezier(.2,.8,.2,1) both}
+#rk-cap .t{display:block;margin-top:9px;font:800 44px/1.02 Poppins,system-ui;letter-spacing:-.015em;text-shadow:0 6px 30px rgba(0,0,0,.65);animation:rk-in .5s .08s cubic-bezier(.2,.8,.2,1) both}
 #rk-cap .t em{font-style:normal;color:#ffb60e}
 @keyframes rk-in{0%{opacity:0;transform:translateY(26px)}100%{opacity:1;transform:none}}
-#rk-shade{position:fixed;inset:auto 0 0 0;height:360px;background:linear-gradient(0deg,rgba(5,6,9,.92),rgba(5,6,9,0));z-index:2147483645;pointer-events:none}
+#rk-shade{position:fixed;inset:auto 0 0 0;height:240px;background:linear-gradient(0deg,rgba(5,6,9,.92),rgba(5,6,9,0));z-index:2147483645;pointer-events:none}
 #root{transform-origin:0 0;will-change:transform}`;
 
-function chrome(page) {
+function chrome(page, extraCss = '') {
   const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
   const api = {
     pos: [960, 760],
@@ -99,7 +106,7 @@ function chrome(page) {
         const p = document.createElement('div'); p.id = 'rk-ptr'; p.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34"><path d="M3 2l17 9-7.5 2L9 21z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg><i></i>'; document.body.appendChild(p);
         const sh = document.createElement('div'); sh.id = 'rk-shade'; sh.style.display = 'none'; document.body.appendChild(sh);
         const c = document.createElement('div'); c.id = 'rk-cap'; document.body.appendChild(c);
-      }, CHROME_CSS);
+      }, extraCss + CHROME_CSS);
       await this.place();
     },
     /** A kinetic caption: kicker plus a big line (`<em>` for the accent word); null clears. */
@@ -162,4 +169,4 @@ function frozenRuns(file, minSecs = 0.5) {
   return out;
 }
 
-module.exports = { FPS, DT, BPM, BEAT, prepare, recorder, chrome, encode, frozenRuns };
+module.exports = { fontCss, FPS, DT, BPM, BEAT, prepare, recorder, chrome, encode, frozenRuns };
