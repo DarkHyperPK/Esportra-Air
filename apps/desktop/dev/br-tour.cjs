@@ -310,9 +310,13 @@ async function card(browser, title, sub, secs) {
   await reel(browser, out('fullscreen'), 6, 'On air', 'WWCD: the squad, the points and each player’s numbers (simulated here).');
   await take('Match MVP', 'Live', 'Match MVP: the best player by damage, eliminations and survival.');
   await reel(browser, out('fullscreen'), 6, 'On air · simulated data', 'Match MVP. Player numbers come from the observer feed (a later step); simulated here.');
+  // The look is chosen before it goes on air: Put on air sends the graphic with its look.
+  await click(app.locator('.cp-gi').filter({ hasText: 'Overall standings' }).first(), 0.3);
+  await dress(app, 'Live', 'Overall standings, in the look made a minute ago in Graphics studio.', true);
   const look = app.getByLabel(/Look for Overall standings/);
-  await take('Overall standings', 'Live', 'Overall standings, in the look made a minute ago in Graphics studio.');
-  if (await look.count()) { await point(look); await look.selectOption({ label: 'Points race' }); await app.waitForTimeout(900); await hold(1.5); }
+  await point(look); await look.selectOption({ label: 'Points race' }); await app.waitForTimeout(900); await hold(1);
+  await click(app.getByRole('button', { name: 'Put on air' }), 0.2);
+  await app.waitForTimeout(1600); await hold(1.5);
   await reel(browser, out('fullscreen'), 7, 'On air', 'The points race after three matches, in the “Points race” look.');
 
   // Three more matches (typed the same way), then the title.

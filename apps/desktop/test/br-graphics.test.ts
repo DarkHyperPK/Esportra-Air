@@ -36,6 +36,10 @@ test('battle royale pages draw the sample with no errors', { skip: !chromium && 
       assert.deepEqual(errors, [], `${name} ${mode}: no script errors`);
       assert.ok(r.n > 10, `${name} ${mode}: draws the sample`);
       assert.deepEqual(r.out, [], `${name} ${mode}: stays inside the canvas`);
+      if (name === 'br-champion') {
+        const gap = await page.evaluate(() => { const w = document.querySelector('.b6-cw .fc')!.getBoundingClientRect(), st = document.querySelector('.b6-cst')!.getBoundingClientRect(); return st.left - w.right; });
+        assert.ok(gap > 20, `Champions: the stats sit clear of the word (gap ${gap})`);
+      }
     }
   } finally { await browser.close(); }
 });
