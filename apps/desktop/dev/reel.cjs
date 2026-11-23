@@ -92,6 +92,7 @@ const frames = (beats) => Math.round(beats * BEAT * FPS);
   const code = (await call('snapshot')).lobbies[0].code;
   const states = [], lines = [], onAir = [];
   let lastJson = '', lastPlayers = new Map(), seenKills = 0, recording = true;
+  const ranked = new Set();
   const t0 = Date.now();
   await dev('do=begin');
   const pollRoom = (async () => { while (recording) { const s = await roomState(code); const j = JSON.stringify(s); if (j !== lastJson) { lastJson = j; states.push([Date.now(), s]); } await sleep(100); } })();
@@ -107,12 +108,12 @@ const frames = (beats) => Math.round(beats * BEAT * FPS);
           if (prev) {
             if (n(p.liveState) !== n(prev.liveState) && [4, 5].includes(n(p.liveState))) lines.push([now, 'gettotalplayerlist', p.playerName, `liveState ${prev.liveState} → ${p.liveState}`, n(p.liveState) === 4 ? 'knocked · HUD mark' : 'out · HUD mark']);
             if (n(p.killNum) > n(prev.killNum)) lines.push([now, 'gettotalplayerlist', p.playerName, `killNum ${prev.killNum} → ${p.killNum}`, 'elims · live points']);
-            if (n(p.rank) > 0 && n(prev.rank) === 0) lines.push([now, 'gettotalplayerlist', p.teamName, `rank 0 → ${p.rank}`, n(p.rank) === 1 ? 'WWCD' : 'team eliminated']);
+            if (n(p.rank) > 0 && n(prev.rank) === 0 && !ranked.has(p.teamName)) { ranked.add(p.teamName); lines.push([now, 'gettotalplayerlist', p.teamName, `rank 0 → ${p.rank}`, n(p.rank) === 1 ? 'WWCD' : 'team eliminated']); }
           }
           lastPlayers.set(p.playerName, p);
         }
         const kl = ki.killInfo ?? [];
-        for (const k of kl.slice(seenKills)) lines.push([now, 'getkillinfo', k.CauserName, `${Number(k.ResultHealthStatus) === 2 ? '✕' : '↓'} ${k.VictimName} · ${Math.round(Number(k.Distance) / 100) || ''}m`, Number(k.ResultHealthStatus) === 2 ? 'kill feed · moments' : 'knock']);
+        for (const k of kl.slice(seenKills)) lines.push([now, 'getkillinfo', k.CauserName, `${Number(k.ResultHealthStatus) === 2 ? '✕' : '↓'} ${k.VictimName}${Number(k.Distance) >= 100 ? ` · ${Math.round(Number(k.Distance) / 100)} m` : ''}`, Number(k.ResultHealthStatus) === 2 ? 'kill feed · moments' : 'knock']);
         seenKills = kl.length;
       } catch { /* between games */ }
       await sleep(250);
