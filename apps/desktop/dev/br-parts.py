@@ -52,6 +52,10 @@ G = {
     ('elim', 'Team eliminated', '.brh-elim'), ('elim.cam', 'Kill-cam frame', '.brh-elim .cam'), ('elim.corners', 'Frame corners', '.brh-elim .c'), ('elim.logo', 'Team logo', '.brh-elim .br-tl'),
     ('elim.text', 'Text plate', '.brh-elim .tx'), ('elim.word', 'Eliminated word', '.brh-elim .tx em', W), ('elim.name', 'Team name', '.brh-elim .tx b'), ('elim.line', 'Points and teams left', '.brh-elim .tx span'),
     ('elim.place', 'Place', '.brh-elim .place'), ('elim.hazard', 'Hazard stripe', '.brh-elim .hz'),
+    ('moment', 'Moments', '.brh-mo'), ('moment.word', 'Moment word', '.brh-mo > em'), ('moment.logo', 'Moment team logo', '.brh-mo .br-tl'), ('moment.name', 'Moment name', '.brh-mo > b'),
+    ('moment.line', 'Moment line', '.brh-mo > span:not(.br-tl)'), ('moment.bar', 'Zone bar', '.brh-mo.zone > i'),
+    ('ltf', 'Live top fraggers', '.brh-ltf'), ('ltf.word', 'Top fraggers word', '.brh-ltf > em', W), ('ltf.players', 'Top fragger rows', '.brh-ltf > span'), ('ltf.rank', 'Top fragger ranks', '.brh-ltf > span > i'),
+    ('ltf.logo', 'Top fragger logos', '.brh-ltf .br-tl'), ('ltf.name', 'Top fragger names', '.brh-ltf > span > b'), ('ltf.kills', 'Top fragger elims', '.brh-ltf > span > em'),
   ], {'chip.map': 'map'}),
   'br-lobby|full': ('Starting soon', frame(True, emblem=True) + [
     ('countdown.label', 'Countdown label', '.b6-k2'), ('countdown', 'Countdown digits', '.b6-cd .dg'), ('countdown.colon', 'Colon', '.b6-cd .col'),
@@ -93,6 +97,38 @@ G = {
     ('stats', 'Stats', '.b6-cst div'), ('stats.value', 'Stat numbers', '.b6-cst b'),
     ('journey', 'Journey', '.b6-jr'), ('journey.label', 'Journey title', '.b6-jr .lab'), ('journey.sub', 'Journey line', '.b6-jr .lab span'), ('journey.marks', 'Match labels', '.b6-jr text'),
   ], {'logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item', 'emblem.picture': 'any'}),
+  'br-teams|full': ('Teams in this lobby', frame(True) + [
+    ('cards', 'Team cards', '.fd-tc'), ('cards.head', 'Card heads', '.fd-tch'), ('cards.logo', 'Team logos', '.fd-tch .br-tl'), ('cards.name', 'Team names', '.fd-tch b'),
+    ('cards.seed', 'Seeds', '.fd-seed'), ('cards.players', 'Players', '.fd-tcp span'),
+  ], {'header.logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item'}),
+  'br-drop|full': ('Drop map', frame(True) + [
+    ('map', 'Tactical map', '.fd-drop'), ('map.picture', 'Map picture', '.fd-drop .b6-tacmap'), ('map.letters', 'Grid letters', '.fd-drop .b6-tx span'), ('map.numbers', 'Grid numbers', '.fd-drop .b6-ty span'),
+    ('map.jump', 'Jump marker', '.fd-drop .b6-tfx .jump text'), ('map.north', 'North arrow', '.fd-drop .b6-north i'), ('map.n', 'North letter', '.fd-drop .b6-north b'),
+    ('side.label', 'Flight path label', '.fd-dropside .fd-k', W), ('side.map', 'Map name', '.fd-big'), ('side.line', 'Match line', '.fd-line span'), ('side.legend', 'Legend', '.fd-legend span'), ('side.keys', 'Legend marks', '.fd-legend i'),
+  ], {'header.logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item', 'map.picture': 'map'}),
+  'br-fraggers|full': ('Top fraggers', frame(True) + [
+    ('cards', 'Player cards', '.fd-fc'), ('cards.top', 'Top card', '.fd-fc.top'), ('cards.rank', 'Ranks', '.fd-rk'), ('cards.photo', 'Photos', '.fd-fc .fd-ph'), ('cards.photoimg', 'Photo pictures', '.fd-fc .b6-ph img'),
+    ('cards.shadow', 'No-photo shadows', '.fd-fc .b6-ph.none'), ('cards.kills', 'Elims', '.fd-kills'), ('cards.word', 'Elims word', '.fd-kills small'), ('cards.name', 'Player names', '.fd-pn'),
+    ('cards.team', 'Team lines', '.fd-fc .fd-pt'), ('cards.logo', 'Team logos', '.fd-fc .fd-pt .br-tl'), ('cards.stats', 'Damage and knocks', '.fd-ps'), ('cards.values', 'Numbers', '.fd-ps em'),
+  ], {'header.logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item'}),
+  'br-tom|full': ('Team of the match', frame(True) + [
+    ('team', 'Team plate', '.fd-tomh'), ('team.logo', 'Team logo', '.fd-tomh .br-tl'), ('team.name', 'Team name', '.fd-tomh > b'), ('team.points', 'Points', '.fd-pts'), ('team.value', 'Points number', '.fd-pts b'),
+    ('players', 'Player cards', '.fd-tp'), ('players.photo', 'Photos', '.fd-tp .fd-ph'), ('players.photoimg', 'Photo pictures', '.fd-tp .b6-ph img'), ('players.shadow', 'No-photo shadows', '.fd-tp .b6-ph.none'),
+    ('players.name', 'Player names', '.fd-tp > b'), ('players.stats', 'Player numbers', '.fd-tps span'), ('players.values', 'Numbers', '.fd-tps em'),
+    ('totals', 'Team numbers', '.fd-toms div'), ('totals.value', 'Team values', '.fd-toms b'),
+  ], {'header.logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item'}),
+  'br-profile|full': ('Player profile', frame(True) + [
+    ('photo', 'Photo', '.fd-pbig'), ('photo.img', 'Photo picture', '.fd-pbig .b6-ph img'), ('photo.shadow', 'No-photo shadow', '.fd-pbig .b6-ph.none'),
+    ('team', 'Team line', '.fd-pinfo > .fd-pt'), ('team.logo', 'Team logo', '.fd-pinfo > .fd-pt .br-tl'), ('name', 'Player name', '.fd-pname'),
+    ('tiles', 'Stat tiles', '.fd-tiles div'), ('tiles.value', 'Stat numbers', '.fd-tiles b'),
+    ('bars.label', 'Bars title', '.fd-bars .fd-k', W), ('bars', 'Match rows', '.fd-bar'), ('bars.match', 'Match labels', '.fd-bar span'), ('bars.fill', 'Bars', '.fd-bar i'), ('bars.value', 'Damage', '.fd-bar b'), ('bars.elims', 'Elims', '.fd-bar em'),
+    ('rating', 'Rating', '.fd-rating'), ('rating.word', 'Rating word', '.fd-rating span', W), ('rating.value', 'Rating number', '.fd-rating b'),
+  ], {'header.logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item'}),
+  'br-mstats|full': ('Match stats', frame() + CARD_MAP + [
+    ('table', 'Table', '.fd-ms'), ('table.head', 'Column heads', '.fd-ms .b6-th span'), ('table.rows', 'Rows', '.fd-ms .b6-tr'), ('table.rank', 'Ranks', '.fd-ms .rk'),
+    ('table.logo', 'Team logos', '.fd-ms .br-tl'), ('table.name', 'Team names', '.fd-ms .nm'), ('table.bar', 'Damage bars', '.fd-ms .bar'), ('table.fill', 'Bar fills', '.fd-ms .bar i'),
+    ('table.damage', 'Damage', '.fd-ms .bar b'), ('table.cols', 'Numbers', '.fd-ms .c'),
+  ], {'header.logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item', 'mapcard.picture': 'map'}),
 }
 def ts():
   out = ['// BR PARTS (generated by dev/br-parts.py) ›', '/** Battle royale graphics (22 Nov, core/br.js). */']

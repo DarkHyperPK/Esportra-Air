@@ -28,4 +28,30 @@
       mvp: [['s0', 'NOW_RAVEN', 6, 688, 1270], ['s2', 'IRP_ASH', 3, 402, 1421], ['s5', 'NTD_FROST', 4, 617, 1195], ['s1', 'CRF_EMBER', 4, 574, 962]].map(([team, name, elims, damage, survived]) => ({ team, name, elims, damage, survived })),
     },
   };
+  // What Air saves from the observer feed for each played match, and the day's totals (room field `brStats`):
+  // made-up numbers that add up (each team's player kills equal its elims in the match).
+  const hash = (a, b) => { let h = (a * 2654435761 + b * 40503) >>> 0; h ^= h >>> 13; return (h >>> 0) / 4294967296; };
+  const statGames = games.filter(g => g.done).map(g => {
+    const players = [];
+    g.results.forEach(r => { const t = teams.find(x => x.id === r.team); let left = r.elims;
+      t.players.forEach((name, k) => { const kills = k === 3 ? left : Math.min(left, Math.floor(hash(g.n * 31 + k, r.place) * (left + 1))); left -= kills;
+        const surv = Math.round((1 - (r.place - 1) / 16) * 1500 + hash(k, g.n) * 240), dmg = Math.round(kills * 140 + hash(g.n, k * 7 + r.place) * 220);
+        players.push({ name, team: t.id, kills, knockouts: kills + Math.floor(hash(k + 3, g.n) * 3), assists: Math.floor(hash(k, r.place + g.n) * 3), damage: dmg, damageTaken: Math.round(dmg * 0.7 + 120), heal: Math.round(200 + hash(g.n + k, 9 + r.place * 13) * 400), headshots: Math.floor(kills / 2), rescues: Math.floor(hash(k, 5 + g.n) * 3), survival: surv, maxKillDistance: Math.round(20 + hash(k, g.n + 11) * 260), games: 1, wins: r.place === 1 ? 1 : 0, rating: 0 }); }); });
+    players.forEach(p => { p.rating = Math.round((p.kills * 2 + p.damage / 100 + p.knockouts * 0.5 + p.assists + p.survival / 600) * 10) / 10; });
+    players.sort((a, b) => b.rating - a.rating);
+    const teamsT = teams.map(t => { const ps = players.filter(p => p.team === t.id); return { team: t.id, games: 1, kills: ps.reduce((n, p) => n + p.kills, 0), knockouts: ps.reduce((n, p) => n + p.knockouts, 0), assists: ps.reduce((n, p) => n + p.assists, 0), damage: ps.reduce((n, p) => n + p.damage, 0), damageTaken: ps.reduce((n, p) => n + p.damageTaken, 0), heal: ps.reduce((n, p) => n + p.heal, 0), rescues: ps.reduce((n, p) => n + p.rescues, 0), survival: ps.reduce((n, p) => n + p.survival, 0), headshots: ps.reduce((n, p) => n + p.headshots, 0) }; }).sort((a, b) => b.damage - a.damage);
+    return { n: g.n, map: g.map, players, teams: teamsT, results: g.results.map(r => ({ ...r, pts: (placement[r.place - 1] || 0) + r.elims })) };
+  });
+  const dayBy = new Map();
+  statGames.forEach(g => g.players.forEach(p => { const d = dayBy.get(p.name) || { ...p, kills: 0, knockouts: 0, assists: 0, damage: 0, damageTaken: 0, heal: 0, headshots: 0, rescues: 0, survival: 0, maxKillDistance: 0, games: 0, wins: 0 };
+    ['kills', 'knockouts', 'assists', 'damage', 'damageTaken', 'heal', 'headshots', 'rescues', 'survival', 'games', 'wins'].forEach(k => { d[k] += p[k]; }); d.maxKillDistance = Math.max(d.maxKillDistance, p.maxKillDistance); dayBy.set(p.name, d); }));
+  const day = [...dayBy.values()].map(p => ({ ...p, rating: Math.round((p.kills * 2 + p.damage / 100 + p.knockouts * 0.5 + p.assists + p.survival / 600) * 10) / 10, avgPlace: 0 })).sort((a, b) => b.rating - a.rating);
+  window.BR_SAMPLE.brStats = { day, teams: [], games: statGames };
+  // A moment and the live top fraggers band, for previews that ask for them (?moment=…, ?ltf=1).
+  const Qs = new URLSearchParams(location.search), mk = Qs.get('moment');
+  const MOMENTS = { 'first.blood': { kind: 'first.blood', team: 's2', causer: 'IRP_ONE', victim: 'CRF_FOUR', distance: 46 }, 'kill.leader': { kind: 'kill.leader', team: 's0', name: 'NOW_TWO', kills: 7 }, zone: { kind: 'zone' }, 'final.teams': { kind: 'final.teams', teams: ['s2', 's0', 's5', 's3'] }, 'match.point': { kind: 'match.point', team: 's2' } };
+  window.BR_SAMPLE.moments = Object.fromEntries(Object.entries(MOMENTS).map(([k, v]) => [k, { ...v, at: 0, for: 6 }]));
+  if (mk && MOMENTS[mk]) window.BR_SAMPLE.brLive.moment = { ...MOMENTS[mk], at: 0, for: 6 };
+  window.BR_SAMPLE.brLive.zone = { time: 1248, status: 'move', index: 6, counter: 74, max: 195 };
+  if (Qs.get('ltf') === '1') window.BR_SAMPLE.brLtf = true;
 })();

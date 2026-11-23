@@ -1213,7 +1213,7 @@
   // A browser source for one graphic (Air's Rundown › Copy browser source, 17 Nov): ?only=<screen> shows that
   // graphic alone, only while Air has it on air (or always with &always=1), in &style=full|band (else the Take's).
   const ONLY = Q.get('only'), ALWAYS = Q.get('always') === '1', ONLY_STYLE = Q.get('style');
-  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'map-breakdown': 'mapbreakdown', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup', 'br-lobby': 'brlobby', 'br-today': 'brtoday', 'br-rankings': 'brrankings', 'br-overall': 'broverall', 'br-wwcd': 'brwwcd', 'br-mvp': 'brmvp', 'br-champion': 'brchampion' };
+  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'map-breakdown': 'mapbreakdown', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup', 'br-lobby': 'brlobby', 'br-today': 'brtoday', 'br-rankings': 'brrankings', 'br-overall': 'broverall', 'br-wwcd': 'brwwcd', 'br-mvp': 'brmvp', 'br-champion': 'brchampion', 'br-teams': 'brteams', 'br-drop': 'brdrop', 'br-fraggers': 'brfraggers', 'br-tom': 'brtom', 'br-profile': 'brprofile', 'br-mstats': 'brmstats' };
   M.fullscreen = root => {
     const slots = {};
     let shown = null, fsSp = null;
@@ -1483,7 +1483,7 @@
       const d = event.data;
       if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template ? Object.assign(d.template, { draft: true }) : null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
       if (d.type === 'AIR_TEMPLATE_PLAY' && HUD.templatePlay) HUD.templatePlay();
-      if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); }
+      if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.brSample = /^(rail|grid|strip|moments)$/.test(d.sample || '') ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); HUD.subs.forEach(f => f(HUD.state)); }
       if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS' || d.type === 'AIR_TEMPLATE_SAMPLE') && HUD.templateRects) { sendRects(d.id); watchRects(); }
       return;
     }

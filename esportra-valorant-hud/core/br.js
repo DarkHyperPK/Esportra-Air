@@ -51,7 +51,7 @@
     const br = real ? s.br : PREVIEW ? S.br : null;
     const live = s.brLive && s.brLive.teams ? s.brLive : PREVIEW && !real ? S.brLive : null;
     const free = br && br.game === 'freefire';
-    return { br, live, pack: s.airPack || {}, th: theme(s), word: free ? { win: 'BOOYAH', elims: 'KILLS', game: 'MATCH', line: 'BOOYAH!' } : { win: 'WWCD', elims: 'ELIMS', game: 'MATCH', line: 'WINNER WINNER CHICKEN DINNER' } };
+    return { br, live, stats: s.brStats || (PREVIEW ? S.brStats : null) || null, pick: s.brPick || null, pack: s.airPack || {}, th: theme(s), word: free ? { win: 'BOOYAH', elims: 'KILLS', game: 'MATCH', line: 'BOOYAH!' } : { win: 'WWCD', elims: 'ELIMS', game: 'MATCH', line: 'WINNER WINNER CHICKEN DINNER' } };
   }
   const team = (br, id) => br.teams.find(t => t.id === id) || { name: '—', tag: '—', color: '#555', logo: '', players: [], photos: [] };
   const tag = (t, cls) => logoOk(t.logo) ? `<img class="br-tl ${cls || ''}" src="${esc(t.logo)}" alt="">` : `<span class="br-tl ${cls || ''}" style="--c:${esc(col(t.color))}">${esc(t.tag)}</span>`;
@@ -116,14 +116,17 @@
     }, tick(s) { this.update(s); }, play() { sig = ''; } };
   }
   const elimOn = d => !!(d.live && d.live.lastOut && (PREVIEW || HUD.now() - (d.live.lastOut.at || 0) < 6000));
-  const key = s => { const d = data(s); return [d.br, d.live, d.pack, s.airBrTheme, s.layout && s.layout.brHud, s.brEvent, s.brEmblem, s.brSponsors, s.brPopup, elimOn(d)]; };
+  /** A moment Air raised from the feed (first blood, kill leader, zone, final teams, match point), shown for its time. */
+  const momentOn = d => { const m = d.live && d.live.moment; return !!(m && (PREVIEW || HUD.now() - (m.at || 0) < (m.for || 6) * 1000)); };
+  const key = s => { const d = data(s); return [d.br, d.live, d.pack, s.airBrTheme, s.layout && s.layout.brHud, s.brEvent, s.brEmblem, s.brSponsors, s.brPopup, elimOn(d), momentOn(d), s.brLtf, d.stats, d.pick, PREVIEW && HUD.brSample]; };
   const eventName = s => s.brEvent || (s.event && s.event.name) || '';
 
   // ═════════════ In-game HUD ═════════════
   M.brhud = root => layer(root, 'br-hud', (s, d) => {
     if (!d.br) return '';
     const br = d.br, rows = liveRows(br, d.live), game = br.games.find(g => g.n === (d.live ? d.live.game : br.current)) || br.games[0] || { n: 1, map: '' };
-    const v = PREVIEW && /^(rail|grid|strip)$/.test(Q.get('mode') || '') ? Q.get('mode') : (s.layout && s.layout.brHud) || 'rail';
+    const sm = PREVIEW ? HUD.brSample || Q.get('mode') || '' : '';
+    const v = /^(rail|grid|strip)$/.test(sm) ? sm : (s.layout && s.layout.brHud) || 'rail';
     const out = d.live && d.live.lastOut, showOut = elimOn(d) ? out : null;
     const alive = rows.filter(r => !r.out).length;
     const left = d.live ? d.live.teamsAlive ?? alive : br.teams.length;
@@ -131,18 +134,33 @@
       const t = team(br, showOut.team);
       return `<div class="brh-elim" style="${tc(t)}"><span class="cam">${tag(t)}<i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></span><span class="tx"><em>TEAM ELIMINATED</em><b>${esc(t.name)}</b><span>+${placePts(br, showOut.place) + elimPts(br, (d.live.teams[showOut.team] || {}).elims)} PTS · ${esc(left)} TEAMS LEFT</span></span><span class="place">#${esc(showOut.place)}</span><i class="hz"></i></div>`;
     })() : '';
+    const fmtT2 = sec => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+    // Graphics studio's Moments sample shows a moment and the live top fraggers.
+    const mo = momentOn(d) ? d.live.moment : sm === 'moments' && window.BR_SAMPLE ? window.BR_SAMPLE.moments['first.blood'] : null;
+    const moment = mo ? (() => {
+      const T = id => team(br, id);
+      if (mo.kind === 'first.blood') { const t = T(mo.team); return `<div class="brh-mo fb" style="${tc(t)}"><em>FIRST BLOOD</em>${tag(t)}<b>${esc(mo.causer)}</b><span>→ ${esc(mo.victim)}${mo.distance ? ` · ${esc(mo.distance)}M` : ''}</span></div>`; }
+      if (mo.kind === 'kill.leader') { const t = T(mo.team); return `<div class="brh-mo kl" style="${tc(t)}"><em>KILL LEADER</em>${tag(t)}<b>${esc(mo.name)}</b><span class="kn">${esc(mo.kills)}</span></div>`; }
+      if (mo.kind === 'zone') { const z = (d.live && d.live.zone) || mo; return `<div class="brh-mo zone"><em>ZONE ${esc(z.index)} ${z.status === 'move' ? 'CLOSING' : 'NEXT'}</em><b>${fmtT2(z.counter || 0)}</b><i style="--w:${Math.round((z.counter || 0) / Math.max(1, z.max || 1) * 100)}%"></i></div>`; }
+      if (mo.kind === 'final.teams') return `<div class="brh-mo final"><em>FINAL ${esc((mo.teams || []).length)}</em>${(mo.teams || []).map(id => `<span style="${tc(T(id))}">${tag(T(id))}</span>`).join('')}</div>`;
+      if (mo.kind === 'match.point') { const t = T(mo.team); return `<div class="brh-mo mp" style="${tc(t)}"><em>MATCH POINT</em>${tag(t)}<b>${esc(t.name)}</b><span>A WIN TAKES THE TITLE</span></div>`; }
+      return '';
+    })() : '';
+    const lead = d.live && Array.isArray(d.live.players) ? d.live.players.slice(0, 3) : [];
+    const ltf = (s.brLtf || (PREVIEW && window.BR_SAMPLE && (window.BR_SAMPLE.brLtf || sm === 'moments'))) && lead.length ? `<div class="brh-ltf"><em>LIVE TOP FRAGGERS</em>${lead.map((p, i) => { const t = team(br, p.team); return `<span style="${tc(t)}"><i>${i + 1}</i>${tag(t)}<b>${esc(p.name)}</b><em>${esc(p.elims)}</em></span>`; }).join('')}</div>` : '';
     const chip = `<div class="brh-chip"><span class="m"><b>M${esc(game.n)}</b><span>OF ${br.games.length}</span></span>${slot('mapthumb', mapPic(d.pack, game.map))}<span class="e"><b>${esc(game.map)}</b><span>${esc([eventName(s), br.title].filter(Boolean).join(' · '))}</span></span></div>`;
+    const extra = moment + ltf;
     const counts = d.live ? `${left} TEAMS · ${d.live.playersAlive ?? ''} ALIVE` : `${br.teams.length} TEAMS`;
     const max = Math.max(1, br.scoring.matchPoint || 0, ...rows.map(r => r.total)) * 1.15;
     if (v === 'grid') {
-      return `<div class="brh v-grid"><div class="brh-gridbox"><div class="brh-ghead"><b class="t">LIVE POINTS</b><span class="m">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span><span class="c">${esc(counts)}</span></div><div class="brh-tiles">${rows.map((r, i) => `<div class="brh-tile ${i === 0 && !r.out ? 'lead' : ''} ${r.out ? 'out' : ''} ${/k/.test(r.players) ? 'knock' : ''}" style="--i:${i};${tc(r.t)}"><span class="rk">${r.out ? r.place : i + 1}</span><span class="nm">${esc(r.t.tag)}</span><span class="pt">${r.total}</span>${pips(r.players)}</div>`).join('')}</div></div>${chip}${elim}</div>`;
+      return `<div class="brh v-grid"><div class="brh-gridbox"><div class="brh-ghead"><b class="t">LIVE POINTS</b><span class="m">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span><span class="c">${esc(counts)}</span></div><div class="brh-tiles">${rows.map((r, i) => `<div class="brh-tile ${i === 0 && !r.out ? 'lead' : ''} ${r.out ? 'out' : ''} ${/k/.test(r.players) ? 'knock' : ''}" style="--i:${i};${tc(r.t)}"><span class="rk">${r.out ? r.place : i + 1}</span><span class="nm">${esc(r.t.tag)}</span><span class="pt">${r.total}</span>${pips(r.players)}</div>`).join('')}</div></div>${chip}${elim}${extra}</div>`;
     }
     if (v === 'strip') {
       const top = rows.filter(r => !r.out).slice(0, 3);
-      const pop = s.brPopup || (PREVIEW && Q.get('mode') === 'strip') ? `<div class="brh-pop"><div class="brh-phead"><span class="a">STANDINGS</span><span class="b"><b>LIVE · ${d.word.game} ${esc(game.n)} OF ${br.games.length}</b>${br.scoring.matchPoint ? `MATCH POINT ${br.scoring.matchPoint}` : ''}</span></div><div class="brh-pbody">${rows.map((r, i) => `<div class="brh-pr ${i < 3 && !r.out ? 'top' : ''} ${r.out ? 'out' : ''}" style="--i:${i};${tc(r.t)}"><span class="rk">${r.out ? '#' + r.place : i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.name)}</span>${pips(r.players)}<span class="pt">${r.total}</span></div>`).join('')}</div></div>` : '';
-      return `<div class="brh v-strip"><div class="brh-strip"><span class="m">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span>${top.map((r, i) => `<span class="t ${i === 0 ? 'lead' : ''}" style="${tc(r.t)}"><span class="rk">${i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.tag)}</span><span class="pt">${r.total}</span></span>`).join('')}<span class="al"><b>${esc(left)}</b>TEAMS</span></div>${pop}${elim}</div>`;
+      const pop = s.brPopup || (PREVIEW && sm === 'strip') ? `<div class="brh-pop"><div class="brh-phead"><span class="a">STANDINGS</span><span class="b"><b>LIVE · ${d.word.game} ${esc(game.n)} OF ${br.games.length}</b>${br.scoring.matchPoint ? `MATCH POINT ${br.scoring.matchPoint}` : ''}</span></div><div class="brh-pbody">${rows.map((r, i) => `<div class="brh-pr ${i < 3 && !r.out ? 'top' : ''} ${r.out ? 'out' : ''}" style="--i:${i};${tc(r.t)}"><span class="rk">${r.out ? '#' + r.place : i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.name)}</span>${pips(r.players)}<span class="pt">${r.total}</span></div>`).join('')}</div></div>` : '';
+      return `<div class="brh v-strip"><div class="brh-strip"><span class="m">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span>${top.map((r, i) => `<span class="t ${i === 0 ? 'lead' : ''}" style="${tc(r.t)}"><span class="rk">${i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.tag)}</span><span class="pt">${r.total}</span></span>`).join('')}<span class="al"><b>${esc(left)}</b>TEAMS</span></div>${pop}${elim}${extra}</div>`;
     }
-    return `<div class="brh v-rail"><div class="brh-rail"><div class="brh-head"><b class="t">LIVE POINTS</b><span class="c">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span></div><div class="brh-sub"><span>${esc(counts)}</span>${br.scoring.matchPoint ? `<span class="mpx">MATCH POINT ${br.scoring.matchPoint}</span>` : ''}</div>${rows.map((r, i) => `<div class="brh-row ${i === 0 && !r.out ? 'lead' : ''} ${r.out ? 'out' : ''} ${/k/.test(r.players) ? 'knock' : ''}" style="--i:${i};${tc(r.t)};--w:${Math.round(r.total / max * 100)}%;--mpx:${br.scoring.matchPoint ? Math.round(br.scoring.matchPoint / max * 100) : -10}%"><i class="bkx"></i>${r.out || !br.scoring.matchPoint ? '' : '<i class="mpl"></i>'}<span class="rk">${r.out ? '#' + r.place : i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.tag)}${r.mp && !r.out ? '<span class="mpt">MP</span>' : ''}</span>${pips(r.players)}<span class="pt">${r.total}</span></div>`).join('')}<div class="brh-key"><span>ALIVE</span><span class="k">KNOCKED</span><span class="d">OUT</span></div></div>${chip}${elim}</div>`;
+    return `<div class="brh v-rail"><div class="brh-rail"><div class="brh-head"><b class="t">LIVE POINTS</b><span class="c">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span></div><div class="brh-sub"><span>${esc(counts)}</span>${br.scoring.matchPoint ? `<span class="mpx">MATCH POINT ${br.scoring.matchPoint}</span>` : ''}</div>${rows.map((r, i) => `<div class="brh-row ${i === 0 && !r.out ? 'lead' : ''} ${r.out ? 'out' : ''} ${/k/.test(r.players) ? 'knock' : ''}" style="--i:${i};${tc(r.t)};--w:${Math.round(r.total / max * 100)}%;--mpx:${br.scoring.matchPoint ? Math.round(br.scoring.matchPoint / max * 100) : -10}%"><i class="bkx"></i>${r.out || !br.scoring.matchPoint ? '' : '<i class="mpl"></i>'}<span class="rk">${r.out ? '#' + r.place : i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.tag)}${r.mp && !r.out ? '<span class="mpt">MP</span>' : ''}</span>${pips(r.players)}<span class="pt">${r.total}</span></div>`).join('')}<div class="brh-key"><span>ALIVE</span><span class="k">KNOCKED</span><span class="d">OUT</span></div></div>${chip}${elim}${extra}</div>`;
   }, key);
 
   // ═════════════ Full screens ═════════════
@@ -151,7 +169,7 @@
     o = o || {};
     const th = d.th, bg = th.background || o.bg || packOf(d.pack, 'wallpaper', o.wall || 0);
     const props = [];
-    if (th.chutes) (th.side === 'left' ? [[250, 330, 130], [120, 600, 86]] : [[1560, 210, 120], [1740, 380, 80], [300, 150, 64]]).forEach(([x, y, w], i) => props.push(`<i class="b6-chute" style="left:${x}px;top:${y}px;width:${w}px;animation-delay:${-i * 1.4}s"><svg viewBox="0 0 120 170"><path class="cn" d="M4 50 Q60 -12 116 50 Q102 40 88 50 Q74 40 60 50 Q46 40 32 50 Q18 40 4 50 Z"/><path class="cs" d="M32 50 Q46 40 60 50 Q60 12 46 8 Q30 20 32 50 Z M88 50 Q74 40 60 50 Q60 12 74 8 Q90 20 88 50 Z"/><path class="ln" d="M6 50 L56 128 M32 50 L58 128 M60 50 L60 128 M88 50 L62 128 M114 50 L64 128"/><rect x="48" y="128" width="24" height="24" rx="2" fill="#7b2a22"/><rect x="48" y="128" width="24" height="7" fill="#2f6fb8"/></svg></i>`));
+    if (th.chutes) (th.side === 'left' ? [[250, 330, 130], [120, 600, 86]] : [[1560, 210, 120], [1740, 380, 80], [1240, 70, 56]]).forEach(([x, y, w], i) => props.push(`<i class="b6-chute" style="left:${x}px;top:${y}px;width:${w}px;animation-delay:${-i * 1.4}s"><svg viewBox="0 0 120 170"><path class="cn" d="M4 50 Q60 -12 116 50 Q102 40 88 50 Q74 40 60 50 Q46 40 32 50 Q18 40 4 50 Z"/><path class="cs" d="M32 50 Q46 40 60 50 Q60 12 46 8 Q30 20 32 50 Z M88 50 Q74 40 60 50 Q60 12 74 8 Q90 20 88 50 Z"/><path class="ln" d="M6 50 L56 128 M32 50 L58 128 M60 50 L60 128 M88 50 L62 128 M114 50 L64 128"/><rect x="48" y="128" width="24" height="24" rx="2" fill="#7b2a22"/><rect x="48" y="128" width="24" height="7" fill="#2f6fb8"/></svg></i>`));
     const item = pic(packOf(d.pack, 'item', 0));
     const crate = o.crate && th.crate && item ? `<i class="br-slot b6-crate" style="--pic:url('${esc(item)}');${o.crate}"></i>` : '';
     const emblemSrc = th.emblem || pic(s.brEmblem);
@@ -285,4 +303,69 @@
       ${t ? `<div class="b6-cn" style="${tc(t)}">${tag(t)}<b>${esc(t.name)}</b></div><div class="b6-cst"><div>${num(row.total || 0)}POINTS</div><div>${num(row.wins || 0)}${esc(d.word.win)}</div><div>${num(row.elims || 0)}${esc(d.word.elims)}</div></div>` : ''}${journey}`;
     return frame(s, d, 'brf-champ', body, { wall: 2, emblem: true, header: false, foot: [eventName(s), br.title, 'FINAL STANDINGS'].filter(Boolean).join(' · ').toUpperCase() });
   });
+  // ═════════════ From the observer feed (24 Nov) ═════════════
+  // Graphics built on the numbers Air saves from PCOB: the room's `brStats` (whole day and each match) and the
+  // producer's pick from Live › Insights (`brPick`: a player, the scope, a match).
+  const pname = (br, name) => { const f = playerOf(br, name); return f || null; };
+  const fmtT = sec => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+  const scopeOf = (d) => { const st = d.stats || {}, pick = d.pick, games = st.games || []; const g = (pick && pick.game && games.find(x => x.n === pick.game)) || games[games.length - 1]; return { st, g }; };
+
+  // Teams in this lobby: 16 squads, four columns.
+  full('brteams', (s, d) => {
+    const br = d.br, rows = (br.standings || []).map(r => team(br, r.team));
+    const teams = rows.length ? rows : br.teams;
+    const body = `<div class="fd-teams">${teams.map((t, i) => `<div class="fd-tc" style="${tc(t)};--i:${i}"><div class="fd-tch">${tag(t)}<b>${esc(t.name)}</b><span class="fd-seed">#${i + 1}</span></div><div class="fd-tcp">${(t.players || []).slice(0, 4).map(p => `<span>${esc(p)}</span>`).join('')}</div></div>`).join('')}</div>`;
+    return frame(s, d, 'brf-teams', body, { wall: 1, header: header(s, d, 'TEAMS IN THIS LOBBY', `<span>${br.teams.length} TEAMS</span>${dot}<span>${br.teams.length * 4} PLAYERS</span>${dot}<span>${br.games.length} MATCHES</span>`, ''), foot: 'SEEDED BY OVERALL STANDINGS' });
+  });
+
+  // Drop map: the next match's map with the real flight path from the observer.
+  full('brdrop', (s, d) => {
+    const br = d.br, g = br.games.find(x => !(x.results && x.results.length)) || br.games[0];
+    const body = `<div class="fd-drop">${tactical(d, g.map)}</div><div class="fd-dropside"><div class="fd-k">FLIGHT PATH</div><b class="fd-big">${esc(String(g.map || '').toUpperCase())}</b><div class="fd-line"><span>MATCH ${esc(g.n)} OF ${br.games.length}</span></div><div class="fd-legend"><span><i class="pl"></i>PLANE</span><span><i class="bl"></i>FIRST ZONE</span><span><i class="sf"></i>SAFE ZONE</span></div></div>`;
+    return frame(s, d, 'brf-drop', body, { wall: 3, header: header(s, d, 'DROP MAP', `<span>MATCH ${esc(g.n)}</span>${dot}<span>${esc(String(g.map || '').toUpperCase())}</span>`, ''), foot: 'FLIGHT PATH FROM THE OBSERVER CLIENT' });
+  });
+
+  // Top fraggers: five players, the match or the day.
+  full('brfraggers', (s, d) => {
+    const br = d.br, { st, g } = scopeOf(d), day = (d.pick && d.pick.scope === 'day') || Q.get('scope') === 'day';
+    const list = ((day ? st.day : g && g.players) || []).slice().sort((a, b) => b.kills - a.kills || b.damage - a.damage).slice(0, 5);
+    const body = `<div class="fd-frag">${list.map((p, i) => { const f = pname(br, p.name) || { t: team(br, p.team), i: -1 }; return `<div class="fd-fc ${i === 0 ? 'top' : ''}" style="${tc(f.t)};--i:${i}"><span class="fd-rk">${i + 1}</span><span class="fd-ph">${player(f.t, f.i)}</span><div class="fd-fi"><b class="fd-kills">${p.kills}<small>${esc(d.word.elims)}</small></b><b class="fd-pn">${esc(p.name)}</b><span class="fd-pt">${tag(f.t)}${esc(f.t.name)}</span><span class="fd-ps"><em>${p.damage}</em> DMG <em>${p.knockouts}</em> KNOCKS</span></div></div>`; }).join('')}</div>`;
+    return frame(s, d, 'brf-frag', body, { wall: 2, header: header(s, d, day ? 'TOP FRAGGERS · DAY' : 'TOP FRAGGERS', day ? `<span>AFTER ${br.played} MATCHES</span>` : `<span>MATCH ${g ? g.n : ''}</span>${dot}<span>${esc(String(g ? g.map : '').toUpperCase())}</span>`, ''), foot: 'ELIMINATIONS, THEN DAMAGE · FROM THE OBSERVER FEED' });
+  });
+
+  // Team of the match: the best team by points this match, its four players.
+  full('brtom', (s, d) => {
+    const br = d.br, { g } = scopeOf(d);
+    if (!g) return frame(s, d, 'brf-tom', '<p class="b6-none">After the first match.</p>', { header: header(s, d, 'TEAM OF THE MATCH', '', '') });
+    const best = g.results.slice().sort((a, b) => b.pts - a.pts)[0], t = team(br, best.team);
+    const ps = g.players.filter(p => p.team === best.team), tt = (g.teams || []).find(x => x.team === best.team) || {};
+    const body = `<div class="fd-tom" style="${tc(t)}"><div class="fd-tomh">${tag(t)}<b>${esc(t.name)}</b><span class="fd-pts"><b>${best.pts}</b>PTS</span></div>
+      <div class="fd-tomp">${ps.map((p, i) => { const f = pname(br, p.name) || { t, i: -1 }; return `<div class="fd-tp" style="--i:${i}"><span class="fd-ph">${player(t, f.i)}</span><b>${esc(p.name)}</b><div class="fd-tps"><span><em>${p.kills}</em>ELIMS</span><span><em>${p.damage}</em>DMG</span><span><em>${p.knockouts}</em>KNOCKS</span></div></div>`; }).join('')}</div>
+      <div class="fd-toms"><div><b>#${best.place}</b>PLACE</div><div><b>${best.elims}</b>${esc(d.word.elims)}</div><div><b>${tt.damage || 0}</b>DAMAGE</div><div><b>${fmtT((tt.survival || 0) / Math.max(1, ps.length))}</b>AVG SURVIVAL</div></div></div>`;
+    return frame(s, d, 'brf-tom', body, { wall: 1, header: header(s, d, 'TEAM OF THE MATCH', `<span>MATCH ${g.n}</span>${dot}<span>${esc(String(g.map).toUpperCase())}</span>`, ''), foot: 'MOST POINTS THIS MATCH' });
+  });
+
+  // Player profile: the day's numbers and a bar per match.
+  full('brprofile', (s, d) => {
+    const br = d.br, st = (d.stats || {}), who = (d.pick && d.pick.player) || Q.get('player') || (st.day && st.day[0] && st.day[0].name) || '';
+    const p = (st.day || []).find(x => x.name === who); if (!p) return '';
+    const f = pname(br, p.name) || { t: team(br, p.team), i: -1 }, t = f.t;
+    const per = (st.games || []).map(g => ({ n: g.n, x: (g.players.find(y => y.name === who) || { kills: 0, damage: 0 }) }));
+    const maxD = Math.max(1, ...per.map(x => x.x.damage));
+    const body = `<div class="fd-prof" style="${tc(t)}"><span class="fd-pbig">${player(t, f.i)}</span><div class="fd-pinfo"><span class="fd-pt">${tag(t)}${esc(t.name)}</span><b class="fd-pname">${esc(p.name)}</b>
+      <div class="fd-tiles"><div><b>${p.kills}</b>${esc(d.word.elims)}</div><div><b>${p.damage}</b>DAMAGE</div><div><b>${p.knockouts}</b>KNOCKS</div><div><b>${p.assists}</b>ASSISTS</div><div><b>${fmtT(p.survival / Math.max(1, p.games))}</b>AVG SURVIVAL</div><div><b>${p.maxKillDistance}m</b>LONGEST KILL</div></div>
+      <div class="fd-bars"><div class="fd-k">DAMAGE BY MATCH</div>${per.map(x => `<div class="fd-bar"><span>M${x.n}</span><i style="--w:${Math.round(x.x.damage / maxD * 100)}%"></i><b>${x.x.damage}</b><em>${x.x.kills} ${esc(d.word.elims)}</em></div>`).join('')}</div>
+      <div class="fd-rating"><span>MVP RATING</span><b>${p.rating}</b></div></div></div>`;
+    return frame(s, d, 'brf-prof', body, { wall: 0, header: header(s, d, 'PLAYER PROFILE', `<span>${p.games} MATCHES</span>${dot}<span>${p.wins} ${esc(d.word.win)}</span>`, ''), foot: 'NUMBERS FROM THE OBSERVER FEED' });
+  });
+
+  // Match stats: every team's damage, knocks, heals and survival.
+  full('brmstats', (s, d) => {
+    const br = d.br, { g } = scopeOf(d); if (!g) return '';
+    const rows = (g.teams || []).slice().sort((a, b) => b.damage - a.damage), maxD = Math.max(1, ...rows.map(r => r.damage));
+    const place = id => (g.results.find(r => r.team === id) || {}).place || '—';
+    const body = `<div class="b6-tbl fd-ms"><div class="b6-th"><span>#</span><span></span><span>TEAM</span><span>DAMAGE</span><span>PLACE</span><span>${esc(d.word.elims)}</span><span>KNOCKS</span><span>HEALS</span><span>SURVIVAL</span></div>${rows.map((r, i) => { const t = team(br, r.team); return `<div class="b6-tr" style="${tc(t)};--i:${i}"><span class="rk">${i + 1}</span>${tag(t)}<span class="nm">${esc(t.name)}</span><span class="bar"><i style="width:${Math.round(r.damage / maxD * 100)}%"></i><b>${r.damage}</b></span><span class="c">${place(r.team)}</span><span class="c">${r.kills}</span><span class="c">${r.knockouts}</span><span class="c">${r.heal}</span><span class="c">${fmtT(r.survival / 4)}</span></div>`; }).join('')}</div>`;
+    return frame(s, d, 'brf-mstats', body, { wall: 2, header: header(s, d, `MATCH ${g.n} STATS`, `<span>${esc(String(g.map).toUpperCase())}</span>${dot}<span>RANKED BY DAMAGE</span>`, mapCard(d, g.map, `M${g.n}`)), foot: 'TEAM TOTALS FROM THE OBSERVER FEED · SURVIVAL IS THE TEAM AVERAGE' });
+  });
+
 })();

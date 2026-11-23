@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 // blend mode or backdrop filter. Those are what made frames slow without a GPU; this keeps them out.
 // Frame times themselves are measured by hand (4x CPU throttle) because they depend on the machine.
 const OVERLAYS = resolve(import.meta.dirname, '../../../esportra-valorant-hud/overlays');
-const PAGES = ['br-hud', 'br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion'];
+const PAGES = ['br-hud', 'br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion', 'br-teams', 'br-drop', 'br-fraggers', 'br-tom', 'br-profile', 'br-mstats'];
 const ALLOWED = new Set(['transform', 'opacity', 'strokeDashoffset']);
 
 let chromium: any = null;
@@ -18,7 +18,7 @@ test('BR graphics animate only cheap properties', { skip: !chromium && 'needs Pl
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-    for (const name of PAGES) for (const mode of name === 'br-hud' ? ['rail', 'grid', 'strip'] : ['']) {
+    for (const name of PAGES) for (const mode of name === 'br-hud' ? ['rail', 'grid', 'strip', 'moments'] : ['']) {
       await page.goto(`file://${OVERLAYS}/${name}.html?preview=1${mode ? `&mode=${mode}` : ''}`);
       await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
       await page.waitForTimeout(150); // entrances running

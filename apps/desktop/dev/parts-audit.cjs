@@ -13,7 +13,7 @@ const PAGE = (g) => (g === 'hud' ? 'ingame' : g === 'brhud' ? 'br-hud' : (() => 
 const SAMPLES = {
   hud: ['', 'spike', 'pause', 'timeout', 'banner', 'poll', 'scoreboard', 'economy', 'recap', 'duel', 'compare', 'lowerthird', 'sponsor'],
   'holding|full': ['starting', 'brb', 'ending'],
-  brhud: ['rail', 'grid', 'strip'],
+  brhud: ['rail', 'grid', 'strip', 'moments'],
 };
 
 async function audit(page, graphic) {

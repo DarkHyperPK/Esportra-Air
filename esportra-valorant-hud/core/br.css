@@ -346,3 +346,67 @@ img.br-tl{background:rgba(17,17,17,.6)}
 .b6-jr .c{fill:none;stroke:var(--acc);stroke-width:6;stroke-linejoin:round;stroke-dasharray:3000;stroke-dashoffset:3000;animation:br-dash 1.6s 1s ease-out forwards}
 .b6-jr circle{fill:var(--bg1);stroke:var(--acc);stroke-width:4}.b6-jr circle.w{fill:var(--acc)}
 .b6-jr .wt{font:italic 900 14px var(--f);fill:var(--k);text-anchor:middle}.b6-jr .lb{font:13px var(--m);fill:#fff;text-anchor:middle}
+
+/* ═════ From the observer feed (24 Nov): Teams in this lobby, Drop map, Top fraggers, Team of the match, Player profile, Match stats ═════ */
+.fd-teams{position:absolute;left:96px;right:96px;top:230px;bottom:96px;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:14px;z-index:6}
+.fd-tc{background:var(--ink);box-shadow:inset 0 4px 0 var(--tc);padding:16px 18px;display:grid;align-content:start;gap:10px;color:#fff}
+.fd-tch{display:flex;align-items:center;gap:12px}.fd-tch .br-tl{width:58px;height:36px;font-size:15px}
+.fd-tch b{font:italic 900 30px/1 var(--f);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.fd-seed{font:600 13px var(--m);color:var(--g);letter-spacing:.12em}
+.fd-tcp{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font:600 14px var(--m);letter-spacing:.06em;color:#cfd6e4}
+.fd-drop{position:absolute;left:60px;top:200px;width:1120px;height:820px;z-index:5;perspective:1600px}
+.fd-drop .b6-tac{position:absolute;left:80px;top:0;width:820px;height:820px;transform:rotateX(38deg) rotateZ(-14deg);transform-origin:50% 60%}
+.fd-dropside{position:absolute;right:120px;top:330px;width:520px;z-index:6;display:grid;gap:18px;color:#fff}
+.fd-k{font:600 14px var(--m);letter-spacing:.3em;color:var(--acc)}
+.fd-big{font:italic 900 120px/.9 var(--f)}
+.fd-line{font:600 18px var(--m);letter-spacing:.2em;color:var(--title2)}
+.fd-legend{display:flex;gap:22px;font:600 13px var(--m);letter-spacing:.18em;color:#cfd6e4}.fd-legend i{display:inline-block;width:26px;height:4px;margin-right:8px;vertical-align:middle}
+.fd-legend .pl{background:var(--acc)}.fd-legend .bl{background:#3b82f6}.fd-legend .sf{background:#fff}
+.fd-frag{position:absolute;left:96px;right:96px;top:250px;bottom:110px;display:grid;grid-template-columns:repeat(5,1fr);gap:18px;z-index:6}
+.fd-fc{position:relative;background:linear-gradient(180deg,transparent,var(--ink) 52%);display:grid;grid-template-rows:1fr auto;overflow:hidden;box-shadow:inset 0 -6px 0 var(--tc)}
+.fd-fc .fd-ph{position:absolute;left:0;right:0;top:40px;bottom:180px}
+.fd-fc .b6-ph{width:100%;height:100%}
+.fd-rk{position:absolute;left:18px;top:6px;font:italic 900 90px/1 var(--f);color:rgba(255,255,255,.16)}
+.fd-fc.top .fd-rk{color:var(--acc)}
+.fd-fi{position:relative;grid-row:2;padding:16px 18px 20px;display:grid;gap:6px;color:#fff}
+.fd-kills{font:italic 900 84px/.85 var(--f)}.fd-kills small{font:600 14px var(--m);letter-spacing:.24em;margin-left:10px;color:var(--acc)}
+.fd-pn{font:italic 900 32px/1 var(--f)}
+.fd-pt{display:flex;align-items:center;gap:10px;font:600 14px var(--m);letter-spacing:.12em;color:#cfd6e4;text-transform:uppercase}.fd-pt .br-tl{width:46px;height:28px;font-size:12px}
+.fd-ps{font:600 13px var(--m);letter-spacing:.14em;color:var(--g)}.fd-ps em{font-style:normal;color:#fff}
+.fd-tom{position:absolute;left:96px;right:96px;top:230px;bottom:100px;z-index:6;display:grid;grid-template-rows:auto 1fr auto;gap:18px;color:#fff}
+.fd-tomh{display:flex;align-items:center;gap:20px;background:var(--panel);color:var(--text);padding:16px 26px;border-bottom:6px solid var(--tc)}.fd-tomh .br-tl{width:84px;height:52px;font-size:20px}
+.fd-tomh b{font:italic 900 64px/1 var(--f);text-transform:uppercase;flex:1}.fd-pts{font:600 16px var(--m);letter-spacing:.2em}.fd-pts b{font:italic 900 70px/1 var(--f);margin-right:8px}
+.fd-tomp{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.fd-tp{position:relative;background:linear-gradient(180deg,transparent,var(--ink) 60%);display:grid;align-content:end;padding:18px;gap:10px;overflow:hidden}
+.fd-tp .fd-ph{position:absolute;inset:0 0 120px}.fd-tp .b6-ph{width:100%;height:100%}
+.fd-tp>b{position:relative;font:italic 900 34px/1 var(--f)}
+.fd-tps{position:relative;display:flex;gap:16px;font:600 12px var(--m);letter-spacing:.16em;color:var(--g)}.fd-tps em{display:block;font:italic 900 34px/1 var(--f);color:#fff}
+.fd-toms{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}.fd-toms div{background:var(--ink);padding:14px 20px;font:600 13px var(--m);letter-spacing:.2em;color:var(--g)}.fd-toms b{display:block;font:italic 900 46px/1 var(--f);color:#fff}
+.fd-prof{position:absolute;left:96px;right:96px;top:220px;bottom:90px;z-index:6;display:grid;grid-template-columns:600px 1fr;gap:40px;color:#fff}
+.fd-pbig{position:relative;background:linear-gradient(180deg,transparent,var(--ink));box-shadow:inset 0 -6px 0 var(--tc)}.fd-pbig .b6-ph{width:100%;height:100%}
+.fd-pinfo{display:grid;align-content:start;gap:18px}
+.fd-pname{font:italic 900 110px/.9 var(--f)}
+.fd-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.fd-tiles div{background:var(--ink);padding:14px 18px;font:600 13px var(--m);letter-spacing:.2em;color:var(--g)}.fd-tiles b{display:block;font:italic 900 52px/1 var(--f);color:#fff}
+.fd-bars{display:grid;gap:8px}.fd-bar{display:grid;grid-template-columns:50px 1fr 70px 110px;align-items:center;gap:12px;font:600 14px var(--m);letter-spacing:.12em}
+.fd-bar i{height:18px;background:linear-gradient(90deg,var(--tc),var(--acc));width:var(--w);transform-origin:0 50%}.fd-bar b{font:italic 900 26px var(--f);text-align:right}.fd-bar em{font-style:normal;color:var(--g)}
+.fd-rating{display:flex;align-items:baseline;gap:16px;font:600 14px var(--m);letter-spacing:.24em;color:var(--acc)}.fd-rating b{font:italic 900 64px/1 var(--f);color:#fff}
+.b6-tbl.fd-ms{left:96px;right:96px;top:236px}
+.fd-ms .b6-th,.fd-ms .b6-tr{grid-template-columns:44px 58px 260px 1fr 90px 90px 90px 90px 110px;gap:12px}
+.fd-ms .b6-tr{height:42px}.fd-ms .bar{position:relative;height:20px;background:rgba(255,255,255,.06)}.fd-ms .bar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--tc),var(--acc))}.fd-ms .bar b{position:absolute;right:8px;top:-2px;font:italic 900 20px var(--f)}
+/* Moments over the game (Air raises them from the feed): under the compass, below Team eliminated */
+.brh-mo{position:absolute;left:0;right:0;margin:0 auto;width:fit-content;top:206px;display:flex;align-items:center;gap:14px;height:64px;padding:0 26px;background:var(--ink);color:#fff;border-left:6px solid var(--tc,var(--acc));font:italic 900 32px/1 var(--f);animation:br-in-u .4s cubic-bezier(.2,.9,.2,1) backwards}
+.brh-mo em{font:600 13px var(--m);letter-spacing:.3em;font-style:normal;color:var(--acc)}
+.brh-mo span{font:600 14px var(--m);letter-spacing:.14em;color:#cfd6e4}
+.brh-mo .br-tl{width:56px;height:34px;font-size:14px}
+.brh-mo.fb em{color:var(--red)}
+.brh-mo .kn{font:italic 900 50px/1 var(--f)!important;color:var(--acc)!important;letter-spacing:0!important}
+.brh-mo.zone{border-left-color:#3b82f6;flex-wrap:wrap;height:auto;padding:12px 26px;gap:6px 18px;min-width:420px}.brh-mo.zone em{color:#60a5fa}.brh-mo.zone b{margin-left:auto}
+.brh-mo.zone i{flex-basis:100%;height:6px;background:rgba(255,255,255,.12);position:relative}.brh-mo.zone i::after{content:'';position:absolute;inset:0;width:var(--w);background:#3b82f6;transform-origin:0 50%}
+.brh-mo.final{gap:10px}.brh-mo.final span{box-shadow:inset 0 -4px 0 var(--tc)}
+.brh-mo.mp{background:var(--acc);color:#111;border-left-color:#111}.brh-mo.mp em,.brh-mo.mp span{color:#111}
+.brh-ltf{position:absolute;left:26px;bottom:116px;display:flex;align-items:center;gap:20px;padding:12px 22px;background:var(--ink);border-left:6px solid var(--acc);animation:br-in-l .45s cubic-bezier(.2,.9,.2,1) backwards}
+.brh-ltf>em{font:600 13px var(--m);letter-spacing:.3em;font-style:normal;color:var(--acc)}
+.brh-ltf>span{display:flex;align-items:center;gap:10px;color:#fff;font:italic 900 26px var(--f)}.brh-ltf>span i{font-style:normal;color:var(--acc)}.brh-ltf>span em{font:italic 900 30px var(--f);font-style:normal;color:var(--acc)}
+.brh-ltf .br-tl{width:50px;height:30px;font-size:13px}
+.v-strip .brh-mo{top:254px}
+.brh-mo.mp .br-tl{color:#fff}

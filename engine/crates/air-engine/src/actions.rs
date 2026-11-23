@@ -145,7 +145,7 @@ pub fn run(room: &Arc<Room>, name: &str, args: &Value) -> Result<u64, String> {
 }
 
 /// The graphics the full-screen host page can show (`overlays/fullscreen.html`).
-const FULLSCREEN: [&str; 22] = ["match-intro", "map-veto", "agent-select", "map-result", "series", "halftime", "standings", "player-profile", "champion", "cam-grid", "schedule", "bracket", "map-breakdown", "postgame-player", "postgame-matchup", "br-lobby", "br-today", "br-rankings", "br-overall", "br-wwcd", "br-mvp", "br-champion"];
+const FULLSCREEN: [&str; 28] = ["match-intro", "map-veto", "agent-select", "map-result", "series", "halftime", "standings", "player-profile", "champion", "cam-grid", "schedule", "bracket", "map-breakdown", "postgame-player", "postgame-matchup", "br-lobby", "br-today", "br-rankings", "br-overall", "br-wwcd", "br-mvp", "br-champion", "br-teams", "br-drop", "br-fraggers", "br-tom", "br-profile", "br-mstats"];
 
 fn camera_id(v: &Value) -> Result<Value, String> {
     match v {

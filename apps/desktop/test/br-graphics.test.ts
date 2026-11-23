@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 // updates in place (no entrance replays, the same nodes stay); the room's lobby replaces the sample; kit pictures
 // land in their slots and nothing else loads; the full-screen host shows each BR screen Air takes.
 const OVERLAYS = resolve(import.meta.dirname, '../../../esportra-valorant-hud/overlays');
-const PAGES = ['br-hud', 'br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion'];
+const PAGES = ['br-hud', 'br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion', 'br-teams', 'br-drop', 'br-fraggers', 'br-tom', 'br-profile', 'br-mstats'];
 const SHA = 'a'.repeat(64);
 
 let chromium: any = null;
@@ -23,14 +23,14 @@ test('battle royale pages draw the sample with no errors', { skip: !chromium && 
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-    for (const name of PAGES) for (const mode of name === 'br-hud' ? ['rail', 'grid', 'strip'] : ['']) {
+    for (const name of PAGES) for (const mode of name === 'br-hud' ? ['rail', 'grid', 'strip', 'moments'] : ['']) {
       const errors: string[] = [];
       const onError = (e: Error) => errors.push(e.message);
       page.on('pageerror', onError);
       await page.goto(`file://${OVERLAYS}/${name}.html?preview=1${mode ? `&mode=${mode}` : ''}`);
       await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
       await page.waitForTimeout(1500); // entrances settle
-      const r = await page.evaluate(() => ({ n: document.querySelectorAll('.br *').length, out: [...document.querySelectorAll('.br *')].filter((e) => !e.closest('.b6-mapwrap, .b6-flare, .b6-rays, .b6-shard')) // light and the tilted map bleed off on purpose (clipped by .brf)
+      const r = await page.evaluate(() => ({ n: document.querySelectorAll('.br *').length, out: [...document.querySelectorAll('.br *')].filter((e) => !e.closest('.b6-mapwrap, .fd-drop, .b6-flare, .b6-rays, .b6-shard')) // light and the tilted map bleed off on purpose (clipped by .brf)
         .filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > 1925 || b.bottom > 1085); }).map((e) => e.className) }));
       page.off('pageerror', onError);
       assert.deepEqual(errors, [], `${name} ${mode}: no script errors`);
