@@ -242,14 +242,14 @@ async function card(browser, title, sub, secs) {
   await dress(app, 'Graphics studio › Looks', 'Every text, picture and shape is a layer. Change the title’s words…', true);
   await type(app.locator('.tpl-right').getByLabel('Words'), 'POINTS RACE');
   await app.waitForTimeout(800); await hold(1.5);
-  await click(app.locator('.tpl-tree .tpl-fold[aria-label$=" layers of Table"]'), 0.4);
-  await click(app.locator('.tpl-tree [role=option]').filter({ hasText: /Bar fills/ }), 0.6);
-  await dress(app, 'Graphics studio › Looks', '…or a colour. Pictures change from the kit, and Ctrl Z takes any change back.', true);
-  await click(app.locator('.tpl-right .sw').nth(2), 0.3);
+  await dress(app, 'Graphics studio › Looks', '…or its colour. Pictures change from the kit, and Ctrl Z takes any change back.', true);
+  await click(app.locator('.tpl-right .sw').nth(1), 0.3);
   await app.waitForTimeout(900); await hold(2);
   await type(app.getByLabel('Template name'), 'Points race');
-  await click(app.getByRole('button', { name: /^Save/ }).last(), 1);
-  await app.keyboard.press('Escape'); await app.waitForTimeout(500);
+  const editor = app.getByRole('dialog', { name: /Template editor/ });
+  await click(editor.getByRole('button', { name: /^Save/ }).last(), 1);
+  await click(editor.getByRole('button', { name: /Close/ }).first(), 0.4);
+  await editor.waitFor({ state: 'detached', timeout: 5000 });
 
   // 4 · Live: run the show
   chapter('Live: run the show');
