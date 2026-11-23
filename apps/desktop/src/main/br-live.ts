@@ -8,6 +8,8 @@ import type { Lobby } from '../shared/api.ts';
 import { PCOB_ROUTES, finalResults, readCircle, readGlobal, readInGame, readKills, readPlayers, readTeams, seatTeams, toBrLive, type BrLive, type PcobCircle, type PcobGlobal, type PcobKill, type PcobPlayer, type PcobTeamList } from '../shared/pcob.ts';
 import { PCOB_OFF, localHost, type PcobStatus } from '../shared/pcob-status.ts';
 import { MVP_WEIGHTS, mvpRating, statOf, type GameFeed } from '../shared/br-stats.ts';
+import { MOMENT_SECONDS, showOf, type BrMomentKind, type BrMomentShown } from '../shared/br-rundown.ts';
+import { standings } from '../shared/br.ts';
 
 export interface BrLiveContext {
   /** The lobby on the graphics. */
@@ -27,7 +29,7 @@ export interface BrLiveContext {
   /** Tests drive `tick()` themselves. */
   manual?: boolean;
 }
-export type BrMoment = 'game.start' | 'plane' | 'first.blood' | 'team.out' | 'final.teams' | 'wwcd' | 'game.end';
+export type BrMoment = 'game.start' | 'plane' | 'first.blood' | 'team.out' | 'zone' | 'final.teams' | 'wwcd' | 'game.end';
 
 /** Polls: players, teams and in-game every second; the kill feed, circle and map info every other second. */
 const FAST = 1000;
@@ -56,6 +58,10 @@ export class BrLiveFeed {
   private saved = false;
   private said = new Set<string>();
   private shownAt = 0;
+  // Moments over the HUD: one at a time, each for MOMENT_SECONDS, the rest wait their turn.
+  private queue: BrMomentShown[] = [];
+  private current: BrMomentShown | null = null;
+  private leader: { name: string; at: number } | null = null;
 
   constructor(ctx: BrLiveContext) { this.ctx = ctx; }
   private get now() { return (this.ctx.now ?? Date.now)(); }
@@ -155,11 +161,20 @@ export class BrLiveFeed {
       if (rank > 1 && !this.placed.has(lobbyId)) { this.placed.add(lobbyId); this.lastOut = { team: lobbyId, place: rank, at: this.now }; this.moment('team.out', { team: lobbyId, place: rank }, `${lobbyId}:${rank}`); }
     }
     if (this.players.some((p) => p.state === 'plane')) this.moment('plane', {}, 'plane');
+    const teamOf = (name: string) => seats.get(this.players.find((p) => p.name === name)?.teamId ?? -1) ?? null;
     const firstKill = this.kills.find((k) => k.kind === 'kill');
-    if (firstKill) this.moment('first.blood', { causer: firstKill.causer, victim: firstKill.victim }, 'fb');
-    const live = toBrLive({ game: this.game, players: this.players, teams: this.teams, kills: this.kills, circle: this.circle, global: this.global, seats, lastOut: this.lastOut, rate: (p) => mvpRating(p, MVP_WEIGHTS) });
-    if (live.teamsAlive > 0 && live.teamsAlive <= 4 && live.teamsAlive < seats.size) this.moment('final.teams', { teams: live.teamsAlive }, `final:${live.teamsAlive}`);
-    await this.ctx.patch(lobby.code, { brLive: live });
+    if (firstKill && this.moment('first.blood', { causer: firstKill.causer, victim: firstKill.victim }, 'fb')) {
+      this.show(lobby, { kind: 'first.blood', team: teamOf(firstKill.causer) ?? undefined, causer: firstKill.causer, victim: firstKill.victim, distance: Math.round(firstKill.distance) || undefined });
+    }
+    const on = showOf(lobby).moments;
+    const live = toBrLive({ game: this.game, players: this.players, teams: this.teams, kills: this.kills, circle: this.circle, global: this.global, seats, lastOut: on['team.out'] ? this.lastOut : null, rate: (p) => mvpRating(p, MVP_WEIGHTS) });
+    if (live.teamsAlive > 0 && live.teamsAlive <= 4 && live.teamsAlive < seats.size && this.moment('final.teams', { teams: live.teamsAlive }, `final:${live.teamsAlive}`) && live.teamsAlive === 4) {
+      this.show(lobby, { kind: 'final.teams', teams: Object.entries(live.teams).filter(([, t]) => t.place === null && /[ak]/.test(t.players)).map(([id]) => id) });
+    }
+    this.killLeader(lobby, live.players);
+    const z = this.circle;
+    if (z && z.status === 'move' && z.index >= 3 && this.moment('zone', { index: z.index }, `zone:${z.index}`)) this.show(lobby, { kind: 'zone' });
+    await this.ctx.patch(lobby.code, { brLive: { ...live, moment: this.nextMoment() } });
     // The game is over when PCOB sets the WWCD time or every seated team has a place.
     const results = finalResults(this.players, this.teams, seats);
     if ((this.teams.finishedStart || results) && this.finishedAt === null) {
@@ -174,6 +189,7 @@ export class BrLiveFeed {
     this.inGame = true;
     // The poll that saw the game start already read this game's players, teams and feed: keep them.
     this.lastOut = null; this.placed = new Set(); this.finishedAt = null; this.saved = false; this.said = new Set();
+    this.queue = []; this.current = null; this.leader = null;
     // The next match without results; none left means the feed shows live data but saves nothing.
     const next = lobby?.games.find((g) => !g.results?.length) ?? null;
     this.game = next?.n ?? null;
@@ -181,7 +197,36 @@ export class BrLiveFeed {
     this.status.game = this.game;
     if (!lobby) this.ctx.log('Game data: a game started, but no lobby is on the graphics');
     else if (!next) this.ctx.log(`Game data: a game started, but every match of ${lobby.title} has results. Add a match to save it.`);
-    else { this.ctx.log(`Game data: match ${next.n} of ${lobby.title} started${next.map ? ` · ${next.map}` : ''}`); this.moment('game.start', { game: next.n }, 'start'); }
+    else {
+      this.ctx.log(`Game data: match ${next.n} of ${lobby.title} started${next.map ? ` · ${next.map}` : ''}`);
+      this.moment('game.start', { game: next.n }, 'start');
+      // Match point: the team on top is already at the line, so a win takes the title.
+      const mp = lobby.scoring.matchPoint, top = standings(lobby)[0];
+      if (mp && top && top.total >= mp) this.show(lobby, { kind: 'match.point', team: top.team });
+    }
+  }
+
+  /** A new kill leader (five or more, alone on top), at most once a minute. */
+  private killLeader(lobby: Lobby, players: Array<{ team: string; name: string; elims: number }>) {
+    const [a, b] = players;
+    if (!a || a.elims < 5 || (b && b.elims >= a.elims) || this.leader?.name === a.name) return;
+    if (this.leader && this.now - this.leader.at < 60_000) return;
+    this.leader = { name: a.name, at: this.now };
+    this.show(lobby, { kind: 'kill.leader', team: a.team, name: a.name, kills: a.elims });
+  }
+
+  /** Queues a moment for the HUD when the lobby has it switched on. */
+  private show(lobby: Lobby, m: Omit<BrMomentShown, 'at' | 'for'>) {
+    if (!showOf(lobby).moments[m.kind as BrMomentKind]) return;
+    if (this.queue.length >= 3) this.queue.shift();
+    this.queue.push({ ...m, at: 0, for: MOMENT_SECONDS });
+  }
+
+  /** The moment on the HUD now: the current one until its time is up, then the next waiting. */
+  private nextMoment(): BrMomentShown | null {
+    if (this.current && this.now - this.current.at >= this.current.for * 1000 + 400) this.current = null;
+    if (!this.current && this.queue.length) this.current = { ...this.queue.shift()!, at: this.now };
+    return this.current;
   }
 
   /** Saves the game once: on the settled end, or with what Air has when PCOB leaves the game early. */
@@ -203,10 +248,12 @@ export class BrLiveFeed {
     this.ctx.changed();
   }
 
+  /** Says a moment once per game (for the Rundown and the log); true the first time. */
   private moment(name: BrMoment, data: Record<string, unknown>, once: string) {
-    if (this.said.has(once)) return;
+    if (this.said.has(once)) return false;
     this.said.add(once);
     this.ctx.event?.(name, data);
+    return true;
   }
 
   private setState(state: PcobStatus['state']) {

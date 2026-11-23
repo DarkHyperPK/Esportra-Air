@@ -1,15 +1,18 @@
 // The battle royale graphics (core/br.js) as Air's interface names them: the full screens a lobby can take
 // (core/hud.js FULLSCREEN, the engine's allowlist), when each is used, and the HUD's three layouts.
 
-export const BR_SCREENS = ['br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion'] as const;
+export const BR_SCREENS = ['br-lobby', 'br-today', 'br-teams', 'br-drop', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion', 'br-fraggers', 'br-tom', 'br-profile', 'br-mstats'] as const;
 export type BrScreen = (typeof BR_SCREENS)[number];
 export const BR_SCREEN_NAME: Record<BrScreen, string> = {
   'br-lobby': 'Starting soon', 'br-today': "Today's matches", 'br-rankings': 'Match results', 'br-overall': 'Overall standings',
   'br-wwcd': 'WWCD', 'br-mvp': 'Match MVP', 'br-champion': 'Champions',
+  'br-teams': 'Teams in this lobby', 'br-drop': 'Drop map', 'br-fraggers': 'Top fraggers', 'br-tom': 'Team of the match', 'br-profile': 'Player profile', 'br-mstats': 'Match stats',
 };
+/** Built on the numbers saved from the observer feed (`brStats`): only for a game with an official feed (PCOB). */
+export const BR_FEED_SCREENS = new Set<BrScreen>(['br-fraggers', 'br-tom', 'br-profile', 'br-mstats']);
 /** Before a match, or after one (results, standings, winners). */
 export const BR_SCREEN_PHASE: Record<BrScreen, 'pre' | 'post'> = {
-  'br-lobby': 'pre', 'br-today': 'pre', 'br-rankings': 'post', 'br-overall': 'post', 'br-wwcd': 'post', 'br-mvp': 'post', 'br-champion': 'post',
+  'br-lobby': 'pre', 'br-today': 'pre', 'br-teams': 'pre', 'br-drop': 'pre', 'br-fraggers': 'post', 'br-tom': 'post', 'br-profile': 'post', 'br-mstats': 'post', 'br-rankings': 'post', 'br-overall': 'post', 'br-wwcd': 'post', 'br-mvp': 'post', 'br-champion': 'post',
 };
 export const BR_SCREEN_WHAT: Record<BrScreen, string> = {
   'br-lobby': 'Countdown to the next match over its tilted map, with the plane on the flight path.',
@@ -19,6 +22,12 @@ export const BR_SCREEN_WHAT: Record<BrScreen, string> = {
   'br-wwcd': 'The match winner with its players and points (WWCD, or BOOYAH for Free Fire).',
   'br-mvp': 'The match’s best player and the next three (numbers arrive with the observer data).',
   'br-champion': 'The champion team with its points, wins, elims and its journey through the day.',
+  'br-teams': 'Every squad in the lobby with its four players, seeded by the standings.',
+  'br-drop': 'The next match’s map with the plane’s flight path from the observer client.',
+  'br-fraggers': 'The five players with the most eliminations: the match, or the whole day.',
+  'br-tom': 'The team with the most points this match, its four players’ numbers.',
+  'br-profile': 'One player’s day: eliminations, damage, knocks, survival and a bar per match.',
+  'br-mstats': 'Every team’s damage, eliminations, knocks, heals and survival in one match.',
 };
 export const HUD_LAYOUTS = ['rail', 'grid', 'strip'] as const;
 export type HudLayout = (typeof HUD_LAYOUTS)[number];

@@ -36,7 +36,9 @@ export interface PageProps {
 }
 
 export function App() {
-  const [s, setSnapshot] = useState<Snapshot | null>(null);
+  const [s, setLatest] = useState<Snapshot | null>(null);
+  // A call's reply can arrive after a newer snapshot from the stream: keep whichever is newer.
+  const setSnapshot = useCallback((next: Snapshot) => setLatest((cur) => (cur && cur.seq !== undefined && next.seq !== undefined && next.seq < cur.seq ? cur : next)), []);
   const [page, setPage] = useState<Page>('event');
   // Which event is open on Events (none: the list of events).
   const [eventView, setEventView] = useState<EventView>({ id: null, tab: 'matches' });

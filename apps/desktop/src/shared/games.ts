@@ -22,6 +22,8 @@ export interface GameDef {
   words?: { game: string; win: string; elim: string };
   /** The scoring preset new lobbies start from (src/shared/br.ts). */
   scoring?: 'pmgc' | 'ffws';
+  /** A lobby game's official live data (24 Nov): PUBG MOBILE's observer API (PCOB). Free Fire has none. */
+  feed?: 'pcob';
 }
 
 const coming = (id: GameId, name: string): GameDef => ({ id, name, available: false, identity: null, matchData: '', playerPcData: null, pack: '', shape: 'versus' });
@@ -42,7 +44,7 @@ export const GAMES: GameDef[] = [
     matchData: 'Placements and eliminations per game (typed for now; live from the observer client later)',
     playerPcData: null,
     pack: 'PUBG MOBILE official kit',
-    shape: 'lobby', words: { game: 'Match', win: 'WWCD', elim: 'Elims' }, scoring: 'pmgc',
+    shape: 'lobby', words: { game: 'Match', win: 'WWCD', elim: 'Elims' }, scoring: 'pmgc', feed: 'pcob',
   },
   {
     id: 'freefire', name: 'Free Fire', available: true,

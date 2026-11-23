@@ -182,6 +182,8 @@ export interface BrLive {
   zone: PcobCircle | null;
   plane: PcobGlobal['plane'];
   phase: 'lobby' | 'plane' | 'fighting' | 'finished';
+  /** The moment over the HUD now (src/main/br-live.ts queues them). */
+  moment?: import('./br-rundown.ts').BrMomentShown | null;
 }
 
 /** MVP order (src/shared/br-stats.ts holds the rating; this is the live order the HUD shows). */

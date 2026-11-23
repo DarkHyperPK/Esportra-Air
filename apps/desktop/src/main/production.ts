@@ -31,6 +31,7 @@ import { GamePacks } from './game-packs.ts';
 import { Lobbies } from './br-lobbies.ts';
 import { BrGraphics, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
 import { BrLiveFeed } from './br-live.ts';
+import { BrAutopilot } from './br-autopilot.ts';
 import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
 import { Rehearsal } from './rehearsal.ts';
 import type { EsportraAccount } from './esportra.ts';
@@ -155,6 +156,7 @@ export class Production extends EventEmitter {
   readonly brGraphics: BrGraphics;
   /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
   readonly brLive: BrLiveFeed;
+  readonly brAuto: BrAutopilot;
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
@@ -187,6 +189,8 @@ export class Production extends EventEmitter {
       patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
       live: (id) => (!!this.gameLocked() || this.brLive.live) && deps.store.data.selectedLobbyId === id,
       extra: (l) => this.brGraphics.roomFields(l),
+      // Typed results run the post-game Rundown when no observer feed does it (Free Fire, or no Game data).
+      typed: (l, n) => { if (!this.brLive.live && this.lobbies.selected?.id === l.id) this.brAuto.onMoment('game.end', { game: n, results: true }); },
     });
     // Lobby graphics on air (22 Nov): src/main/br-graphics.ts.
     this.brGraphics = new BrGraphics({
@@ -203,8 +207,15 @@ export class Production extends EventEmitter {
       patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
       save: (id, n, results, feed) => this.lobbies.saveFeed(id, n, results, feed),
       learn: (id, seen) => this.lobbies.learnOpenIds(id, seen),
+      event: (name, data) => this.brAuto.onMoment(name, data),
       log: (t) => this.log.add(t), changed: () => this.emit('change'),
       fetch: deps.pcobFetch,
+    });
+    // The lobby's Rundown run from the feed (24 Nov): src/main/br-autopilot.ts.
+    this.brAuto = new BrAutopilot({
+      lobby: () => this.lobbies.selected,
+      take: async (l, screen) => { await this.brGraphics.take(l, screen); this.emit('change'); },
+      log: (t) => this.log.add(t), changed: () => this.emit('change'),
     });
     this.packs.on('change', () => void this.lobbies.publish().catch(() => {}));
     void this.startPacks();
@@ -1066,8 +1077,15 @@ export class Production extends EventEmitter {
     if (!Number.isInteger(id) || id < 0 || id > 999) throw new Error('That team slot is not valid.');
     this.lobbies.setSeat(lobbyId, id, typeof team === 'string' && team ? team : null);
   }
+  /** Moments, the Rundown, autopilot and the post-game pick; switching autopilot off stops what it runs. */
+  lobbyShow(id: string, patch: unknown) {
+    this.lobbies.setShow(id, (patch ?? {}) as Record<string, unknown>);
+    if ((patch as Record<string, unknown> | null)?.autopilot === false) this.brAuto.stop();
+  }
   async lobbyTake(id: string, screen: string | null) {
     const l = this.lobbies.find(id);
+    // The producer's Take wins over whatever autopilot is running.
+    this.brAuto.stop();
     if (this.deps.store.data.selectedLobbyId !== id) await this.lobbies.select(id);
     await this.brGraphics.take(l, screen);
     this.emit('change');
@@ -1840,6 +1858,7 @@ export class Production extends EventEmitter {
     });
   }
 
+  private snapSeq = 0;
   snapshot(): Snapshot {
     const { engine, obs, capture, version } = this.deps;
     const status: EngineStatus | null = engine.status;
@@ -1855,6 +1874,7 @@ export class Production extends EventEmitter {
     const { missingScenes, missingSources, installed, sceneStatus } = obsSceneView(obs.status, this.buildPlan(), (id) => this.slotWanted(id));
     const feedState = capture.state === 'live' && roomStatus?.lastFeedAt == null ? 'waiting' : capture.state;
     const snapshot: Snapshot = {
+      seq: ++this.snapSeq,
       version,
       engine: { state: engine.state, port: engine.port, reattached: engine.reattached, error: engine.error },
       setup: this.setup,
@@ -1916,6 +1936,7 @@ export class Production extends EventEmitter {
       packs: this.packsView(),
       lobbies: this.lobbies.list(),
       lobbyOnAir: this.lobbies.selected ? this.brGraphics.onAir(this.lobbies.selected) : null,
+      brAuto: this.brAuto.status(),
       pcob: { ...this.brLive.status, host: this.brLive.status.host || this.deps.store.data.pcobHost || '127.0.0.1:10086' },
       selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),

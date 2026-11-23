@@ -7,8 +7,9 @@ import { SCORING_PRESETS, gamePoints, standings, type Scoring, type TeamResult }
 import { gameOf } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
+import { BrRundown } from '../components/BrRundown.tsx';
 
-type Tab = 'results' | 'teams' | 'games' | 'scoring';
+type Tab = 'results' | 'teams' | 'games' | 'scoring' | 'rundown';
 type Draft = Record<string, { place: string; elims: string }>;
 
 const MAPS: Record<string, string[]> = { pubgm: ['Erangel', 'Miramar', 'Sanhok', 'Vikendi', 'Livik', 'Rondo', 'Nusa', 'Karakin'], freefire: ['Bermuda', 'Purgatory', 'Kalahari', 'Alpine', 'Nexterra'] };
@@ -34,12 +35,13 @@ export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lo
           : <button className="btn primary" onClick={() => void run(() => air.lobbySelect(lobby.id))}>Use this lobby on the graphics</button>}
       </header>
       <div className="tabs" role="tablist" aria-label="Lobby">
-        {([['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['games', `${word}es and maps`], ['scoring', 'Scoring']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+        {([['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['games', `${word}es and maps`], ['scoring', 'Scoring'], ['rundown', 'Rundown']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
       {tab === 'results' && <Results run={run} lobby={lobby} word={word} goTeams={() => setTab('teams')} />}
       {tab === 'teams' && <Teams s={s} run={run} lobby={lobby} />}
       {tab === 'games' && <Games run={run} lobby={lobby} word={word} />}
       {tab === 'scoring' && <ScoringTab run={run} lobby={lobby} />}
+      {tab === 'rundown' && <BrRundown run={run} lobby={lobby} />}
     </div>
   );
 }

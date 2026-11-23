@@ -356,7 +356,7 @@
       <div class="fd-tiles"><div><b>${p.kills}</b>${esc(d.word.elims)}</div><div><b>${p.damage}</b>DAMAGE</div><div><b>${p.knockouts}</b>KNOCKS</div><div><b>${p.assists}</b>ASSISTS</div><div><b>${fmtT(p.survival / Math.max(1, p.games))}</b>AVG SURVIVAL</div><div><b>${p.maxKillDistance}m</b>LONGEST KILL</div></div>
       <div class="fd-bars"><div class="fd-k">DAMAGE BY MATCH</div>${per.map(x => `<div class="fd-bar"><span>M${x.n}</span><i style="--w:${Math.round(x.x.damage / maxD * 100)}%"></i><b>${x.x.damage}</b><em>${x.x.kills} ${esc(d.word.elims)}</em></div>`).join('')}</div>
       <div class="fd-rating"><span>MVP RATING</span><b>${p.rating}</b></div></div></div>`;
-    return frame(s, d, 'brf-prof', body, { wall: 0, header: header(s, d, 'PLAYER PROFILE', `<span>${p.games} MATCHES</span>${dot}<span>${p.wins} ${esc(d.word.win)}</span>`, ''), foot: 'NUMBERS FROM THE OBSERVER FEED' });
+    return frame(s, d, 'brf-prof', body, { wall: 0, header: header(s, d, 'PLAYER PROFILE', `<span>${p.games} ${p.games === 1 ? 'MATCH' : 'MATCHES'}</span>${dot}<span>${p.wins} ${esc(d.word.win)}</span>`, ''), foot: 'NUMBERS FROM THE OBSERVER FEED' });
   });
 
   // Match stats: every team's damage, knocks, heals and survival.

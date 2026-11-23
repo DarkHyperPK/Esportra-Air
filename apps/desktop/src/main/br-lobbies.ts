@@ -4,8 +4,9 @@
 
 import { randomUUID } from 'node:crypto';
 import type { LibTeam, LibPlayer, Lobby } from '../shared/api.ts';
-import { SCORING_PRESETS, champion, standings, validResults, validScoring, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
-import type { GameFeed } from '../shared/br-stats.ts';
+import { SCORING_PRESETS, champion, gamePoints, standings, validResults, validScoring, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
+import { playerTotals, teamTotals, type GameFeed } from '../shared/br-stats.ts';
+import { patchShow, showOf } from '../shared/br-rundown.ts';
 import { gameOf, type GameId } from '../shared/games.ts';
 import type { Store } from './store.ts';
 
@@ -17,6 +18,8 @@ export interface LobbyContext {
   live: (lobbyId: string) => boolean;
   log: (text: string) => void;
   changed: () => void;
+  /** A match got its first results typed by the producer (the post-game Rundown can run). */
+  typed?: (lobby: Lobby, game: number) => void;
   /** Room fields the lobby graphics read besides `br` (src/main/br-graphics.ts). */
   extra?: (lobby: Lobby) => Record<string, unknown>;
 }
@@ -138,6 +141,7 @@ export class Lobbies {
     this.ctx.log(`${l.title}: results of ${gameOf(l.game)?.words?.game.toLowerCase() ?? 'game'} ${n} saved${lead ? ` · ${lead.name} leads on ${top!.total}` : ''}`);
     const won = champion(next);
     if (won && !champion(l)) this.ctx.log(`${l.title}: ${l.teams.find((t) => t.id === won.team)?.name ?? 'A team'} took the title in game ${won.game} (match point)`);
+    if (!game.results?.length) this.ctx.typed?.(next, n);
   }
 
   /**
@@ -180,6 +184,12 @@ export class Lobbies {
     if (any) { this.ctx.store.save(); this.refresh(); }
   }
 
+  /** Moments, the Rundown, autopilot and the post-game pick (src/shared/br-rundown.ts). */
+  setShow(id: string, patch: Record<string, unknown>) {
+    const l = this.find(id);
+    this.put({ ...l, show: patchShow(showOf(l), patch, l.games.length) });
+  }
+
   /** How the lobby's graphics look (validated by br-graphics.ts `validLook`). */
   setLook(id: string, look: Lobby['look']) { this.put({ ...this.find(id), look }); }
 
@@ -220,7 +230,20 @@ export class Lobbies {
         scoring, standings: table, current: next?.n ?? null, played: l.games.filter((g) => g.results?.length).length,
         champion: champion(lobby),
       },
+      brStats: Lobbies.stats(lobby), brPick: showOf(l).pick, brLtf: showOf(l).ltf,
     };
+  }
+
+  /**
+   * The numbers the post-game graphics and Insights read (room field `brStats`): each match the observer feed saved
+   * (every player with an MVP rating, every team's totals, the results with points) and the day's totals.
+   */
+  static stats(l: Lobby) {
+    const fed = l.games.filter((g) => g.feed?.stats.length);
+    if (!fed.length) return null;
+    const pts = (g: LobbyGame) => (g.results ?? []).map((r) => ({ ...r, pts: gamePoints(r, l.scoring).total }));
+    const games = fed.map((g) => ({ n: g.n, map: g.map, players: playerTotals([g.feed!]), teams: teamTotals([g.feed!]), results: pts(g) }));
+    return { day: playerTotals(fed.map((g) => g.feed!)), teams: teamTotals(fed.map((g) => g.feed!)), games };
   }
 
   async publish() {

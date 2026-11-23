@@ -119,6 +119,8 @@ export interface Lobby {
   look?: LobbyLook;
   /** The producer's pairs of PCOB team slots (by PCOB team id) to lobby teams. */
   pcobSeats?: Record<string, string>;
+  /** What runs by itself (24 Nov): moments, the Rundown and autopilot, the post-game pick (src/shared/br-rundown.ts). */
+  show?: Partial<import('./br-rundown.ts').BrShow>;
   createdAt: number;
 }
 export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; templates: Record<string, string>; theme?: import('./br-screens.ts').BrTheme }
@@ -301,6 +303,8 @@ export interface CamsView {
 }
 
 export interface Snapshot {
+  /** Counts up with every snapshot, so the interface never replaces a newer one with an older reply. */
+  seq?: number;
   version: string;
   engine: { state: 'starting' | 'running' | 'restarting' | 'failed'; port: number | null; reattached: boolean; error: string | null };
   setup: Setup;
@@ -421,6 +425,8 @@ export interface Snapshot {
   selectedLobbyId: string | null;
   /** The full screen Air last took on the selected lobby's room (src/main/br-graphics.ts). */
   lobbyOnAir: string | null;
+  /** The lobby's autopilot: the graphic it runs now and the ones after it. */
+  brAuto: import('./br-rundown.ts').BrAutoStatus;
   /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
   pcob: import('./pcob-status.ts').PcobStatus;
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
@@ -606,6 +612,8 @@ export interface AirApi {
   lobbySelect(id: string | null): Promise<Snapshot>;
   lobbyDelete(id: string): Promise<Snapshot>;
   lobbyLook(id: string, look: Partial<LobbyLook>): Promise<Snapshot>;
+  /** Moments, Rundown (`preset` or `rows`), autopilot, the top fraggers band and the post-game pick. */
+  lobbyShow(id: string, patch: Partial<Omit<import('./br-rundown.ts').BrShow, 'moments'>> & { preset?: import('./br-rundown.ts').BrPreset; moments?: Partial<Record<import('./br-rundown.ts').BrMomentKind, boolean>> }): Promise<Snapshot>;
   /** What the lobby's graphics read (pictures, theme, emblem, sponsors), with a draft theme, for the theme editor's preview. */
   lobbyPreview(id: string, theme?: unknown): Promise<Record<string, unknown>>;
   /** Reads the PUBG MOBILE observer client's API (PCOB) on this PC or the local network; consent every time. */

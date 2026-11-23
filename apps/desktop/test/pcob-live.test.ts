@@ -60,13 +60,23 @@ test('a whole game: live brLive, moments, then results and every player saved by
     assert.equal(s.feed.status.state, 'live');
     assert.equal(s.feed.status.game, 1, 'the first match without results');
     let sawLive = false, sawOut = false;
-    for (let t = 0; t < s.pcob.gameEnd + 40; t += 10) {
-      await s.step(10);
+    const shown = new Map<string, any>();
+    for (let t = 0; t < s.pcob.gameEnd + 40; t += 2) {
+      await s.step(2);
       const live = s.patches.filter((p) => p.fields.brLive).at(-1)?.fields.brLive;
       if (live && live.teamsAlive < 16) sawLive = true;
       if (live?.lastOut) { sawOut = true; assert.ok(live.lastOut.place > 1 && live.lastOut.place <= 16); }
+      if (live?.moment && !shown.has(live.moment.kind)) shown.set(live.moment.kind, live.moment);
     }
     assert.ok(sawLive && sawOut, 'teams fall and Team eliminated is set');
+    // Moments over the HUD, one at a time, from the feed.
+    const fb = shown.get('first.blood');
+    assert.ok(fb && fb.causer && fb.victim && fb.team, 'First blood names the player, the victim and the team');
+    assert.equal(fb.for, 6);
+    assert.ok(shown.has('final.teams') && shown.get('final.teams').teams.length === 4, 'Final 4 with the four teams');
+    // brStats reaches the room once the match is saved.
+    const stats = s.patches.filter((p) => p.fields.brStats).at(-1)?.fields.brStats;
+    assert.ok(stats && stats.games.length === 1 && stats.games[0].players.length === 64 && stats.day.length === 64, 'brStats: the match and the day');
     assert.equal(s.feed.status.slots.filter((x) => x.seat).length, 16, 'every PCOB team seated by name');
     const g = s.lobby().games[0]!;
     assert.equal(g.source, 'pcob');

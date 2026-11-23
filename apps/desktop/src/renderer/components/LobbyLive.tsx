@@ -6,7 +6,10 @@ import { PcobPanel, pcobLabel } from './PcobPanel.tsx';
 import { useEffect, useState } from 'react';
 import type { Lobby, Snapshot } from '../../shared/api.ts';
 import { standings } from '../../shared/br.ts';
-import { BR_SCREENS, BR_SCREEN_NAME, BR_SCREEN_PHASE, BR_SCREEN_WHAT, HUD_LAYOUT_NAME, lobbyPage, type BrScreen } from '../../shared/br-screens.ts';
+import { BR_FEED_SCREENS, BR_SCREENS, BR_SCREEN_NAME, BR_SCREEN_PHASE, BR_SCREEN_WHAT, HUD_LAYOUT_NAME, lobbyPage, type BrScreen } from '../../shared/br-screens.ts';
+import { BR_MOMENTS, BR_MOMENT_NAME, BR_MOMENT_WHAT, showOf, type BrMomentKind } from '../../shared/br-rundown.ts';
+import { playerTotals } from '../../shared/br-stats.ts';
+import { Switch } from './Editors.tsx';
 import { gameOf } from '../../shared/games.ts';
 import { GRAPHICS } from '../../shared/templates.ts';
 import { air } from '../bridge.ts';
@@ -17,13 +20,81 @@ import { Results } from '../screens/LobbyScreen.tsx';
 
 const HUD_ID = 'brhud';
 
+const fed = (l: Lobby) => l.games.some((g) => g.feed?.stats.length);
+
+/** Live lists only what this lobby can use: graphics built on the feed only for a game that has one. */
 function lobbyItems(s: Snapshot, l: Lobby): Item[] {
   const onAir = s.lobbyOnAir;
   const look = { hud: 'rail', popup: false, ...(l.look ?? {}) };
-  const items: Item[] = BR_SCREENS.map((id) => ({ id, label: BR_SCREEN_NAME[id], phase: BR_SCREEN_PHASE[id] as Phase, state: onAir === id ? 'onair' : 'off', available: l.teams.length > 0 }));
-  items.splice(2, 0, { id: HUD_ID, label: `HUD · ${HUD_LAYOUT_NAME[look.hud as keyof typeof HUD_LAYOUT_NAME][0]}`, phase: 'ingame', state: 'onair', available: true });
-  if (look.hud === 'strip') items.splice(3, 0, { id: 'popup', label: 'Standings pop-up', phase: 'ingame', state: look.popup ? 'onair' : 'off', available: true });
+  const feed = !!gameOf(l.game)?.feed;
+  const show = showOf(l);
+  const items: Item[] = BR_SCREENS.filter((id) => feed || !BR_FEED_SCREENS.has(id)).map((id) => ({
+    id, label: BR_SCREEN_NAME[id], phase: BR_SCREEN_PHASE[id] as Phase, state: onAir === id ? 'onair' : 'off',
+    available: l.teams.length > 0 && (!BR_FEED_SCREENS.has(id) || fed(l)),
+  }));
+  items.splice(4, 0, { id: HUD_ID, label: `HUD · ${HUD_LAYOUT_NAME[look.hud as keyof typeof HUD_LAYOUT_NAME][0]}`, phase: 'ingame', state: 'onair', available: true });
+  if (look.hud === 'strip') items.splice(5, 0, { id: 'popup', label: 'Standings pop-up', phase: 'ingame', state: look.popup ? 'onair' : 'off', available: true });
+  // Moments come up by themselves from the game: AUTO while switched on.
+  if (feed) {
+    for (const k of BR_MOMENTS) items.push({ id: `mo:${k}`, label: BR_MOMENT_NAME[k], phase: 'ingame', state: show.moments[k] ? 'auto' : 'off', available: true });
+    items.push({ id: 'mo:ltf', label: 'Live top fraggers', phase: 'ingame', state: show.ltf ? 'onair' : 'off', available: true });
+  }
   return items;
+}
+
+/** A moment: on or off, and how it looks (the HUD with that moment). */
+function MomentDetail({ s, run, l, id }: { s: Snapshot; run: Run; l: Lobby; id: string }) {
+  const port = s.engine.port ?? 0;
+  const show = showOf(l);
+  const k = id.slice(3) as BrMomentKind | 'ltf';
+  const on = k === 'ltf' ? show.ltf : show.moments[k];
+  const name = k === 'ltf' ? 'Live top fraggers' : BR_MOMENT_NAME[k];
+  const what = k === 'ltf' ? 'A band with the three players with the most eliminations, on while the match runs.' : BR_MOMENT_WHAT[k];
+  const sample = k === 'ltf' ? '&ltf=1' : k === 'team.out' ? '' : `&moment=${k}`;
+  return (
+    <section className="card cp-detail" aria-label={name}>
+      <div className="card-head"><b>{name}</b>
+        <span className="row-gap"><span className="t-sm muted">{k === 'ltf' ? (on ? 'On' : 'Off') : on ? 'Comes up by itself' : 'Off'}</span>
+          <Switch on={on} label={name} onChange={(v) => void run(() => air.lobbyShow(l.id, k === 'ltf' ? { ltf: v } : { moments: { [k]: v } }))} /></span>
+      </div>
+      <div className="body-pad stack" style={{ gap: 10 }}>
+        <Preview key={id} src={lobbyPage(port, l.code, 'br-hud', `&preview=1${sample}`)} label={name} />
+        <p className="muted t-sm">{what}</p>
+        <p className="faint t-xs">From the observer PC&rsquo;s data, while Game data is connected. Sample shown.</p>
+      </div>
+    </section>
+  );
+}
+
+/** Which match, the day, or which player a post-game graphic shows (the room's `brPick`). */
+function PickRow({ run, l, id }: { run: Run; l: Lobby; id: BrScreen }) {
+  const pick = showOf(l).pick;
+  const games = l.games.filter((g) => g.feed?.stats.length);
+  const players = id === 'br-profile' ? playerTotals(games.map((g) => g.feed!)) : [];
+  const set = (p: Partial<typeof pick>) => void run(() => air.lobbyShow(l.id, { pick: { ...pick, ...p } }));
+  return (
+    <div className="row-gap t-sm" style={{ flexWrap: 'wrap' }}>
+      {id === 'br-fraggers' && (
+        <label className="row-gap">Show
+          <select className="cell" aria-label="Match or day" value={pick.scope} onChange={(e) => set({ scope: e.target.value as 'match' | 'day' })}><option value="match">One match</option><option value="day">The whole day</option></select>
+        </label>
+      )}
+      {id !== 'br-profile' && (id !== 'br-fraggers' || pick.scope === 'match') && (
+        <label className="row-gap">Match
+          <select className="cell" aria-label="Which match" value={pick.game ?? ''} onChange={(e) => set({ game: e.target.value ? Number(e.target.value) : undefined })}>
+            <option value="">The last one</option>{games.map((g) => <option key={g.n} value={g.n}>Match {g.n}{g.map ? ` · ${g.map}` : ''}</option>)}
+          </select>
+        </label>
+      )}
+      {id === 'br-profile' && (
+        <label className="row-gap">Player
+          <select className="cell" aria-label="Which player" value={pick.player ?? ''} onChange={(e) => set({ player: e.target.value || undefined })}>
+            <option value="">The day&rsquo;s best</option>{players.map((p) => <option key={p.openId || p.name} value={p.name}>{p.name} · {p.kills} elims</option>)}
+          </select>
+        </label>
+      )}
+    </div>
+  );
 }
 
 function Copy({ url, label }: { url: string; label: string }) {
@@ -34,6 +105,7 @@ function Copy({ url, label }: { url: string; label: string }) {
 function Detail({ s, run, l, item }: { s: Snapshot; run: Run; l: Lobby; item: Item | null }) {
   const port = s.engine.port ?? 0;
   if (!item) return <section className="card cp-detail"><div className="cp-empty muted">Pick a graphic on the left.</div></section>;
+  if (item.id.startsWith('mo:')) return <MomentDetail s={s} run={run} l={l} id={item.id} />;
   const look = { hud: 'rail' as const, popup: false, templates: {} as Record<string, string>, ...(l.look ?? {}) };
   if (item.id === HUD_ID || item.id === 'popup') {
     return (
@@ -64,6 +136,7 @@ function Detail({ s, run, l, item }: { s: Snapshot; run: Run; l: Lobby; item: It
         <Preview key={id} src={lobbyPage(port, l.code, 'fullscreen', `&only=${id}&always=1&screen=1`)} label={item.label} />
         <p className="muted t-sm">{BR_SCREEN_WHAT[id]}</p>
         {!l.teams.length && <p className="t-sm">Add the lobby&rsquo;s teams in Events first.</p>}
+        {BR_FEED_SCREENS.has(id) && (fed(l) ? <PickRow run={run} l={l} id={id} /> : <p className="t-sm">Comes with the first match saved from the game (connect Game data).</p>)}
         <div className="row-gap" style={{ flexWrap: 'wrap' }}>
           {looks.length > 0 && (
             <label className="row-gap t-sm">Look
@@ -137,12 +210,17 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
           <button className={`btn small pcob-btn ${s.pcob.state}`} title="Read the game from the PUBG MOBILE observer client (PCOB)" onClick={() => setData(true)}><i className="dot" />Game data · {pcobLabel(s)}</button>
           <button className="btn small" title="Places and elims per match: from the game, or typed" onClick={() => setResults(true)}>Results</button>
           <button className="btn small" onClick={() => setSources(true)}>Sources</button>
+          <span className="br-auto t-sm" title="Runs the lobby's Rundown (Events › lobby › Rundown) from the game"><Switch on={showOf(l).autopilot} label="Autopilot" onChange={(v) => void run(() => air.lobbyShow(l.id, { autopilot: v }))} />Autopilot</span>
           {s.lobbyOnAir && <button className="btn small" onClick={() => void run(() => air.lobbyTake(l.id, null))}>Clear full screen</button>}
         </div>
       </div>
       <div className="cp-cols">
         <GraphicList items={items} phase={phase} setPhase={setPhase} selected={sel?.id ?? null} select={setSelected} keymap={s.keymap} />
         <div className="stack cp-midcol">
+          {showOf(l).autopilot && (s.brAuto.running || s.brAuto.next.length > 0) && (
+            <div className="notice t-sm" role="status">Autopilot · <b>{s.brAuto.running ?? 'next'}</b>{s.brAuto.next.length > 0 && <span className="muted"> then {s.brAuto.next.join(', ')}</span>}
+              <button className="btn quiet small" onClick={() => void run(() => air.lobbyShow(l.id, { autopilot: false }))}>Turn off</button></div>
+          )}
           <Detail s={s} run={run} l={l} item={sel} />
           <div className="live-log" aria-live="polite">
             {s.log.slice(0, 3).map((e, i) => <div key={`${e.t}-${i}`}><time className="mono">{new Date(e.t).toLocaleTimeString('en-GB')}</time><span>{e.text}</span></div>)}

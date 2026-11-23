@@ -27,13 +27,16 @@ const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'L
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   await p.goto(`${H}/?host=${H}`); await p.locator('nav.rail').waitFor();
   await p.locator('nav.rail').getByRole('button', { name: 'Live' }).click();
+  // Moments come up by themselves: listed as AUTO in In-game.
+  await p.getByRole('tab', { name: /In-game/ }).click();
+  for (const m of ['First blood', 'Team eliminated', 'Kill leader', 'Zone closing', 'Final teams', 'Match point']) await p.locator('.cp-gi', { hasText: m }).locator('.cp-state.auto').waitFor({ timeout: 4000 });
   await p.getByRole('button', { name: /Game data · Off/ }).click();
   const dlg = p.getByRole('dialog', { name: 'Game data' });
   await dlg.getByLabel('Observer PC address').fill(`127.0.0.1:${fake.port}`);
   if (!(await dlg.getByRole('button', { name: 'Connect' }).isDisabled())) throw new Error('Connect works without consent');
   await dlg.getByRole('checkbox').check();
   await dlg.getByRole('button', { name: 'Connect' }).click();
-  await p.locator('.pcob-state.waiting').waitFor({ timeout: 15000 });
+  await p.locator('.pcob-state.waiting').waitFor({ timeout: 15000 }).catch(async (e) => { if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'fail.png') }); throw e; });
   await dev('do=begin');
   await p.locator('.pcob-state.live').waitFor({ timeout: 15000 });
   await p.waitForTimeout(6000);
@@ -50,10 +53,44 @@ const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'L
   for (let i = 0; i < 90; i++) { snap = await call('snapshot'); if (snap.lobbies[0].games[0].results?.length) break; await p.waitForTimeout(1000); }
   const g = snap.lobbies[0].games[0];
   if (g.source !== 'pcob' || g.results.length !== 16 || g.feed.stats.length !== 64) throw new Error('match 1 was not saved from the game: ' + JSON.stringify({ source: g.source, n: g.results?.length }));
+  // Autopilot: the Standard Rundown runs the post-game set by itself.
+  for (let i = 0; i < 20 && !snap.lobbyOnAir; i++) { await p.waitForTimeout(250); snap = await call('snapshot'); }
+  if (!['br-wwcd', 'br-rankings'].includes(snap.lobbyOnAir)) throw new Error('autopilot did not take WWCD: ' + snap.lobbyOnAir);
+  if (!snap.brAuto.next.includes('Match MVP')) throw new Error('autopilot chain: ' + JSON.stringify(snap.brAuto));
+  await p.locator('.notice', { hasText: 'Autopilot' }).waitFor();
+  if (SHOTS) {
+    const fs = await b.newPage({ viewport: { width: 1920, height: 1080 } });
+    await fs.goto(`http://127.0.0.1:${ENGINE}/overlays/fullscreen.html?match=${l.code}`); await fs.waitForTimeout(2500);
+    await fs.screenshot({ path: path.join(SHOTS, 'pcob-auto-wwcd.png') }); await fs.close();
+    await p.screenshot({ path: path.join(SHOTS, 'pcob-auto-live.png') });
+  }
+  // The producer's Take stops it; Player profile picks a player from the saved numbers.
+  await p.getByRole('tab', { name: /Post-game/ }).click();
+  await p.locator('.cp-gi', { hasText: 'Player profile' }).click();
+  await p.getByLabel('Which player').selectOption({ index: 2 });
+  await p.getByRole('button', { name: 'Put on air' }).click();
+  await p.waitForTimeout(800);
+  snap = await call('snapshot');
+  if (snap.lobbyOnAir !== 'br-profile' || snap.brAuto.running) throw new Error('Take did not stop autopilot: ' + JSON.stringify([snap.lobbyOnAir, snap.brAuto]));
+  if (!snap.lobbies[0].show?.pick?.player) throw new Error('pick not saved');
+  if (SHOTS) {
+    const fs = await b.newPage({ viewport: { width: 1920, height: 1080 } });
+    await fs.goto(`http://127.0.0.1:${ENGINE}/overlays/fullscreen.html?match=${l.code}`); await fs.waitForTimeout(2500);
+    await fs.screenshot({ path: path.join(SHOTS, 'pcob-profile.png') }); await fs.close();
+  }
   await p.getByRole('button', { name: 'Results', exact: true }).click();
   await p.getByRole('dialog', { name: 'Results' }).getByRole('tab', { name: /Match 1/ }).click();
   await p.getByText('From the game · edit to correct').waitFor();
   if (SHOTS) { await p.waitForTimeout(500); await p.screenshot({ path: path.join(SHOTS, 'pcob-results.png') }); }
+  await p.keyboard.press('Escape');
+  // Events › lobby › Rundown: Standard, autopilot on.
+  await p.locator('nav.rail').getByRole('button', { name: 'Events' }).click();
+  await p.locator('.ev-card').first().click();
+  await p.getByRole('tab', { name: 'Lobbies' }).waitFor();
+  await p.getByRole('button', { name: 'Open' }).first().click();
+  await p.getByRole('tab', { name: 'Rundown' }).click();
+  await p.getByRole('button', { name: 'Standard', pressed: true }).waitFor();
+  if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, 'pcob-rundown.png'), fullPage: true }); }
   if (errs.length) throw new Error('page errors: ' + errs.join('; '));
   console.log('PCOB walk complete');
   await b.close();
