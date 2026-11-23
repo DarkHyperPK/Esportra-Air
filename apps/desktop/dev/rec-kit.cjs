@@ -68,6 +68,13 @@ function recorder(dir) {
       for (const f of page.frames()) { try { await f.evaluate(STEP, [t, vt]); } catch { /* a frame that is going away */ } }
       await page.screenshot({ path: path.join(dir, String(n++).padStart(6, '0') + '.jpg'), type: 'jpeg', quality: 90 });
     },
+    /** Steps a source page one frame and returns its picture (for a compositor page); not a video frame itself. */
+    async grab(page, vt = null) {
+      const t = (times.get(page) ?? -DT) + DT;
+      times.set(page, t);
+      for (const f of page.frames()) { try { await f.evaluate(STEP, [t, vt]); } catch { /* going away */ } }
+      return page.screenshot({ type: 'jpeg', quality: 88 });
+    },
     /** `count` frames (or seconds with `secs`) of the page as it moves. `each(i)` runs before every frame. */
     async run(page, count, each, vt) {
       for (let i = 0; i < count; i++) { if (each) await each(i); await this.frame(page, typeof vt === 'function' ? vt(i) : vt ?? null); }
