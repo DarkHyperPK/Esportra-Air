@@ -309,7 +309,9 @@ body.full #shade.on{display:block}
   await call('chooseGame', ['valorant']); await app.waitForTimeout(600);
   // The long recording can outlast the fake Esportra's session: check again so its tournament is listed.
   for (let i = 0; i < 20 && (await call('snapshot')).esportra.state !== 'online'; i++) { await call('esportraCheck').catch(() => {}); await call('esportraRefresh').catch(() => {}); await sleep(500); }
-  await rail('Events').click(); await app.waitForTimeout(600);
+  // Events remembers the lobby opened earlier: start the app fresh (off camera) on the Events list.
+  await app.reload(); await app.locator('nav.rail').waitFor(); await ui.dress();
+  await rail('Events').click(); await app.locator('.ev-card').filter({ hasText: 'Community Cup' }).waitFor({ timeout: 20000 });
   f = shot('import');
   await f.scene('win', { k: 'TWO WAYS IN', t: 'Import your <em>Esportra</em> tournament', s: 'Teams, players, Riot IDs, best-of and the veto arrive by themselves. No spreadsheets.' });
   f.use(app);
