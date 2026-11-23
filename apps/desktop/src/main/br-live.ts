@@ -43,6 +43,8 @@ export class BrLiveFeed {
   private tickNo = 0;
   private busy = false;
   status: PcobStatus = { ...PCOB_OFF };
+  /** The last `brLive` written, for Live › Insights (kept until the next game starts). */
+  last: BrLive | null = null;
   // The current game.
   private inGame = false;
   private game: number | null = null;
@@ -174,7 +176,8 @@ export class BrLiveFeed {
     this.killLeader(lobby, live.players);
     const z = this.circle;
     if (z && z.status === 'move' && z.index >= 3 && this.moment('zone', { index: z.index }, `zone:${z.index}`)) this.show(lobby, { kind: 'zone' });
-    await this.ctx.patch(lobby.code, { brLive: { ...live, moment: this.nextMoment() } });
+    this.last = { ...live, moment: this.nextMoment() };
+    await this.ctx.patch(lobby.code, { brLive: this.last });
     // The game is over when PCOB sets the WWCD time or every seated team has a place.
     const results = finalResults(this.players, this.teams, seats);
     if ((this.teams.finishedStart || results) && this.finishedAt === null) {
@@ -189,7 +192,7 @@ export class BrLiveFeed {
     this.inGame = true;
     // The poll that saw the game start already read this game's players, teams and feed: keep them.
     this.lastOut = null; this.placed = new Set(); this.finishedAt = null; this.saved = false; this.said = new Set();
-    this.queue = []; this.current = null; this.leader = null;
+    this.queue = []; this.current = null; this.leader = null; this.last = null;
     // The next match without results; none left means the feed shows live data but saves nothing.
     const next = lobby?.games.find((g) => !g.results?.length) ?? null;
     this.game = next?.n ?? null;

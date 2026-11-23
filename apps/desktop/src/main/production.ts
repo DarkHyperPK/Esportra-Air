@@ -1937,6 +1937,7 @@ export class Production extends EventEmitter {
       lobbies: this.lobbies.list(),
       lobbyOnAir: this.lobbies.selected ? this.brGraphics.onAir(this.lobbies.selected) : null,
       brAuto: this.brAuto.status(),
+      pcobLive: this.brLive.live ? this.brLive.last : null,
       pcob: { ...this.brLive.status, host: this.brLive.status.host || this.deps.store.data.pcobHost || '127.0.0.1:10086' },
       selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),

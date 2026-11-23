@@ -8,6 +8,7 @@ import { gameOf } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { BrRundown } from '../components/BrRundown.tsx';
+import { BrInsights } from '../components/BrInsights.tsx';
 
 type Tab = 'results' | 'teams' | 'games' | 'scoring' | 'rundown';
 type Draft = Record<string, { place: string; elims: string }>;
@@ -20,6 +21,12 @@ function Tag({ color, tag }: { color: string; tag: string }) {
 
 export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lobby: Lobby; back: () => void }) {
   const [tab, setTab] = useState<Tab>(lobby.teams.length ? 'results' : 'teams');
+  const [insights, setInsights] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setInsights(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const game = gameOf(lobby.game);
   const word = game?.words?.game ?? 'Match';
   return (
@@ -30,9 +37,12 @@ export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lo
           <input className="lb-title" aria-label="Lobby name" defaultValue={lobby.title} maxLength={60} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== lobby.title) void run(() => air.lobbyUpdate(lobby.id, { title: v })); }} />
           <p className="muted">{game?.name} · {lobby.teams.length} teams · {lobby.games.length} {word.toLowerCase()}es · {scoringLine(lobby.scoring)}</p>
         </div>
-        {s.selectedLobbyId === lobby.id
-          ? <span className="state ok"><i className="dot ok" />On the graphics</span>
-          : <button className="btn primary" onClick={() => void run(() => air.lobbySelect(lobby.id))}>Use this lobby on the graphics</button>}
+        <span className="row g-2">
+          <button className="btn" onClick={() => setInsights(true)}>Insights</button>
+          {s.selectedLobbyId === lobby.id
+            ? <span className="state ok"><i className="dot ok" />On the graphics</span>
+            : <button className="btn primary" onClick={() => void run(() => air.lobbySelect(lobby.id))}>Use this lobby on the graphics</button>}
+        </span>
       </header>
       <div className="tabs" role="tablist" aria-label="Lobby">
         {([['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['games', `${word}es and maps`], ['scoring', 'Scoring'], ['rundown', 'Rundown']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
@@ -42,6 +52,14 @@ export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lo
       {tab === 'games' && <Games run={run} lobby={lobby} word={word} />}
       {tab === 'scoring' && <ScoringTab run={run} lobby={lobby} />}
       {tab === 'rundown' && <BrRundown run={run} lobby={lobby} />}
+      {insights && (
+        <div className="scrim right" onClick={(e) => e.target === e.currentTarget && setInsights(false)}>
+          <div className="editor match-drawer ins-drawer" role="dialog" aria-modal="true" aria-label="Insights">
+            <header><h2 className="title-md">{lobby.title} · Insights</h2><button className="btn quiet small" onClick={() => setInsights(false)}>Esc</button></header>
+            <div className="editor-body"><BrInsights s={{ ...s, pcobLive: s.selectedLobbyId === lobby.id ? s.pcobLive : null }} run={run} l={lobby} readOnly /></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

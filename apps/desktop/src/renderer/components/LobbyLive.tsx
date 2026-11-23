@@ -10,6 +10,7 @@ import { BR_FEED_SCREENS, BR_SCREENS, BR_SCREEN_NAME, BR_SCREEN_PHASE, BR_SCREEN
 import { BR_MOMENTS, BR_MOMENT_NAME, BR_MOMENT_WHAT, showOf, type BrMomentKind } from '../../shared/br-rundown.ts';
 import { playerTotals } from '../../shared/br-stats.ts';
 import { Switch } from './Editors.tsx';
+import { BrInsights } from './BrInsights.tsx';
 import { gameOf } from '../../shared/games.ts';
 import { GRAPHICS } from '../../shared/templates.ts';
 import { air } from '../bridge.ts';
@@ -180,8 +181,12 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   const [results, setResults] = useState(false);
   const [sources, setSources] = useState(false);
   const [data, setData] = useState(false);
+  const [view, setView] = useState<'control' | 'insights'>('control');
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setResults(false); setSources(false); setData(false); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setResults(false); setSources(false); setData(false); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); setView((v) => (v === 'control' ? 'insights' : 'control')); }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -199,7 +204,13 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   return (
     <div className="cp">
       <div className="cp-bar">
-        <div className="cp-teams"><b>{l.title}</b>{l.stage && <span className="muted">{l.stage}</span>}</div>
+        <div className="cp-teams">
+          <div className="seg" role="group" aria-label="View">
+            <button aria-pressed={view === 'control'} onClick={() => setView('control')}>Control</button>
+            <button aria-pressed={view === 'insights'} title="Ctrl I" onClick={() => setView('insights')}>Insights{s.pcobLive && <i className="ins-live" style={{ marginLeft: 6 }} />}</button>
+          </div>
+          <b>{l.title}</b>{l.stage && <span className="muted">{l.stage}</span>}
+        </div>
         <div className="cp-mid">
           <span className="pill">{game?.name ?? 'Lobby'}</span>
           <span>{next ? `${word} ${next.n} of ${l.games.length}${next.map ? ` · ${next.map}` : ''}` : `All ${l.games.length} played`}</span>
@@ -214,7 +225,7 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
           {s.lobbyOnAir && <button className="btn small" onClick={() => void run(() => air.lobbyTake(l.id, null))}>Clear full screen</button>}
         </div>
       </div>
-      <div className="cp-cols">
+      {view === 'insights' ? <div className="cp-ins"><BrInsights s={s} run={run} l={l} /></div> : <div className="cp-cols">
         <GraphicList items={items} phase={phase} setPhase={setPhase} selected={sel?.id ?? null} select={setSelected} keymap={s.keymap} />
         <div className="stack cp-midcol">
           {showOf(l).autopilot && (s.brAuto.running || s.brAuto.next.length > 0) && (
@@ -233,7 +244,7 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
           </figure>
           <p className="faint t-sm">{s.pcob.state === 'live' ? 'Live from the observer PC: alive, knocked, eliminations and live points. The match saves itself when it ends.' : 'Connect Game data to read the observer PC. Until then the HUD shows the standings from Results.'}</p>
         </aside>
-      </div>
+      </div>}
       {results && (
         <div className="scrim right" onClick={(e) => e.target === e.currentTarget && setResults(false)}>
           <div className="editor match-drawer" role="dialog" aria-modal="true" aria-label="Results">

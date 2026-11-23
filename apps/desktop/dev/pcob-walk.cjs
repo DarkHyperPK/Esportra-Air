@@ -49,6 +49,12 @@ const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'L
   await hud.goto(`http://127.0.0.1:${ENGINE}/overlays/br-hud.html?match=${l.code}`);
   await hud.waitForTimeout(3000);
   if (SHOTS) await hud.screenshot({ path: path.join(SHOTS, 'pcob-hud.png') });
+  // Live › Insights › Now: the match as the observer PC reads it.
+  await p.getByRole('button', { name: /^Insights/ }).click();
+  await p.locator('.ins-kpis').waitFor({ timeout: 8000 });
+  await p.locator('.ins-tsr').nth(15).waitFor();
+  if (SHOTS) { await p.waitForTimeout(400); await p.screenshot({ path: path.join(SHOTS, 'ins-now.png') }); }
+  await p.getByRole('button', { name: 'Control', exact: true }).click();
   // Wait for the game to end and save itself (40× speed: about 25 s), then the 5 s settle.
   for (let i = 0; i < 90; i++) { snap = await call('snapshot'); if (snap.lobbies[0].games[0].results?.length) break; await p.waitForTimeout(1000); }
   const g = snap.lobbies[0].games[0];
@@ -78,6 +84,18 @@ const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'L
     await fs.goto(`http://127.0.0.1:${ENGINE}/overlays/fullscreen.html?match=${l.code}`); await fs.waitForTimeout(2500);
     await fs.screenshot({ path: path.join(SHOTS, 'pcob-profile.png') }); await fs.close();
   }
+  // Insights for the saved match: every player and team, one click to air.
+  await p.getByRole('button', { name: /^Insights/ }).click();
+  await p.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Match 1' }).click();
+  await p.locator('.ins-tbl tbody tr').nth(63).waitFor();
+  if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, 'ins-match.png') }); }
+  await p.getByRole('button', { name: 'On air · Team of the match' }).click();
+  await p.waitForTimeout(600);
+  snap = await call('snapshot');
+  if (snap.lobbyOnAir !== 'br-tom' || snap.lobbies[0].show.pick.game !== 1) throw new Error('Insights did not take Team of the match: ' + JSON.stringify([snap.lobbyOnAir, snap.lobbies[0].show.pick]));
+  await p.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Whole day' }).click();
+  if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, 'ins-day.png'), fullPage: true }); }
+  await p.getByRole('button', { name: 'Control', exact: true }).click();
   await p.getByRole('button', { name: 'Results', exact: true }).click();
   await p.getByRole('dialog', { name: 'Results' }).getByRole('tab', { name: /Match 1/ }).click();
   await p.getByText('From the game · edit to correct').waitFor();
@@ -91,6 +109,13 @@ const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'L
   await p.getByRole('tab', { name: 'Rundown' }).click();
   await p.getByRole('button', { name: 'Standard', pressed: true }).waitFor();
   if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, 'pcob-rundown.png'), fullPage: true }); }
+  // The same Insights, read-only, from Events › lobby.
+  await p.getByRole('button', { name: 'Insights', exact: true }).click();
+  const ins = p.getByRole('dialog', { name: 'Insights' });
+  await ins.locator('.ins-tbl').first().waitFor();
+  if ((await ins.getByRole('button', { name: /On air/ }).count()) !== 0) throw new Error('Events Insights should be read-only');
+  if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'ins-events.png') });
+  await p.keyboard.press('Escape');
   if (errs.length) throw new Error('page errors: ' + errs.join('; '));
   console.log('PCOB walk complete');
   await b.close();

@@ -427,6 +427,8 @@ export interface Snapshot {
   lobbyOnAir: string | null;
   /** The lobby's autopilot: the graphic it runs now and the ones after it. */
   brAuto: import('./br-rundown.ts').BrAutoStatus;
+  /** The match being played, as the observer feed last read it (Live › Insights › Now). */
+  pcobLive?: import('./pcob.ts').BrLive | null;
   /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
   pcob: import('./pcob-status.ts').PcobStatus;
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
