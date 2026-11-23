@@ -277,12 +277,21 @@ body.full #shade.on{display:block}
   f.use(app);
   await f.run(app, 10);
   await ui.click(f, app.getByRole('button', { name: 'Kit wallpaper…' }), { frames: 10, after: 14 });
-  await ui.click(f, app.locator('.ap-grid .ga-card').nth(2), { frames: 10, after: 30 });
+  await ui.click(f, app.locator('.ap-grid .ga-card').nth(2), { frames: 10, after: 6 });
+  const pv = await app.locator('.bt-stage, .bt-preview, iframe').first().boundingBox();
+  await ui.zoomTo(f, 1.45, pv.x + pv.width / 2, pv.y + pv.height / 2, 14);
   await f.until(8);
+  await ui.zoomTo(f, 1, 0, 0, 1);
   f = shot('studio-theme');
   await f.scene('win', { k: 'GRAPHICS STUDIO', t: 'Re-theme the whole <em>event</em>', s: 'One switch recolours every graphic in the set.' });
   f.use(app);
-  for (const p of ['Jungle', 'Inferno']) { await ui.click(f, app.locator('.bt-preset').filter({ hasText: p }), { frames: 9, after: 2 }); await f.run(app, 34); }
+  const pv2 = await app.locator('.bt-stage, .bt-preview, iframe').first().boundingBox();
+  for (const p of ['Jungle', 'Inferno']) {
+    await ui.click(f, app.locator('.bt-preset').filter({ hasText: p }), { frames: 9, after: 2 });
+    await ui.zoomTo(f, 1.4, pv2.x + pv2.width / 2, pv2.y + pv2.height / 2, 12);
+    await f.run(app, 16);
+    await ui.zoomTo(f, 1, 0, 0, 8);
+  }
   await f.until(8);
 
   // ═════ 3 · The library: real broadcast screens, each named ═════
@@ -291,15 +300,20 @@ body.full #shade.on{display:block}
     [`${ENG}/overlays/map-veto.html?preview=1`, null, 'VALORANT', 'MAP VETO'],
     [`${ENG}/overlays/agent-select.html?preview=1`, null, 'VALORANT', 'AGENT SELECT'],
     [`${ENG}/overlays/map-result.html?preview=1`, null, 'VALORANT', 'MAP RESULT'],
-    [`${ENG}/overlays/br-hud.html?preview=1&mode=rail`, `${ENG}${wall}`, 'PUBG MOBILE', 'LIVE POINTS HUD'],
     [`${ENG}/overlays/br-lobby.html?match=${code}`, null, 'PUBG MOBILE', 'STARTING SOON'],
     [`${ENG}/overlays/br-wwcd.html?match=${code}`, null, 'PUBG MOBILE', 'WINNER WINNER CHICKEN DINNER'],
     [`${ENG}/overlays/br-overall.html?match=${code}`, null, 'PUBG MOBILE', 'OVERALL STANDINGS'],
   ];
+  const libBg = await gfxPage(`${ENG}/overlays/agent-select.html?preview=1`);
+  f = shot('lib-title');
+  await f.scene('title', { k: 'THE LIBRARY', t: 'Broadcast-ready<br><em>from day one</em>', s: 'Every screen a tournament needs, for each game' });
+  f.use(libBg);
+  await f.until(3);
+  await libBg.close();
   for (const [i, [url, back, game, name]] of lib.entries()) {
     const p = await gfxPage(url, back);
     f = shot(`lib-${i}`);
-    await f.scene('full', i === 0 ? { k: 'THE LIBRARY', t: 'Broadcast-ready <em>from day one</em>', chip: [game, name], shade: true } : { chip: [game, name] });
+    await f.scene('full', { chip: [game, name] });
     f.use(p);
     await f.until(3);
     await p.close();
@@ -318,11 +332,9 @@ body.full #shade.on{display:block}
   await f.run(app, 14);
   await ui.click(f, app.locator('.ev-card').filter({ hasText: 'Community Cup' }), { frames: 12, after: 10 });
   await ui.click(f, app.getByRole('button', { name: 'Open' }).first(), { frames: 12, after: 30 });
-  await ui.zoomTo(f, 1.28, 640, 110, 16);
-  await f.run(app, 26);
-  await ui.zoomTo(f, 1, 0, 0, 10);
-  await ui.click(f, app.getByRole('button', { name: /Teams\/Players/ }).first(), { frames: 10, after: 24 });
+  await ui.zoomTo(f, 1.3, 640, 120, 18);
   await f.until(14);
+  await ui.zoomTo(f, 1, 0, 0, 1);
   await app.reload(); await app.locator('nav.rail').waitFor(); await ui.dress();
   await rail('Events').click(); await app.locator('.ev-card').filter({ hasText: 'Friday Scrims' }).waitFor({ timeout: 20000 });
   f = shot('standalone');
@@ -356,7 +368,7 @@ body.full #shade.on{display:block}
   await browser.close();
 
   // ── assemble in video order on the beat grid ──
-  const ORDER = ['open', 'import', 'standalone', 'lib-0', 'lib-1', 'lib-2', 'lib-3', 'lib-4', 'lib-5', 'lib-6', 'lib-7', 'rundown', 'autopilot', 'studio-words', 'studio-colour', 'studio-art', 'studio-theme', 'end'];
+  const ORDER = ['open', 'import', 'standalone', 'lib-title', 'lib-0', 'lib-1', 'lib-2', 'lib-3', 'lib-4', 'lib-5', 'lib-6', 'rundown', 'autopilot', 'studio-words', 'studio-colour', 'studio-art', 'studio-theme', 'end'];
   const LEN = { open: 8, import: 14, standalone: 10, rundown: 10, autopilot: 22, 'studio-words': 8, 'studio-colour': 8, 'studio-art': 8, 'studio-theme': 8, end: 8 };
   const all = path.join(OUT, 'frames'); fs.rmSync(all, { recursive: true, force: true }); fs.mkdirSync(all);
   let n = 0; const cuts = [];
