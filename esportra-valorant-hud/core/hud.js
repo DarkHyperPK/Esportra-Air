@@ -1493,6 +1493,13 @@
       receive(mergePatch(clone(sourceState), { holding: d.holding || {}, ...(d.teams ? { teams: d.teams } : {}), ...(d.event ? { event: d.event } : {}) }));
       return;
     }
+    // Battle royale theme editor (23 Nov): the draft theme and the lobby's pictures, on preview pages only.
+    if (event.data?.type === 'AIR_BR_DRAFT' && PREVIEW && !OUTPUT && Q.get('editorKey') && event.data.key === Q.get('editorKey')) {
+      const d = event.data.fields || {}, keep = {};
+      ['airBrTheme', 'airPack', 'brEmblem', 'brEvent', 'brSponsors'].forEach(k => { if (k in d) keep[k] = d[k]; });
+      receive(Object.assign(clone(sourceState), keep));
+      return;
+    }
     if (event.data?.type === 'AIR_HUD_PREVIEW_PROBE' && window.HUD_READY)
       window.parent.postMessage({type:'AIR_HUD_PREVIEW_READY'}, '*');
     // Read-only editor views only. OBS outputs cannot accept draft commands.

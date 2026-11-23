@@ -54,6 +54,17 @@ const NAMES = ['NIGHT OWLS','CRIMSON FIVE','IRON PINE','DUNE RUNNERS','SILVER FO
   if ((await roomNow()).layout?.brHud !== 'grid') throw new Error('the HUD layout chosen in HUD library did not reach the room');
   if (SHOTS) { await p.waitForTimeout(1200); await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-library.png') }); }
   await p.keyboard.press('Escape');
+  // Graphics studio › Event theme: Jungle, own highlight colour, parachutes off; Save puts it on the lobby room.
+  await p.locator('nav.rail').getByRole('button', { name: /Graphics studio/ }).click();
+  await p.getByRole('tab', { name: 'Event theme' }).click();
+  await p.locator('.bt-preset').filter({ hasText: 'Jungle' }).click();
+  await p.getByLabel('Highlight').fill('#33ccaa');
+  await p.getByLabel('Parachutes').uncheck();
+  if (SHOTS) { await p.waitForTimeout(1500); await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-theme.png') }); }
+  await p.locator('.bt-actions').getByRole('button', { name: /^Save/ }).click();
+  for (let i = 0; i < 20 && (await roomNow()).airBrTheme?.preset !== 'jungle'; i++) await p.waitForTimeout(150);
+  const th = (await roomNow()).airBrTheme;
+  if (th?.preset !== 'jungle' || th.colors?.acc !== '#33ccaa' || th.props?.chutes !== false) throw new Error('the theme did not reach the room: ' + JSON.stringify(th));
   await p.locator('nav.rail').getByRole('button', { name: 'Live' }).click();
   await p.getByRole('tab', { name: /Post-game/ }).click();
   await p.locator('.cp-gi').filter({ hasText: 'Overall standings' }).click();
@@ -63,8 +74,9 @@ const NAMES = ['NIGHT OWLS','CRIMSON FIVE','IRON PINE','DUNE RUNNERS','SILVER FO
   // The full-screen host on the lobby's room draws the lobby's real standings.
   const fs = await b.newPage({ viewport: { width: 1920, height: 1080 } });
   await fs.goto(`http://127.0.0.1:${ENGINE}/overlays/fullscreen.html?match=${l.code}`);
-  await fs.locator('.brf-overall .brf-pc.first .n').waitFor({ timeout: 8000 });
-  const leader = await fs.locator('.brf-overall .brf-pc.first .n').textContent();
+  await fs.locator('.brf-overall .b6-tr .nm').first().waitFor({ timeout: 8000 });
+  const leader = await fs.locator('.brf-overall .b6-tr .nm').first().evaluate((e) => e.firstChild.textContent.trim());
+  if ((await fs.locator('[data-theme]').first().getAttribute('data-theme')) !== 'jungle') throw new Error('the host is not in the lobby theme');
   if (leader !== 'IRON PINE') throw new Error('the host shows ' + leader);
   if (SHOTS) { await fs.waitForTimeout(1500); await fs.screenshot({ path: require('node:path').join(SHOTS, 'lobby-overall-on-air.png') }); await p.waitForTimeout(1200); await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-live.png') }); }
   await fs.close();

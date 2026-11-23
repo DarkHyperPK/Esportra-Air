@@ -2,6 +2,8 @@
 // real pack, never the real kit (the kit's files stay out of git). The fake Esportra serves its manifest at
 // GET /api/air/game-packs/<game> and the files at /fake-pack/<sha256> (like Esportra's short-lived links).
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 
 const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
@@ -34,6 +36,24 @@ export function fakePack(game: string, version = '2026.11') {
     const a = PALETTE[i % PALETTE.length]!, b = PALETTE[(i + 2) % PALETTE.length]!;
     const sw = Math.max(8, Math.round(w / 8)), sh = Math.max(8, Math.round(h / 8));
     return { id, kind, name, w, h, file: put(solidPng(sw, sh, a, b)), thumb: put(solidPng(Math.max(4, Math.round(sw / 2)), Math.max(4, Math.round(sh / 2)), a, b)), ...(variant ? { variant } : {}) };
+  });
+  return { manifest: { game, version, assets }, files };
+}
+
+/** A pack from pictures on this machine, for recording walkthroughs with real art (`AIR_DEV_PACK=<dir>` on the dev
+ *  host): `<dir>/manifest.json` is `{assets: [{id, kind, name, file, variant?}]}` with files relative to `<dir>`.
+ *  The pictures never leave the machine and never go in git. */
+export function localPack(game: string, dir: string, version = '2026.11-local') {
+  const files = new Map<string, Buffer>();
+  const list = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')).assets as Array<{ id: string; kind: string; name: string; file: string; variant?: string }>;
+  const assets = list.map((a) => {
+    const b = readFileSync(join(dir, a.file));
+    const sha = createHash('sha256').update(b).digest('hex');
+    files.set(sha, b);
+    const ext = b[0] === 0xff ? 'jpg' as const : b[0] === 0x52 ? 'webp' as const : 'png' as const;
+    const w = ext === 'png' ? b.readUInt32BE(16) : 1280, h = ext === 'png' ? b.readUInt32BE(20) : 720;
+    const file = { sha256: sha, ext, bytes: b.length };
+    return { id: a.id, kind: a.kind, name: a.name, w, h, file, thumb: file, ...(a.variant ? { variant: a.variant } : {}) };
   });
   return { manifest: { game, version, assets }, files };
 }

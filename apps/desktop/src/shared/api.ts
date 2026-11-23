@@ -117,7 +117,7 @@ export interface Lobby {
   look?: LobbyLook;
   createdAt: number;
 }
-export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; templates: Record<string, string> }
+export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; templates: Record<string, string>; theme?: import('./br-screens.ts').BrTheme }
 
 export interface Screen {
   /** Stable id for the screen in Air. */
@@ -600,6 +600,8 @@ export interface AirApi {
   lobbySelect(id: string | null): Promise<Snapshot>;
   lobbyDelete(id: string): Promise<Snapshot>;
   lobbyLook(id: string, look: Partial<LobbyLook>): Promise<Snapshot>;
+  /** What the lobby's graphics read (pictures, theme, emblem, sponsors), with a draft theme, for the theme editor's preview. */
+  lobbyPreview(id: string, theme?: unknown): Promise<Record<string, unknown>>;
   /** Take one of the lobby's full screens on its room, or clear with null. */
   lobbyTake(id: string, screen: string | null): Promise<Snapshot>;
   packAssets(game: string): Promise<Array<import('./game-assets.ts').GameAsset & { src: string; thumbSrc: string }>>;

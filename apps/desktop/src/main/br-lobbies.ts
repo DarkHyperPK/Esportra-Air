@@ -102,8 +102,10 @@ export class Lobbies {
   }
 
   private lobbyTeam(t: LibTeam, keepId?: string): LobbyTeam {
-    const players = (this.data.players ?? []).filter((p: LibPlayer) => p.teamId === t.id).map((p) => p.gameId || p.name);
-    return { id: keepId ?? randomUUID(), teamId: t.id, name: t.name, tag: t.tag, color: t.color, logo: t.logo, players };
+    const roster = (this.data.players ?? []).filter((p: LibPlayer) => p.teamId === t.id);
+    const players = roster.map((p) => p.gameId || p.name);
+    const photos = roster.map((p) => p.photo || '');
+    return { id: keepId ?? randomUUID(), teamId: t.id, name: t.name, tag: t.tag, color: t.color, logo: t.logo, players, ...(photos.some(Boolean) ? { photos } : {}) };
   }
 
   /** Teams/Players changed: every lobby follows its teams' names, colours, logos and players. */
@@ -167,7 +169,7 @@ export class Lobbies {
     return {
       br: {
         title: l.title, stage: l.stage, game: l.game,
-        teams: l.teams.map(({ id, name, tag, color, logo, players }) => ({ id, name, tag, color, logo, players })),
+        teams: l.teams.map(({ id, name, tag, color, logo, players, photos }) => ({ id, name, tag, color, logo, players, photos: photos ?? [] })),
         games: l.games.map((g) => ({ n: g.n, map: g.map, startsAt: g.startsAt ?? null, done: !!g.results?.length, results: g.results ?? [] })),
         scoring, standings: table, current: next?.n ?? null, played: l.games.filter((g) => g.results?.length).length,
         champion: champion(lobby),

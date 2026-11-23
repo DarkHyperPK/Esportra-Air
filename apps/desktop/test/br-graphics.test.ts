@@ -30,7 +30,8 @@ test('battle royale pages draw the sample with no errors', { skip: !chromium && 
       await page.goto(`file://${OVERLAYS}/${name}.html?preview=1${mode ? `&mode=${mode}` : ''}`);
       await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
       await page.waitForTimeout(1500); // entrances settle
-      const r = await page.evaluate(() => ({ n: document.querySelectorAll('.br *').length, out: [...document.querySelectorAll('.br *')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > 1925 || b.bottom > 1085); }).map((e) => e.className) }));
+      const r = await page.evaluate(() => ({ n: document.querySelectorAll('.br *').length, out: [...document.querySelectorAll('.br *')].filter((e) => !e.closest('.b6-mapwrap, .b6-flare, .b6-rays, .b6-shard')) // light and the tilted map bleed off on purpose (clipped by .brf)
+        .filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && (b.right > 1925 || b.bottom > 1085); }).map((e) => e.className) }));
       page.off('pageerror', onError);
       assert.deepEqual(errors, [], `${name} ${mode}: no script errors`);
       assert.ok(r.n > 10, `${name} ${mode}: draws the sample`);
@@ -77,13 +78,32 @@ test('kit pictures fill their slots; anything else is refused', { skip: !chromiu
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
     await page.goto(`file://${OVERLAYS}/br-wwcd.html?preview=1`);
     await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
-    assert.equal(await page.evaluate(() => document.querySelectorAll('.br-slot[style]').length), 0, 'no pack: slots stay empty');
-    await push(page, `s.airPack = { esports: '/packs/pubgm/${SHA}.png', ci: 'https://example.com/x.png', character: ['/packs/pubgm/${SHA}.webp'], wallpaper: [] };`);
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('.br-slot')].filter((e) => (e as HTMLElement).style.getPropertyValue('--pic')).length), 0, 'no pack: slots stay empty');
+    await push(page, `s.airPack = { esports: '/packs/pubgm/${SHA}.png', ci: 'https://example.com/x.png', character: ['/packs/pubgm/${SHA}.webp'], wallpaper: ['/packs/pubgm/${'b'.repeat(64)}.jpg'], item: ['/packs/pubgm/${'c'.repeat(64)}.png'] };`);
     await page.waitForTimeout(100);
-    const slots = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.br-slot')].map((e) => [e.className.replace('br-slot ', ''), (e as HTMLElement).style.getPropertyValue('--pic')])));
-    assert.match(slots['logo']!, /\/packs\/pubgm\/a{64}\.png/);
-    assert.equal(slots['ci'], '', 'outside links never load');
-    assert.match(slots['char l']!, /\.webp/);
+    const pic = (sel: string) => page.evaluate((q: string) => { const e = document.querySelector(q) as HTMLElement | null; return e ? e.style.getPropertyValue('--pic') : null; }, sel);
+    assert.match((await pic('.b6-logo'))!, /\/packs\/pubgm\/a{64}\.png/, 'esports logo');
+    assert.equal(await pic('.b6-ci'), '', 'outside links never load');
+    assert.match((await pic('.brf > .br-slot.bg'))!, /b{64}\.jpg/, 'pack wallpaper is the background');
+    assert.match((await pic('.b6-crate'))!, /c{64}\.png/, 'the crate is a pack item');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('.br img[src*="webp"]').length), 0, 'no game character stands in for players');
+    // The event's theme: a preset, own colours (hex only), own background, props off.
+    await push(page, `s.airBrTheme = { preset: 'jungle', colors: { acc: '#12ab34', bg1: 'red;x' }, background: '/air-assets/${'0'.repeat(8)}-0000-0000-0000-${'0'.repeat(12)}', props: { crate: false, chutes: false } };`);
+    await page.waitForTimeout(100);
+    const th = await page.evaluate(() => { const m = document.querySelector('.br-layer, [data-theme]') as HTMLElement; return { name: m.dataset.theme, acc: m.style.getPropertyValue('--acc'), bg1: m.style.getPropertyValue('--bg1'), crate: !!document.querySelector('.b6-crate'), chutes: document.querySelectorAll('.b6-chute').length }; });
+    assert.equal(th.name, 'jungle');
+    assert.equal(th.acc, '#12ab34', 'own colour replaces the preset');
+    assert.equal(th.bg1, '#0c241c', 'a colour that is not hex is ignored');
+    assert.equal(th.crate, false, 'crate off');
+    assert.equal(th.chutes, 0, 'parachutes off');
+    assert.match((await pic('.brf > .br-slot.bg'))!, /air-assets/, 'the event background replaces the wallpaper');
+    // Players: a Teams/Players photo, else the grey shadow.
+    await push(page, `const B = JSON.parse(JSON.stringify(window.BR_SAMPLE)); const w = B.br.standings[0].team; const g = B.br.games.filter((x) => x.results && x.results.length).slice(-1)[0]; const t = B.br.teams.find((x) => x.id === g.results[0].team); t.photos = ['/air-assets/${'1'.repeat(8)}-1111-1111-1111-${'1'.repeat(12)}', 'javascript:x']; s.br = B.br; s.brLive = B.brLive;`);
+    await page.waitForTimeout(150);
+    const ph = await page.evaluate(() => ({ img: [...document.querySelectorAll('.b6-ph img')].map((e) => e.getAttribute('src')), none: document.querySelectorAll('.b6-ph.none').length }));
+    assert.equal(ph.img.length, 1, 'one photo');
+    assert.match(ph.img[0]!, /air-assets/);
+    assert.ok(ph.none >= 3, 'the rest are shadows');
   } finally { await browser.close(); }
 });
 

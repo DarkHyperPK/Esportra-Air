@@ -1,3 +1,4 @@
+import { BrThemeEditor } from '../components/BrThemeEditor.tsx';
 import { useEffect, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import { gameOf } from '../../shared/games.ts';
@@ -165,19 +166,22 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
 
 /** Graphics studio (16 Nov): editing only. Looks for Air's graphics, and your own designs. */
 export function StudioScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const [tab, setTab] = useState<'templates' | 'own' | 'assets'>('templates');
+  const lobbyGame = s.game?.shape === 'lobby';
+  const [tab, setTab] = useState<'templates' | 'own' | 'assets' | 'theme'>(lobbyGame ? 'theme' : 'templates');
   useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id]);
+  useEffect(() => { if (!lobbyGame && tab === 'theme') setTab('templates'); }, [lobbyGame]);
   return (
     <div className="stack" style={{ gap: 26 }}>
-      <PageHeader eyebrow="Graphics studio" title={tab === 'own' ? 'Your designs' : tab === 'assets' ? 'Game assets' : 'Looks'}>
-        {tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : tab === 'assets' ? 'The game’s official pictures (characters, maps, vehicles, items, logos), ready to put on any graphic.' : 'Change how Air’s graphics look. A look is used wherever a show picks it; saving updates every match using it.'}
+      <PageHeader eyebrow="Graphics studio" title={tab === 'theme' ? 'Event theme' : tab === 'own' ? 'Your designs' : tab === 'assets' ? 'Game assets' : 'Looks'}>
+        {tab === 'theme' ? 'The colour world of a lobby’s graphics: a theme or your own colours, the background picture, the emblem and the props. Every graphic follows it.' : tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : tab === 'assets' ? 'The game’s official pictures (characters, maps, vehicles, items, logos), ready to put on any graphic.' : 'Change how Air’s graphics look. A look is used wherever a show picks it; saving updates every match using it.'}
       </PageHeader>
       <div className="seg tabs-seg" role="tablist" aria-label="Graphics studio">
+        {lobbyGame && <button role="tab" aria-selected={tab === 'theme'} aria-pressed={tab === 'theme'} onClick={() => setTab('theme')}>Event theme</button>}
         <button role="tab" aria-selected={tab === 'templates'} aria-pressed={tab === 'templates'} onClick={() => setTab('templates')}>Looks{s.templates.length ? ` · ${s.templates.length}` : ''}</button>
         <button role="tab" aria-selected={tab === 'own'} aria-pressed={tab === 'own'} onClick={() => setTab('own')}>Your designs{s.ownGraphics.length ? ` · ${s.ownGraphics.length}` : ''}</button>
         <button role="tab" aria-selected={tab === 'assets'} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}>Game assets</button>
       </div>
-      {tab === 'own' ? <OwnTab s={s} run={run} /> : tab === 'assets' ? <GameAssets s={s} run={run} /> : <TemplatesTab s={s} />}
+      {tab === 'theme' ? <BrThemeEditor s={s} run={run} /> : tab === 'own' ? <OwnTab s={s} run={run} /> : tab === 'assets' ? <GameAssets s={s} run={run} /> : <TemplatesTab s={s} />}
     </div>
   );
 }

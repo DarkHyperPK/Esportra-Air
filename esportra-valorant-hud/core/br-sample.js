@@ -3,7 +3,7 @@
    src/main/br-lobbies.ts) and the live field `brLive` the observer feed will fill (step 6). */
 (function () {
   const NAMES = [['NIGHT OWLS', 'NOW', '#22d3ee'], ['CRIMSON FIVE', 'CRF', '#f43f5e'], ['IRON PINE', 'IRP', '#ffb60e'], ['DUNE RUNNERS', 'DUR', '#a78bfa'], ['SILVER FOX', 'SFX', '#94a3b8'], ['NORTH TIDE', 'NTD', '#38bdf8'], ['BLUE HARBOR', 'BLH', '#60a5fa'], ['STONE WOLVES', 'STW', '#a3a3a3'], ['RED KESTREL', 'RKS', '#fb7185'], ['LOW ORBIT', 'LOR', '#34d399'], ['WILD CARD', 'WCD', '#f472b6'], ['GREY MOUNTAIN', 'GRM', '#cbd5e1'], ['FERAL SIX', 'FRX', '#fbbf24'], ['ECHO VALLEY', 'ECV', '#4ade80'], ['QUIET STORM', 'QST', '#818cf8'], ['HIGH GROUND', 'HGD', '#f97316']];
-  const teams = NAMES.map(([name, tag, color], i) => ({ id: 's' + i, name, tag, color, logo: '', players: ['ONE', 'TWO', 'THREE', 'FOUR'].map(p => tag + '_' + p) }));
+  const teams = NAMES.map(([name, tag, color], i) => ({ id: 's' + i, name, tag, color, logo: '', players: ['ONE', 'TWO', 'THREE', 'FOUR'].map(p => tag + '_' + p), photos: [] }));
   const placement = [10, 6, 5, 4, 3, 2, 1, 1];
   // Four played matches: [team index, place, elims] per row.
   const played = [
@@ -24,6 +24,7 @@
       game: 5, teamsAlive: 12, playersAlive: 33,
       teams: Object.fromEntries([['s2', 'aaaa', 9], ['s0', 'aaak', 6], ['s5', 'aad', 5], ['s3', 'aaaa', 4], ['s1', 'ak', 3], ['s7', 'akd', 3], ['s9', 'aaa', 2], ['s6', 'aadd', 1], ['s11', 'a', 2], ['s10', 'aaaa', 0], ['s13', 'aa', 1], ['s15', 'aak', 1], ['s12', 'dddd', 1, 13], ['s8', 'dddd', 1, 14], ['s4', 'dddd', 3, 15], ['s14', 'dddd', 0, 16]].map(([id, p, e, place]) => [id, { players: p, elims: e, place: place || null }])),
       lastOut: { team: 's12', place: 13, at: 0 },
+      players: [['IRP_ONE', 3, 402], ['IRP_TWO', 2, 355], ['IRP_THREE', 1, 288], ['IRP_FOUR', 1, 190]].map(([name, elims, damage]) => ({ team: 's2', name, elims, damage })),
       mvp: [['s0', 'NOW_RAVEN', 6, 688, 1270], ['s2', 'IRP_ASH', 3, 402, 1421], ['s5', 'NTD_FROST', 4, 617, 1195], ['s1', 'CRF_EMBER', 4, 574, 962]].map(([team, name, elims, damage, survived]) => ({ team, name, elims, damage, survived })),
     },
   };

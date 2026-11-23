@@ -5,7 +5,7 @@
 // the match list, prepare (configurationJson is a JSON string), the live veto, the bracket, result
 // proposals and their review, heartbeats and logos uploaded on Esportra.
 import { createServer, type IncomingMessage, type Server } from 'node:http';
-import { fakePack } from './fake-pack.ts';
+import { fakePack, localPack } from './fake-pack.ts';
 import { generateKeyPairSync, randomUUID, sign, constants } from 'node:crypto';
 
 export interface FakeMatch {
@@ -42,7 +42,7 @@ export class FakeEsportra {
   /** Simulates the backend being unreachable (connections are dropped). */
   down = false;
   /** The PUBG Mobile game pack Esportra hosts (stand-in pictures, never the real kit). */
-  pack = fakePack('pubgm');
+  pack = process.env.AIR_DEV_PACK ? localPack('pubgm', process.env.AIR_DEV_PACK) : fakePack('pubgm');
   /** Token lifetime in seconds. */
   tokenSeconds = 3600;
   matches: FakeMatch[] = [];
@@ -258,7 +258,7 @@ export class FakeEsportra {
     if (packFile) {
       const bytes = this.pack.files.get(packFile[1]!);
       if (!bytes) return send(404, {});
-      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': bytes.length });
+      res.writeHead(200, { 'Content-Type': bytes[0] === 0xff ? 'image/jpeg' : bytes[0] === 0x52 ? 'image/webp' : 'image/png', 'Content-Length': bytes.length });
       return res.end(bytes);
     }
     if (route === 'POST /api/auth/desktop-login') {

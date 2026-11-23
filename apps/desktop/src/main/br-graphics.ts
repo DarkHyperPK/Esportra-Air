@@ -5,12 +5,15 @@
 //    characters, map pictures by name). Only pack paths; nothing is sent when the event has no licence or no pack.
 //  · `layout.brHud` and `brPopup`: the HUD layout (rail, grid, strip) and the strip's standings pop-up.
 //  · Templates: the same `airTemplates`/`airBrand` as the match rooms, the lobby's HUD look as `airPageTemplates.brhud`.
+//  · `airBrTheme` (23 Nov): the lobby's theme (preset or own colours, background, emblem, props); `brEmblem` the
+//    event's logo, `brSponsors` its sponsors (title first, three at most) for the footer.
 import type { Lobby, LobbyLook } from '../shared/api.ts';
 import type { GameAsset } from '../shared/game-assets.ts';
 import { packPath } from '../shared/game-assets.ts';
 import { isLobbyGraphic } from '../shared/templates.ts';
 
-import { BR_SCREENS, HUD_LAYOUTS, type BrScreen } from '../shared/br-screens.ts';
+import { BR_PICTURE, BR_SCREENS, BR_THEMES, BR_THEME_COLOURS, DEFAULT_THEME, HUD_LAYOUTS, type BrScreen, type BrTheme } from '../shared/br-screens.ts';
+import type { EventInfo } from '../shared/model.ts';
 export const DEFAULT_LOOK: LobbyLook = { hud: 'rail', popup: false, templates: {} };
 
 export interface BrGraphicsContext {
@@ -24,6 +27,8 @@ export interface BrGraphicsContext {
   eventName: (lobby: Lobby) => string;
   /** The saved templates, to check a look exists and fits its graphic. */
   templateGraphic: (id: string) => string | null;
+  /** The lobby's event, for its emblem and sponsors. */
+  event?: (lobby: Lobby) => EventInfo | null;
 }
 
 /** The pictures core/br.js reads: logos (white variant first), lists of wallpapers and characters, maps by name. */
@@ -40,7 +45,35 @@ export function packField(game: string, assets: GameAsset[]) {
     esports: esports ? path(esports) : '', ci: ci ? path(ci) : '',
     wallpaper: assets.filter((a) => a.kind === 'wallpaper').slice(0, 8).map(path),
     character: assets.filter((a) => a.kind === 'character').slice(0, 8).map(path),
+    item: assets.filter((a) => a.kind === 'item').slice(0, 8).map(path),
     maps,
+  };
+}
+
+/** The lobby's theme as the producer set it; anything that is not a preset, a #rrggbb colour or an allowed picture is refused. */
+export function validTheme(v: unknown): BrTheme {
+  if (v === undefined || v === null) return DEFAULT_THEME;
+  if (typeof v !== 'object') throw new Error('That theme is not valid.');
+  const x = v as Record<string, unknown>;
+  if (!BR_THEMES.includes(x.preset as never)) throw new Error('Choose Sky, Jungle or Inferno.');
+  const colors: BrTheme['colors'] = {};
+  const raw = x.colors && typeof x.colors === 'object' ? (x.colors as Record<string, unknown>) : {};
+  for (const [k, c] of Object.entries(raw)) {
+    if (c === '' || c === null || c === undefined) continue;
+    if (!BR_THEME_COLOURS.includes(k as never) || typeof c !== 'string' || !/^#[0-9a-f]{6}$/i.test(c)) throw new Error('Colours are #rrggbb.');
+    colors[k as keyof typeof colors] = c.toLowerCase();
+  }
+  const picture = (p: unknown, what: string) => {
+    if (p === undefined || p === null || p === '') return '';
+    if (typeof p !== 'string' || !BR_PICTURE.test(p)) throw new Error(`The ${what} must be a kit picture or a picture uploaded to Air.`);
+    return p;
+  };
+  const pr = (x.props && typeof x.props === 'object' ? x.props : {}) as Record<string, unknown>;
+  return {
+    preset: x.preset as BrTheme['preset'],
+    ...(Object.keys(colors).length ? { colors } : {}),
+    background: picture(x.background, 'background'), emblem: picture(x.emblem, 'emblem'),
+    props: { crate: pr.crate !== false, chutes: pr.chutes !== false, side: pr.side === 'left' ? 'left' : 'right' },
   };
 }
 
@@ -54,7 +87,14 @@ export function validLook(v: unknown, templateGraphic: (id: string) => string | 
     if (typeof id !== 'string' || !isLobbyGraphic(graphic) || templateGraphic(id) !== graphic) throw new Error('That look is not for this graphic.');
     templates[graphic] = id;
   }
-  return { hud, popup: x.popup === true, templates };
+  return { hud, popup: x.popup === true, templates, ...(x.theme === undefined ? {} : { theme: validTheme(x.theme) }) };
+}
+
+const TIER_ORDER = { title: 0, partner: 1, supporter: 2 } as const;
+/** The footer's Presented by: the event's sponsors, title sponsors first, three at most. */
+export function sponsorsOf(ev: EventInfo | null) {
+  if (!ev) return [];
+  return [...ev.sponsors].sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier]).slice(0, 3).map((s) => ({ name: s.name.toUpperCase(), logo: s.logoLight || s.logo || '' }));
 }
 
 export class BrGraphics {
@@ -70,7 +110,11 @@ export class BrGraphics {
     const look = BrGraphics.lookOf(l);
     const tpl = this.ctx.templates(l);
     const pages = { ...((tpl.airPageTemplates as Record<string, string | null>) ?? {}), brhud: look.templates.brhud ?? null };
-    return { airPack: packField(l.game, this.ctx.assets(l)), layout: { brHud: look.hud }, brPopup: look.popup, brEvent: this.ctx.eventName(l), ...tpl, airPageTemplates: pages };
+    const ev = this.ctx.event?.(l) ?? null;
+    return {
+      airPack: packField(l.game, this.ctx.assets(l)), layout: { brHud: look.hud }, brPopup: look.popup, brEvent: this.ctx.eventName(l),
+      airBrTheme: look.theme ?? DEFAULT_THEME, brEmblem: ev?.logoLight || ev?.logo || '', brSponsors: sponsorsOf(ev), ...tpl, airPageTemplates: pages,
+    };
   }
 
   onAir(l: Lobby): BrScreen | null { return this.shown.get(l.code) ?? null; }

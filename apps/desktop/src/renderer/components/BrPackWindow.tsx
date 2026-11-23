@@ -3,7 +3,7 @@
 // the graphics; full screens are put on air from Live.
 import { useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
-import { BR_SCREENS, BR_SCREEN_NAME, BR_SCREEN_PHASE, BR_SCREEN_WHAT, HUD_LAYOUTS, HUD_LAYOUT_NAME, type BrScreen, type HudLayout } from '../../shared/br-screens.ts';
+import { BR_THEME_NAME, BR_SCREENS, BR_SCREEN_NAME, BR_SCREEN_PHASE, BR_SCREEN_WHAT, HUD_LAYOUTS, HUD_LAYOUT_NAME, type BrScreen, type HudLayout } from '../../shared/br-screens.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { useEscape } from './Dialogs.tsx';
@@ -68,9 +68,10 @@ export function BrPackWindow({ s, run, close }: { s: Snapshot; run: Run; close: 
                   <dt>When</dt><dd>{BR_SCREEN_PHASE[selected as BrScreen] === 'pre' ? 'Before a match' : 'After a match'}</dd>
                   <dt>In OBS</dt><dd>The full-screen source</dd>
                   <dt>With</dt><dd>{lobby ? lobby.title : 'Sample teams'}</dd>
+                  <dt>Theme</dt><dd>{BR_THEME_NAME[lobby?.look?.theme?.preset ?? 'sky']}{lobby?.look?.theme?.colors && Object.keys(lobby.look.theme.colors).length ? ' · own colours' : ''}</dd>
                 </dl>
                 <span className="spacer" />
-                <span className="faint t-xs">Put it on air from Live.</span>
+                <span className="faint t-xs">Put it on air from Live. Colours, background, emblem and props: Graphics studio › Event theme.</span>
               </>
             )}
           </aside>

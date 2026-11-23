@@ -29,6 +29,11 @@ test('a lobby is for a battle royale game; its teams follow Teams/Players', asyn
   store.data.teams![0]!.name = 'Renamed';
   lobbies.refresh();
   assert.equal(lobbies.find(l.id).teams[0]!.name, 'Renamed');
+  assert.equal(lobbies.find(l.id).teams[0]!.photos, undefined, 'no photos: the graphics draw shadows');
+  store.data.players!.push({ id: 'p2', name: 'Bee', realName: '', gameId: 'Bee', photo: '/air-assets/abc', role: '', teamId: 't0' });
+  lobbies.refresh();
+  assert.deepEqual(lobbies.find(l.id).teams[0]!.photos, ['', '/air-assets/abc'], 'photos follow the players, in order');
+  assert.deepEqual(Lobbies.roomField(lobbies.find(l.id)).br.teams[1]!.photos, [], 'the room always has a list');
 });
 
 test('saving a result puts the standings in the selected lobby room; a cleared game drops out', async () => {

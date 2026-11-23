@@ -20,7 +20,7 @@ export const SCORING_PRESETS: Record<'pmgc' | 'ffws', { name: string; scoring: S
 };
 
 export interface TeamResult { team: string; place: number; elims: number }
-export interface LobbyTeam { teamId: string | null; id: string; name: string; tag: string; color: string; logo: string; players: string[] }
+export interface LobbyTeam { teamId: string | null; id: string; name: string; tag: string; color: string; logo: string; players: string[]; /** Each player's Teams/Players photo, '' for none (the graphics draw a grey shadow). */ photos?: string[] }
 export interface LobbyGame { n: number; map: string; startsAt?: string; results?: TeamResult[]; finishedAt?: number }
 export interface LobbyCore { teams: LobbyTeam[]; games: LobbyGame[]; scoring: Scoring }
 

@@ -29,7 +29,7 @@ import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { GamePacks } from './game-packs.ts';
 import { Lobbies } from './br-lobbies.ts';
-import { BrGraphics, validLook as validLobbyLook } from './br-graphics.ts';
+import { BrGraphics, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
 import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
 import { Rehearsal } from './rehearsal.ts';
 import type { EsportraAccount } from './esportra.ts';
@@ -190,6 +190,7 @@ export class Production extends EventEmitter {
       templates: (l) => ({ ...this.looks.state(), airBrand: this.brandOf(deps.store.data.events.find((e) => e.id === l.eventId) ?? null) }),
       templateGraphic: (id) => this.looks.templates.find((t) => t.id === id)?.graphic ?? null,
       eventName: (l) => deps.store.data.events.find((e) => e.id === l.eventId)?.name ?? '',
+      event: (l) => deps.store.data.events.find((e) => e.id === l.eventId) ?? null,
     });
     this.packs.on('change', () => void this.lobbies.publish().catch(() => {}));
     void this.startPacks();
@@ -1033,6 +1034,11 @@ export class Production extends EventEmitter {
     const p = (patch ?? {}) as Record<string, unknown>;
     const cur = BrGraphics.lookOf(l);
     this.lobbies.setLook(id, validLobbyLook({ ...cur, ...p, templates: p.templates === undefined ? cur.templates : { ...cur.templates, ...(p.templates as object) } }, (t) => this.looks.templates.find((x) => x.id === t)?.graphic ?? null));
+  }
+  lobbyPreview(id: string, theme?: unknown) {
+    const l = this.lobbies.find(id);
+    const f = this.brGraphics.roomFields(theme === undefined ? l : { ...l, look: { ...BrGraphics.lookOf(l), theme: validTheme(theme) } });
+    return { airPack: f.airPack, airBrTheme: f.airBrTheme, brEmblem: f.brEmblem, brEvent: f.brEvent, brSponsors: f.brSponsors };
   }
   async lobbyTake(id: string, screen: string | null) {
     const l = this.lobbies.find(id);

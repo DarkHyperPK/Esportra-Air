@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrGraphics, packField, validLook } from '../src/main/br-graphics.ts';
+import { BrGraphics, packField, sponsorsOf, validLook, validTheme } from '../src/main/br-graphics.ts';
 import type { Lobby } from '../src/shared/api.ts';
 import type { GameAsset } from '../src/shared/game-assets.ts';
 
@@ -26,7 +26,7 @@ test('the pack field takes white logos, wallpapers, characters and maps by name'
   assert.deepEqual(f.wallpaper, [`/packs/pubgm/${sha('d')}.png`]);
   assert.deepEqual(f.character, [`/packs/pubgm/${sha('e')}.png`]);
   assert.deepEqual(f.maps, { erangel: `/packs/pubgm/${sha('f')}.png` });
-  assert.deepEqual(packField('pubgm', []), { esports: '', ci: '', wallpaper: [], character: [], maps: {} });
+  assert.deepEqual(packField('pubgm', []), { esports: '', ci: '', wallpaper: [], character: [], item: [], maps: {} });
 });
 
 test('a look takes known layouts and only templates made for that graphic', () => {
@@ -58,4 +58,30 @@ test('Take and Clear go to the lobby room with the chosen look', async () => {
   assert.equal(f.brPopup, true);
   assert.equal(f.brEvent, 'Cup');
   assert.deepEqual(f.airPageTemplates, { 'holding|full': null, brhud: 'th' });
+});
+
+test('a theme takes a preset, #rrggbb colours, allowed pictures and props', () => {
+  const up = `/air-assets/${'1'.repeat(8)}-1111-1111-1111-${'1'.repeat(12)}`;
+  assert.deepEqual(validTheme(undefined), { preset: 'sky', props: { crate: true, chutes: true, side: 'right' } });
+  assert.deepEqual(validTheme({ preset: 'jungle', colors: { acc: '#AABBCC', bg1: '' }, background: `/packs/pubgm/${sha('a')}.jpg`, emblem: up, props: { crate: false, side: 'left' } }),
+    { preset: 'jungle', colors: { acc: '#aabbcc' }, background: `/packs/pubgm/${sha('a')}.jpg`, emblem: up, props: { crate: false, chutes: true, side: 'left' } });
+  assert.throws(() => validTheme({ preset: 'neon' }), /Sky, Jungle or Inferno/);
+  assert.throws(() => validTheme({ preset: 'sky', colors: { acc: 'red' } }), /#rrggbb/);
+  assert.throws(() => validTheme({ preset: 'sky', colors: { shadow: '#000000' } }), /#rrggbb/);
+  assert.throws(() => validTheme({ preset: 'sky', background: 'https://example.com/x.png' }), /kit picture/);
+  assert.deepEqual(validLook({ hud: 'rail', theme: { preset: 'inferno' } }, () => null).theme, { preset: 'inferno', background: '', emblem: '', props: { crate: true, chutes: true, side: 'right' } });
+});
+
+test('the room gets the theme, the event emblem and its sponsors, title first', () => {
+  const ev = { id: 'e1', name: 'Cup', logo: '/air-assets/x', logoLight: '', sponsors: [
+    { id: 's1', name: 'Bolt', logo: 'a', logoLight: '', tier: 'supporter' }, { id: 's2', name: 'Apex', logo: 'b', logoLight: 'c', tier: 'title' },
+    { id: 's3', name: 'Core', logo: 'd', logoLight: '', tier: 'partner' }, { id: 's4', name: 'Dyn', logo: 'e', logoLight: '', tier: 'supporter' },
+  ] } as never;
+  assert.deepEqual(sponsorsOf(ev), [{ name: 'APEX', logo: 'c' }, { name: 'CORE', logo: 'd' }, { name: 'BOLT', logo: 'a' }]);
+  const g = new BrGraphics({ action: async () => {}, assets: () => [], templates: () => ({}), templateGraphic: () => null, eventName: () => 'Cup', event: () => ev });
+  const f = g.roomFields(lobby({ look: { hud: 'rail', popup: false, templates: {}, theme: { preset: 'jungle' } } }));
+  assert.deepEqual(f.airBrTheme, { preset: 'jungle' });
+  assert.equal(f.brEmblem, '/air-assets/x');
+  assert.equal((f.brSponsors as unknown[]).length, 3);
+  assert.deepEqual(g.roomFields(lobby()).airBrTheme, { preset: 'sky', props: { crate: true, chutes: true, side: 'right' } }, 'no theme: Sky');
 });

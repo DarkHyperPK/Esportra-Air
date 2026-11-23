@@ -1413,3 +1413,18 @@ button.ev-add:hover, button.ev-add:focus-visible { border-color: var(--white); c
 .br-layout { display: grid; gap: 6px; padding: 8px; text-align: left; color: var(--text); font: inherit; cursor: pointer; }
 .br-layout.sel { border-color: var(--sel); box-shadow: inset 0 0 0 1px var(--sel); }
 .br-layout:disabled { cursor: default; opacity: .6; }
+
+/* Graphics studio › Event theme (23 Nov): big preview left, the theme's settings right. */
+.bt { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 22px; align-items: start; }
+.bt-stage { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.bt-stage .seg { flex-wrap: wrap; }
+.bt-side { position: sticky; top: 12px; }
+.bt-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bt-preset { display: flex; flex-direction: column; gap: 6px; padding: 8px; text-align: left; cursor: pointer; }
+.bt-preset i { position: relative; display: block; height: 44px; border-radius: 6px; }
+.bt-preset i em { position: absolute; right: 6px; bottom: 6px; width: 14px; height: 14px; border-radius: 3px; }
+.bt-colours { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.bt-colour { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; }
+.bt-colour input[type=color] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line, #333); border-radius: 6px; background: none; cursor: pointer; }
+.bt-actions { flex-wrap: wrap; padding-top: 6px; }
+@media (max-width: 1180px) { .bt { grid-template-columns: 1fr; } .bt-side { position: static; } }
