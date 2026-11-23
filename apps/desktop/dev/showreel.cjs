@@ -42,7 +42,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;font
 body.win .layer{left:470px;top:150px;width:1380px;height:776px;border-radius:14px;box-shadow:0 40px 120px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.1)}
 body.mon .layer{left:160px;top:176px;width:1600px;height:900px;box-shadow:0 30px 100px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.1)}
 body.full .layer{inset:0}
-body.title .layer{inset:0;opacity:.32}
+body.title .layer{inset:-40px;opacity:.55;filter:blur(14px) brightness(.42) saturate(1.1)}
 .in{animation:in .5s cubic-bezier(.2,.8,.2,1) both}
 @keyframes in{0%{opacity:0;transform:translateY(40px) scale(.985)}100%{opacity:1;transform:none}}
 #txt{position:absolute;z-index:5}
@@ -181,7 +181,7 @@ body.full #shade.on{display:block}
           const img = document.getElementById('img');
           if (b64) { img.src = 'data:image/jpeg;base64,' + b64; await img.decode().catch(() => {}); }
           const L = document.getElementById('layer'), mode = document.body.className;
-          const s = 1 + Math.min(cam, 600) * (mode === 'full' ? 0.00012 : 0.00007);
+          const s = 1 + Math.min(cam, 600) * (mode === 'full' || mode === 'title' ? 0.0004 : 0.00007);
           L.style.transform = mode === 'win' ? `perspective(2400px) rotateY(-3deg) scale(${s})` : `scale(${s})`;
           L.style.transformOrigin = mode === 'win' ? '30% 50%' : '50% 50%';
         }, [buf ? buf.toString('base64') : null, cam]);
