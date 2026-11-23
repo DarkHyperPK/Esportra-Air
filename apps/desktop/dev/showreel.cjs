@@ -257,13 +257,18 @@ body.full #shade.on{display:block}
   f = shot('studio-colour');
   await f.scene('win', { k: 'GRAPHICS STUDIO', t: 'Recolour any <em>layer</em>', s: 'Pick a colour and the graphic changes as you click.' });
   f.use(app);
+  // The heading's own text colour, picked with the editor's any-colour field: amber, green, rose.
+  const anyColour = app.locator('.tpl-right').getByLabel('Colour: any colour').first();
   await ui.zoomTo(f, 1, 0, 0, 8);
-  for (const n of [1, 3, 2]) { await ui.click(f, app.locator('.tpl-right .sw').nth(n), { frames: 8, after: 10 }); }
-  await ui.zoomTo(f, 1.3, canvas.x + canvas.width * 0.3, canvas.y + canvas.height * 0.2, 12);
+  await ui.point(f, anyColour, 10);
+  await ui.zoomTo(f, 1.4, canvas.x + canvas.width * 0.28, canvas.y + canvas.height * 0.18, 10);
+  for (const c of ['#ffb60e', '#34d399', '#f43f5e']) { await anyColour.fill(c); await f.run(app, 22); }
   await f.until(8);
   await ui.zoomTo(f, 1, 0, 0, 1);
+  await editor.getByRole('button', { name: /^Save/ }).last().click();
+  await app.waitForTimeout(600);
   await editor.getByRole('button', { name: /Close/ }).first().click();
-  await app.getByRole('button', { name: /Discard|Close without saving|Don’t save|Leave/ }).first().click({ timeout: 2000 }).catch(() => {});
+  await editor.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
   await app.waitForTimeout(400);
   await app.getByRole('tab', { name: 'Event theme' }).click(); await app.waitForTimeout(1500);
   await app.getByRole('tab', { name: 'Overall standings' }).click().catch(() => {}); await app.waitForTimeout(1200);
