@@ -80,7 +80,7 @@ body.full #shade.on{display:block}
   await call('artDownload');
   for (const [i, n] of NAMES.entries()) await call('saveTeam', [{ name: n, tag: TAGS[i], color: COLORS[i % COLORS.length], logo: '' }]);
   let snap = await call('snapshot');
-  for (const t of snap.library.teams) { const i = NAMES.indexOf(t.name); for (const p of ['ACE', 'ROOK', 'VEX', 'KAI', 'JUNO']) await call('savePlayer', [{ name: `${TAGS[i]}_${p}`, realName: '', gameId: `${TAGS[i]}_${p}#${TAGS[i]}`, photo: '', role: '', teamId: t.id }]); }
+  for (const t of snap.library.teams) { const i = NAMES.indexOf(t.name); for (const p of ['ACE', 'ROOK', 'VEX', 'KAI']) await call('savePlayer', [{ name: `${TAGS[i]}_${p}`, realName: '', gameId: `${TAGS[i]}_${p}`, photo: '', role: '', teamId: t.id }]); }
   await call('createEvent', ['Friday Scrims']);
   await call('chooseGame', ['pubgm']);
   await call('createEvent', ['Air Showcase Cup']);
