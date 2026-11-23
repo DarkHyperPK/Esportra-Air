@@ -960,7 +960,7 @@ export class Production extends EventEmitter {
   }
 
   async savePlayer(input: Partial<LibPlayer>) {
-    const player = validPlayer(input, this.library);
+    const player = validPlayer(input, this.library, this.setup.game ?? null);
     const lib = this.library;
     lib.players = lib.players.some((p) => p.id === player.id) ? lib.players.map((p) => (p.id === player.id ? player : p)) : [...lib.players, player];
     await this.libraryChanged();

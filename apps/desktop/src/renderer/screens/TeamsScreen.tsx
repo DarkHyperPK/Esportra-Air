@@ -78,7 +78,7 @@ export function TeamsScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
                   </div>
                 ))}
               </div>
-              <span className="faint t-xs">The Riot ID links the player to the game. Photos show on player cards and lower thirds.</span>
+              <span className="faint t-xs">{s.game?.shape === 'lobby' ? 'The in-game name links the player to the game. Photos show on the squad graphics; without one, a grey player shadow.' : 'The Riot ID links the player to the game. Photos show on player cards and lower thirds.'}</span>
             </section>
           )}
         </div>

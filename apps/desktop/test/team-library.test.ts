@@ -59,6 +59,8 @@ test('picking a team and its starters', () => {
   assert.equal(validTeam({ id: a.id, name: 'Paper Rex', color: '#123456' }, lib).id, a.id, 'saving a team under its own name is fine');
   assert.throws(() => validTeam({ name: 'paper rex' }, { ...lib, teams: lib.teams }), /already a team/);
   assert.throws(() => validPlayer({ name: 'X', gameId: 'nohash' }, lib), /Name#TAG/);
+  assert.equal(validPlayer({ name: 'X', gameId: 'IRP_ACE' }, lib, 'pubgm').gameId, 'IRP_ACE', 'PUBG MOBILE names have no #TAG');
+  assert.throws(() => validPlayer({ name: 'X', gameId: 'a'.repeat(33) }, lib, 'freefire'), /32 characters/);
   assert.equal(validTeam({ name: 'Team Liquid' }, emptyLibrary()).tag, 'TL');
 });
 

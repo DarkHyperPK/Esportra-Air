@@ -29,12 +29,15 @@ export function validTeam(input: Partial<LibTeam>, lib: Library): LibTeam {
   return { id, name, tag, color, logo };
 }
 
-/** A player from the interface; throws a plain message when it cannot be used. */
-export function validPlayer(input: Partial<LibPlayer>, lib: Library): LibPlayer {
+/** A player from the interface; throws a plain message when it cannot be used. The in-game id is a Riot ID
+ *  (`Name#TAG`) for Valorant; for other games (PUBG MOBILE, Free Fire) it is the name as the game shows it. */
+export function validPlayer(input: Partial<LibPlayer>, lib: Library, game: string | null = 'valorant'): LibPlayer {
   const id = typeof input?.id === 'string' && lib.players.some((p) => p.id === input.id) ? input.id : randomUUID();
   const name = text(input?.name, 32, 'Name on air');
   const gameId = typeof input?.gameId === 'string' ? input.gameId.trim() : '';
-  if (gameId && !RIOT_ID.test(gameId)) throw new Error('Write the Riot ID as Name#TAG.');
+  const riot = !game || game === 'valorant';
+  if (gameId && riot && !RIOT_ID.test(gameId)) throw new Error('Write the Riot ID as Name#TAG.');
+  if (gameId && !riot && (gameId.length > 32 || /[<>]/.test(gameId))) throw new Error('Write the in-game name as the game shows it (32 characters at most).');
   if (gameId && lib.players.some((p) => p.id !== id && p.gameId && same(p.gameId, gameId))) throw new Error(`${gameId} is already a player.`);
   const photo = typeof input?.photo === 'string' ? input.photo : '';
   if (photo && !IMAGE.test(photo)) throw new Error('Choose the photo again.');
