@@ -307,8 +307,8 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
 
   // ═════ ACT 5 · EDIT ANYTHING (through Air's templates and themes) ═════
   await call('chooseGame', ['pubgm']);
-  let tpl = await call('templateSave', [{ name: 'Points race', graphic: 'br-overall|full', parts: {} }]);
-  const tplId = tpl.templates.find((t) => t.name === 'Points race').id;
+  const tplId = 'points-race';
+  await call('templateSave', [{ id: tplId, name: 'Points race', graphic: 'br-overall|full', parts: {} }]);
   const saveTpl = (parts) => call('templateSave', [{ id: tplId, name: 'Points race', graphic: 'br-overall|full', parts }]);
   await call('lobbyLook', [lobby.id, { templates: { 'br-overall|full': tplId } }]);
   await call('lobbyTake', [lobby.id, 'br-overall']);
