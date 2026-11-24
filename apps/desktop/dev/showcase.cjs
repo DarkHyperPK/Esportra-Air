@@ -12,29 +12,19 @@
 const fs = require('node:fs'), path = require('node:path');
 const { chromium } = require('playwright');
 const kit = require('./rec-kit.cjs');
+const S = require('./reel-setup.cjs');
 const H = process.argv[2] || 'http://127.0.0.1:5334';
 const ENGINE = process.argv[3] || '5396';
 const OUT = process.argv[4] || path.join(process.cwd(), 'showcase');
 const STILLS = process.argv.includes('--stills');
-const ENG = `http://127.0.0.1:${ENGINE}`;
-const KEY = 'dev-host-key-0123456789abcdef';
+const h = S.connect(H, ENGINE);
+const { ENG, call, patchRoom, action, LOTUS } = h;
 const SITE = process.env.ESPORTRA_SITE || path.join(__dirname, '../../../../esportra/public');
 const FPS = kit.FPS, BEAT = kit.BEAT;
 const beats = (b) => Math.round(b * BEAT * FPS);
-const call = async (m, a = []) => { const r = await fetch(`${H}/call/${m}`, { method: 'POST', body: JSON.stringify(a) }); const j = await r.json(); if (!r.ok) throw new Error(m + ': ' + JSON.stringify(j)); return j; };
-const dev = async (q) => (await fetch(`${H}/dev/pcob?${q}`, { method: 'POST' })).json();
-const engine = (p, method = 'GET', body) => fetch(`${ENG}${p}`, { method, headers: { 'X-Esportra-Key': KEY, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
-const roomState = async (code) => (await (await engine(`/api/${code}`)).json()).state;
-const patchRoom = async (code, fields) => { const r = await engine(`/api/${code}`, 'PATCH', fields); if (!r.ok) throw new Error('room patch ' + r.status); };
-const action = (room, name, args) => engine('/control/action', 'POST', { match: room, name, args });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = S.sleep;
 const dataUrl = (file, type = 'image/png') => `data:${type};base64,${fs.readFileSync(file).toString('base64')}`;
-const NAMES = ['NIGHT OWLS', 'CRIMSON FIVE', 'IRON PINE', 'DUNE RUNNERS', 'SILVER FOX', 'NORTH TIDE', 'BLUE HARBOR', 'STONE WOLVES', 'RED KESTREL', 'LOW ORBIT', 'WILD CARD', 'GREY MOUNTAIN', 'FERAL SIX', 'ECHO VALLEY', 'QUIET STORM', 'HIGH GROUND'];
-const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'LOB', 'WCD', 'GRM', 'FR6', 'ECV', 'QST', 'HGD'];
-const COLORS = ['#22d3ee', '#f43f5e', '#ffb60e', '#a78bfa', '#34d399', '#fb923c', '#60a5fa', '#e879f9'];
-const LOTUS = `${ENG}/art/maps/2fe4ed3a-450a-948b-6d6b-e89a78e680a9/splash.png`;
-const VAL = 'REELVAL';      // a Valorant room seeded with the HUD's own sample match
-const REPLAY = 'REELPUBG';  // the recorded PUBG MOBILE game, replayed
+const { VAL, REPLAY } = S;
 
 // ── the stage: shared look, kinetic type and transitions ──
 const CSS = (fonts) => `${fonts}
@@ -80,93 +70,15 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   const ICON = dataUrl(path.join(SITE, 'brand/esportra-icon-512.png'));
   const POSTER = (n) => dataUrl(path.join(SITE, `games/${n}-logo.png`));
 
-  // ═════ Off camera: the producer's data, through Air ═════
-  await call('chooseGame', ['valorant']); await call('finishOnboarding');
-  await call('esportraSignIn', ['producer@example.com', 'correct horse battery']);
-  await call('artDownload');
-  await call('chooseGame', ['pubgm']); // PUBG MOBILE players have in-game names, not Riot IDs
-  for (const [i, n] of NAMES.entries()) await call('saveTeam', [{ name: n, tag: TAGS[i], color: COLORS[i % COLORS.length], logo: '' }]);
-  let snap = await call('snapshot');
-  for (const t of snap.library.teams) { const i = NAMES.indexOf(t.name); for (const p of ['ACE', 'ROOK', 'VEX', 'KAI']) await call('savePlayer', [{ name: `${TAGS[i]}_${p}`, realName: '', gameId: `${TAGS[i]}_${p}`, photo: '', role: '', teamId: t.id }]); }
-  await call('createEvent', ['Air Showcase Cup']);
-  snap = await call('snapshot');
-  const ev = snap.events.find((e) => e.name === 'Air Showcase Cup');
-  await call('eventLicence', [ev.id, 'pubgm', { confirmed: true }]);
-  await call('saveSponsor', [ev.id, { name: 'Volt Energy', tier: 'title', logo: '', logoLight: '', line: '' }]);
-  await call('lobbyCreate', [{ eventId: ev.id, game: 'pubgm', title: 'Group A · Day 2', games: 6 }]);
-  snap = await call('snapshot');
-  const lobby = snap.lobbies[0], code = lobby.code;
-  await call('lobbyTeams', [lobby.id, NAMES.map((n) => snap.library.teams.find((t) => t.name === n).id)]);
-  await call('lobbyUpdate', [lobby.id, { stage: 'Group stage', games: ['Erangel', 'Miramar', 'Sanhok', 'Erangel', 'Vikendi', 'Rondo'].map((map) => ({ map })) }]);
-  await call('lobbySelect', [lobby.id]);
-  for (let i = 0; i < 120 && !(await call('snapshot')).packs?.some((p) => p.game === 'pubgm' && p.state === 'ready'); i++) await sleep(500);
-  for (let i = 0; i < 120 && (await call('snapshot')).art?.have < 279; i++) await sleep(500);
-
-  // A PUBG MOBILE game through Air, recorded as Air writes the lobby room.
-  const fake = await dev('do=start&speed=40&length=900');
-  await call('pcobConnect', [`127.0.0.1:${fake.port}`, true]);
-  await sleep(1500);
-  const states = [], lines = [], onAir = [];
-  let lastJson = '', recording = true;
-  const t0 = Date.now();
-  await dev('do=begin');
-  const pollRoom = (async () => { while (recording) { const s = await roomState(code); const j = JSON.stringify(s); if (j !== lastJson) { lastJson = j; states.push([Date.now(), s]); } await sleep(100); } })();
-  const pollFeed = (async () => {
-    const prev = new Map(); let seen = 0;
-    while (recording) {
-      try {
-        const [pl, ki] = await Promise.all(['gettotalplayerlist', 'getkillinfo'].map((r) => fetch(`http://127.0.0.1:${fake.port}/${r}`).then((x) => x.json())));
-        for (const p of pl.playerInfoList ?? []) { const o = prev.get(p.playerName); if (o && Number(p.killNum) !== Number(o.killNum)) lines.push(`${p.playerName} killNum ${o.killNum}→${p.killNum}`); if (o && Number(p.liveState) !== Number(o.liveState)) lines.push(`${p.playerName} liveState ${o.liveState}→${p.liveState}`); prev.set(p.playerName, p); }
-        for (const k of (ki.killInfo ?? []).slice(seen)) lines.push(`${k.CauserName} ${Number(k.ResultHealthStatus) === 2 ? '✕' : '↓'} ${k.VictimName} t=${k.CurGameTime}`);
-        seen = (ki.killInfo ?? []).length;
-      } catch { /* between games */ }
-      await sleep(250);
-    }
-  })();
-  const pollAir = (async () => { let last = ''; while (recording) { const s = await call('snapshot'); if (s.lobbyOnAir !== last) { last = s.lobbyOnAir; onAir.push([Date.now(), s.lobbyOnAir]); } await sleep(150); } })();
-  for (let i = 0; i < 400 && !onAir.some(([, s]) => s === 'br-mvp'); i++) await sleep(250);
-  await sleep(2500);
-  recording = false; await Promise.all([pollRoom, pollFeed, pollAir]);
-  await call('pcobDisconnect');
-  const at = (s) => onAir.find(([, x]) => x === s)?.[0];
-  const dropAt = at('br-drop'), wwcdAt = at('br-wwcd'), resultsAt = at('br-rankings'), mvpAt = at('br-mvp');
-  if (!wwcdAt || !resultsAt) throw new Error('autopilot did not run: ' + JSON.stringify(onAir));
-  const outs = states.filter(([, s]) => s.brLive?.lastOut).map(([t, s]) => [t, s.brLive.lastOut.at]);
-  const fbAt = states.find(([, s]) => s.brLive?.moment?.kind === 'first.blood')?.[0] ?? t0 + 6000;
-  console.log(`recorded ${states.length} states, ${lines.length} data lines, game ${((wwcdAt - t0) / 1000).toFixed(1)} s`);
-  await call('lobbyTake', [lobby.id, null]);
-
-  // Valorant: the Esportra import (Air's own path), and a room seeded with the HUD's sample match for the keys.
-  await call('chooseGame', ['valorant']);
-  for (let i = 0; i < 20 && (await call('snapshot')).esportra.state !== 'online'; i++) { await call('esportraCheck').catch(() => {}); await call('esportraRefresh').catch(() => {}); await sleep(500); }
-  snap = await call('snapshot');
-  const remote = snap.esportra.matches.find((m) => m.teamA === 'Vanguard Esports') ?? snap.esportra.matches[0];
-  await call('useEsportraMatch', [remote.id]);
-  for (let i = 0; i < 40 && !(await call('snapshot')).match; i++) await sleep(250);
-  snap = await call('snapshot');
-  const vmatch = snap.match;
-  const players = (vmatch.players ?? []).flat().map((p) => p.gameId || p.name).filter(Boolean);
-  const pool = (snap.matchData?.pool?.length ? snap.matchData.pool : ['Ascent', 'Bind', 'Haven', 'Lotus', 'Split', 'Sunset', 'Abyss']);
-  await call('vetoReset').catch(() => {});
+  // ═════ Off camera: the producer's data, through Air (dev/reel-setup.cjs) ═════
+  const d = await S.prepare(h);
+  const { lobby, code, states, lines, onAir, dropAt, wwcdAt, resultsAt, fbAt, vmatch, players, pool } = d;
 
   // ═════ Browser, stage, recorder ═════
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await kit.prepare(ctx);
-  // The fake Esportra's logo address points nowhere: a clean logo for it, in this browser only.
-  const lp = await ctx.newPage();
-  await lp.setContent(`<html><body style="margin:0;background:transparent"><svg id="l" width="256" height="256" viewBox="0 0 64 64"><path d="M32 3l26 15v28L32 61 6 46V18z" fill="#14b8a6"/><path d="M19 20h8l5 15 5-15h8L35 46h-6z" fill="#fff"/></svg></body></html>`);
-  const logo = await lp.locator('#l').screenshot({ omitBackground: true }); await lp.close();
-  await ctx.route('https://example.com/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: logo }));
-  // The Valorant sample room: the HUD's own sample state (core/state.default.js), as a sample room gets it.
-  const sp = await ctx.newPage(); await sp.goto(`${ENG}/overlays/ingame.html?preview=1`);
-  await sp.waitForFunction(() => window.HUD_READY === true, null, { timeout: 15000 });
-  const sample = await sp.evaluate(() => JSON.parse(JSON.stringify(typeof HUD_DEFAULT !== 'undefined' ? HUD_DEFAULT : window.HUD_DEFAULT)));
-  await sp.close();
-  await patchRoom(VAL, sample);
-  await patchRoom(REPLAY, states[0][1]);
-  const wall = states[0][1].airPack?.wallpaper?.[1] || states[0][1].airPack?.wallpaper?.[0] || '';
-  const walls = states[0][1].airPack?.wallpaper ?? [];
+  const { wall, walls, seek, resetReplay } = await S.dress(h, ctx, d);
 
   const stage = await ctx.newPage();
   const errs = []; stage.on('pageerror', (e) => errs.push(e.message));
@@ -196,10 +108,6 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   const dataLayer = (n = 220, from = 0) => `<div class="data">${lines.slice(from, from + n).map((l) => `<div>${l.replace(/</g, '')}</div>`).join('')}</div>`;
   /** One graphic full frame, punched in, with its name chip. */
   const full = (src, a, b, back) => `<div class="punch" style="position:absolute;inset:0;${back ? `background:#000 url('${back}') center/cover` : ''}">${g(src)}</div><div class="shade" style="height:300px"></div>${chip(a, b)}`;
-  // Replay: the room gets Air's recorded state for wall time w; pages' clocks are pinned to w.
-  let patched = -1;
-  const seek = async (w) => { let i = patched; while (i + 1 < states.length && states[i + 1][0] <= w) i++; if (i !== patched && i >= 0) { await patchRoom(REPLAY, states[i][1]); patched = i; await sleep(60); } };
-  const resetReplay = async (w) => { patched = -1; await seek(w); };
 
   // ═════ ACT 0 · OPEN ═════
   const flashes = [[val('agent-select')], [br('br-wwcd')], [val('map-result')], [br('br-champion')]];
