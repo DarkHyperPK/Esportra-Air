@@ -72,9 +72,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(52,211,153,.6)}50%{box-shadow:0 0 0 9px rgba(52,211,153,0)}}
 .data{position:absolute;inset:-300px 0 0 0;columns:6;column-gap:36px;padding:0 36px;font:500 14px/1.9 ui-monospace,monospace;color:#7fe0b8;opacity:.08;white-space:nowrap;overflow:hidden;animation:drift 20s linear both}
 @keyframes drift{to{transform:translateY(-700px)}}
-.cnt{--n:0;counter-reset:n var(--n);animation:count 1.1s .15s cubic-bezier(.2,.8,.2,1) both}
-.cnt::after{content:counter(n)}
-@keyframes count{to{--n:var(--to)}}`;
+`;
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
@@ -238,8 +236,8 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   // ═════ ACT 2 · VALORANT ═════
   const titleCard = (poster, name, n, sub) => `<style>@keyframes slam{0%{transform:translateY(-60px) rotate(-8deg) scale(1.3);opacity:0}100%{transform:rotate(-4deg);opacity:1}}</style>
     <img src="${poster}" style="position:absolute;left:1180px;top:150px;width:520px;border-radius:16px;box-shadow:0 40px 120px rgba(0,0,0,.7);animation:slam .55s cubic-bezier(.2,.9,.2,1.1) both">
-    <div class="cap" style="bottom:auto;top:340px"><span class="k">${name}</span><span class="t" style="font-size:180px;line-height:.9"><span class="cnt" style="--to:${n}"></span>${sub[0]}</span><span class="s">${sub[1]}</span></div>`;
-  await shot('6-valorant', titleCard(POSTER('valorant'), 'VALORANT', 45, ['+', 'broadcast graphics']), beats(4), null, { zoom: 1.06 });
+    <div class="cap" style="bottom:auto;top:360px"><span class="k">${name}</span><span class="t" style="font-size:120px;line-height:.95">${sub[0]}</span><span class="s">${sub[1]}</span></div>`;
+  await shot('6-valorant', titleCard(POSTER('valorant'), 'VALORANT', 0, ['Every <em>screen</em>', 'Built for Valorant broadcasts']), beats(4), null, { zoom: 1.06 });
   const wallSet = ['ingame', 'match-intro', 'map-veto', 'agent-select', 'scoreboard', 'map-result', 'postgame-player', 'postgame-matchup', 'map-breakdown', 'team-compare', 'standings', 'player-profile'];
   const tiles = wallSet.map((n, i) => `<div style="position:absolute;left:${(i % 4) * 500}px;top:${Math.floor(i / 4) * 300}px;width:480px;height:270px;overflow:hidden;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6);background:#000 ${n === 'ingame' ? `url('${LOTUS}') center/cover` : ''};animation:up .5s ${i * 0.05}s both">${g(val(n), 'transform:scale(.25)')}</div>`).join('');
   await shot('7-wall', `<style>@keyframes dolly{0%{transform:perspective(2200px) rotateX(18deg) rotateZ(-6deg) translate(-120px,-40px) scale(.95)}100%{transform:perspective(2200px) rotateX(18deg) rotateZ(-6deg) translate(-520px,-200px) scale(1.15)}}</style>
@@ -260,7 +258,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   }, { zoom: 1.04 });
 
   // ═════ ACT 3 · PUBG MOBILE ═════
-  await shot('10-pubg', titleCard(POSTER('pubg'), 'PUBG MOBILE', 24, [' graphics', '16-team lobbies, every screen covered']), beats(4), null, { zoom: 1.06 });
+  await shot('10-pubg', titleCard(POSTER('pubg'), 'PUBG MOBILE', 0, ['Every <em>lobby</em>', 'Built for battle royale broadcasts']), beats(4), null, { zoom: 1.06 });
   const mid = fbAt - 400;
   await resetReplay(mid);
   const hud = `<div style="position:absolute;inset:0;background:#000 url('${ENG}${wall}') center/cover">${g(`${ENG}/overlays/br-hud.html?match=${REPLAY}`)}</div>${dataLayer(240)}<div class="live">LIVE FROM THE GAME</div><div class="cap" style="bottom:auto;top:56px"><span class="t" style="margin:0;font-size:68px">Live <em>from the game</em></span></div>`;
@@ -302,7 +300,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   await shot('15-autopilot', `<style>.ac{padding:14px 18px;border-radius:12px;background:#10131c;border:2px solid rgba(255,255,255,.1);font:800 24px Poppins;margin-bottom:14px;transition:none}.ac.on{border-color:#ffb60e;box-shadow:0 0 36px rgba(255,182,14,.4)}.ac small{display:block;font:700 12px Poppins;letter-spacing:.16em;color:#8b8f99}</style>
     ${dataLayer(160, 300)}<div style="position:absolute;left:80px;top:250px;width:330px">${steps.map(([s, n]) => `<div class="ac" data-s="${s}"><small>AUTO</small>${n}</div>`).join('')}</div>
     <div style="position:absolute;left:470px;top:150px;width:1370px;height:771px;overflow:hidden;border-radius:12px;box-shadow:0 30px 100px rgba(0,0,0,.6);background:#000 url('${ENG}${wall}') center/cover"><div style="position:absolute;inset:0;transform:scale(.7135);transform-origin:0 0;width:1920px;height:1080px">${g(`${ENG}/overlays/br-hud.html?match=${REPLAY}`)}${g(`${ENG}/overlays/fullscreen.html?match=${REPLAY}`)}</div></div>
-    <div style="position:absolute;left:80px;top:700px;font:700 14px Poppins;letter-spacing:.2em;color:#8b8f99">PRODUCER CLICKS</div><div style="position:absolute;left:80px;top:724px;font:800 96px Poppins;color:#34d399">0</div>
+    <div style="position:absolute;left:80px;top:720px;padding:12px 18px;border:2px solid #34d399;border-radius:999px;font:800 22px Poppins;letter-spacing:.18em;color:#34d399;animation:up .5s .4s both">HANDS FREE</div>
     <div class="cap" style="bottom:auto;top:56px"><span class="t" style="font-size:60px;margin:0">It <em>runs the show.</em></span></div>`, n15, async (i) => {
     const w = map15(i); await seek(w);
     const a = [...onAir].reverse().find(([t]) => t <= w)?.[1];
