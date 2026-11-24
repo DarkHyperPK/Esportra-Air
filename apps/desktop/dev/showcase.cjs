@@ -252,7 +252,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   await shot('9-keys', `<style>@keyframes press{0%,40%{transform:translateY(0)}55%{transform:translateY(12px);box-shadow:0 2px 0 #0c0e13,0 10px 20px rgba(0,0,0,.6)}100%{transform:translateY(0)}}@keyframes ripple{0%{opacity:1;transform:scale(.8)}100%{opacity:0;transform:scale(1.6)}}</style>
     <div style="position:absolute;inset:0;background:#000 url('${LOTUS}') center/cover">${g(`${ENG}/overlays/ingame.html?match=${VAL}`)}${g(`${ENG}/overlays/fullscreen.html?match=${VAL}&over=1`)}</div>
     <div id="k1" style="position:absolute;inset:0">${key('F3', 0.2)}</div><div id="k2" style="position:absolute;inset:0;display:none">${key('F5', 0.1)}</div>
-    <div class="cap" style="bottom:auto;top:70px;left:auto;right:96px;text-align:right"><span class="k">ONE KEY</span><span class="t" style="font-size:64px">Go <em>live</em></span></div>`, beats(8), async (i) => {
+    <div class="cap" style="bottom:auto;top:330px;left:auto;right:330px;text-align:right;padding:22px 28px;background:rgba(5,6,10,.78);border-radius:14px"><span class="k">ONE KEY</span><span class="t" style="font-size:72px">Go <em>live</em></span></div>`, beats(8), async (i) => {
     if (i === 12) await action(VAL, 'fullscreen.show', { screen: 'player-profile', style: 'band' });
     if (i === Math.round(beats(4))) { await stage.evaluate(() => { document.getElementById('k1').style.display = 'none'; document.getElementById('k2').style.display = ''; }); await action(VAL, 'fullscreen.show', { screen: null, style: 'band' }); }
     if (i === Math.round(beats(4)) + 10) await action(VAL, 'fullscreen.show', { screen: 'map-result', style: 'band' });
@@ -263,7 +263,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   await shot('10-pubg', titleCard(POSTER('pubg'), 'PUBG MOBILE', 24, [' graphics', '16-team lobbies, every screen covered']), beats(4), null, { zoom: 1.06 });
   const mid = fbAt - 400;
   await resetReplay(mid);
-  const hud = `<div style="position:absolute;inset:0;background:#000 url('${ENG}${wall}') center/cover">${g(`${ENG}/overlays/br-hud.html?match=${REPLAY}`)}</div>${dataLayer(240)}<div class="live">LIVE FROM THE GAME</div>${cap('', 'Live <em>from the game</em>')}`;
+  const hud = `<div style="position:absolute;inset:0;background:#000 url('${ENG}${wall}') center/cover">${g(`${ENG}/overlays/br-hud.html?match=${REPLAY}`)}</div>${dataLayer(240)}<div class="live">LIVE FROM THE GAME</div><div class="cap" style="bottom:auto;top:56px"><span class="t" style="margin:0;font-size:68px">Live <em>from the game</em></span></div>`;
   const n11 = beats(8);
   await shot('11-live', hud, n11, async (i) => {
     const w = mid + (i / FPS) * 1000 * 2.2;
@@ -276,16 +276,16 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   const per = beats(16) / brSet.length;
   for (const [k, [n, name]] of brSet.entries()) await shot(`12-${n}`, full(br(n), 'PUBG MOBILE', name), Math.round(per * (k + 1)) - Math.round(per * k), null, { zoom: 1.08 });
   const moments = [['first.blood', 'FIRST BLOOD'], ['kill.leader', 'KILL LEADER'], ['zone', 'ZONE CLOSING'], ['final.teams', 'FINAL 4'], ['match.point', 'MATCH POINT'], ['ltf', 'LIVE TOP FRAGGERS']];
-  const mt = moments.map(([m, name], i) => { const q = m === 'ltf' ? '&mode=rail&ltf=1' : `&mode=rail&moment=${m}`; const crop = m === 'ltf' ? 'left:-10px;top:-760px' : 'left:-560px;top:-150px'; return `<div style="position:absolute;left:${96 + (i % 3) * 590}px;top:${170 + Math.floor(i / 3) * 400}px;width:560px;height:340px;overflow:hidden;border-radius:12px;background:#000 url('${ENG}${walls[(i + 2) % Math.max(1, walls.length)] ?? wall}') center/cover;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:up .45s ${i * 0.12}s both"><div style="position:absolute;${crop};width:1920px;height:1080px">${g(`${ENG}/overlays/br-hud.html?preview=1${q}`, 'transform:none')}</div><div style="position:absolute;left:14px;bottom:12px;font:800 14px Poppins;letter-spacing:.16em;padding:6px 10px;background:#ffb60e;color:#0b0b0f">${name}</div></div>`; }).join('');
+  const mt = moments.map(([m, name], i) => { const q = m === 'ltf' ? '&mode=rail&ltf=1' : `&mode=rail&moment=${m}`; const crop = m === 'ltf' ? 'left:0px;top:-730px' : 'left:-680px;top:-110px'; return `<div style="position:absolute;left:${60 + (i % 3) * 610}px;top:${170 + Math.floor(i / 3) * 440}px;width:580px;height:400px;overflow:hidden;border-radius:12px;background:#000 url('${ENG}${walls[(i + 2) % Math.max(1, walls.length)] ?? wall}') center/cover;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:up .45s ${i * 0.12}s both"><div style="position:absolute;${crop};width:1920px;height:1080px">${g(`${ENG}/overlays/br-hud.html?preview=1${q}`, 'transform:none')}</div><div style="position:absolute;left:14px;bottom:12px;font:800 14px Poppins;letter-spacing:.16em;padding:6px 10px;background:#ffb60e;color:#0b0b0f">${name}</div></div>`; }).join('');
   await shot('13-moments', `${mt}<div class="cap" style="bottom:auto;top:56px"><span class="t" style="font-size:56px;margin:0">Moments <em>fire themselves</em></span></div>`, beats(8), null, { zoom: 1.03 });
 
   // ═════ ACT 4 · AUTOPILOT ═════
   // The lobby's Standard Rundown (src/shared/br-rundown.ts presetRows('standard'), BR_WHEN_NAME), as a track.
   const rows = [['Plane takes off', 'Drop map'], ['Match ends', 'WWCD'], ['then', 'Match results'], ['then', 'Match MVP'], ['then', 'Overall standings'], ['then', 'Starting soon']];
-  const track = (lit) => rows.map(([w, s], i) => `<div class="rc" data-i="${i}" style="flex:none;width:250px;padding:18px 18px;border-radius:14px;background:${lit ? '#10131c' : '#10131c'};border:2px solid rgba(255,255,255,.12);animation:up .4s ${i * 0.08}s both"><div style="font:700 13px Poppins;letter-spacing:.16em;color:#8b8f99;text-transform:uppercase">${w}</div><div style="font:800 24px Poppins;margin-top:6px">${s}</div></div>`).join('<div style="flex:none;width:30px;height:2px;background:rgba(255,255,255,.25);align-self:center"></div>');
+  const track = (lit) => rows.map(([w, s], i) => `<div class="rc" data-i="${i}" style="flex:none;width:262px;padding:26px 22px;border-radius:16px;background:${lit ? '#10131c' : '#10131c'};border:2px solid rgba(255,255,255,.12);animation:up .4s ${i * 0.08}s both"><div style="font:700 15px Poppins;letter-spacing:.16em;color:#8b8f99;text-transform:uppercase">${w}</div><div style="font:800 32px/1.1 Poppins;margin-top:10px">${s}</div></div>`).join('<div style="flex:none;width:30px;height:2px;background:rgba(255,255,255,.25);align-self:center"></div>');
   await shot('14-rundown', `<style>.rc.on{border-color:#ffb60e!important;box-shadow:0 0 40px rgba(255,182,14,.45)}@keyframes sweep{0%{left:80px}100%{left:1820px}}@keyframes pulseup{0%{transform:translateY(160px);opacity:0}30%{opacity:1}100%{transform:translateY(0);opacity:0}}</style>
-    ${dataLayer(160, 200)}<div style="position:absolute;left:80px;right:80px;top:470px;display:flex;align-items:stretch">${track()}</div>
-    <div style="position:absolute;top:440px;width:4px;height:170px;background:#ffb60e;box-shadow:0 0 20px #ffb60e;animation:sweep ${(beats(8) / FPS).toFixed(2)}s linear both"></div>
+    ${dataLayer(160, 200)}<div style="position:absolute;left:50px;right:50px;top:420px;display:flex;align-items:stretch;justify-content:center">${track()}</div>
+    <div style="position:absolute;top:390px;width:4px;height:230px;background:#ffb60e;box-shadow:0 0 20px #ffb60e;animation:sweep ${(beats(8) / FPS).toFixed(2)}s linear both"></div>
     <div style="position:absolute;left:330px;top:640px;font:600 18px ui-monospace,monospace;color:#7fe0b8;animation:pulseup 1s .9s both">rank 1 · WWCD</div>
     ${cap('AUTOPILOT', 'Set it <em>once.</em>')}`, beats(8), async (i) => {
     const lit = Math.floor((i / beats(8)) * rows.length * 1.1);
@@ -360,7 +360,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
       <img src="${POSTER('valorant')}" style="width:330px;border-radius:14px;box-shadow:0 30px 90px rgba(0,0,0,.7);animation:punch .5s both">
       <img src="${POSTER('pubg')}" style="width:330px;border-radius:14px;box-shadow:0 30px 90px rgba(0,0,0,.7);animation:punch .5s .12s both">
       <div style="width:330px;height:440px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(160deg,#ff7a18,#af002d);font:900 62px/0.95 Poppins;font-style:italic;text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.7);animation:punch .5s .24s both">FREE<br>FIRE</div></div>
-    <div class="cap" style="bottom:70px"><span class="k">LIVE TODAY</span></div>`, beats(4), null, { zoom: 1.06 });
+    <div class="cap" style="bottom:60px"><span class="k">LIVE TODAY</span><span class="t" style="font-size:64px">Valorant, PUBG MOBILE, <em>Free Fire</em></span></div>`, beats(4), null, { zoom: 1.06 });
   const coming = ['apex', 'eafc', 'cs2', 'r6s', 'lol', 'dota2', 'cod', 'fortnite', 'rocket-league', 'tekken8'];
   const car = coming.map((n) => `<img src="${POSTER(n)}" style="flex:none;width:300px;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.7)">`).join('');
   await shot('21-coming', `<style>@keyframes car{0%{transform:perspective(2000px) rotateY(-14deg) translateX(400px)}100%{transform:perspective(2000px) rotateY(-14deg) translateX(-1900px)}}</style>
@@ -377,7 +377,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
     const dir = path.join(OUT, 'stills'); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir);
     board.forEach(([n, f], k) => fs.copyFileSync(f, path.join(dir, String(k).padStart(3, '0') + '.jpg')));
     const { execFileSync } = require('node:child_process');
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '1', '-i', path.join(dir, '%03d.jpg'), '-vf', 'scale=640:-1,tile=6x8:padding=8:color=0x05060a', '-frames:v', '1', path.join(OUT, 'stills-board.jpg')]);
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '1', '-i', path.join(dir, '%03d.jpg'), '-vf', 'scale=640:-1,tile=7x7:padding=8:color=0x05060a', '-frames:v', '1', path.join(OUT, 'stills-board.jpg')]);
     fs.writeFileSync(path.join(OUT, 'stills.txt'), board.map(([n], k) => `${k}  ${n}`).join('\n') + '\n');
     console.log(JSON.stringify({ stills: board.length, board: path.join(OUT, 'stills-board.jpg') }));
     return;
