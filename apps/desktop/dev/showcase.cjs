@@ -359,8 +359,8 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05060a;colo
   await shot('20-today', `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:60px">
       <img src="${POSTER('valorant')}" style="width:330px;border-radius:14px;box-shadow:0 30px 90px rgba(0,0,0,.7);animation:punch .5s both">
       <img src="${POSTER('pubg')}" style="width:330px;border-radius:14px;box-shadow:0 30px 90px rgba(0,0,0,.7);animation:punch .5s .12s both">
-      <div style="width:330px;height:440px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(160deg,#ff7a18,#af002d);font:900 62px/0.95 Poppins;font-style:italic;text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.7);animation:punch .5s .24s both">FREE<br>FIRE</div></div>
-    <div class="cap" style="bottom:60px"><span class="k">LIVE TODAY</span><span class="t" style="font-size:64px">Valorant, PUBG MOBILE, <em>Free Fire</em></span></div>`, beats(4), null, { zoom: 1.06 });
+</div>
+    <div class="cap" style="bottom:60px"><span class="k">LIVE TODAY</span><span class="t" style="font-size:64px">Valorant and <em>PUBG MOBILE</em></span></div>`, beats(4), null, { zoom: 1.06 });
   const coming = ['apex', 'eafc', 'cs2', 'r6s', 'lol', 'dota2', 'cod', 'fortnite', 'rocket-league', 'tekken8'];
   const car = coming.map((n) => `<img src="${POSTER(n)}" style="flex:none;width:300px;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.7)">`).join('');
   await shot('21-coming', `<style>@keyframes car{0%{transform:perspective(2000px) rotateY(-14deg) translateX(400px)}100%{transform:perspective(2000px) rotateY(-14deg) translateX(-1900px)}}</style>
