@@ -62,11 +62,13 @@ function recorder(dir) {
     mark(label) { marks.push([n / FPS, label]); },
     marks,
     /** One frame of `page`; `vt` pins its clock (ms since epoch) or null to leave it. */
-    async frame(page, vt = null) {
+    async frame(page, vt = null, shoot = true) {
       const t = (times.get(page) ?? -DT) + DT;
       times.set(page, t);
       for (const f of page.frames()) { try { await f.evaluate(STEP, [t, vt]); } catch { /* a frame that is going away */ } }
-      await page.screenshot({ path: path.join(dir, String(n++).padStart(6, '0') + '.jpg'), type: 'jpeg', quality: 90 });
+      const file = path.join(dir, String(n++).padStart(6, '0') + '.jpg');
+      // shoot false: the page moves on a frame without a picture (a stills board keeps one frame per shot).
+      if (shoot) await page.screenshot({ path: file, type: 'jpeg', quality: 90 });
     },
     /** Steps a source page one frame and returns its picture (for a compositor page); not a video frame itself. */
     async grab(page, vt = null) {
