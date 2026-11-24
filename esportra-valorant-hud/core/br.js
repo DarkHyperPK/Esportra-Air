@@ -368,4 +368,34 @@
     return frame(s, d, 'brf-mstats', body, { wall: 2, header: header(s, d, `MATCH ${g.n} STATS`, `<span>${esc(String(g.map).toUpperCase())}</span>${dot}<span>RANKED BY DAMAGE</span>`, mapCard(d, g.map, `M${g.n}`)), foot: 'TEAM TOTALS FROM THE OBSERVER FEED · SURVIVAL IS THE TEAM AVERAGE' });
   });
 
+  // Player vs player (25 Nov): two players side by side, six numbers each as mirrored bars, the better side lit.
+  // The producer picks both in Live (`brPick.player` and `brPick.vs`); without a pick, the two best by MVP rating.
+  // The day's totals, or one match (`brPick.scope` / `brPick.game`, as Top fraggers).
+  full('brpvp', (s, d) => {
+    const br = d.br, { st, g } = scopeOf(d), day = (d.pick && d.pick.scope === 'day') || Q.get('scope') === 'day' || !g;
+    const list = ((day ? st.day : g && g.players) || []).slice().sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    const find = (n) => (n ? list.find((x) => x.name === n) : null);
+    const a = find(d.pick && d.pick.player) || find(Q.get('player')) || list[0];
+    const b = find(d.pick && d.pick.vs) || find(Q.get('vs')) || list.find((x) => x !== a);
+    if (!a || !b) return frame(s, d, 'brf-pvp', '<p class="b6-none">After the first match.</p>', { header: header(s, d, 'PLAYER VS PLAYER', '', '') });
+    const side = (p) => pname(br, p.name) || { t: team(br, p.team), i: -1 };
+    const fa = side(a), fb = side(b);
+    const games = (p) => Math.max(1, p.games || 1);
+    const rows = [
+      [d.word.elims, (p) => p.kills, (v) => v],
+      ['DAMAGE', (p) => p.damage, (v) => v],
+      ['KNOCKS', (p) => p.knockouts, (v) => v],
+      ['ASSISTS', (p) => p.assists, (v) => v],
+      ['AVG SURVIVAL', (p) => p.survival / games(p), (v) => fmtT(v)],
+      ['LONGEST KILL', (p) => p.maxKillDistance, (v) => `${v}m`],
+    ];
+    const card = (p, f, cls) => `<div class="fd-pvp ${cls}" style="${tc(f.t)}"><span class="fd-pvph">${player(f.t, f.i)}</span><div class="fd-pvn"><span class="fd-pt">${tag(f.t)}${esc(f.t.name)}</span><b>${esc(p.name)}</b><span class="fd-pvr8">MVP RATING <em>${esc(p.rating)}</em></span></div></div>`;
+    const stats = rows.map(([label, get, fmt], k) => {
+      const va = Number(get(a)) || 0, vb = Number(get(b)) || 0, max = Math.max(1, va, vb);
+      return `<div class="fd-pvrow" style="--i:${k}"><b class="${va >= vb ? 'win' : ''}">${esc(fmt(Math.round(va)))}</b><span class="fd-pvb l"><i style="${tc(fa.t)};width:${Math.round((va / max) * 100)}%"></i></span><em>${esc(label)}</em><span class="fd-pvb r"><i style="${tc(fb.t)};width:${Math.round((vb / max) * 100)}%"></i></span><b class="${vb >= va ? 'win' : ''}">${esc(fmt(Math.round(vb)))}</b></div>`;
+    }).join('');
+    const body = `<div class="fd-pv">${card(a, fa, 'a')}<div class="fd-pvs"><div class="fd-vs">VS</div>${stats}</div>${card(b, fb, 'b')}</div>`;
+    return frame(s, d, 'brf-pvp', body, { wall: 1, header: header(s, d, 'PLAYER VS PLAYER', day ? '<span>WHOLE DAY</span>' : `<span>MATCH ${g.n}</span>${dot}<span>${esc(String(g.map || '').toUpperCase())}</span>`, day ? '' : mapCard(d, g.map, `M${g.n}`)), foot: 'NUMBERS FROM THE OBSERVER FEED' });
+  });
+
 })();

@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 // blend mode or backdrop filter. Those are what made frames slow without a GPU; this keeps them out.
 // Frame times themselves are measured by hand (4x CPU throttle) because they depend on the machine.
 const OVERLAYS = resolve(import.meta.dirname, '../../../esportra-valorant-hud/overlays');
-const PAGES = ['br-hud', 'br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion', 'br-teams', 'br-drop', 'br-fraggers', 'br-tom', 'br-profile', 'br-mstats'];
+const PAGES = ['br-hud', 'br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion', 'br-teams', 'br-drop', 'br-fraggers', 'br-tom', 'br-profile', 'br-mstats', 'br-pvp'];
 const ALLOWED = new Set(['transform', 'opacity', 'strokeDashoffset']);
 
 let chromium: any = null;

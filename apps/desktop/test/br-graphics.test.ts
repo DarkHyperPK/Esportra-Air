@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 // updates in place (no entrance replays, the same nodes stay); the room's lobby replaces the sample; kit pictures
 // land in their slots and nothing else loads; the full-screen host shows each BR screen Air takes.
 const OVERLAYS = resolve(import.meta.dirname, '../../../esportra-valorant-hud/overlays');
-const PAGES = ['br-hud', 'br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion', 'br-teams', 'br-drop', 'br-fraggers', 'br-tom', 'br-profile', 'br-mstats'];
+const PAGES = ['br-hud', 'br-lobby', 'br-today', 'br-rankings', 'br-overall', 'br-wwcd', 'br-mvp', 'br-champion', 'br-teams', 'br-drop', 'br-fraggers', 'br-tom', 'br-profile', 'br-mstats', 'br-pvp'];
 const SHA = 'a'.repeat(64);
 
 let chromium: any = null;

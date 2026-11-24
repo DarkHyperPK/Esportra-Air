@@ -32,11 +32,11 @@ export function BrInsights({ s, run, l, readOnly = false }: { s: Snapshot; run: 
   const table = standings(l);
   const word = gameOf(l.game)?.words;
   /** Saves what the graphic should show, then puts it on air. */
-  const onAir = (screen: BrScreen, pick: { player?: string; scope?: 'match' | 'day'; game?: number } = {}) => run(async () => {
+  const onAir = (screen: BrScreen, pick: { player?: string; vs?: string; scope?: 'match' | 'day'; game?: number } = {}) => run(async () => {
     await air.lobbyShow(l.id, { pick: { scope: pick.scope ?? (typeof cur === 'number' ? 'match' : 'day'), ...(typeof cur === 'number' ? { game: cur } : {}), ...pick } });
     return air.lobbyTake(l.id, screen);
   });
-  const Air = ({ label, screen, pick }: { label: string; screen: BrScreen; pick?: { player?: string; scope?: 'match' | 'day'; game?: number } }) =>
+  const Air = ({ label, screen, pick }: { label: string; screen: BrScreen; pick?: { player?: string; vs?: string; scope?: 'match' | 'day'; game?: number } }) =>
     readOnly ? null : <button className="btn small ins-air" onClick={() => void onAir(screen, pick)}>On air · {label}</button>;
 
   if (!fed.length && !live) {
@@ -98,7 +98,8 @@ export function BrInsights({ s, run, l, readOnly = false }: { s: Snapshot; run: 
                 <td className="mute">{i + 1}</td>
                 <td className="pn"><Tag id={p.team} /><b>{p.name}</b></td>
                 {COLS.map(([k]) => <td key={k} className={k === 'damage' ? 'bar' : ''}>{cell(p, k, maxDmg)}</td>)}
-                {!readOnly && <td><button className="btn quiet small" onClick={() => void onAir('br-profile', { player: p.name })}>On air · Profile</button></td>}
+                {!readOnly && <td className="row-gap"><button className="btn quiet small" onClick={() => void onAir('br-profile', { player: p.name })}>On air · Profile</button>
+                  <button className="btn quiet small" title="Player vs player against the best by MVP rating" onClick={() => void onAir('br-pvp', { player: p.name, vs: (players[0]?.name === p.name ? players[1] : players[0])?.name })}>vs leader</button></td>}
               </tr>
             ))}</tbody>
           </table></div>

@@ -410,3 +410,20 @@ img.br-tl{background:rgba(17,17,17,.6)}
 .brh-ltf .br-tl{width:50px;height:30px;font-size:13px}
 .v-strip .brh-mo{top:254px}
 .brh-mo.mp .br-tl{color:#fff}
+/* Player vs player (25 Nov): two cards facing across mirrored bars */
+.fd-pv{position:absolute;left:96px;right:96px;top:232px;bottom:104px;z-index:6;display:grid;grid-template-columns:440px 1fr 440px;gap:34px;color:#fff}
+.fd-pvp{position:relative;display:grid;grid-template-rows:1fr auto;background:linear-gradient(180deg,transparent,var(--ink) 58%);box-shadow:inset 0 -6px 0 var(--tc);overflow:hidden}
+.fd-pvp.a{animation:br-in-l .55s cubic-bezier(.2,.9,.2,1) backwards}.fd-pvp.b{animation:br-in-r .55s cubic-bezier(.2,.9,.2,1) backwards}
+.fd-pvph{position:absolute;left:0;right:0;top:20px;bottom:150px}.fd-pvph .b6-ph{width:100%;height:100%}
+.fd-pvn{position:relative;grid-row:2;padding:18px 22px 22px;display:grid;gap:8px}
+.fd-pvn>b{font:italic 900 56px/.95 var(--f);word-break:break-word}
+.fd-pvp.b .fd-pvn{text-align:right}.fd-pvp.b .fd-pt{justify-content:flex-end}
+.fd-pvr8{font:600 13px var(--m);letter-spacing:.22em;color:var(--acc)}.fd-pvr8 em{font:italic 900 34px/1 var(--f);font-style:normal;color:#fff;margin-left:8px}
+.fd-pvs{display:grid;align-content:center;gap:16px}
+.fd-pvrow{display:grid;grid-template-columns:110px 1fr 170px 1fr 110px;align-items:center;gap:14px;animation:br-in-u .45s cubic-bezier(.2,.9,.2,1) backwards;animation-delay:calc(.25s + var(--i) * .07s)}
+.fd-pvrow>b{font:italic 900 42px/1 var(--f);color:rgba(255,255,255,.62)}.fd-pvrow>b:first-child{text-align:right}.fd-pvrow>b.win{color:#fff}
+.fd-pvrow>em{font:600 14px var(--m);font-style:normal;letter-spacing:.22em;color:var(--title2,#dbe6ff);text-align:center}
+.fd-pvb{position:relative;height:20px;background:rgba(255,255,255,.07);display:flex}.fd-pvb.l{justify-content:flex-end}
+.fd-pvb i{display:block;height:100%;background:linear-gradient(90deg,var(--tc),var(--acc));animation:br-grow .6s cubic-bezier(.2,.9,.2,1) backwards;animation-delay:calc(.35s + var(--i, 0) * .07s)}
+.fd-pvb.l i{transform-origin:100% 50%;background:linear-gradient(270deg,var(--tc),var(--acc))}.fd-pvb.r i{transform-origin:0 50%}
+.fd-vs{justify-self:center;margin-bottom:18px;font:italic 900 72px/1 var(--f);color:var(--acc);letter-spacing:.04em;animation:br-fade .5s .2s backwards}

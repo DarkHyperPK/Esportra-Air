@@ -31,7 +31,7 @@ export interface BrMomentShown {
 }
 
 /** What a post-game graphic shows: the player (Player profile), the day or one match (Top fraggers, Match stats…). */
-export interface BrPick { player?: string; scope: 'match' | 'day'; game?: number }
+export interface BrPick { player?: string; /** Player vs player: the other player. */ vs?: string; scope: 'match' | 'day'; game?: number }
 
 export const BR_WHEN = ['take', 'plane', 'game.end', 'after', 'day.end'] as const;
 export type BrWhen = (typeof BR_WHEN)[number];
@@ -116,6 +116,7 @@ export function validPick(v: unknown, games: number): BrPick {
   const x = (v ?? {}) as Record<string, unknown>;
   const pick: BrPick = { scope: x.scope === 'day' ? 'day' : 'match' };
   if (typeof x.player === 'string' && x.player.trim()) pick.player = x.player.trim().slice(0, 40);
+  if (typeof x.vs === 'string' && x.vs.trim()) pick.vs = x.vs.trim().slice(0, 40);
   const g = Number(x.game);
   if (Number.isInteger(g) && g >= 1 && g <= games) pick.game = g;
   return pick;

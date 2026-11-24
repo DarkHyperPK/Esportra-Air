@@ -44,6 +44,7 @@ test('changes are checked', () => {
   assert.equal(next.moments.zone, false);
   assert.equal(next.autopilot, false);
   assert.deepEqual(next.pick, { scope: 'day', player: 'ACE' }, 'a match that is not in the lobby is dropped');
+  assert.deepEqual(patchShow(DEFAULT_SHOW, { pick: { player: 'ACE', vs: ' ROOK ', scope: 'match', game: 2 } }, 6).pick, { scope: 'match', player: 'ACE', vs: 'ROOK', game: 2 }, 'Player vs player keeps the other player');
   assert.throws(() => patchShow(DEFAULT_SHOW, { preset: 'loud' }, 6), /Standard/);
 });
 

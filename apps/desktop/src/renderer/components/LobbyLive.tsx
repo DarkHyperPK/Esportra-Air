@@ -71,22 +71,29 @@ function MomentDetail({ s, run, l, id }: { s: Snapshot; run: Run; l: Lobby; id: 
 function PickRow({ run, l, id }: { run: Run; l: Lobby; id: BrScreen }) {
   const pick = showOf(l).pick;
   const games = l.games.filter((g) => g.feed?.stats.length);
-  const players = id === 'br-profile' ? playerTotals(games.map((g) => g.feed!)) : [];
+  const players = id === 'br-profile' || id === 'br-pvp' ? playerTotals(games.map((g) => g.feed!)) : [];
   const set = (p: Partial<typeof pick>) => void run(() => air.lobbyShow(l.id, { pick: { ...pick, ...p } }));
   return (
     <div className="row-gap t-sm" style={{ flexWrap: 'wrap' }}>
-      {id === 'br-fraggers' && (
+      {(id === 'br-fraggers' || id === 'br-pvp') && (
         <label className="row-gap">Show
           <select className="cell" aria-label="Match or day" value={pick.scope} onChange={(e) => set({ scope: e.target.value as 'match' | 'day' })}><option value="match">One match</option><option value="day">The whole day</option></select>
         </label>
       )}
-      {id !== 'br-profile' && (id !== 'br-fraggers' || pick.scope === 'match') && (
+      {id !== 'br-profile' && ((id !== 'br-fraggers' && id !== 'br-pvp') || pick.scope === 'match') && (
         <label className="row-gap">Match
           <select className="cell" aria-label="Which match" value={pick.game ?? ''} onChange={(e) => set({ game: e.target.value ? Number(e.target.value) : undefined })}>
             <option value="">The last one</option>{games.map((g) => <option key={g.n} value={g.n}>Match {g.n}{g.map ? ` · ${g.map}` : ''}</option>)}
           </select>
         </label>
       )}
+      {id === 'br-pvp' && (['player', 'vs'] as const).map((k, i) => (
+        <label key={k} className="row-gap">{i ? 'Against' : 'Player'}
+          <select className="cell" aria-label={i ? 'The other player' : 'The first player'} value={pick[k] ?? ''} onChange={(e) => set({ [k]: e.target.value || undefined })}>
+            <option value="">{i ? 'The second best' : 'The best'} by MVP rating</option>{players.map((p) => <option key={p.openId || p.name} value={p.name}>{p.name} · {p.kills} elims</option>)}
+          </select>
+        </label>
+      ))}
       {id === 'br-profile' && (
         <label className="row-gap">Player
           <select className="cell" aria-label="Which player" value={pick.player ?? ''} onChange={(e) => set({ player: e.target.value || undefined })}>
