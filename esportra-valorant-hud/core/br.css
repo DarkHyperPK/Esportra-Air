@@ -304,21 +304,30 @@ img.br-tl{background:rgba(17,17,17,.6)}
 .b6-hero .d1{width:760px;height:760px;background:conic-gradient(var(--acc) 0 var(--a),rgba(255,255,255,.1) var(--a) 100%);-webkit-mask:radial-gradient(circle,transparent 61%,#000 61.5%,#000 66%,transparent 66.5%);mask:radial-gradient(circle,transparent 61%,#000 61.5%,#000 66%,transparent 66.5%)}
 .b6-hero .d2{width:680px;height:680px;background:conic-gradient(#fff 0 var(--a),rgba(255,255,255,.1) var(--a) 100%);-webkit-mask:radial-gradient(circle,transparent 63%,#000 63.5%,#000 66%,transparent 66.5%);mask:radial-gradient(circle,transparent 63%,#000 63.5%,#000 66%,transparent 66.5%)}
 .b6-hero .d3{width:610px;height:610px;background:conic-gradient(var(--tc) 0 var(--a),rgba(255,255,255,.1) var(--a) 100%);-webkit-mask:radial-gradient(circle,transparent 64%,#000 64.5%,#000 67%,transparent 67.5%);mask:radial-gradient(circle,transparent 64%,#000 64.5%,#000 67%,transparent 67.5%)}
-.b6-hp{position:absolute;left:150px;bottom:200px;width:580px;height:740px}
+/* The hero portrait runs down behind the name and fades out there (no hard bottom edge), on a team-colour glow;
+   the head breaks out above the ring. */
+.b6-hp{position:absolute;left:100px;bottom:70px;width:680px;height:900px}
+.b6-hp::before{content:'';position:absolute;left:8%;right:8%;top:14%;bottom:18%;background:radial-gradient(closest-side,color-mix(in srgb,var(--tc,#38bdf8) 55%,transparent),transparent)}
+.b6-hp .b6-ph{position:relative}
+.b6-hp .b6-ph img{object-position:50% 0;-webkit-mask-image:linear-gradient(180deg,#000 70%,transparent 94%);mask-image:linear-gradient(180deg,#000 70%,transparent 94%)}
 .br.br-show .b6-hp{animation:br-in-u .7s .2s cubic-bezier(.2,.9,.2,1) backwards}
 .b6-nums{position:absolute;right:-30px;top:170px;display:grid;gap:18px}
 .b6-nums div{padding:10px 22px;border-left:5px solid var(--acc);background:var(--panel);color:var(--muted);font:600 12px var(--m);letter-spacing:.16em}
 .b6-nums div:nth-child(2){border-color:#fff}.b6-nums div:nth-child(3){border-color:var(--tc)}
 .b6-nums b{display:block;font:italic 900 52px/1 var(--f);color:var(--text);letter-spacing:0}
 .br.br-show .b6-nums{animation:br-in-r .6s .5s cubic-bezier(.2,.9,.2,1) backwards}
-.b6-hn{position:absolute;left:0;right:0;bottom:10px;text-align:center;white-space:nowrap}
+.b6-hn{position:absolute;left:0;right:0;bottom:10px;text-align:center;white-space:nowrap;z-index:2}
 .b6-hn b{display:block;font:italic 900 88px/.9 var(--f);text-shadow:0 4px 0 rgba(0,0,0,.35)}
 .b6-hn span{display:inline-flex;align-items:center;gap:10px;margin-top:8px;font:700 16px var(--m);letter-spacing:.24em;color:var(--acc);text-transform:uppercase}.b6-hn .br-tl{width:46px;height:28px;font-size:11px}
 .b6-side{position:absolute;left:96px;width:440px;height:210px;overflow:hidden;z-index:5;background:var(--ink)}
 .br.br-show .b6-side{animation:br-in-l .6s cubic-bezier(.2,.9,.2,1) backwards;animation-delay:calc(var(--i) * 100ms + .3s)}
 .b6-side::after{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--tc)}
 .b6-side .rk{position:absolute;left:22px;top:12px;font:italic 900 96px/1 var(--f);color:var(--acc)}
-.b6-sp2{position:absolute;left:220px;bottom:-30px;width:220px;height:300px}
+/* Side cards: chest-up from the card's top edge (heads never clipped), fading in from the left over a team-colour glow. */
+.b6-sp2{position:absolute;right:0;top:6px;bottom:0;width:230px}
+.b6-sp2::before{content:'';position:absolute;inset:-6px 0 0 0;background:radial-gradient(70% 80% at 60% 35%,color-mix(in srgb,var(--tc,#38bdf8) 45%,transparent),transparent 75%)}
+.b6-sp2 .b6-ph{position:relative}
+.b6-sp2 .b6-ph img{object-position:50% 4%;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 28%,#000 100%),linear-gradient(180deg,#000 82%,transparent);-webkit-mask-composite:source-in;mask-image:linear-gradient(90deg,transparent 0,#000 28%),linear-gradient(180deg,#000 82%,transparent);mask-composite:intersect}
 .b6-side .inf{position:absolute;left:24px;bottom:22px;display:grid;gap:4px}
 .b6-side .inf b{font:italic 900 32px/1 var(--f)}.b6-side .inf span{font:600 12px var(--m);letter-spacing:.2em;color:#cfd6e2;text-transform:uppercase}
 .b6-side .n3 em{font:italic 900 22px var(--f);color:var(--acc)}

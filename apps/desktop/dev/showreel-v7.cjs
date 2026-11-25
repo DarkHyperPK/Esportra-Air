@@ -239,19 +239,26 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   // ═════ 3 · Teams, players, sponsors, talent (16.35–21.76 s) ═════
   function libraryHtml() {
     const ph = (k) => photos[k] || '';
-    // A 3:4 card: the cutout stands on the team colour with a rim of light behind it, the name plate below.
-    const pcard = (k, d) => `<div class="pop" style="--d:${d}s;width:180px;border-radius:14px;overflow:hidden;background:#0d1322;border:1px solid rgba(255,255,255,.1)"><div style="position:relative;height:240px;background:radial-gradient(70% 55% at 50% 38%,rgba(34,211,238,.55),rgba(34,211,238,0) 70%),linear-gradient(180deg,#123a4a 0%,#0b1626 100%)">${ph(k) ? `<img src="${ph(k)}" style="position:absolute;left:0;bottom:0;width:180px;height:240px;filter:drop-shadow(0 0 10px rgba(34,211,238,.35))">` : ''}</div><div style="padding:9px 12px;font:700 17px Poppins;border-top:3px solid #22d3ee">NOW_${['ACE', 'ROOK', 'VEX', 'KAI', 'ZEN'][k]}</div></div>`;
+    // A line-up card: a diagonal team band and a faint emblem behind; the player larger than the card, the head
+    // breaking out over its top edge, the body fading at the waist into a slanted name plate. Alternate cards sit lower.
+    const pcard = (k, d) => `<div class="pop" style="--d:${d}s;position:relative;width:180px;height:300px;margin-top:${k % 2 ? 26 : 0}px">
+      <div style="position:absolute;inset:40px 0 0 0;border-radius:12px;overflow:hidden;background:linear-gradient(180deg,#0f1b30,#0a101d);border:1px solid rgba(255,255,255,.1)">
+        <div style="position:absolute;left:-40%;top:18%;width:180%;height:44%;transform:rotate(-16deg);background:linear-gradient(90deg,rgba(34,211,238,0),rgba(34,211,238,.55),rgba(34,211,238,0))"></div>
+        <img src="${emblems[0]}" style="position:absolute;right:-26px;top:22px;width:150px;opacity:.12">
+      </div>
+      ${ph(k) ? `<img src="${ph(k)}" style="position:absolute;left:-22px;bottom:44px;width:224px;height:299px;-webkit-mask-image:linear-gradient(180deg,#000 78%,transparent 97%);filter:drop-shadow(0 8px 18px rgba(0,0,0,.55))">` : ''}
+      <div style="position:absolute;left:-6px;right:-6px;bottom:6px;height:46px;transform:skewX(-10deg);background:#22d3ee;display:flex;align-items:center;justify-content:center"><b style="transform:skewX(10deg);font:800 19px Poppins;color:#05070d;letter-spacing:.02em">NOW_${['ACE', 'ROOK', 'VEX', 'KAI', 'ZEN'][k]}</b></div>
+    </div>`;
     const sponsor = (n, c, d) => `<div class="pop" style="--d:${d}s;height:78px;padding:0 24px;display:flex;align-items:center;border-radius:14px;background:#101728;border:1px solid rgba(255,255,255,.1);font:800 26px Poppins;letter-spacing:.04em;color:${c}">${n}</div>`;
     const talent = (k, n, d) => `<div class="pop" style="--d:${d}s;display:flex;align-items:center;gap:16px;padding:12px 20px 12px 12px;border-radius:16px;background:#101728;border:1px solid rgba(255,255,255,.1)"><div style="width:84px;height:84px;border-radius:50%;background:#1a2236 ${talents[k] ? `url('${talents[k]}') center/cover` : ''}"></div><div><div style="font:700 22px Poppins">${n}</div><div style="font:600 15px Poppins;letter-spacing:.14em;color:#8fa0c4">CASTER</div></div></div>`;
-    return `<div style="position:absolute;left:120px;top:150px;width:560px;padding:34px;border-radius:24px;background:linear-gradient(160deg,#141c30,#0c111e);border:1px solid rgba(255,255,255,.1)" class="rise">
+    return `<div style="position:absolute;left:120px;top:110px;width:600px;padding:26px 30px;border-radius:24px;background:linear-gradient(160deg,#141c30,#0c111e);border:1px solid rgba(255,255,255,.1)" class="rise">
         <div style="font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4">TEAM</div>
-        <div style="display:flex;align-items:center;gap:26px;margin-top:20px"><img class="pop" src="${emblems[0]}" style="--d:.25s;width:170px;height:170px"><div><div style="font:800 48px/1 Poppins">NIGHT OWLS</div><div style="margin-top:10px;display:inline-block;padding:6px 12px;border-radius:8px;background:#22d3ee;color:#05070d;font:800 18px Poppins;letter-spacing:.12em">NOW</div></div></div>
-        <div style="margin-top:28px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4">PLAYERS</div></div>
-      <div style="position:absolute;left:120px;top:520px;display:flex;gap:16px">${[0, 1, 2, 3, 4].map((k) => pcard(k, 0.55 + k * 0.12)).join('')}</div>
-      <div style="position:absolute;left:1180px;top:150px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4" class="rise">SPONSORS</div>
-      <div style="position:absolute;left:1180px;top:190px;display:flex;flex-direction:column;gap:14px;width:600px">${sponsor('VOLT ENERGY', '#ffb60e', 1.3)}${sponsor('KITE NETWORK', '#38bdf8', 1.42)}${sponsor('NOVA GEAR', '#f43f5e', 1.54)}</div>
-      <div style="position:absolute;left:1180px;top:520px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4" class="rise">TALENT</div>
-      <div style="position:absolute;left:1180px;top:560px;display:flex;flex-direction:column;gap:14px">${talent(0, 'SAM "ECHO" REYES', 1.9)}${talent(1, 'MAYA LIN', 2.05)}</div>`;
+        <div style="display:flex;align-items:center;gap:26px;margin-top:20px"><img class="pop" src="${emblems[0]}" style="--d:.25s;width:170px;height:170px"><div><div style="font:800 48px/1 Poppins">NIGHT OWLS</div><div style="margin-top:10px;display:inline-block;padding:6px 12px;border-radius:8px;background:#22d3ee;color:#05070d;font:800 18px Poppins;letter-spacing:.12em">NOW</div></div></div></div>
+      <div style="position:absolute;left:120px;top:420px;display:flex;gap:14px;align-items:flex-start">${[0, 1, 2, 3, 4].map((k) => pcard(k, 0.55 + k * 0.12)).join('')}</div>
+      <div style="position:absolute;left:1180px;top:110px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4" class="rise">SPONSORS</div>
+      <div style="position:absolute;left:1180px;top:150px;display:flex;flex-direction:column;gap:14px;width:600px">${sponsor('VOLT ENERGY', '#ffb60e', 1.3)}${sponsor('KITE NETWORK', '#38bdf8', 1.42)}${sponsor('NOVA GEAR', '#f43f5e', 1.54)}</div>
+      <div style="position:absolute;left:1180px;top:470px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4" class="rise">TALENT</div>
+      <div style="position:absolute;left:1180px;top:510px;display:flex;flex-direction:column;gap:14px">${talent(0, 'SAM "ECHO" REYES', 1.9)}${talent(1, 'MAYA LIN', 2.05)}</div>`;
   }
   await scene('3-library', T.library, T.veto, libHtml, 'cut', null, {
     cam: [[0, 1.0, 960, 540], [F(5.4), 1.06, 900, 520]],

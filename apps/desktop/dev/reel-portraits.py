@@ -64,7 +64,18 @@ def prepare(src, sess):
     big = cut.resize((max(1, round(cut.width * s)), max(1, round(cut.height * s))), Image.LANCZOS)
     cx, top = (fx + fw / 2) * s, fy * s
     canvas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-    canvas.alpha_composite(big, (round(W / 2 - cx), round(FACE_TOP * H - top)))
+    ox, oy = round(W / 2 - cx), round(FACE_TOP * H - top)
+    canvas.alpha_composite(big, (ox, oy))
+    # Where the original photo ends inside the frame (cut at the waist, or at a side), fade it out over 9 % of the
+    # frame instead of leaving a straight edge.
+    a = np.array(canvas.getchannel('A')).astype(np.float32)
+    ramp = int(0.09 * H)
+    edges = {'bottom': oy + big.height, 'left': ox, 'right': ox + big.width}
+    yy, xx = np.mgrid[0:H, 0:W]
+    if edges['bottom'] < H + 2: a *= np.clip((edges['bottom'] - yy) / ramp, 0, 1)
+    if edges['left'] > -2: a *= np.clip((xx - edges['left']) / ramp, 0, 1)
+    if edges['right'] < W + 2: a *= np.clip((edges['right'] - xx) / ramp, 0, 1)
+    canvas.putalpha(Image.fromarray(a.astype(np.uint8)))
     return canvas
 
 
