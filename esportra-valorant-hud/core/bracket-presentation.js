@@ -1,12 +1,13 @@
-/* Broadcast-only bracket rendering. Source results are never advanced here. */
+/* Broadcast-only bracket rendering. Source results are never advanced here. Without a broadcast bracket the page
+   draws the event's own bracket (state.bracket), on air as in previews. */
 (function(){
   const HUD=window.HUD;if(!HUD)return;const original=HUD.modules.bracket;
   const node=(tag,parent,text,css)=>{const el=document.createElement(tag);if(text!=null)el.textContent=String(text);if(css)Object.assign(el.style,css);parent.appendChild(el);return el;};
   const logo=(parent,url)=>{if(typeof url==='string'&&/^(https:\/\/|http:\/\/localhost:5300\/air-assets\/|\/air-assets\/)/.test(url)){const image=node('img',parent,null,{width:'30px',height:'30px',objectFit:'contain',marginRight:'12px'});image.src=url;image.alt='';image.onerror=()=>image.remove();}};
   HUD.modules.bracket=root=>{
-    const sample=HUD.preview?original(root):null;
+    const sample=original(root);
     const panel=node('div',root,null,{position:'absolute',inset:'0',background:'linear-gradient(125deg,#182132,#101723)',color:'#e9eff7',padding:'100px 110px',boxSizing:'border-box',fontFamily:'Inter,Arial,sans-serif'});
-    let last='';return {update(state){const data=state.broadcastBracket;if(HUD.preview&&!data?.stages?.length){panel.style.display='none';sample?.update(state);return;}panel.style.display='block';const signature=JSON.stringify(data);if(signature===last)return;last=signature;panel.replaceChildren();
+    let last='';return {update(state){const data=state.broadcastBracket;if(!data?.stages?.length){panel.style.display='none';sample.update(state);return;}panel.style.display='block';const signature=JSON.stringify(data);if(signature===last)return;last=signature;panel.replaceChildren();
       const stage=data?.stages?.find(stage=>stage.id===data.view?.stageId);if(!stage){node('div',panel,'BRACKET',{fontSize:'20px',letterSpacing:'5px',color:'#91b7e5'});node('h1',panel,'Bracket not selected',{fontSize:'54px',marginTop:'100px'});node('p',panel,'Choose a published stage or an independent project bracket.',{fontSize:'28px',color:'#b2c1d4'});return;}
       const view=data.view||{},page=view.page||0;node('div',panel,state.event?.name || 'ESPORTRA AIR',{fontSize:'16px',letterSpacing:'5px',color:'#91b7e5'});node('h1',panel,stage.label,{fontSize:'52px',margin:'16px 0 10px',fontWeight:'650'});
       const sides={upper:'Upper bracket',lower:'Lower bracket',final:'Final',group:'Match results',all:'Tournament matches'};

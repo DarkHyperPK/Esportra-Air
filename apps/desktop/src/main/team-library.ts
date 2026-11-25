@@ -54,7 +54,9 @@ const entry = (p: LibPlayer, id: string = randomUUID()): PlayerInfo => ({ id, na
 
 /**
  * Links a match to the library: each team by name, each player by Riot ID (or by name within that
- * team). Anything not there yet is added. Changes `match` and `lib` in place.
+ * team). Anything not there yet is added. Gaps are filled both ways: a photo or logo the match brings
+ * goes to the library, and one only the library has comes to the match (an Esportra match arrives
+ * without player photos). Changes `match` and `lib` in place.
  */
 export function linkMatch(match: Match, lib: Library) {
   const ids: [string | null, string | null] = [null, null];
@@ -65,6 +67,7 @@ export function linkMatch(match: Match, lib: Library) {
       team = { id: randomUUID(), name: copy.name, tag: copy.tag, color: copy.color, logo: copy.logo };
       lib.teams.push(team);
     } else if (!team.logo && copy.logo) team.logo = copy.logo;
+    else if (!copy.logo && team.logo) copy.logo = team.logo;
     ids[t] = team.id;
     for (const p of match.players[t]) {
       let found = (p.libraryId && lib.players.find((x) => x.id === p.libraryId))
@@ -77,6 +80,7 @@ export function linkMatch(match: Match, lib: Library) {
         lib.players.push(found);
       } else {
         if (!found.photo && p.photo) found.photo = p.photo;
+        else if (!p.photo && found.photo) p.photo = found.photo;
         if (!found.gameId && p.gameId) found.gameId = p.gameId;
         if (!found.puuid && p.puuid) found.puuid = p.puuid;
         if (!found.esportraId && p.esportraId) found.esportraId = p.esportraId;
