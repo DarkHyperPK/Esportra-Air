@@ -102,9 +102,10 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   const photos = photoFiles.map((f) => dataUrl(f)), talents = talentFiles.map((f) => dataUrl(f));
   // The producer's portraits (dev/reel-portraits.py order): 00 NAVID, 01 SiNiSTER, 02 Gen.G, 03 Inside Games, 04 green
   // jersey, 05 Dragon Rangers, 06 Alternate, 07 ahq, 08 DN. The Valorant team made on camera uses 00, 03, 01; PUBG's
-  // NOCTURNE KAI (the MVP) uses 08 and NORTH TIDE (the winners: MVP side cards, WWCD) 05, 07, 06, 04.
+  // NOCTURNE KAI (the MVP) uses 08 and NORTH TIDE (the winners: MVP side cards) 05, 07, 06; RIKU 02 and ECHO 04 complete
+  // the Valorant line-up. All nine portraits are on screen, none twice.
   const MADE = [{ name: 'JUNO', riot: 'Juno#NOW', role: 'Duelist', photo: 0 }, { name: 'MIRA', riot: 'Mira#NOW', role: 'Controller', photo: 3 }, { name: 'DAX', riot: 'Dax#NOW', role: 'Initiator', photo: 1 }];
-  const pubgPhoto = (i, j) => (i === 0 && j === 3 ? photos[8] : i === 5 ? [photos[5], photos[7], photos[6], photos[4]][j] : null) || null;
+  const pubgPhoto = (i, j) => (i === 0 && j === 3 ? photos[8] : i === 5 ? [photos[5], photos[7], photos[6], null][j] : null) || null;
   // The library holds one team per name across games: the PUBG lobby's first team is NOCTURNE, so NIGHT OWLS is made new.
   const names = [...S.NAMES], tags = [...S.TAGS]; names[0] = 'NOCTURNE'; tags[0] = 'NCT';
 
@@ -347,6 +348,8 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   const vlogo1 = d.logos[1]; vteams[1].logo = vlogo1;
   const P0 = clone(sample.players).map((team) => team.map((p) => ({ ...p, alive: true, hp: 100, armor: 50 })));
   madePlayers.forEach((p, k) => { Object.assign(P0[0][k], { name: p.name, photo: p.photo }); });
+  // The rest of the line-up gets the producer's other portraits too (02 Gen.G, 04 green jersey), so every face on screen is a real player.
+  for (const [k, f] of [[3, 2], [4, 4]]) if (photos[f]) P0[0][k].photo = await call('uploadImage', [photos[f]]);
   const vbase = { teams: vteams, event: { ...sample.event, bestOf: 3, logo: await call('uploadImage', [ICON]) }, killfeed: [], banner: { type: '', team: 1, player: 0, text: '', method: '', ts: 0, hold: 4200 }, show: { economy: 'auto', roundRecap: false, scoreboard: false } };
   await patchRoom(VAL, { ...vbase, veto: [], vetoTurn: null, players: P0 });
   await action(VAL, 'fullscreen.show', { screen: 'match-intro', style: 'band' });
