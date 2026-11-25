@@ -185,7 +185,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   const bracketSvg = () => {
     const teams = [0, 1, 2, 3, 4, 5, 6, 7];
     const W = 1760, Hh = 860, colX = [80, 520, 960, 1400], slot = (r, k) => 80 + (Hh - 160) * ((k + 0.5) / (8 >> r));
-    let svg = `<svg id="bracket" width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}" xmlns="http://www.w3.org/2000/svg"><style>.ln{fill:none;stroke:#3b4a72;stroke-width:4;stroke-dasharray:900;stroke-dashoffset:900;animation:draw .55s cubic-bezier(.5,0,.2,1) forwards}.ln.win{stroke:#ffb60e;filter:drop-shadow(0 0 8px #ffb60e)}@keyframes draw{to{stroke-dashoffset:0}}.box{fill:#0f1526;stroke:#26324f;stroke-width:2}.nm{font:700 22px Poppins;fill:#fff}.sc{font:800 22px Poppins;fill:#ffb60e}.it{opacity:0;animation:pop .45s cubic-bezier(.2,1.4,.3,1) forwards}@keyframes pop{0%{opacity:0;transform:scale(.7)}100%{opacity:1;transform:none}}</style>`;
+    let svg = `<svg id="bracket" width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}" xmlns="http://www.w3.org/2000/svg"><style>.ln{fill:none;stroke:#3b4a72;stroke-width:4;stroke-dasharray:900;stroke-dashoffset:900;animation:draw .55s cubic-bezier(.5,0,.2,1) forwards}.ln.win{stroke:#ffb60e;filter:drop-shadow(0 0 8px #ffb60e)}@keyframes draw{to{stroke-dashoffset:0}}@keyframes glow{0%,100%{stroke-width:4px}50%{stroke-width:9px}}.box{fill:#0f1526;stroke:#26324f;stroke-width:2}.nm{font:700 22px Poppins;fill:#fff}.sc{font:800 22px Poppins;fill:#ffb60e}.it{opacity:0;animation:pop .45s cubic-bezier(.2,1.4,.3,1) forwards}@keyframes pop{0%{opacity:0;transform:scale(.7)}100%{opacity:1;transform:none}}</style>`;
     // winners after each round: quarter-finals, semi-finals, final
     const win = [[0, 2, 4, 6], [0, 4], [0]];
     const item = (x, y, t, delay, score) => `<g class="it" style="animation-delay:${delay}s;transform-origin:${x + 160}px ${y}px"><rect class="box" x="${x}" y="${y - 30}" width="320" height="60" rx="10"/><image href="${emblems[t]}" x="${x + 10}" y="${y - 24}" width="48" height="48"/><text class="nm" x="${x + 70}" y="${y + 8}">${S.NAMES[t]}</text>${score !== undefined ? `<text class="sc" x="${x + 300}" y="${y + 8}" text-anchor="end">${score}</text>` : ''}</g>`;
@@ -197,7 +197,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
         const winner = win[r - 1][k], delay = 0.7 + (r - 1) * 0.9 + k * 0.08;
         const fromWin = winner === 0;
         svg += `<path class="ln${fromWin ? ' win' : ''}" style="animation-delay:${delay}s" d="M${x0} ${y0} H${(x0 + x) / 2} V${y} H${x}"/><path class="ln" style="animation-delay:${delay}s" d="M${x0} ${y1} H${(x0 + x) / 2} V${y}"/>`;
-        svg += r < 3 ? item(x, y, winner, delay + 0.4, 2) : `<g class="it" style="animation-delay:${delay + 0.4}s;transform-origin:${x + 160}px ${y}px"><rect x="${x - 10}" y="${y - 56}" width="300" height="112" rx="16" fill="#1a1405" stroke="#ffb60e" stroke-width="4" style="filter:drop-shadow(0 0 22px #ffb60e)"/><image href="${emblems[0]}" x="${x + 14}" y="${y - 44}" width="88" height="88"/><text x="${x + 110}" y="${y - 6}" style="font:800 20px Poppins;fill:#ffb60e;letter-spacing:.12em">CHAMPION</text><text x="${x + 110}" y="${y + 24}" class="nm">NOW</text></g>`;
+        svg += r < 3 ? item(x, y, winner, delay + 0.4, 2) : `<g class="it" style="animation-delay:${delay + 0.4}s;transform-origin:${x + 160}px ${y}px"><rect x="${x - 10}" y="${y - 56}" width="300" height="112" rx="16" fill="#1a1405" stroke="#ffb60e" stroke-width="4" style="filter:drop-shadow(0 0 22px #ffb60e);animation:glow 1.2s ${delay + 0.9}s ease-in-out infinite"/><image href="${emblems[0]}" x="${x + 14}" y="${y - 44}" width="88" height="88"/><text x="${x + 110}" y="${y - 6}" style="font:800 20px Poppins;fill:#ffb60e;letter-spacing:.12em">CHAMPION</text><text x="${x + 110}" y="${y + 24}" class="nm">NOW</text></g>`;
       }
     }
     return svg + '</svg>';
@@ -205,7 +205,8 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   const hookHtml = `<div style="position:absolute;left:160px;top:110px">${bracketSvg()}</div>
     <div class="rise" style="--d:.1s;position:absolute;left:180px;top:46px;display:flex;align-items:center;gap:14px;font:700 20px Poppins;letter-spacing:.22em;color:#8fa0c4"><img src="${ICON}" style="width:38px;height:38px;border-radius:9px">ESPORTRA · COMMUNITY CUP</div>`;
   await scene('1-hook', T.hook, T.bridge, hookHtml, 'cut', null, {
-    cam: [[0, 1.12, 760, 560], [F(3.6), 1.0, 960, 540], [F(6.6), 1.0, 960, 540]],
+    // Wide once the bracket has drawn, then a slow push towards the champion, so the picture never holds still.
+    cam: [[0, 1.12, 760, 560], [F(3.6), 1.0, 960, 540], [F(6.6), 1.1, 1180, 480]],
     over: copy('Your tournament runs on <em>Esportra.</em>', { d: 1.1, out: 5.6, cls: 'c', style: 'bottom:auto;top:930px;font-size:64px' }), key: 0.75,
   });
   const bracketPng = 'data:image/jpeg;base64,' + (await stage.screenshot({ type: 'jpeg', quality: 92 })).toString('base64');
