@@ -38,17 +38,17 @@ body { width: 100%; height: 100%; }
 .win .tb span { position: absolute; left: 18px; top: 15px; font-size: 18px; color: var(--text); }
 .win .tb i { position: absolute; top: 19px; width: 10px; height: 10px; background: var(--muted); }
 .win .ln { position: absolute; left: 18px; height: 12px; background: #52525B; }
-.fld { position: absolute; left: 242px; width: 1300px; height: 118px; border-color: #3F3F46; }
-.fld .tx { position: absolute; left: 36px; top: 0; height: 118px; line-height: 118px; font: 500 64px/118px 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; text-transform: none; white-space: pre; color: var(--text); }
-.fld .tx s { text-decoration: line-through; text-decoration-color: var(--rose); text-decoration-thickness: 6px; color: var(--text); }
+.fld { position: absolute; left: 242px; width: 1100px; height: 110px; border-color: #3F3F46; }
+.fld .tx { position: absolute; left: 36px; top: 0; height: 110px; line-height: 110px; font: 500 64px/110px 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; text-transform: none; white-space: pre; color: var(--text); }
+.fld .tx s { text-decoration: line-through; text-decoration-color: var(--rose); text-decoration-thickness: 5px; color: var(--text); }
 .caret { display: inline-block; width: 28px; height: 58px; margin-left: 4px; vertical-align: -9px; background: var(--text); }
-.plate { position: absolute; left: 242px; top: 500px; width: 980px; height: 180px; border-color: #3F3F46; }
-.plate .tx { position: absolute; left: 44px; top: 0; line-height: 180px; font: 500 80px/180px 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; text-transform: none; }
-.live { position: absolute; left: 1260px; top: 500px; width: 564px; height: 180px; border: 2px solid var(--rose); background: var(--surface); }
-.live .tx { position: absolute; left: 36px; top: 0; line-height: 176px; font: 500 56px/176px 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; text-transform: none; color: var(--rose); }
-.clk { position: absolute; left: 242px; width: 1240px; height: 170px; }
-.clk .cl { position: absolute; left: 40px; top: 0; line-height: 170px; font-size: 28px; color: var(--muted); }
-.clk .tx { position: absolute; right: 44px; top: 0; line-height: 170px; font: 500 112px/170px 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: pre; text-transform: none; }
+.plate { position: absolute; left: 242px; top: 500px; width: 900px; height: 170px; border-color: #3F3F46; }
+.plate .tx { position: absolute; left: 44px; top: 0; line-height: 170px; font: 500 72px/170px 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; text-transform: none; }
+.live { position: absolute; left: 1170px; top: 500px; width: 560px; height: 170px; border: 2px solid var(--rose); background: var(--surface); }
+.live .tx { position: absolute; left: 36px; top: 0; line-height: 166px; font: 500 60px/166px 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; text-transform: none; color: var(--rose); }
+.clk { position: absolute; left: 242px; width: 1000px; height: 190px; }
+.clk .cl { position: absolute; left: 40px; top: 0; line-height: 190px; font-size: 18px; color: var(--muted); }
+.clk .tx { position: absolute; right: 44px; top: 0; line-height: 190px; font: 500 120px/190px 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: pre; text-transform: none; }
 .clk.on { border-color: var(--rose); }
 .clk.on .tx { color: var(--rose); }
 
@@ -204,7 +204,7 @@ body.rec #replay { display: none; }
     leave(wins, CUTS[0] + 1.7);
 
     // 2 · every name typed again: one mono field, three entries stacking, the typo struck in rose
-    var FIELDS = [['NIGHT OWLS', 470], ['Night Owls', 610], ['NIGHT OWL[5]', 750]];
+    var FIELDS = [['NIGHT OWLS', 450], ['Night Owls', 580], ['NIGHT OWL[5]', 710]];
     var flds = FIELDS.map(function (F, k) {
       var f = el('div', 'fld sf', world); f.style.top = F[1] + 'px';
       var tx = el('span', 'tx', f);
@@ -221,7 +221,7 @@ body.rec #replay { display: none; }
     leave([plate, live], CUTS[2] + 1.7);
 
     // 4 · live in five minutes, ready in fifty: two mono clocks, the rose one counts down
-    var CLK = [['ON AIR', '00:05:00', 470, true], ['READY', '00:50:00', 690, false]];
+    var CLK = [['ON AIR', '00:05:00', 450, true], ['READY', '00:50:00', 670, false]];
     var clks = CLK.map(function (C, k) {
       var c = el('div', 'clk sf' + (C[3] ? ' on' : ''), world); c.style.top = C[2] + 'px';
       el('span', 'm cl', c, C[0]); var tx = el('span', 'tx', c, C[1]); if (C[3]) tx.id = 'count';
