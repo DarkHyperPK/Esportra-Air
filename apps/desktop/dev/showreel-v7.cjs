@@ -424,10 +424,9 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   kit.encode(rec.dir, silent);
   const mp4 = path.join(OUT, 'esportra-air-showreel-16x9.mp4'), vert = path.join(OUT, 'esportra-air-showreel-9x16.mp4');
   const { execFileSync } = require('node:child_process');
-  if (MUSIC) {
-    // The track under the picture, faded out over the last second.
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', silent, '-i', MUSIC, '-filter_complex', `[1:a]atrim=0:${T.out},afade=t=out:st=${T.out - 1.2}:d=1.2[a]`, '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-shortest', mp4]);
-  } else fs.copyFileSync(silent, mp4);
+  // The track under the picture, plus CC0 sound effects on the transitions (dev/reel-mix.cjs; REEL_SFX = their folder).
+  if (MUSIC) require('./reel-mix.cjs').mix(silent, MUSIC, process.env.REEL_SFX || '', mp4, undefined, T.out);
+  else fs.copyFileSync(silent, mp4);
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', mp4, '-filter_complex', '[0:v]split[a][b];[a]scale=-2:1920,crop=1080:1920,boxblur=28:2,eq=brightness=-0.18[bg];[b]scale=1080:-2[fg];[bg][fg]overlay=0:(H-h)/2,format=yuv420p', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'slow', '-crf', '19', '-r', String(FPS), '-c:a', 'copy', '-movflags', '+faststart', vert]);
   console.log(JSON.stringify({ mp4, frames: rec.frames, seconds: +(rec.frames / FPS).toFixed(2), frozen: kit.frozenRuns(silent, 0.5), cuts }));
 })().catch((e) => { console.error(e); process.exit(1); });
