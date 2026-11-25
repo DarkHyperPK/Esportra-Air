@@ -360,6 +360,9 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   const MARK_CSS = `<style>
     .mk{position:absolute;left:0;right:0;top:190px;display:flex;flex-direction:column;align-items:center;gap:44px}
     .mk .lk{height:520px}.mk .m{height:190px}.mk .w{width:820px}
+    .mk .lk{transform-origin:50% 50%}
+    .mk.grow .lk{animation:lkgrow 3.5s linear both}@keyframes lkgrow{from{transform:scale(1)}to{transform:scale(1.035)}}
+    .mk.settle .lk{animation:lksettle 2.9667s linear both}@keyframes lksettle{from{transform:scale(.97)}to{transform:scale(1)}}
     .sl{position:absolute;z-index:45;display:flex;flex-direction:column;gap:10px;padding:26px 34px 30px;background:linear-gradient(120deg,rgba(5,7,13,.92),rgba(5,7,13,.72));border-left:6px solid #ffb60e;border-radius:4px;box-shadow:0 18px 50px rgba(0,0,0,.45);animation:slin .45s cubic-bezier(.15,.85,.25,1) both}
     .sl .k{display:flex;align-items:center;gap:10px;font:700 16px/1 Poppins;letter-spacing:.26em;color:#8fa0c4}.sl .k img{height:22px}
     .sl b{font:800 64px/1 Poppins;letter-spacing:-.02em;color:#fff;white-space:nowrap}
@@ -367,7 +370,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
     .sl.at-tl{left:70px;top:70px}.sl.at-tr{right:70px;top:70px;border-left:0;border-right:6px solid #ffb60e;align-items:flex-end;animation-name:slinr}.sl.at-bl{left:70px;bottom:70px}.sl.at-br{right:70px;bottom:70px;border-left:0;border-right:6px solid #ffb60e;align-items:flex-end;animation-name:slinr}
     @keyframes slinr{0%{opacity:0;transform:translateX(30px)}100%{opacity:1;transform:none}}
   </style>`;
-  const markHtml = `${MARK_CSS}<div class="mk">${LOCKUP ? `<img class="lk" src="${LOCKUP}">` : `<img class="m lk" src="${MARK}"><img class="w" src="${WORDMARK}">`}</div>`;
+  const markHtml = (cls = '') => `${MARK_CSS}<div class="mk ${cls}">${LOCKUP ? `<img class="lk" src="${LOCKUP}">` : `<img class="m lk" src="${MARK}"><img class="w" src="${WORDMARK}">`}</div>`;
   const label = (text, pos) => `${MARK_CSS}<div class="sl at-${pos}"><span class="k"><img src="${MARK}">ESPORTRA</span><b>${text}</b></div>`;
   const host = (room, bg = LOTUS) => `<div style="position:absolute;inset:0;background:#000 url('${bg}') center/cover">${g(`${ENG}/overlays/fullscreen.html?match=${room}&over=1`)}</div>`;
   const page = (name, extra = '') => `${extra}${g(`${ENG}/overlays/${name}.html?match=${VAL}`)}`;
@@ -376,7 +379,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   const keyShot = (key, at) => async (i) => { if (i === F(at)) await snapStage(key); };
 
   // ═════ 1 · Esportra (0–3.5 s): the mark the reel opens and closes on ═════
-  await scene('1-mark', T.mark, T.teams, markHtml, 'cut', null, {
+  await scene('1-mark', T.mark, T.teams, markHtml('grow'), 'cut', null, {
     over: copy('Run your whole tournament on <em>Esportra.</em>', { d: 0.45, out: 99, cls: 'c', style: 'bottom:auto;top:800px;font-size:60px' }), key: 0.8,
   });
 
@@ -711,18 +714,18 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   // The map's result rises as a card, flies into the Esportra mark and is applied there. By 79.0 s only the mark is
   // left, exactly as frame 0 shows it, so the loop has no seam.
   const t0n = vteams[0], t1n = vteams[1];
-  const backHtml = `${markHtml}<style>
+  const backHtml = `${markHtml('settle')}<style>
       .res{position:absolute;z-index:20;left:660px;top:770px;width:600px;padding:22px 28px;border-radius:16px;background:#0f1526;border:1px solid rgba(255,255,255,.14);box-shadow:0 24px 70px rgba(0,0,0,.6);font-family:Poppins;
-        animation:resin .45s .05s cubic-bezier(.15,.85,.25,1) both,resfly .62s 1.05s cubic-bezier(.6,0,.4,1) both;transform-origin:50% 50%}
+        animation:resin .45s .05s cubic-bezier(.15,.85,.25,1) both,resfly .62s 0.7s cubic-bezier(.6,0,.4,1) both;transform-origin:50% 50%}
       .res .k{font:700 14px Poppins;letter-spacing:.24em;color:#8fa0c4}.res .r{margin-top:12px;display:flex;align-items:center;justify-content:space-between;font:800 40px Poppins}
       .res .r img{width:46px;height:46px}.res .r span{display:flex;align-items:center;gap:12px}.res .r em{font-style:normal;color:#ffb60e}
       .res .s{margin-top:12px;display:flex;align-items:center;gap:10px;font:600 16px Poppins;color:#c8d0e4}.res .s i{width:10px;height:10px;border-radius:50%;background:#ffb60e}
       @keyframes resin{0%{opacity:0;transform:translateY(60px)}100%{opacity:1;transform:none}}
       @keyframes resfly{0%{transform:none;opacity:1}85%{opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(.06);opacity:0}}
       .ap{position:absolute;z-index:21;left:50%;top:730px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:10px 20px;border-radius:999px;background:rgba(52,211,153,.14);border:1px solid #34d399;color:#34d399;font:700 20px Poppins;
-        animation:apin .3s 1.65s cubic-bezier(.2,1.3,.3,1) both,cout .35s 2.35s ease-in both}
+        animation:apin .3s 1.3s cubic-bezier(.2,1.3,.3,1) both,cout .35s 2.0s ease-in both}
       @keyframes apin{0%{opacity:0;transform:translate(-50%,10px) scale(.8)}100%{opacity:1;transform:translateX(-50%)}}
-      .rg{position:absolute;z-index:19;left:593px;top:540px;width:20px;height:20px;margin:-10px;border-radius:50%;border:5px solid #ffb60e;opacity:0;animation:ringp .7s 1.6s cubic-bezier(.2,.7,.3,1) both}
+      .rg{position:absolute;z-index:19;left:593px;top:540px;width:20px;height:20px;margin:-10px;border-radius:50%;border:5px solid #ffb60e;opacity:0;animation:ringp .7s 1.25s cubic-bezier(.2,.7,.3,1) both}
       @keyframes ringp{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(14)}}
     </style>
     <div class="res"><div class="k">MAP 3 · LOTUS · RESULT</div><div class="r"><span><img src="${EMB.NWL}">${t0n.tag} <em>13</em></span><span style="color:#5b6987">–</span><span><em>11</em> ${t1n.tag}<img src="${EMB.CRF}"></span></div><div class="s"><i></i>Sent to Esportra</div></div>
