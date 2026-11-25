@@ -25,16 +25,22 @@ function connect(H, ENGINE) {
   return { H, ENG, call, dev, engine, roomState, patchRoom, action, LOTUS: `${ENG}/art/maps/2fe4ed3a-450a-948b-6d6b-e89a78e680a9/splash.png` };
 }
 
-/** The producer's data, a recorded PUBG MOBILE game and the Valorant Esportra import. Ends with Valorant chosen. */
-async function prepare(h) {
+/**
+ * The producer's data, a recorded PUBG MOBILE game and the Valorant Esportra import. Ends with Valorant chosen.
+ * `opts.logo(i)` and `opts.photo(i, j)` give data URLs for team i's logo and its player j's photo; each is uploaded
+ * through Air (`uploadImage`) and saved on the team or player, as the Teams/Players screen does.
+ */
+async function prepare(h, opts = {}) {
   const { call, dev, roomState } = h;
   await call('chooseGame', ['valorant']); await call('finishOnboarding');
   await call('esportraSignIn', ['producer@example.com', 'correct horse battery']);
   await call('artDownload');
   await call('chooseGame', ['pubgm']); // PUBG MOBILE players have in-game names, not Riot IDs
-  for (const [i, n] of NAMES.entries()) await call('saveTeam', [{ name: n, tag: TAGS[i], color: COLORS[i % COLORS.length], logo: '' }]);
+  const upload = async (url) => (url ? call('uploadImage', [url]) : '');
+  const logos = [];
+  for (const [i, n] of NAMES.entries()) { logos[i] = await upload(opts.logo?.(i)); await call('saveTeam', [{ name: n, tag: TAGS[i], color: COLORS[i % COLORS.length], logo: logos[i] }]); }
   let snap = await call('snapshot');
-  for (const t of snap.library.teams) { const i = NAMES.indexOf(t.name); for (const p of ['ACE', 'ROOK', 'VEX', 'KAI']) await call('savePlayer', [{ name: `${TAGS[i]}_${p}`, realName: '', gameId: `${TAGS[i]}_${p}`, photo: '', role: '', teamId: t.id }]); }
+  for (const t of snap.library.teams) { const i = NAMES.indexOf(t.name); for (const [j, p] of ['ACE', 'ROOK', 'VEX', 'KAI'].entries()) await call('savePlayer', [{ name: `${TAGS[i]}_${p}`, realName: '', gameId: `${TAGS[i]}_${p}`, photo: await upload(opts.photo?.(i, j)), role: '', teamId: t.id }]); }
   await call('createEvent', ['Air Showcase Cup']);
   snap = await call('snapshot');
   const ev = snap.events.find((e) => e.name === 'Air Showcase Cup');
@@ -94,7 +100,7 @@ async function prepare(h) {
   const players = (vmatch.players ?? []).flat().map((p) => p.gameId || p.name).filter(Boolean);
   const pool = (snap.matchData?.pool?.length ? snap.matchData.pool : ['Ascent', 'Bind', 'Haven', 'Lotus', 'Split', 'Sunset', 'Abyss']);
   await call('vetoReset').catch(() => {});
-  return { ev, lobby, code, states, lines, onAir, t0, dropAt, wwcdAt, resultsAt, mvpAt, fbAt, vmatch, players, pool };
+  return { logos, ev, lobby, code, states, lines, onAir, t0, dropAt, wwcdAt, resultsAt, mvpAt, fbAt, vmatch, players, pool };
 }
 
 /**
