@@ -23,7 +23,8 @@ img.br-tl{background:rgba(17,17,17,.6)}
 @keyframes br-in-r{from{transform:translateX(80px);opacity:0}to{transform:none;opacity:1}}
 @keyframes br-in-u{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
 @keyframes br-fade{from{opacity:0}to{opacity:1}}
-@keyframes br-slam{0%{transform:scale(1.7);opacity:0}60%{transform:scale(.97);opacity:1}100%{transform:none}}
+/* --tilt keeps a tilted word tilted while it slams in (WWCD); before, the animation dropped the tilt and it snapped at the end. */
+@keyframes br-slam{0%{transform:var(--tilt,) scale(1.7);opacity:0}60%{transform:var(--tilt,) scale(.97);opacity:1}100%{transform:var(--tilt,)}}
 @keyframes br-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes br-sweep{from{transform:translateX(-120%)}to{transform:translateX(520%)}}
 @keyframes br-blink{50%{opacity:.35}}
@@ -277,7 +278,7 @@ img.br-tl{background:rgba(17,17,17,.6)}
 .br-layer[data-theme=jungle] .b6-lt .fc{background:linear-gradient(180deg,#fff1c9 0%,#e8c779 35%,#b88a33 52%,#e2bc67 70%,#fff1c9 100%);-webkit-background-clip:text;background-clip:text}
 .br-layer[data-theme=inferno] .b6-lt .fc{background:linear-gradient(180deg,#fff7d6 0%,#ffd15a 30%,#ff8a1d 55%,#ffcf4d 75%,#fff2c2 100%);-webkit-background-clip:text;background-clip:text}
 .b6-ww{position:absolute;left:0;right:0;top:250px;text-align:center;z-index:3}
-.b6-ww .b6-lt{font:italic 900 480px/.8 var(--f);letter-spacing:-.03em;transform:rotate(-6deg) skewX(-6deg)}
+.b6-ww .b6-lt{--tilt:rotate(-6deg) skewX(-6deg);font:italic 900 480px/.8 var(--f);letter-spacing:-.03em;transform:var(--tilt)}
 .br.br-show .b6-ww .b6-lt{animation:br-slam .7s .15s cubic-bezier(.2,.9,.3,1.1) backwards}
 .b6-wl{position:absolute;left:0;right:0;top:-48px;font:italic 900 40px/1 var(--f);letter-spacing:.42em;color:#fff;text-shadow:0 4px 18px #000}
 .b6-wsq{position:absolute;left:50%;bottom:190px;width:1500px;height:620px;margin-left:-750px;z-index:5}
