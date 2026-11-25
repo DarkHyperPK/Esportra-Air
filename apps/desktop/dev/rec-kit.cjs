@@ -61,6 +61,8 @@ function recorder(dir) {
     /** A named point on the video's time line (for beats.txt). */
     mark(label) { marks.push([n / FPS, label]); },
     marks,
+    /** Goes back to frame `to` (a scene re-recorded after its page crashed overwrites what follows). */
+    rewind(to) { n = Math.min(n, to); },
     /** One frame of `page`; `vt` pins its clock (ms since epoch) or null to leave it. */
     async frame(page, vt = null, shoot = true) {
       const t = (times.get(page) ?? -DT) + DT;

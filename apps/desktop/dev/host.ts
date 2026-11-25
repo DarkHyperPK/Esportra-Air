@@ -164,7 +164,10 @@ createServer(async (req, res) => {
     return;
   }
   if (url.pathname === '/dev/esportra' && req.method === 'POST') {
-    // Plays the Esportra admin: ?access=off|grant, or ?decline=<reason> for the open request.
+    // Plays the Esportra admin: ?access=off|grant, or ?decline=<reason> for the open request. A JSON body
+    // `{ "showcase": … }` replaces the schedule with a reel's tournament (FakeEsportra.showcase).
+    const raw = await new Promise<string>((done) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => done(b)); });
+    if (raw.trim()) { const body = JSON.parse(raw) as { showcase?: Parameters<FakeEsportra['showcase']>[0] }; if (body.showcase) backend.showcase(body.showcase); }
     const access = url.searchParams.get('access');
     if (access === 'off') backend.allowed = false;
     if (access === 'grant') backend.grant();

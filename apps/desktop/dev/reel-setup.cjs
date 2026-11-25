@@ -29,7 +29,8 @@ function connect(H, ENGINE) {
  * The producer's data, a recorded PUBG MOBILE game and the Valorant Esportra import. Ends with Valorant chosen.
  * `opts.logo(i)` and `opts.photo(i, j)` give data URLs for team i's logo and its player j's photo; each is uploaded
  * through Air (`uploadImage`) and saved on the team or player, as the Teams/Players screen does. `opts.names`/`opts.tags`
- * replace the lobby's team names and tags (same order and length as NAMES).
+ * replace the lobby's team names and tags (same order and length as NAMES). A team already in the library keeps its
+ * logo and players (a reel may make one on camera first).
  */
 async function prepare(h, opts = {}) {
   const { call, dev, roomState } = h;
@@ -40,9 +41,22 @@ async function prepare(h, opts = {}) {
   await call('chooseGame', ['pubgm']); // PUBG MOBILE players have in-game names, not Riot IDs
   const upload = async (url) => (url ? call('uploadImage', [url]) : '');
   const logos = [];
-  for (const [i, n] of names.entries()) { logos[i] = await upload(opts.logo?.(i)); await call('saveTeam', [{ name: n, tag: tags[i], color: COLORS[i % COLORS.length], logo: logos[i] }]); }
+  // A team already in the library (made on camera by a reel) is kept as it is, and so are its players.
+  const had = (await call('snapshot')).library;
+  for (const [i, n] of names.entries()) {
+    const old = had.teams.find((t) => t.name === n);
+    if (old) { logos[i] = old.logo; continue; }
+    logos[i] = await upload(opts.logo?.(i)); await call('saveTeam', [{ name: n, tag: tags[i], color: COLORS[i % COLORS.length], logo: logos[i] }]);
+  }
   let snap = await call('snapshot');
-  for (const t of snap.library.teams) { const i = names.indexOf(t.name); if (i < 0) continue; for (const [j, p] of ['ACE', 'ROOK', 'VEX', 'KAI'].entries()) await call('savePlayer', [{ name: `${tags[i]}_${p}`, realName: '', gameId: `${tags[i]}_${p}`, photo: await upload(opts.photo?.(i, j)), role: '', teamId: t.id }]); }
+  for (const t of snap.library.teams) {
+    const i = names.indexOf(t.name); if (i < 0) continue;
+    for (const [j, p] of ['ACE', 'ROOK', 'VEX', 'KAI'].entries()) {
+      const name = `${tags[i]}_${p}`;
+      if (snap.library.players.some((x) => x.name === name && x.teamId === t.id)) continue;
+      await call('savePlayer', [{ name, realName: '', gameId: name, photo: await upload(opts.photo?.(i, j)), role: '', teamId: t.id }]);
+    }
+  }
   await call('createEvent', ['Air Showcase Cup']);
   snap = await call('snapshot');
   const ev = snap.events.find((e) => e.name === 'Air Showcase Cup');
@@ -90,8 +104,9 @@ async function prepare(h, opts = {}) {
   console.log(`recorded ${states.length} states, ${lines.length} data lines, game ${((wwcdAt - t0) / 1000).toFixed(1)} s`);
   await call('lobbyTake', [lobby.id, null]);
 
-  // Valorant: the Esportra import (Air's own path).
+  // Valorant: the Esportra import (Air's own path). `opts.esportra === false` leaves it to the reel (on camera).
   await call('chooseGame', ['valorant']);
+  if (opts.esportra === false) return { logos, ev, lobby, code, states, lines, onAir, t0, dropAt, wwcdAt, resultsAt, mvpAt, fbAt, vmatch: null, players: [], pool: [] };
   for (let i = 0; i < 20 && (await call('snapshot')).esportra.state !== 'online'; i++) { await call('esportraCheck').catch(() => {}); await call('esportraRefresh').catch(() => {}); await sleep(500); }
   snap = await call('snapshot');
   const remote = snap.esportra.matches.find((m) => m.teamA === 'Vanguard Esports') ?? snap.esportra.matches[0];

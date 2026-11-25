@@ -86,13 +86,39 @@ export class FakeEsportra {
     ];
   }
 
+  /** Line-ups set by `showcase` (reels and walkthroughs): registered names with verified Riot IDs. */
+  private readonly showcaseLineups = new Map<string, Array<{ name: string; riot: string }>>();
+
+  /**
+   * Replaces the schedule with one tournament's matches, line-ups (every player verified), talent and sponsors, so a
+   * reel or walkthrough shows its own teams. Dev host: `POST /dev/esportra` with `{ "showcase": … }`.
+   */
+  showcase(spec: { tournamentName: string; matches: Array<Pick<FakeMatch, 'teamA' | 'teamB' | 'tagA' | 'tagB' | 'logoA' | 'logoB' | 'bestOf'> & { inHours?: number; veto?: FakeVetoStep[] }>; lineups?: Record<string, Array<{ name: string; riot: string }>>; talent?: Array<{ name: string; role?: string }>; sponsors?: Array<{ name: string; logoUrl?: string; assetId?: string }> }) {
+    const tournamentId = randomUUID();
+    this.matches = spec.matches.map(({ veto: _veto, inHours, ...m }) => ({ ...m, id: randomUUID(), tournamentId, tournamentName: spec.tournamentName, game: 'valorant', scheduledAt: new Date(Date.now() + (inHours ?? 1) * 3600_000).toISOString(), status: 'scheduled' }));
+    spec.matches.forEach((m, i) => { if (m.veto?.length) this.vetoes.set(this.matches[i]!.id, { status: 'completed', steps: m.veto, sequence: null, turn: null, toss: null, step: m.veto.length }); });
+    this.showcaseLineups.clear();
+    for (const [tag, list] of Object.entries(spec.lineups ?? {})) this.showcaseLineups.set(tag, list);
+    if (spec.talent) this.draft.talent = spec.talent;
+    if (spec.sponsors) this.draft.sponsors = spec.sponsors;
+    return this.matches;
+  }
+
   /** The registered starters of a team, as `BroadcastRosterName` (camelCase). */
   lineup(tag: string) {
+    const set = this.showcaseLineups.get(tag);
+    if (set) return set.map((p) => ({ name: p.name, role: 'starter', playerId: null, inGameName: p.riot, gameId: this.puuidOf(p.riot) }));
     return ['One', 'Two', 'Three', 'Four', 'Five'].map((p) => {
       const name = `${tag} ${p}`;
       const gameId = this.riot.get(name);
       return { name, role: 'starter', playerId: null, inGameName: gameId ? `${tag}${p}#${tag}` : null, gameId: gameId ?? null };
     }).concat([{ name: `${tag} Coach`, role: 'coach', playerId: null, inGameName: null, gameId: null }]);
+  }
+
+  /** A stable stand-in PUUID for a showcase Riot ID. */
+  private puuidOf(riot: string) {
+    const h = [...riot].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16).padStart(8, '0');
+    return `${h}-${h.slice(0, 4)}-4${h.slice(1, 4)}-8${h.slice(4, 7)}-${h}${h.slice(0, 4)}`;
   }
 
   /** Esportra's default order for Valorant (VetoSequences.cs), as the veto route sends it. */
