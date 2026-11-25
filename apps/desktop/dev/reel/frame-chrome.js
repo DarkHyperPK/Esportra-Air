@@ -5,7 +5,7 @@
   'use strict';
   var FPS = 30, END = 79.5, REWIND_FROM = 76.5;
   // [index, name, from, to] on the cut sheet (the chapter segments of the progress hairline are one per chapter)
-  var CH = [['01', 'PROBLEM', 1.5, 17.5], ['02', 'ESPORTRA', 17.5, 21.5], ['03', 'AIR', 21.5, 27.5], ['04', 'ON AIR', 27.5, 73.5]];
+  var CH = [['01', 'PROBLEM', 3.5, 11.5], ['02', 'ESPORTRA', 11.5, 17.5], ['03', 'AIR', 17.5, 27.5], ['04', 'ON AIR', 27.5, 73.5]];
   var RV = [{ clipPath: 'inset(0 0 100% 0)', transform: 'translateY(20px) scale(.96)' }, { clipPath: 'inset(0 0 0 0)', transform: 'translateY(0) scale(1)' }];
   var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
 

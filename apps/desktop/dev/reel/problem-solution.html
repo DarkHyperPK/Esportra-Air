@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Problem to solution</title>
-<!-- Esportra AIR loop reel v2, 0 to 27.5 s: the problem, Esportra holding it once, AIR picking it all up. A motion
+<!-- Esportra AIR loop reel v3, 0 to 27.5 s: the brand hook (0-3.5), four 2 s problem cuts (3.5-11.5), Esportra holding it
+     once (11.5-17.5), AIR picking it all up (17.5-27.5). A motion
      piece on the reel's design system (../reel-frame.css), timed on the Web Animations API (transform, opacity and
      clip-path only). Standalone it plays at once and has a Replay button. The reel opens it with ?record=1, which hides
      Replay and exposes window.reelSeek(ms) (the stepped recorder also sets every animation's time itself), and calls
@@ -27,27 +28,33 @@ body { width: 100%; height: 100%; }
 .hd { white-space: nowrap; }
 .hd > div { display: block; white-space: nowrap; }
 
-/* the loop frame */
-#lock { left: 242px; top: 280px; height: 520px; }
+/* the loop frame, then the hook */
+#lock { position: absolute; left: 242px; top: 280px; height: 520px; }
+.hd .rs { color: var(--rose); }
 
-/* the problem: seven data tiles, off the grid */
-.tw { width: var(--w, 360px); height: 150px; }
-.tile { position: absolute; left: 0; top: 0; width: 100%; height: 150px; }
-.tile .lb { position: absolute; left: 20px; top: 18px; font-size: 15px; color: var(--muted); text-transform: none; }
-.tile .val { position: absolute; left: 20px; bottom: 22px; font: 500 34px/1 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; text-transform: none; white-space: pre; color: var(--text); }
-.tile .val img { display: block; height: 64px; }
-.tile .val s { position: relative; display: inline-block; text-decoration: none; }
-.tile .val s::after { content: ''; position: absolute; left: -1px; right: -1px; top: 50%; height: 3px; margin-top: -1px; background: var(--rose); }
-.caret { display: inline-block; width: 16px; height: 34px; margin-left: 3px; vertical-align: -5px; background: var(--text); }
-.tile img.em { transform-origin: 0 50%; }
-#cnt { left: 242px; top: 690px; width: 600px; height: 230px; }
-#cnt .cl { position: absolute; left: 0; top: 0; font-size: 18px; color: var(--muted); }
-#cnt .bg { position: absolute; left: -6px; top: 34px; font: 500 140px/1 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; text-transform: none; color: var(--text); white-space: pre; }
-#cnt .bg b { font-weight: 500; color: var(--rose); }
+/* the four problems: one line, one simple visual */
+.win { position: absolute; width: 470px; height: 320px; background: #17171B; border-color: #3F3F46; }
+.win .tb { position: absolute; left: 0; top: 0; width: 100%; height: 48px; border-bottom: 1px solid var(--line); }
+.win .tb span { position: absolute; left: 18px; top: 15px; font-size: 18px; color: var(--text); }
+.win .tb i { position: absolute; top: 19px; width: 10px; height: 10px; background: var(--muted); }
+.win .ln { position: absolute; left: 18px; height: 12px; background: #52525B; }
+.fld { position: absolute; left: 242px; width: 1300px; height: 118px; border-color: #3F3F46; }
+.fld .tx { position: absolute; left: 36px; top: 0; height: 118px; line-height: 118px; font: 500 64px/118px 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; text-transform: none; white-space: pre; color: var(--text); }
+.fld .tx s { text-decoration: line-through; text-decoration-color: var(--rose); text-decoration-thickness: 6px; color: var(--text); }
+.caret { display: inline-block; width: 28px; height: 58px; margin-left: 4px; vertical-align: -9px; background: var(--text); }
+.plate { position: absolute; left: 242px; top: 500px; width: 980px; height: 180px; border-color: #3F3F46; }
+.plate .tx { position: absolute; left: 44px; top: 0; line-height: 180px; font: 500 80px/180px 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; text-transform: none; }
+.live { position: absolute; left: 1260px; top: 500px; width: 564px; height: 180px; border: 2px solid var(--rose); background: var(--surface); }
+.live .tx { position: absolute; left: 36px; top: 0; line-height: 176px; font: 500 56px/176px 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; text-transform: none; color: var(--rose); }
+.clk { position: absolute; left: 242px; width: 1240px; height: 170px; }
+.clk .cl { position: absolute; left: 40px; top: 0; line-height: 170px; font-size: 28px; color: var(--muted); }
+.clk .tx { position: absolute; right: 44px; top: 0; line-height: 170px; font: 500 112px/170px 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: pre; text-transform: none; }
+.clk.on { border-color: var(--rose); }
+.clk.on .tx { color: var(--rose); }
 
-/* Esportra's ledger: one panel, seven rows of 84 px */
-#lhdr { left: 960px; top: 244px; color: var(--muted); font-size: 15px; }
-#ledger { left: 960px; top: 280px; width: 870px; height: 588px; transform-origin: 0 0; }
+/* Esportra's ledger: one panel, six rows of 84 px */
+#lhdr { left: 960px; top: 264px; color: var(--muted); font-size: 15px; }
+#ledger { left: 960px; top: 300px; width: 870px; height: 504px; transform-origin: 0 0; }
 .row { position: absolute; left: 0; width: 100%; height: 84px; }
 .row + .row { border-top: 1px solid var(--line); }
 .row .l { position: absolute; left: 30px; top: 34px; font-size: 15px; color: var(--muted); text-transform: none; }
@@ -149,17 +156,7 @@ body.rec #replay { display: none; }
   var EMB_FALLBACK = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M32 3l26 15v28L32 61 6 46V18z" fill="#121215" stroke="#FAFAFA" stroke-width="3"/><circle cx="23" cy="30" r="6" fill="none" stroke="#FAFAFA" stroke-width="3"/><circle cx="41" cy="30" r="6" fill="none" stroke="#FAFAFA" stroke-width="3"/></svg>');
   var CHECK = '<svg class="ck" viewBox="0 0 20 20"><path d="M3 10.5 8 15.5 17 5" fill="none" stroke="#F43F5E" stroke-width="2.5" stroke-linecap="butt" stroke-linejoin="miter"/></svg>';
 
-  // Tiles: label, value, a spot off the grid (x, y, rotation), and the retyped copies' drifting values.
-  var TILES = [
-    { l: 'TEAM NAMES', v: 'NIGHT OWLS', x: 830, y: 490, r: -1.4, d: ['N[ight] O[wls]', 'NIGHT [0]WLS', 'NI[HG]T OWLS', 'N[ight] [0]WLS'] },
-    { l: 'RIOT IDs', v: 'Juno#NWL', x: 1270, y: 262, r: 1.2, d: ['Jun[0]#NWL', 'Juno#[NLW]', '[Ju0n]#NWL', 'Jun[0]#N[V]L'] },
-    { l: 'LOGOS', v: null, w: 300, x: 1500, y: 480, r: -0.8, d: ['skew', 'small', 'skew', 'small'] },
-    { l: 'VETO', v: 'BAN · BIND', x: 850, y: 665, r: 1.5, d: ['BAN · B[NI]D', '[BNA] · BIND', 'BAN · [BIN]D', 'BAN [-] BIND'] },
-    { l: 'SCHEDULE', v: '18:30', x: 1200, y: 690, r: -1.2, d: ['18:[0]0', '[0]8:30', '18:[2]0', '1[6]:[0]0'] },
-    { l: 'CASTERS', v: 'Sam "Sparrow" Reyes', w: 440, x: 1380, y: 650, r: 0.9, d: ['Sam "Spar[o]w" Reyes', 'Sam "Sparrow" R[ye]es', 'Sa[nm] "Sparrow" Reyes', 'Sam "S[pp]arrow" Reyes'] },
-    { l: 'SPONSORS', v: 'NOVA ENERGY', x: 1010, y: 782, r: -1.5, d: ['NOVA EN[R]GY', 'N[0]VA ENERGY', 'NOVA E[M]ERGY', 'NOVA ENERG[T]'] }
-  ];
-  var ROWS = [['TEAM NAMES', 'NIGHT OWLS'], ['RIOT IDs', 'Juno#NWL'], ['LOGOS', null], ['VETO', 'BAN · BIND'], ['SCHEDULE', '18:30'], ['CASTERS', 'Sam "Sparrow" Reyes'], ['SPONSORS', 'NOVA ENERGY']];
+  var ROWS = [['TEAMS', 'NIGHT OWLS'], ['LOGOS', null], ['VETO', 'BAN · BIND'], ['SCHEDULE', '18:30'], ['CASTERS', 'Sam "Sparrow" Reyes'], ['SPONSORS', 'NOVA ENERGY']];
 
   function build(o) {
     o = o || {};
@@ -167,59 +164,78 @@ body.rec #replay { display: none; }
     ANIMS = []; TYPES = []; world.innerHTML = ''; fg.innerHTML = '';
     var lockup = o.lockup || Q.get('lockup') || '../../../../assets/brand/esportra-mark.png';
     var emblem = o.emblem || Q.get('emblem') || EMB_FALLBACK;
-    var airFrom = o.airFrom || 22.17;
-    var ticks = o.ticks || [airFrom + .8, airFrom + 1.4, airFrom + 1.0, airFrom + 4.3, airFrom + .4, airFrom + 3.0, airFrom + 3.3];
-    var i, w;
+    var airFrom = o.airFrom || 20.17;
+    var ticks = o.ticks || [airFrom + .8, airFrom + 1.0, airFrom + 3.3, airFrom + .4, airFrom + 2.0, airFrom + 2.3];
+    var i, w, j;
 
     // camera: a continuous linear drift, three parallax layers (grid x0.4, UI x1, foreground accents x1.3)
     [['L0', .4], ['L1', 1], ['L2', 1.3]].forEach(function (p) {
       A(document.getElementById(p[0]), [{ transform: 'scale(1)' }, { transform: 'scale(' + (1 + DRIFT * p[1]) + ')' }], 0, END_MS / 1000, 'linear');
     });
 
-    // 0 - 1.5 s: the loop frame, the producer's lockup in columns 2-5; it leaves at 1.2 s
-    var lk = el('img', '', world); lk.id = 'lock'; lk.src = lockup; exitUp(lk, 1.2, .45);
+    // leave(nodes, at): the crossover; the outgoing nodes exit over 450 ms, the next cut enters on the bar (150 ms before they are gone)
+    var leave = function (nodes, at) { nodes.forEach(function (n, k) { exitUp(n, at + k * 0.04, .45); }); };
 
-    // 1.5 - 17.5 s: 01 / PROBLEM
-    var h1 = words(world, ['Every broadcast', 'starts from zero.'], 'd132', 1.5, 242, 196);
-    h1.words.forEach(function (s, k) { exitDown(s, 16.9 + k * 0.04); });
-    var groups = [];   // per tile index: the tile and its copies, to leave top to bottom
-    TILES.forEach(function (T, k) {
-      groups[k] = [];
-      for (var wv = 0; wv <= 4; wv++) {
-        var at = wv === 0 ? 3.5 + k * 0.04 : 7.5 + (wv - 1) * 2 + k * 0.04;
-        var tw = el('div', 'tw', world); tw.style.left = (T.x + 28 * wv) + 'px'; tw.style.top = (T.y + 22 * wv) + 'px'; tw.style.setProperty('--w', (T.w || 360) + 'px');
-        tw.style.rotate = (T.r + (wv ? ((k * 7 + wv * 5) % 5 - 2) * 0.45 : 0)) + 'deg'; tw.style.zIndex = 10 + wv * 10 + k;
-        var tile = el('div', 'tile sf', tw);
-        el('span', 'm lb', tile, T.l);
-        var val = el('span', 'val', tile);
-        if (T.v === null) {
-          var im = el('img', 'em', val); im.src = emblem;
-          if (wv) {
-            var bad = T.d[wv - 1] === 'skew'; im.style.transform = bad ? 'scaleX(1.3)' : 'scale(.7)';
-            var st = el('div', '', val); st.style.cssText = 'position:absolute;left:-2px;right:-2px;top:50%;height:2px;margin-top:-1px;background:#F43F5E';
-          }
-        } else typeInto(val, wv ? T.d[wv - 1] : T.v, at + .3, 36);
-        reveal(tile, at); exitDown(tile, 16.9 + k * 0.04);
-        A(tw, [{ translate: '0px 0px' }, { translate: (5 - (k + wv) % 3 * 3) + 'px ' + (-4 + (k + wv) % 2 * 7) + 'px' }], 0, 6 + ((k + wv) % 4) * 0.9, 'linear', 'none', { iterations: Infinity, direction: 'alternate' });
-        groups[k].push(tw);
-      }
+    // 0 - 3.5 s: the hook. Frame 0 is the lockup alone (the loop frame); it eases up and smaller to make room for the tagline.
+    var lw = el('div', '', world); lw.style.cssText = 'left:0;top:0;width:1920px;height:1080px;transform-origin:242px 280px';
+    var lk = el('img', '', lw); lk.id = 'lock'; lk.src = lockup;
+    A(lw, [{ transform: 'translateY(0px) scale(1)' }, { transform: 'translateY(-110px) scale(.5)' }], 0.05, .8, IN, 'both');
+    exitUp(lk, 3.2, .45);
+    var hk = words(world, ['Esports operations', 'to live broadcast.', 'One platform.'], 'd96', 0.25, 242, 480);
+    hk.words.slice(-2).forEach(function (n) { n.classList.add('rs'); });
+    leave(hk.words, 3.2);
+
+    // 3.5 - 11.5 s: 01 / PROBLEM, four cuts of 2 s. Every cut: the line (two lines of Inter 96) and one simple visual.
+    var CUTS = [3.5, 5.5, 7.5, 9.5];
+    var LINES = [['Five tools', 'for one match.'], ['Every name', 'typed again.'], ['Graphics', 'a step behind.'], ['Live in five minutes.', 'Ready in fifty.']];
+    var heads = LINES.map(function (ln, c) { var h = words(world, ln, 'd96', CUTS[c], 242, 190); leave(h.words, CUTS[c] + 1.7); return h; });
+    var drift = function (node, k) { A(node, [{ translate: '0px 0px' }, { translate: (5 - k % 3 * 3) + 'px ' + (-4 + k % 2 * 7) + 'px' }], 0, 6 + (k % 4) * 0.9, 'linear', 'none', { iterations: Infinity, direction: 'alternate' }); };
+
+    // 1 · five tools: five square app windows pile in from the right, tilted, 80 ms apart
+    var T1 = CUTS[0] + 0.1, WIN = [['SHEET', 250, 560, -3], ['CHAT', 560, 450, 2.5], ['DOCS', 860, 590, -1.5], ['MAIL', 1130, 440, 3], ['NOTES', 1350, 620, -2]];
+    var wins = WIN.map(function (W, k) {
+      var wd = el('div', 'win sf', world); wd.style.left = W[1] + 'px'; wd.style.top = W[2] + 'px'; wd.style.rotate = W[3] + 'deg'; wd.style.zIndex = 10 + k;
+      el('div', 'tb m', wd, '<span>' + W[0] + '</span><i style="right:18px"></i><i style="right:36px"></i>');
+      [[78, 300], [108, 240], [138, 280], [168, 180], [198, 260]].forEach(function (r) { var l = el('div', 'ln', wd); l.style.top = r[0] + 'px'; l.style.width = r[1] * (0.8 + (k % 3) * 0.1) + 'px'; });
+      A(wd, [{ clipPath: 'inset(0 0 0 100%)', transform: 'translateX(220px)' }, { clipPath: 'inset(0 0 0 0)', transform: 'translateX(0px)' }], T1 + k * 0.08, .6, IN);
+      drift(wd, k);
+      return wd;
     });
-    // the counter, the story device: RETYPED, and under it x1 ... x4 at 140 px, the number in rose
-    var cnt = el('div', 'm', fg); cnt.id = 'cnt';
-    var cl = el('span', 'cl', cnt, 'RETYPED'); reveal(cl, 7.5);
-    for (i = 1; i <= 4; i++) {
-      var d = el('span', 'bg', cnt, '×<b>' + i + '</b>');
-      reveal(d, 7.5 + (i - 1) * 2);
-      if (i < 4) exitUp(d, 7.5 + i * 2, .3);
-    }
-    exitDown(cnt, 16.9);
+    leave(wins, CUTS[0] + 1.7);
 
-    // 17.5 - 21.5 s: 02 / ESPORTRA (entering 150 ms before the problem layer has left)
-    var h2 = words(world, ['Esportra holds', 'it once.'], 'd96', 17.35, 242, 196);
-    h2.words.forEach(function (s, k) { exitUp(s, 21.05 + k * 0.04, .6); });
-    var lh = el('div', 'm', world, 'ESPORTRA · ESPORTRA INVITATIONAL'); lh.id = 'lhdr'; reveal(lh, 17.35); exitUp(lh, 21.05, .6);
-    var led = el('div', 'sf', world); led.id = 'ledger'; reveal(led, 17.35);
-    A(led, [{ transform: 'translate(0px,0px) scale(1)' }, { transform: 'translate(-718px,60px) scale(.62)' }], 21.5, .9, IN, 'forwards');
+    // 2 · every name typed again: one mono field, three entries stacking, the typo struck in rose
+    var FIELDS = [['NIGHT OWLS', 470], ['Night Owls', 610], ['NIGHT OWL[5]', 750]];
+    var flds = FIELDS.map(function (F, k) {
+      var f = el('div', 'fld sf', world); f.style.top = F[1] + 'px';
+      var tx = el('span', 'tx', f);
+      var at = CUTS[1] + 0.12 + k * 0.4;
+      reveal(f, at); typeInto(tx, F[0], at + .25, 30);
+      return f;
+    });
+    leave(flds, CUTS[1] + 1.7);
+
+    // 3 · a step behind: a plain scorebug plate that lags the live score
+    var plate = el('div', 'plate sf', world); el('span', 'tx', plate, 'NWL 11 — 12 CRF'); reveal(plate, CUTS[2] + 0.1);
+    var live = el('div', 'live', world); el('span', 'tx', live, 'LIVE 12 — 11'); reveal(live, CUTS[2] + 0.5);
+    A(live, [{ opacity: 1 }, { opacity: .3, offset: .35 }, { opacity: 1 }], CUTS[2] + 1.15, .6, 'linear', 'both');
+    leave([plate, live], CUTS[2] + 1.7);
+
+    // 4 · live in five minutes, ready in fifty: two mono clocks, the rose one counts down
+    var CLK = [['ON AIR', '00:05:00', 470, true], ['READY', '00:50:00', 690, false]];
+    var clks = CLK.map(function (C, k) {
+      var c = el('div', 'clk sf' + (C[3] ? ' on' : ''), world); c.style.top = C[2] + 'px';
+      el('span', 'm cl', c, C[0]); var tx = el('span', 'tx', c, C[1]); if (C[3]) tx.id = 'count';
+      reveal(c, CUTS[3] + 0.1 + k * 0.3);
+      return c;
+    });
+    leave(clks, CUTS[3] + 1.7);
+
+    // 11.5 - 17.5 s: 02 / ESPORTRA. The ledger enters on the bar and holds with drift.
+    var h2 = words(world, ['Esportra holds', 'it once.'], 'd96', 11.5, 242, 196);
+    h2.words.forEach(function (s, k) { exitUp(s, 17.2 + k * 0.04, .45); });
+    var lh = el('div', 'm', world, 'ESPORTRA · ESPORTRA INVITATIONAL'); lh.id = 'lhdr'; reveal(lh, 11.6); exitUp(lh, 17.2, .45);
+    var led = el('div', 'sf', world); led.id = 'ledger'; reveal(led, 11.6);
+    A(led, [{ transform: 'translate(0px,0px) scale(1)' }, { transform: 'translate(-718px,60px) scale(.62)' }], 17.5, .9, IN, 'forwards');
     var cks = [], rbs = [];
     ROWS.forEach(function (R, k) {
       var row = el('div', 'row', led); row.style.top = (k * 84) + 'px';
@@ -228,15 +244,15 @@ body.rec #replay { display: none; }
       if (R[1] === null) { var im2 = el('img', '', v); im2.src = emblem; } else v.textContent = R[1];
       var ck = el('span', '', row, CHECK); ck.style.cssText = 'position:absolute;right:0;top:0;width:100%;height:84px'; cks.push(ck);
       var rb = el('div', 'rb', row); rbs.push(rb);
-      reveal(row.children[0], 17.45 + k * 0.04); reveal(v, 17.45 + k * 0.04);
-      wipe(ck, k === 1 ? 18.1 : ticks[k] + .1, .35);
+      reveal(row.children[0], 11.7 + k * 0.04); reveal(v, 11.7 + k * 0.04);
+      wipe(ck, ticks[k] + .1, .35);
       A(rb, DRAW, ticks[k], .4, IN);
     });
 
     // 21.5 - 27.5 s: 03 / AIR
-    var h3 = words(world, ['AIR picks it all up.', 'Nothing typed twice.'], 'd72', 21.5, 242, 170);
-    var rl = el('div', '', fg); rl.id = 'rline'; A(rl, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], 22.0, .4, IN);
-    var rd = el('div', '', fg); rd.id = 'rdot'; reveal(rd, 22.35, .3);
+    var h3 = words(world, ['AIR picks it all up.', 'Nothing typed twice.'], 'd72', 17.5, 242, 170);
+    var rl = el('div', '', fg); rl.id = 'rline'; A(rl, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], airFrom - .17, .4, IN);
+    var rd = el('div', '', fg); rd.id = 'rdot'; reveal(rd, airFrom + .18, .3);
     var win = el('div', 'sf', world); win.id = 'airwin'; reveal(win, airFrom);
     var aimg = el('img', '', win); aimg.id = 'airimg';
     var cap = el('div', 'm', fg, 'ESPORTRA AIR'); cap.id = 'aircap'; reveal(cap, airFrom + .04);
@@ -251,7 +267,14 @@ body.rec #replay { display: none; }
   };
   window.reelBuild = build;
 
-  function render(ms) { ReelChrome.tick(ms / 1000); renderTypes(ms / 1000); }
+  var lastClock = '';
+  function renderClock(t) { // the rose clock counts down on the stepped clock from 9.8 s
+    var n = document.getElementById('count'); if (!n) return;
+    var sec = Math.max(0, Math.floor(t - 9.8)), left = 300 - sec;
+    var txt = '00:0' + Math.floor(left / 60) + ':' + (left % 60 < 10 ? '0' : '') + (left % 60);
+    if (txt !== lastClock) { lastClock = txt; n.textContent = txt; }
+  }
+  function render(ms) { ReelChrome.tick(ms / 1000); renderTypes(ms / 1000); renderClock(ms / 1000); }
   window.reelSeek = function (ms) { ANIMS.forEach(function (a) { a.pause(); a.currentTime = ms; }); render(ms); };
 
   function loop() {

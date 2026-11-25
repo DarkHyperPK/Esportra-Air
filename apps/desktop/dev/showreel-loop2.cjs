@@ -6,7 +6,7 @@
 // graphics appear only in the solution; AIR's own window is filmed through a virtual camera that eases between framings.
 //   0 - 27.5 s   dev/reel/problem-solution.html (the problem, Esportra holding it once, AIR picking it all up; AIR's
 //                window is composited into it)
-//   27.5 - 35.5  six beats: the data from Esportra becomes real graphics
+//   27.5 - 35.5  five beats: the data from Esportra becomes real graphics
 //   35.5 - 41.5  by hand, not on Esportra (its own visual mode)
 //   41.5 - 63.5  Valorant, PUBG MOBILE      63.5 - 69.5  Graphics studio      69.5 - 73.5  more games
 //   73.5 - 79.5  From bracket to broadcast, the result goes back, the lockup lands on frame 0
@@ -42,13 +42,13 @@ const { VAL } = S;
 const PAGE = 'file://' + path.join(__dirname, 'reel/problem-solution.html') + '?record=1';
 
 // The cut sheet, on the edited track's bars (seconds). The last frame is the first: the Esportra lockup.
-const BEAT = 40 / FPS;                    // six beats of 40 frames
+const BEAT = 48 / FPS;                    // five beats of 48 frames (1.6 s)
 const T = {
   page: 0, beat: 27.5, byHand: 35.5, agents: 41.5, hud: 43.5,
   drop: 49.5, today: 51.5, brhud: 53.5, standings: 57.5, mvp: 59.5, wwcd: 61.5, studio: 63.5, close: 69.5, word: 73.5, back: 76.5, out: 79.5,
 };
-const AIR_FROM = 22.17;                   // AIR's window opens in the page; its capture starts then
-const CAP = F(27.5) - F(AIR_FROM) - 1;    // capture frames Act 3 needs (the window is open for the rest of the page)
+let AIR_FROM = 20.17;                     // AIR's window opens in the page; its capture starts then (set from the capture's length)
+let CAP = F(27.5) - F(AIR_FROM) - 1;      // capture frames the AIR act needs (the window is open for the rest of the page)
 const BH_CAP = F(T.agents) - F(T.byHand) - F(0.45); // by-hand capture frames (the window opens 0.45 s in)
 
 // Esportra's side of the story, served by the dev host's stand-in Esportra (FakeEsportra.showcase).
@@ -217,7 +217,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
   const { sample, wall, seek, resetReplay } = await S.dress(h, ctx, d);
   for (let i = 0; i < 20; i++) { await call('esportraRefresh').catch(() => {}); if ((await call('snapshot')).esportra.matches.some((m) => m.teamA === 'NIGHT OWLS')) break; await sleep(500); }
 
-  // ═════ 22.17 s: AIR picks the match up from Esportra: Air's real screen, 4 framings, ticks timed to what appears ═════
+  // ═════ about 20 s: AIR picks the match up from Esportra: Air's real screen, 4 framings, ticks timed to what appears ═════
   await app.goto(`${H}/?host=${H}`); await app.locator('nav.rail').waitFor(); await ui.dress();
   await app.locator('nav[aria-label="Main"]').getByRole('button', { name: 'Events' }).click();
   await app.getByText('Esportra Invitational').first().waitFor({ timeout: 20000 }); await app.waitForTimeout(400);
@@ -233,18 +233,19 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     await app.locator('nav[aria-label="Match steps"]').waitFor(); await app.waitForTimeout(400);
     const steps = app.locator('nav[aria-label="Match steps"]');
     await fromLeft(app.getByText('NIGHT OWLS', { exact: true }).first(), 860, 40, 90);
-    mark('teams'); await film.run(app, 6); mark('logos'); await film.run(app, 8);
-    await ui.click(film, steps.getByRole('button', { name: /Teams\/Players/ }), { frames: 7, after: 2 });
-    mark('riot'); await film.run(app, 26);
+    mark('teams'); await film.run(app, 12); mark('logos'); await film.run(app, 20);
     await ui.click(film, steps.getByRole('button', { name: /Talent and sponsors/ }), { frames: 7, after: 2 });
-    mark('casters'); await film.run(app, 10); mark('sponsors'); await film.run(app, 12);
+    mark('casters'); await film.run(app, 16); mark('sponsors'); await film.run(app, 18);
     await ui.click(film, steps.getByRole('button', { name: /Match data/ }), { frames: 7, after: 2 });
     await film.run(app, 8);
     await app.getByText('The sequence', { exact: false }).first().scrollIntoViewIfNeeded(); await app.waitForTimeout(300);
     await fromLeft(app.getByText(/The sequence/i).first(), 860, 230, 40);
     mark('veto');
-    while (cur.list.length < CAP) await film.run(app, 1);
+    await film.run(app, 12);
   } catch (e) { await app.screenshot({ path: path.join(OUT, 'air-failed.png') }); throw e; }
+  // The window opens so that the capture just fills the rest of the act (about 1 s of hold at the end), never before 19.7 s.
+  AIR_FROM = Math.max(19.7, Math.min(21.7, (F(27.5) - cur.list.length - 31) / FPS)); CAP = F(27.5) - F(AIR_FROM) - 1;
+  while (cur.list.length < CAP) await film.run(app, 1);
   const air3 = fit(cur, CAP);
   console.log(`air: ${cur.list.length} pictures, ${air3.keys.length} framings, marks ${JSON.stringify(air3.marks)}`);
   await app.close(); await appCtx.close();
@@ -267,15 +268,6 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
   };
   const vetoSteps = clone(VETO);
   await patchRoom(VAL, { ...vbase, players: P0, veto: vetoSteps, vetoTurn: null });
-
-  // Roster card rectangles (the Riot ID chips sit on them), measured once with the entrance finished.
-  const rosterRects = async () => {
-    const p = await ctx.newPage(); await p.goto(`${ENG}/overlays/team-roster-a.html?match=${VAL}`);
-    await p.waitForFunction(() => window.HUD_READY === true, null, { timeout: 15000 }).catch(() => {}); await sleep(700);
-    const r = await p.evaluate(() => { document.getAnimations().forEach((a) => { try { a.finish(); } catch {} }); return [0, 1, 2, 3, 4].map((n) => { const e = document.querySelectorAll('.tr .cd')[n]; if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; }); });
-    await p.close(); return r;
-  };
-  const ROSTER = await rosterRects();
 
   let stage;
   const openStage = async () => { stage = await ctx.newPage(); stage.on('pageerror', (e) => errs.push('stage: ' + e.message)); };
@@ -337,7 +329,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
       if (o.page) await stage.evaluate((ms) => window.reelSeek(ms), (i * 1000) / FPS);
       else await stage.evaluate((t) => window.ReelChrome.tick(t), abs / FPS);
       if (o.each) await o.each(i);
-      const sampled = STILLS && abs % 45 === 0 && abs <= F(41.5);
+      const sampled = STILLS && ((abs % 15 === 0 && abs <= F(12)) || abs === F(1.2) || (abs % 45 === 0 && abs <= F(41.5)));
       const cross15 = STILLS && cross && ((o.xover && i % 3 === 0 && i >= 9 && i <= 24) || (!o.xover && i === 15 && from <= T.agents));
       const xo = STILLS && o.xover && i % 3 === 0 && i >= 9 && i <= 24;
       const lastOfAll = name === '9-back' && i === n - 1;
@@ -354,10 +346,10 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
   const page = (name) => g(`${ENG}/overlays/${name}.html?match=${VAL}`);
 
   // ═════ 0 – 27.5 s: the problem, Esportra holds it once, AIR picks it all up (reel/problem-solution.html) ═════
-  // The ledger's ticks are timed to what Air shows: SCHEDULE when the match row is on screen, then names, logos, Riot
-  // IDs, casters, sponsors, the veto.
+  // The ledger's ticks are timed to what Air shows: SCHEDULE when the match row is on screen, then names, logos,
+  // casters, sponsors, the veto.
   const mk = air3.marks, AIR_AT = (m) => AIR_FROM + (m ?? 0) / FPS + 0.1;
-  const ticks = [mk.teams, mk.riot, mk.logos, mk.veto, mk.schedule, mk.casters, mk.sponsors].map(AIR_AT);
+  const ticks = [mk.teams, mk.logos, mk.veto, mk.schedule, mk.casters, mk.sponsors].map(AIR_AT);
   const AF = F(AIR_FROM);
   const airShow = async (i) => {
     const k = i - AF; if (k < 0) return;
@@ -371,7 +363,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     key: 0.9,
   });
 
-  // ═════ 27.5 – 35.5 s: data to graphics, six beats of 40 frames ═════
+  // ═════ 27.5 – 35.5 s: data to graphics, five beats of 48 frames ═════
   // Layout of a beat: a left column (columns 1-3: index, label, source) and the real graphic inset in columns 4-12.
   const BEAT_CSS = `
     .bx{position:absolute;left:96px;top:219px;width:414px;height:726px}
@@ -382,32 +374,40 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     .bx .sr span{color:var(--muted);font-size:16px}
     .inset{position:absolute;left:534px;top:219px;width:1290px;height:726px;overflow:hidden;background:var(--bg)}
     .inset .gw{position:absolute;left:0;top:0;width:1920px;height:1080px;transform:scale(.671875);transform-origin:0 0;overflow:hidden}
-    .inset .fr{position:absolute;left:0;top:0;width:1290px;height:726px;border:1px solid var(--line);z-index:5}
-    .rid{position:absolute;z-index:20;display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg);border:1px solid var(--line);font:500 17px/1 'JetBrains Mono',monospace;letter-spacing:.02em;color:var(--text)}
-    .rid svg{width:16px;height:16px}`;
+    .inset .fr{position:absolute;left:0;top:0;width:1290px;height:726px;border:1px solid var(--line);z-index:5}`;
   const beatUi = (n, lines, gw, extra = '') => ({
     css: BEAT_CSS + extra,
     ui: `<div class="bx"><div class="m ix rv" style="--d:0s">0${n}</div>${RF.wordsHtml(lines, 'd56 lb', 0.04)}<div class="sr"><i class="rv" style="--d:.12s"></i><span class="m rv" style="--d:.16s">FROM ESPORTRA</span></div></div>
       <div class="inset rv" style="--d:.04s"><div class="gw">${gw}</div><div class="fr"></div></div>`,
   });
-  const CHECK = '<svg viewBox="0 0 20 20"><path d="M3 10.5 8 15.5 17 5" fill="none" stroke="#F43F5E" stroke-width="2.5" stroke-linecap="butt" stroke-linejoin="miter"/></svg>';
   const bs = (k) => T.beat + k * BEAT;
   const INSET = { x: 534, y: 219, width: 1290, height: 726 };
-  // 1 · TEAM NAMES · LOGOS: the match intro overlay bar over Lotus
+  // 1 · TEAM NAMES · LOGOS: the match intro overlay bar over Lotus, then (crossover) the team roster with the players' photos
   await patchRoom(VAL, { ...vbase, veto: vetoSteps, vetoTurn: null, players: P0 });
   await action(VAL, 'fullscreen.show', { screen: 'match-intro', style: 'band' });
   await sleep(300);
-  await scene('b1-teams', bs(0), bs(1), { ...beatUi(1, ['TEAM NAMES', 'LOGOS'], host(VAL)), dz: 0.02, each: keyShot('teams', 1.1, INSET), reveal: true, key: 0.8, xover: true });
-  // 2 · RIOT IDs: the team roster with photos and square mono Riot ID chips
-  const chips = ROSTER.map((r, k) => (r ? `<div class="rid rv" style="--d:${(0.55 + k * 0.04).toFixed(2)}s;left:${r.x + 16}px;top:${r.y + r.h - 186}px">${SHOWCASE.lineups.NWL[k].riot}${CHECK}</div>` : '')).join('');
-  await scene('b2-riot', bs(1), bs(2), { ...beatUi(2, ['RIOT IDs'], page('team-roster-a') + chips), dz: 0.02, each: keyShot('riot', 1.1, INSET), key: 0.8 });
+  const ROSTER_AT = F(0.8);
+  const rosterUrl = `${ENG}/overlays/team-roster-a.html?match=${VAL}`;
+  await scene('b1-teams', bs(0), bs(1), {
+    ...beatUi(1, ['TEAM NAMES', 'LOGOS'], host(VAL) + `<div class="rost rv" style="--d:${(ROSTER_AT / FPS).toFixed(2)}s"><div id="rostbox"></div></div>`, '.rost{position:absolute;left:0;top:0;width:1920px;height:1080px;background:var(--bg)}'),
+    dz: 0.02, reveal: true, key: 0.9, xover: true,
+    each: async (i) => {
+      if (i === ROSTER_AT) {
+        await stage.evaluate((u) => { const f = document.createElement('iframe'); f.className = 'g'; f.src = u; document.getElementById('rostbox').appendChild(f); }, rosterUrl);
+        for (const f of stage.frames().slice(1)) await f.waitForFunction(() => window.HUD_READY === true, null, { timeout: 15000 }).catch(() => {});
+        await sleep(250);
+      }
+      if (i === F(0.7)) await snapStage('teams', INSET);
+      if (i === F(1.5)) await snapStage('roster', INSET);
+    },
+  });
   // 3 · VETO: the overlay-bar veto filling, step by step
   await patchRoom(VAL, { veto: [], vetoTurn: { team: 1, action: 'ban', endsAt: Date.now() + 30000 } });
   await action(VAL, 'fullscreen.show', { screen: 'map-veto', style: 'band' });
   await sleep(300);
   const vClock = Date.now() + 60000, vt3 = (i) => vClock + (i / FPS) * 1000;
-  await scene('b3-veto', bs(2), bs(3), {
-    ...beatUi(3, ['VETO'], host(VAL)), dz: 0.02, vt: vt3, key: 0.9,
+  await scene('b3-veto', bs(1), bs(2), {
+    ...beatUi(2, ['VETO'], host(VAL)), dz: 0.02, vt: vt3, key: 0.9,
     each: async (i) => {
       const k = Math.floor((i - F(0.55)) / 3);
       if (i >= F(0.55) && (i - F(0.55)) % 3 === 0 && k < vetoSteps.length) {
@@ -419,14 +419,14 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     },
   });
   // 4 · SCHEDULE
-  await scene('b4-schedule', bs(3), bs(4), { ...beatUi(4, ['SCHEDULE'], page('schedule')), dz: 0.02, each: keyShot('schedule', 1.1, INSET), key: 0.8 });
+  await scene('b4-schedule', bs(2), bs(3), { ...beatUi(3, ['SCHEDULE'], page('schedule')), dz: 0.02, each: keyShot('schedule', 1.1, INSET), key: 0.8 });
   // 5 · CASTERS: the desk graphic, each talent photo placed by the face (face 42 % of the window, eyes at 40 %)
   const deskPics = talents.slice(0, 2).map((t, k) => {
     const info = faceInfo[k], p = RF.placeFace(info, info?.size?.[0] || 512, info?.size?.[1] || 512, 820, 462);
     console.log(`casters ${k}: face ${info?.face ? 'found' : 'estimated'}, face ${(p.faceShare * 100).toFixed(0)} % of the window, eyes at ${(p.eyeAt * 100).toFixed(0)} %`);
     return `<div style="position:absolute;left:${k ? 980 : 120}px;top:250px;width:820px;height:462px;background-color:#111;background-image:url('${t}');${p.css}"></div>`;
   }).join('');
-  await scene('b5-casters', bs(4), bs(5), { ...beatUi(5, ['CASTERS'], deskPics + page('casters')), dz: 0.02, each: keyShot('casters', 1.1, INSET), key: 0.8 });
+  await scene('b5-casters', bs(3), bs(4), { ...beatUi(4, ['CASTERS'], deskPics + page('casters')), dz: 0.02, each: keyShot('casters', 1.1, INSET), key: 0.8 });
   // 6 · SPONSORS: the three marks by tier and the real Presented by bar
   const sp3 = `<style>
       .sp3{position:absolute;left:96px;top:150px;display:flex;gap:36px}
@@ -436,7 +436,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
       .spbar{position:absolute;left:0;top:0;width:1920px;height:1080px;transform:scale(1.7);transform-origin:50% 100%}
     </style><div class="sp3">${SPONSORS.map((s, k) => `<div class="rv" style="--d:${(0.1 + k * 0.04).toFixed(2)}s"><img src="${serve(`sponsor-${k}.png`, sponsorPng[k])}"><span>${s.tier}</span></div>`).join('')}</div>
     <div class="spbar">${g(`${ENG}/overlays/sponsor.html?match=${VAL}`)}</div>`;
-  await scene('b6-sponsors', bs(5), T.byHand, { ...beatUi(6, ['SPONSORS'], sp3), dz: 0.02, each: keyShot('sponsors', 1.1, INSET), key: 0.8 });
+  await scene('b6-sponsors', bs(4), T.byHand, { ...beatUi(5, ['SPONSORS'], sp3), dz: 0.02, each: keyShot('sponsors', 1.1, INSET), key: 0.8 });
 
   // ═════ 35.5 – 41.5 s: by hand, its own visual mode: a full-width band and AIR's Teams/Players window on the right ═════
   const BHW = { x: 900, y: 285, w: 924, h: 520 };
@@ -624,7 +624,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
 
   // ═════ 69.5 – 73.5 s: more games: twelve tiles of what was just on screen turn into the games ═════
   const coming = [['apex', 66], ['eafc', 0], ['cs2', 0], ['r6s', 38], ['lol', 100], ['dota2', 100], ['cod', 56], ['fortnite', 100], ['rocket-league', 0], ['tekken8', 74]];
-  const fronts = ['teams', 'riot', 'veto', 'schedule', 'casters', 'sponsors', 'air', 'byhand', 'agents', 'hud', 'mvp', 'wwcd'].map((k) => shots[k] || '');
+  const fronts = ['teams', 'roster', 'veto', 'schedule', 'casters', 'sponsors', 'air', 'byhand', 'agents', 'hud', 'mvp', 'wwcd'].map((k) => shots[k] || '');
   const live = { 9: ['VALORANT', liveShot.val], 10: ['PUBG MOBILE', liveShot.pubg] };
   const flipOrder = [9, 10, 1, 2, 5, 6, 4, 7, 0, 3, 8, 11];
   let c7 = 0;
