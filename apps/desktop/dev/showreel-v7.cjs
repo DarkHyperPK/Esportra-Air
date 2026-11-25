@@ -7,9 +7,10 @@
 // three.js (dev/reel-bridge.js); every frame is stepped and clocks pinned (dev/rec-kit.cjs).
 //   cd apps/desktop && npm i --no-save three@0.170.0
 //   NODE_USE_ENV_PROXY=1 AIR_DEV_PACK=<local pack dir> node dev/host.ts --port 5334 --engine-port 5396 &
-//   REEL_MUSIC=<track.mp3> REEL_PHOTOS=<dir of square PNGs> node dev/showreel-v7.cjs [host] [engine port] <out dir> [--stills]
-// Posters and the Esportra icon are read from the Esportra website's assets (../esportra/public); photos are CC0
-// (StockSnap); team emblems are drawn by dev/reel-emblems.cjs. Nothing is copied into the repo.
+//   REEL_MUSIC=<track.mp3> REEL_PHOTOS=<9 player cutouts, 00–08.png> REEL_TALENT=<2 talent photos> \
+//     node dev/showreel-v7.cjs [host] [engine port] <out dir> [--stills]
+// Posters and the Esportra icon are read from the Esportra website's assets (../esportra/public); player and talent
+// photos are the producer's (pro portraits); team emblems are drawn by dev/reel-emblems.cjs. Nothing is copied into the repo.
 'use strict';
 const fs = require('node:fs'), path = require('node:path');
 const { chromium } = require('playwright');
@@ -25,6 +26,7 @@ const h = S.connect(H, ENGINE);
 const { ENG, call, patchRoom, action, LOTUS } = h;
 const SITE = process.env.ESPORTRA_SITE || path.join(__dirname, '../../../../esportra/public');
 const PHOTOS = process.env.REEL_PHOTOS || '';
+const TALENT = process.env.REEL_TALENT || '';
 const MUSIC = process.env.REEL_MUSIC || '';
 const FPS = kit.FPS;
 const F = (secs) => Math.round(secs * FPS);
@@ -87,15 +89,18 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   const ICON = dataUrl(path.join(SITE, 'brand/esportra-icon-512.png'));
   const POSTER = (n) => dataUrl(path.join(SITE, `games/${n}-logo.png`));
 
-  // ═════ Pictures: emblems drawn here; photos (CC0) from REEL_PHOTOS ═════
+  // ═════ Pictures: emblems drawn here; the producer's player and talent photos ═════
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   const scratch = await ctx.newPage();
   const emblems = [];
   for (let i = 0; i < S.NAMES.length; i++) emblems[i] = 'data:image/png;base64,' + (await E.png(scratch, E.svg(i, S.TAGS[i], S.COLORS[i % S.COLORS.length]))).toString('base64');
   await scratch.close();
-  const photos = PHOTOS ? fs.readdirSync(PHOTOS).filter((f) => /\.png$/i.test(f)).sort().map((f) => dataUrl(path.join(PHOTOS, f))) : [];
-  const photoOf = (i, j) => (photos.length ? photos[(i * 4 + j) % photos.length] : null);
+  const pngs = (dir) => (dir ? fs.readdirSync(dir).filter((f) => /^\d+\.png$/i.test(f)).sort().map((f) => dataUrl(path.join(dir, f))) : []);
+  const photos = pngs(PHOTOS), talents = pngs(TALENT);
+  // Only faces seen on screen get a photo: NIGHT OWLS (team 0, the library card; NOW_KAI is the PUBG MVP) and
+  // NORTH TIDE (team 5, the PUBG winners in the recorded game). Everyone else keeps Air's own grey shadow.
+  const photoOf = (i, j) => (i === 0 ? photos[j] : i === 5 ? photos[5 + j] : null) || null;
 
   // ═════ Off camera: the producer's data, through Air (dev/reel-setup.cjs) ═════
   const d = await S.prepare(h, { logo: (i) => emblems[i], photo: photoOf });
@@ -225,10 +230,10 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
 
   // ═════ 3 · Teams, players, sponsors, talent (16.35–21.76 s) ═════
   function libraryHtml() {
-    const ph = (k) => photos[k % Math.max(1, photos.length)] || '';
-    const pcard = (k, d) => `<div class="pop" style="--d:${d}s;width:176px;border-radius:16px;overflow:hidden;background:#101728;border:1px solid rgba(255,255,255,.1)"><div style="height:176px;background:#1a2236 ${ph(k) ? `url('${ph(k)}') center/cover` : ''}"></div><div style="padding:10px 12px;font:700 18px Poppins">NOW_${['ACE', 'ROOK', 'VEX', 'KAI', 'ZEN'][k]}</div></div>`;
+    const ph = (k) => photos[k] || '';
+    const pcard = (k, d) => `<div class="pop" style="--d:${d}s;width:176px;border-radius:16px;overflow:hidden;background:#101728;border:1px solid rgba(255,255,255,.1)"><div style="height:176px;background:${ph(k) ? `url('${ph(k)}') center bottom/cover no-repeat,` : ''} radial-gradient(80% 80% at 50% 30%,#2b3a63,#121a2e)"></div><div style="padding:10px 12px;font:700 18px Poppins">NOW_${['ACE', 'ROOK', 'VEX', 'KAI', 'ZEN'][k]}</div></div>`;
     const sponsor = (n, c, d) => `<div class="pop" style="--d:${d}s;height:78px;padding:0 24px;display:flex;align-items:center;border-radius:14px;background:#101728;border:1px solid rgba(255,255,255,.1);font:800 26px Poppins;letter-spacing:.04em;color:${c}">${n}</div>`;
-    const talent = (k, n, d) => `<div class="pop" style="--d:${d}s;display:flex;align-items:center;gap:16px;padding:12px 20px 12px 12px;border-radius:16px;background:#101728;border:1px solid rgba(255,255,255,.1)"><div style="width:84px;height:84px;border-radius:50%;background:#1a2236 ${ph(k) ? `url('${ph(k)}') center/cover` : ''}"></div><div><div style="font:700 22px Poppins">${n}</div><div style="font:600 15px Poppins;letter-spacing:.14em;color:#8fa0c4">CASTER</div></div></div>`;
+    const talent = (k, n, d) => `<div class="pop" style="--d:${d}s;display:flex;align-items:center;gap:16px;padding:12px 20px 12px 12px;border-radius:16px;background:#101728;border:1px solid rgba(255,255,255,.1)"><div style="width:84px;height:84px;border-radius:50%;background:#1a2236 ${talents[k] ? `url('${talents[k]}') center/cover` : ''}"></div><div><div style="font:700 22px Poppins">${n}</div><div style="font:600 15px Poppins;letter-spacing:.14em;color:#8fa0c4">CASTER</div></div></div>`;
     return `<div style="position:absolute;left:120px;top:150px;width:560px;padding:34px;border-radius:24px;background:linear-gradient(160deg,#141c30,#0c111e);border:1px solid rgba(255,255,255,.1)" class="rise">
         <div style="font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4">TEAM</div>
         <div style="display:flex;align-items:center;gap:26px;margin-top:20px"><img class="pop" src="${emblems[0]}" style="--d:.25s;width:170px;height:170px"><div><div style="font:800 48px/1 Poppins">NIGHT OWLS</div><div style="margin-top:10px;display:inline-block;padding:6px 12px;border-radius:8px;background:#22d3ee;color:#05070d;font:800 18px Poppins;letter-spacing:.12em">NOW</div></div></div>
@@ -237,7 +242,7 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
       <div style="position:absolute;left:1180px;top:150px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4" class="rise">SPONSORS</div>
       <div style="position:absolute;left:1180px;top:190px;display:flex;flex-direction:column;gap:14px;width:600px">${sponsor('VOLT ENERGY', '#ffb60e', 1.3)}${sponsor('KITE NETWORK', '#38bdf8', 1.42)}${sponsor('NOVA GEAR', '#f43f5e', 1.54)}</div>
       <div style="position:absolute;left:1180px;top:520px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4" class="rise">TALENT</div>
-      <div style="position:absolute;left:1180px;top:560px;display:flex;flex-direction:column;gap:14px">${talent(9, 'SAM "ECHO" REYES', 1.9)}${talent(10, 'MAYA LIN', 2.05)}</div>`;
+      <div style="position:absolute;left:1180px;top:560px;display:flex;flex-direction:column;gap:14px">${talent(0, 'SAM "ECHO" REYES', 1.9)}${talent(1, 'MAYA LIN', 2.05)}</div>`;
   }
   await scene('3-library', T.library, T.veto, libHtml, 'cut', null, {
     cam: [[0, 1.0, 960, 540], [F(5.4), 1.06, 900, 520]],
