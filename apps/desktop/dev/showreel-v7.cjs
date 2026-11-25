@@ -217,7 +217,15 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
     await stage.evaluate(() => document.fonts.ready); await sleep(300);
     return 'data:image/jpeg;base64,' + (await stage.screenshot({ type: 'jpeg', quality: 90 })).toString('base64');
   })();
-  const cardPics = [...emblems.slice(0, 8), ...photos.slice(0, 8)];
+  // Bridge cards: emblems and head-and-shoulders squares of the portraits (the top 3:4 → 1:1 of each).
+  const heads = await (async () => {
+    const pg = await ctx.newPage(); const out = [];
+    for (const src of photos.slice(0, 8)) {
+      out.push(await pg.evaluate(async (src) => { const im = new Image(); im.src = src; await im.decode(); const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d'); const w = im.width; g.drawImage(im, 0, 0, w, w, 0, 0, 512, 512); return c.toDataURL('image/png'); }, src));
+    }
+    await pg.close(); return out;
+  })();
+  const cardPics = [...emblems.slice(0, 8), ...heads];
   await scene('2-bridge', T.bridge, T.library, `<canvas id="gl" width="1920" height="1080" style="position:absolute;inset:0"></canvas><script type="module" src="http://reel.local/reel-bridge.js"></script>`, 'cut', null, {
     three: true,
     ready: async () => {
@@ -231,14 +239,15 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   // ═════ 3 · Teams, players, sponsors, talent (16.35–21.76 s) ═════
   function libraryHtml() {
     const ph = (k) => photos[k] || '';
-    const pcard = (k, d) => `<div class="pop" style="--d:${d}s;width:176px;border-radius:16px;overflow:hidden;background:#101728;border:1px solid rgba(255,255,255,.1)"><div style="height:176px;background:${ph(k) ? `url('${ph(k)}') center bottom/cover no-repeat,` : ''} radial-gradient(80% 80% at 50% 30%,#2b3a63,#121a2e)"></div><div style="padding:10px 12px;font:700 18px Poppins">NOW_${['ACE', 'ROOK', 'VEX', 'KAI', 'ZEN'][k]}</div></div>`;
+    // A 3:4 card: the cutout stands on the team colour with a rim of light behind it, the name plate below.
+    const pcard = (k, d) => `<div class="pop" style="--d:${d}s;width:180px;border-radius:14px;overflow:hidden;background:#0d1322;border:1px solid rgba(255,255,255,.1)"><div style="position:relative;height:240px;background:radial-gradient(70% 55% at 50% 38%,rgba(34,211,238,.55),rgba(34,211,238,0) 70%),linear-gradient(180deg,#123a4a 0%,#0b1626 100%)">${ph(k) ? `<img src="${ph(k)}" style="position:absolute;left:0;bottom:0;width:180px;height:240px;filter:drop-shadow(0 0 10px rgba(34,211,238,.35))">` : ''}</div><div style="padding:9px 12px;font:700 17px Poppins;border-top:3px solid #22d3ee">NOW_${['ACE', 'ROOK', 'VEX', 'KAI', 'ZEN'][k]}</div></div>`;
     const sponsor = (n, c, d) => `<div class="pop" style="--d:${d}s;height:78px;padding:0 24px;display:flex;align-items:center;border-radius:14px;background:#101728;border:1px solid rgba(255,255,255,.1);font:800 26px Poppins;letter-spacing:.04em;color:${c}">${n}</div>`;
     const talent = (k, n, d) => `<div class="pop" style="--d:${d}s;display:flex;align-items:center;gap:16px;padding:12px 20px 12px 12px;border-radius:16px;background:#101728;border:1px solid rgba(255,255,255,.1)"><div style="width:84px;height:84px;border-radius:50%;background:#1a2236 ${talents[k] ? `url('${talents[k]}') center/cover` : ''}"></div><div><div style="font:700 22px Poppins">${n}</div><div style="font:600 15px Poppins;letter-spacing:.14em;color:#8fa0c4">CASTER</div></div></div>`;
     return `<div style="position:absolute;left:120px;top:150px;width:560px;padding:34px;border-radius:24px;background:linear-gradient(160deg,#141c30,#0c111e);border:1px solid rgba(255,255,255,.1)" class="rise">
         <div style="font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4">TEAM</div>
         <div style="display:flex;align-items:center;gap:26px;margin-top:20px"><img class="pop" src="${emblems[0]}" style="--d:.25s;width:170px;height:170px"><div><div style="font:800 48px/1 Poppins">NIGHT OWLS</div><div style="margin-top:10px;display:inline-block;padding:6px 12px;border-radius:8px;background:#22d3ee;color:#05070d;font:800 18px Poppins;letter-spacing:.12em">NOW</div></div></div>
         <div style="margin-top:28px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4">PLAYERS</div></div>
-      <div style="position:absolute;left:120px;top:560px;display:flex;gap:18px">${[0, 1, 2, 3, 4].map((k) => pcard(k, 0.55 + k * 0.12)).join('')}</div>
+      <div style="position:absolute;left:120px;top:520px;display:flex;gap:16px">${[0, 1, 2, 3, 4].map((k) => pcard(k, 0.55 + k * 0.12)).join('')}</div>
       <div style="position:absolute;left:1180px;top:150px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4" class="rise">SPONSORS</div>
       <div style="position:absolute;left:1180px;top:190px;display:flex;flex-direction:column;gap:14px;width:600px">${sponsor('VOLT ENERGY', '#ffb60e', 1.3)}${sponsor('KITE NETWORK', '#38bdf8', 1.42)}${sponsor('NOVA GEAR', '#f43f5e', 1.54)}</div>
       <div style="position:absolute;left:1180px;top:520px;font:700 16px Poppins;letter-spacing:.24em;color:#8fa0c4" class="rise">TALENT</div>
@@ -313,6 +322,9 @@ body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#05070d;colo
   await scene('5d-standings', T.standings, T.mvp, lob, 'slash', null, { cam: [[0, 1.06, 960, 600], [F(1.8), 1.0, 960, 540]] });
   await take('br-mvp');
   await scene('5e-mvp', T.mvp, T.wwcd, lob, 'zoom', null, { cam: push(1.8, 1.0, 1.05, 900, 560) });
+  // WWCD shows the squad as Air's grey silhouettes: their photos are cleared in Teams/Players (the lobby follows).
+  for (const p of (await call('snapshot')).library.players.filter((p) => /^NTD_/.test(p.name))) await call('savePlayer', [{ ...p, photo: '' }]);
+  await sleep(400);
   await take('br-wwcd');
   await scene('5f-wwcd', T.wwcd, T.studio, lob, 'cut', null, { cam: push(1.8, 1.03, 1.0, 960, 540) });
 
