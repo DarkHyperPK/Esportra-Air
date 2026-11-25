@@ -31,35 +31,37 @@ body { width: 100%; height: 100%; }
 #lock { left: 242px; top: 280px; height: 520px; }
 
 /* the problem: seven data tiles, off the grid */
-.tw { width: 252px; height: 112px; }
-.tile { position: absolute; left: 0; top: 0; width: 252px; height: 112px; padding: 16px; }
-.tile .lb { position: absolute; left: 16px; top: 16px; font-size: 14px; color: var(--muted); text-transform: none; }
-.tile .val { position: absolute; left: 16px; bottom: 18px; font: 500 18px/1 'JetBrains Mono', monospace; letter-spacing: .02em; text-transform: none; white-space: pre; }
-.tile .val img { display: block; height: 44px; }
+.tw { width: var(--w, 360px); height: 150px; }
+.tile { position: absolute; left: 0; top: 0; width: 100%; height: 150px; }
+.tile .lb { position: absolute; left: 20px; top: 18px; font-size: 15px; color: var(--muted); text-transform: none; }
+.tile .val { position: absolute; left: 20px; bottom: 22px; font: 500 34px/1 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; text-transform: none; white-space: pre; color: var(--text); }
+.tile .val img { display: block; height: 64px; }
 .tile .val s { position: relative; display: inline-block; text-decoration: none; }
-.tile .val s::after { content: ''; position: absolute; left: -1px; right: -1px; top: 50%; height: 2px; margin-top: -1px; background: var(--rose); }
-.caret { display: inline-block; width: 9px; height: 18px; margin-left: 2px; vertical-align: -3px; background: var(--text); }
+.tile .val s::after { content: ''; position: absolute; left: -1px; right: -1px; top: 50%; height: 3px; margin-top: -1px; background: var(--rose); }
+.caret { display: inline-block; width: 16px; height: 34px; margin-left: 3px; vertical-align: -5px; background: var(--text); }
 .tile img.em { transform-origin: 0 50%; }
-#cnt { left: 242px; top: 930px; width: 400px; height: 20px; font-size: 18px; color: var(--muted); }
-#cnt .dg { position: absolute; left: 124px; top: 0; color: var(--rose); }
+#cnt { left: 242px; top: 690px; width: 600px; height: 230px; }
+#cnt .cl { position: absolute; left: 0; top: 0; font-size: 18px; color: var(--muted); }
+#cnt .bg { position: absolute; left: -6px; top: 34px; font: 500 140px/1 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; text-transform: none; color: var(--text); white-space: pre; }
+#cnt .bg b { font-weight: 500; color: var(--rose); }
 
-/* Esportra's ledger: one panel, seven rows */
-#lhdr { left: 972px; top: 332px; color: var(--muted); font-size: 16px; }
-#ledger { left: 972px; top: 370px; width: 852px; height: 504px; transform-origin: 0 0; }
-.row { position: absolute; left: 0; width: 100%; height: 72px; }
+/* Esportra's ledger: one panel, seven rows of 84 px */
+#lhdr { left: 960px; top: 244px; color: var(--muted); font-size: 15px; }
+#ledger { left: 960px; top: 280px; width: 870px; height: 588px; transform-origin: 0 0; }
+.row { position: absolute; left: 0; width: 100%; height: 84px; }
 .row + .row { border-top: 1px solid var(--line); }
-.row .l { position: absolute; left: 28px; top: 27px; font-size: 18px; color: var(--muted); text-transform: none; }
-.row .v { text-transform: none; position: absolute; right: 76px; top: 24px; font: 500 22px/1 'JetBrains Mono', monospace; letter-spacing: .02em; white-space: pre; }
-.row .v img { display: block; height: 44px; margin-top: -10px; }
-.row .ck { position: absolute; right: 28px; top: 26px; width: 20px; height: 20px; }
-.row .rb { position: absolute; left: -1px; top: 0; width: 2px; height: 72px; background: var(--rose); }
+.row .l { position: absolute; left: 30px; top: 34px; font-size: 15px; color: var(--muted); text-transform: none; }
+.row .v { text-transform: none; position: absolute; right: 84px; top: 28px; font: 500 26px/1 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; }
+.row .v img { display: block; height: 52px; margin-top: -12px; }
+.row .ck { position: absolute; right: 30px; top: 29px; width: 26px; height: 26px; }
+.row .rb { position: absolute; left: -1px; top: 0; width: 2px; height: 84px; background: var(--rose); }
 
 /* AIR's window */
-#airwin { left: 826px; top: 250px; width: 998px; height: 561px; overflow: hidden; }
+#airwin { left: 852px; top: 330px; width: 972px; height: 547px; overflow: hidden; }
 #airimg { position: absolute; left: 0; top: 0; width: 2560px; height: 1440px; transform-origin: 0 0; display: none; }
-#aircap { left: 826px; top: 214px; color: var(--muted); font-size: 14px; }
-#rline { left: 753px; top: 580px; width: 73px; height: 2px; background: var(--rose); transform-origin: 0 50%; }
-#rdot { left: 820px; top: 577px; width: 8px; height: 8px; background: var(--rose); }
+#aircap { left: 852px; top: 892px; color: var(--muted); font-size: 14px; }
+#rline { left: 782px; top: 521px; width: 70px; height: 2px; background: var(--rose); transform-origin: 0 50%; }
+#rdot { left: 846px; top: 518px; width: 8px; height: 8px; background: var(--rose); }
 
 #replay { position: fixed; right: 24px; bottom: 24px; z-index: 200; padding: 10px 14px; background: var(--surface); color: var(--text); border: 1px solid var(--line); cursor: pointer; font-size: 14px; }
 #replay:hover { border-color: var(--rose); }
@@ -149,13 +151,13 @@ body.rec #replay { display: none; }
 
   // Tiles: label, value, a spot off the grid (x, y, rotation), and the retyped copies' drifting values.
   var TILES = [
-    { l: 'TEAM NAMES', v: 'NIGHT OWLS', x: 984, y: 470, r: -1.6, d: ['N[ight] O[wls]', 'NIGHT [0]WLS', 'NI[HG]T OWLS', 'N[ight] [0]WLS'] },
-    { l: 'RIOT IDs', v: 'Juno#NWL', x: 1268, y: 492, r: 1.2, d: ['Jun[0]#NWL', 'Juno#[NLW]', '[Ju0n]#NWL', 'Jun[0]#N[V]L'] },
-    { l: 'LOGOS', v: null, x: 1540, y: 466, r: -0.9, d: ['skew', 'small', 'skew', 'small'] },
-    { l: 'VETO', v: 'BAN · BIND', x: 1010, y: 640, r: 1.8, d: ['BAN · B[NI]D', '[BNA] · BIND', 'BAN · [BIN]D', 'BAN [-] BIND'] },
-    { l: 'SCHEDULE', v: '18:30', x: 1300, y: 662, r: -1.3, d: ['18:[0]0', '[0]8:30', '18:[2]0', '1[6]:[0]0'] },
-    { l: 'CASTERS', v: 'Sam "Sparrow" Reyes', x: 1560, y: 640, r: 0.8, d: ['Sam "Spar[o]w" Reyes', 'Sam "Sparrow" R[ye]es', 'Sa[nm] "Sparrow" Reyes', 'Sam "S[pp]arrow" Reyes'] },
-    { l: 'SPONSORS', v: 'NOVA ENERGY', x: 1120, y: 812, r: -1.9, d: ['NOVA EN[R]GY', 'N[0]VA ENERGY', 'NOVA E[M]ERGY', 'NOVA ENERG[T]'] }
+    { l: 'TEAM NAMES', v: 'NIGHT OWLS', x: 830, y: 490, r: -1.4, d: ['N[ight] O[wls]', 'NIGHT [0]WLS', 'NI[HG]T OWLS', 'N[ight] [0]WLS'] },
+    { l: 'RIOT IDs', v: 'Juno#NWL', x: 1270, y: 262, r: 1.2, d: ['Jun[0]#NWL', 'Juno#[NLW]', '[Ju0n]#NWL', 'Jun[0]#N[V]L'] },
+    { l: 'LOGOS', v: null, w: 300, x: 1500, y: 480, r: -0.8, d: ['skew', 'small', 'skew', 'small'] },
+    { l: 'VETO', v: 'BAN · BIND', x: 850, y: 665, r: 1.5, d: ['BAN · B[NI]D', '[BNA] · BIND', 'BAN · [BIN]D', 'BAN [-] BIND'] },
+    { l: 'SCHEDULE', v: '18:30', x: 1200, y: 690, r: -1.2, d: ['18:[0]0', '[0]8:30', '18:[2]0', '1[6]:[0]0'] },
+    { l: 'CASTERS', v: 'Sam "Sparrow" Reyes', w: 440, x: 1380, y: 650, r: 0.9, d: ['Sam "Spar[o]w" Reyes', 'Sam "Sparrow" R[ye]es', 'Sa[nm] "Sparrow" Reyes', 'Sam "S[pp]arrow" Reyes'] },
+    { l: 'SPONSORS', v: 'NOVA ENERGY', x: 1010, y: 782, r: -1.5, d: ['NOVA EN[R]GY', 'N[0]VA ENERGY', 'NOVA E[M]ERGY', 'NOVA ENERG[T]'] }
   ];
   var ROWS = [['TEAM NAMES', 'NIGHT OWLS'], ['RIOT IDs', 'Juno#NWL'], ['LOGOS', null], ['VETO', 'BAN · BIND'], ['SCHEDULE', '18:30'], ['CASTERS', 'Sam "Sparrow" Reyes'], ['SPONSORS', 'NOVA ENERGY']];
 
@@ -185,7 +187,7 @@ body.rec #replay { display: none; }
       groups[k] = [];
       for (var wv = 0; wv <= 4; wv++) {
         var at = wv === 0 ? 3.5 + k * 0.04 : 7.5 + (wv - 1) * 2 + k * 0.04;
-        var tw = el('div', 'tw', world); tw.style.left = (T.x + 24 * wv) + 'px'; tw.style.top = (T.y + 18 * wv) + 'px';
+        var tw = el('div', 'tw', world); tw.style.left = (T.x + 28 * wv) + 'px'; tw.style.top = (T.y + 22 * wv) + 'px'; tw.style.setProperty('--w', (T.w || 360) + 'px');
         tw.style.rotate = (T.r + (wv ? ((k * 7 + wv * 5) % 5 - 2) * 0.45 : 0)) + 'deg'; tw.style.zIndex = 10 + wv * 10 + k;
         var tile = el('div', 'tile sf', tw);
         el('span', 'm lb', tile, T.l);
@@ -202,12 +204,11 @@ body.rec #replay { display: none; }
         groups[k].push(tw);
       }
     });
-    // the counter, bottom left in columns 2-4: RETYPED x1 ... x4, the number in rose
+    // the counter, the story device: RETYPED, and under it x1 ... x4 at 140 px, the number in rose
     var cnt = el('div', 'm', fg); cnt.id = 'cnt';
-    var cl = el('span', '', cnt, 'RETYPED ×'); reveal(cl, 7.5);
-    var dgBox = el('span', 'dg', cnt);
+    var cl = el('span', 'cl', cnt, 'RETYPED'); reveal(cl, 7.5);
     for (i = 1; i <= 4; i++) {
-      var d = el('span', '', dgBox, String(i)); d.style.position = 'absolute'; d.style.left = '0'; d.style.top = '0';
+      var d = el('span', 'bg', cnt, '×<b>' + i + '</b>');
       reveal(d, 7.5 + (i - 1) * 2);
       if (i < 4) exitUp(d, 7.5 + i * 2, .3);
     }
@@ -218,14 +219,14 @@ body.rec #replay { display: none; }
     h2.words.forEach(function (s, k) { exitUp(s, 21.05 + k * 0.04, .6); });
     var lh = el('div', 'm', world, 'ESPORTRA · ESPORTRA INVITATIONAL'); lh.id = 'lhdr'; reveal(lh, 17.35); exitUp(lh, 21.05, .6);
     var led = el('div', 'sf', world); led.id = 'ledger'; reveal(led, 17.35);
-    A(led, [{ transform: 'translate(0px,0px) scale(1)' }, { transform: 'translate(-730px,60px) scale(.6)' }], 21.5, .9, IN, 'forwards');
+    A(led, [{ transform: 'translate(0px,0px) scale(1)' }, { transform: 'translate(-718px,60px) scale(.62)' }], 21.5, .9, IN, 'forwards');
     var cks = [], rbs = [];
     ROWS.forEach(function (R, k) {
-      var row = el('div', 'row', led); row.style.top = (k * 72) + 'px';
+      var row = el('div', 'row', led); row.style.top = (k * 84) + 'px';
       el('span', 'm l', row, R[0]);
       var v = el('span', 'm v', row);
       if (R[1] === null) { var im2 = el('img', '', v); im2.src = emblem; } else v.textContent = R[1];
-      var ck = el('span', '', row, CHECK); ck.style.cssText = 'position:absolute;right:0;top:0;width:100%;height:72px'; cks.push(ck);
+      var ck = el('span', '', row, CHECK); ck.style.cssText = 'position:absolute;right:0;top:0;width:100%;height:84px'; cks.push(ck);
       var rb = el('div', 'rb', row); rbs.push(rb);
       reveal(row.children[0], 17.45 + k * 0.04); reveal(v, 17.45 + k * 0.04);
       wipe(ck, k === 1 ? 18.1 : ticks[k] + .1, .35);
@@ -233,7 +234,7 @@ body.rec #replay { display: none; }
     });
 
     // 21.5 - 27.5 s: 03 / AIR
-    var h3 = words(world, ['AIR picks it', 'all up. Nothing', 'typed twice.'], 'd64', 21.5, 242, 196);
+    var h3 = words(world, ['AIR picks it all up.', 'Nothing typed twice.'], 'd72', 21.5, 242, 170);
     var rl = el('div', '', fg); rl.id = 'rline'; A(rl, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], 22.0, .4, IN);
     var rd = el('div', '', fg); rd.id = 'rdot'; reveal(rd, 22.35, .3);
     var win = el('div', 'sf', world); win.id = 'airwin'; reveal(win, airFrom);

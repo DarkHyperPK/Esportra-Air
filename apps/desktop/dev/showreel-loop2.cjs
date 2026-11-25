@@ -174,7 +174,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
   ui.pos = [760, 560]; await ui.place();
   cur = newTake(path.join(OUT, 'byhand'));
   {
-    wide(); await film.run(app, 3);
+    await onBox(app.getByRole('button', { name: 'Add team' }), 860, 130); await film.run(app, 3);
     await ui.click(film, app.getByRole('button', { name: 'Add team' }), { frames: 7, after: 3 });
     const drawer = app.getByRole('dialog', { name: 'Add a team' });
     const logoBtn = drawer.getByRole('button', { name: /logo of/i }).first();
@@ -202,7 +202,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
       await film.run(app, 2);
       await ui.click(film, pd.getByRole('button', { name: 'Save' }), { frames: 6, after: 3 });
     }
-    frame({ x: 0, y: 20, w: 1120 });
+    frame({ x: 230, y: 70, w: 860 });
     ui.pos = [1250, 700]; await ui.place();
     while (cur.list.length < BH_CAP) await film.run(app, 1);
   }
@@ -224,15 +224,15 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
   ui.pos = [900, 600]; await ui.place();
   cur = newTake(path.join(OUT, 'air3'));
   try {
-    wide(); await film.run(app, 3);
+    await onBox(app.getByText('Open event', { exact: true }).last(), 860, 90); await film.run(app, 3);
     await ui.click(film, app.getByText('Open event', { exact: true }).last(), { frames: 8, after: 3 });
     const row = app.locator('div, li, tr').filter({ hasText: /NIGHT OWLS\s*vs\s*CRIMSON FIVE/ }).last();
-    await onBox(row, 1080, 40); mark('schedule');
+    await onBox(row, 860, 40); mark('schedule');
     await film.run(app, 2);
     await ui.click(film, row.getByRole('button', { name: 'Open', exact: true }), { frames: 8, after: 1 });
     await app.locator('nav[aria-label="Match steps"]').waitFor(); await app.waitForTimeout(400);
     const steps = app.locator('nav[aria-label="Match steps"]');
-    await fromLeft(app.getByText('NIGHT OWLS', { exact: true }).first(), 980, 40, 100);
+    await fromLeft(app.getByText('NIGHT OWLS', { exact: true }).first(), 860, 40, 90);
     mark('teams'); await film.run(app, 6); mark('logos'); await film.run(app, 8);
     await ui.click(film, steps.getByRole('button', { name: /Teams\/Players/ }), { frames: 7, after: 2 });
     mark('riot'); await film.run(app, 26);
@@ -241,7 +241,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     await ui.click(film, steps.getByRole('button', { name: /Match data/ }), { frames: 7, after: 2 });
     await film.run(app, 8);
     await app.getByText('The sequence', { exact: false }).first().scrollIntoViewIfNeeded(); await app.waitForTimeout(300);
-    await fromLeft(app.getByText(/The sequence/i).first(), 940, 300, 40);
+    await fromLeft(app.getByText(/The sequence/i).first(), 860, 230, 40);
     mark('veto');
     while (cur.list.length < CAP) await film.run(app, 1);
   } catch (e) { await app.screenshot({ path: path.join(OUT, 'air-failed.png') }); throw e; }
@@ -338,11 +338,12 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
       else await stage.evaluate((t) => window.ReelChrome.tick(t), abs / FPS);
       if (o.each) await o.each(i);
       const sampled = STILLS && abs % 45 === 0 && abs <= F(41.5);
-      const cross15 = STILLS && i === 15 && cross && from <= T.agents;
+      const cross15 = STILLS && cross && ((o.xover && i % 3 === 0 && i >= 9 && i <= 24) || (!o.xover && i === 15 && from <= T.agents));
+      const xo = STILLS && o.xover && i % 3 === 0 && i >= 9 && i <= 24;
       const lastOfAll = name === '9-back' && i === n - 1;
       const shoot = !STILLS || i === key || sampled || cross15 || lastOfAll;
       await rec.frame(stage, o.vt ? o.vt(i) : null, shoot);
-      if (STILLS && shoot) board.push([name, lastFrame(), abs / FPS]);
+      if (STILLS && shoot) board.push([name, lastFrame(), abs / FPS, xo ? 'xover' : '']);
     }
     await hideChrome(true);
     outgoing = 'data:image/jpeg;base64,' + (await stage.screenshot({ type: 'jpeg', quality: 90 })).toString('base64');
@@ -362,11 +363,11 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     const k = i - AF; if (k < 0) return;
     const idx = Math.min(k, air3.list.length - 1);
     const r = RF.rectAt(air3.keys, k);
-    await stage.evaluate(([s, tf]) => window.reelAir(s, tf), [k <= air3.list.length - 1 ? 'data:image/jpeg;base64,' + fs.readFileSync(air3.list[idx]).toString('base64') : '', RF.cropTransform(r, 998)]);
+    await stage.evaluate(([s, tf]) => window.reelAir(s, tf), [k <= air3.list.length - 1 ? 'data:image/jpeg;base64,' + fs.readFileSync(air3.list[idx]).toString('base64') : '', RF.cropTransform(r, 972)]);
   };
   await scene('1-page', T.page, T.beat, {
     page: true, build: { lockup: LOCKUP, emblem: EMB.NWL, ticks, airFrom: AIR_FROM }, cross: false,
-    each: async (i) => { await airShow(i); if (i === F(26.8)) await snapStage('air', { x: 826, y: 250, width: 998, height: 561 }); },
+    each: async (i) => { await airShow(i); if (i === F(26.8)) await snapStage('air', { x: 852, y: 330, width: 972, height: 547 }); },
     key: 0.9,
   });
 
@@ -386,7 +387,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     .rid svg{width:16px;height:16px}`;
   const beatUi = (n, lines, gw, extra = '') => ({
     css: BEAT_CSS + extra,
-    ui: `<div class="bx"><div class="m ix rv" style="--d:0s">0${n}</div>${RF.wordsHtml(lines, 'd64 lb', 0.04)}<div class="sr"><i class="rv" style="--d:.12s"></i><span class="m rv" style="--d:.16s">FROM ESPORTRA</span></div></div>
+    ui: `<div class="bx"><div class="m ix rv" style="--d:0s">0${n}</div>${RF.wordsHtml(lines, 'd56 lb', 0.04)}<div class="sr"><i class="rv" style="--d:.12s"></i><span class="m rv" style="--d:.16s">FROM ESPORTRA</span></div></div>
       <div class="inset rv" style="--d:.04s"><div class="gw">${gw}</div><div class="fr"></div></div>`,
   });
   const CHECK = '<svg viewBox="0 0 20 20"><path d="M3 10.5 8 15.5 17 5" fill="none" stroke="#F43F5E" stroke-width="2.5" stroke-linecap="butt" stroke-linejoin="miter"/></svg>';
@@ -396,7 +397,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
   await patchRoom(VAL, { ...vbase, veto: vetoSteps, vetoTurn: null, players: P0 });
   await action(VAL, 'fullscreen.show', { screen: 'match-intro', style: 'band' });
   await sleep(300);
-  await scene('b1-teams', bs(0), bs(1), { ...beatUi(1, ['TEAM NAMES', '· LOGOS'], host(VAL)), dz: 0.02, each: keyShot('teams', 1.1, INSET), reveal: true, key: 0.8 });
+  await scene('b1-teams', bs(0), bs(1), { ...beatUi(1, ['TEAM NAMES', 'LOGOS'], host(VAL)), dz: 0.02, each: keyShot('teams', 1.1, INSET), reveal: true, key: 0.8, xover: true });
   // 2 · RIOT IDs: the team roster with photos and square mono Riot ID chips
   const chips = ROSTER.map((r, k) => (r ? `<div class="rid rv" style="--d:${(0.55 + k * 0.04).toFixed(2)}s;left:${r.x + 16}px;top:${r.y + r.h - 186}px">${SHOWCASE.lineups.NWL[k].riot}${CHECK}</div>` : '')).join('');
   await scene('b2-riot', bs(1), bs(2), { ...beatUi(2, ['RIOT IDs'], page('team-roster-a') + chips), dz: 0.02, each: keyShot('riot', 1.1, INSET), key: 0.8 });
@@ -428,17 +429,17 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
   await scene('b5-casters', bs(4), bs(5), { ...beatUi(5, ['CASTERS'], deskPics + page('casters')), dz: 0.02, each: keyShot('casters', 1.1, INSET), key: 0.8 });
   // 6 · SPONSORS: the three marks by tier and the real Presented by bar
   const sp3 = `<style>
-      .sp3{position:absolute;left:96px;top:230px;display:flex;gap:24px}
-      .sp3 div{width:560px;height:330px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:26px;padding:0 40px}
+      .sp3{position:absolute;left:96px;top:150px;display:flex;gap:36px}
+      .sp3 div{width:536px;height:298px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:30px;padding:0 48px}
       .sp3 div:first-child{border-color:var(--rose)}
-      .sp3 img{width:480px}.sp3 span{font:500 20px 'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--muted)}
-      .spbar{position:absolute;left:0;top:0;width:1920px;height:1080px;transform:scale(2.1);transform-origin:50% 86%}
+      .sp3 img{width:440px}.sp3 span{font:500 28px 'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--muted)}
+      .spbar{position:absolute;left:0;top:0;width:1920px;height:1080px;transform:scale(1.7);transform-origin:50% 100%}
     </style><div class="sp3">${SPONSORS.map((s, k) => `<div class="rv" style="--d:${(0.1 + k * 0.04).toFixed(2)}s"><img src="${serve(`sponsor-${k}.png`, sponsorPng[k])}"><span>${s.tier}</span></div>`).join('')}</div>
     <div class="spbar">${g(`${ENG}/overlays/sponsor.html?match=${VAL}`)}</div>`;
   await scene('b6-sponsors', bs(5), T.byHand, { ...beatUi(6, ['SPONSORS'], sp3), dz: 0.02, each: keyShot('sponsors', 1.1, INSET), key: 0.8 });
 
   // ═════ 35.5 – 41.5 s: by hand, its own visual mode: a full-width band and AIR's Teams/Players window on the right ═════
-  const BHW = { x: 972, y: 300, w: 852, h: 479 };
+  const BHW = { x: 900, y: 285, w: 924, h: 520 };
   const BH_FROM = F(0.45);
   await scene('4-byhand', T.byHand, T.agents, {
     css: `
@@ -447,7 +448,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
       .bwin{position:absolute;left:${BHW.x}px;top:${BHW.y}px;width:${BHW.w}px;height:${BHW.h}px;overflow:hidden;background:var(--bg);border:1px solid var(--line)}
       .bwin img{position:absolute;left:0;top:0;width:2560px;height:1440px;transform-origin:0 0;display:none}`,
     ui: `<div class="band rv" style="--d:0s"></div><div class="m btag rv" style="--d:.06s">WITHOUT ESPORTRA</div>
-      ${RF.wordsHtml(['Not on Esportra?', 'Add teams in', 'a minute.'], 'd64', 0.1, 'position:absolute;left:242px;top:344px')}
+      ${RF.wordsHtml(['Not on Esportra?', 'Add teams in a minute.'], 'd60', 0.1, 'position:absolute;left:242px;top:360px')}
       <div class="bwin rv" style="--d:.1s"><img id="bwi"></div>`,
     each: async (i) => {
       const k = i - BH_FROM; if (k < 0) return;
@@ -551,7 +552,7 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     .onair i{width:10px;height:10px;background:var(--rose)}
     #ptr{position:absolute;z-index:30;width:30px;height:30px;left:560px;top:760px}`;
   const studioHtml = `
-    ${RF.wordsHtml(['Make every', 'graphic', 'yours.'], 'd64', 0.04, 'position:absolute;left:242px;top:196px')}
+    ${RF.wordsHtml(['Make every', 'graphic yours.'], 'd64', 0.04, 'position:absolute;left:242px;top:196px')}
     <div class="sp sf rv" style="--d:.1s"><div class="gname" id="gname">In-game HUD</div><div class="ly" id="ly"></div><div class="sws" id="sws">${sw.map((c, k) => `<b data-k="${k}" style="background:${c}"></b>`).join('')}</div><div class="wd" id="wd" style="display:none"></div></div>
     <div class="mon rv" style="--d:.06s"><div class="v act first" id="v0"><div class="vi" style="background:#000 url('${LOTUS}') center/cover">${g(`${ENG}/overlays/ingame.html?match=${VAL}`)}</div></div><div class="v" id="v1"><div class="vi" style="background:#000 url('${LOTUS}') center/cover">${g(`${ENG}/overlays/fullscreen.html?match=${VAL}&over=1`)}</div></div><div class="v" id="v2"><div class="vi">${g(`${ENG}/overlays/fullscreen.html?match=${code}`)}</div></div></div>
     <div class="m onair rv" style="--d:.2s"><i></i>ON AIR</div>
@@ -679,7 +680,10 @@ const sponsorSvg = (s) => `<svg xmlns="http://www.w3.org/2000/svg" width="720" h
     board.forEach(([, file], k) => fs.copyFileSync(file, path.join(dir, String(k).padStart(3, '0') + '.jpg')));
     const { execFileSync } = require('node:child_process');
     execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '1', '-i', path.join(dir, '%03d.jpg'), '-vf', `scale=480:-1,tile=6x${Math.ceil(board.length / 6)}:padding=6:color=0x09090b`, '-frames:v', '1', path.join(OUT, 'board.jpg')]);
-    fs.writeFileSync(path.join(OUT, 'stills.txt'), board.map(([n, , t], k) => `${String(k).padStart(3, '0')}  ${t.toFixed(2)} s  ${n}`).join('\n') + '\n');
+    fs.writeFileSync(path.join(OUT, 'stills.txt'), board.map(([n, , t, x], k) => `${String(k).padStart(3, '0')}  ${t.toFixed(2)} s  ${n}${x ? ' (crossover)' : ''}`).join('\n') + '\n');
+    const xs = board.map((b, k) => [b, k]).filter(([b]) => b[3] === 'xover');
+    if (xs.length) { const xd = path.join(OUT, 'stills-crossover'); fs.rmSync(xd, { recursive: true, force: true }); fs.mkdirSync(xd); xs.forEach(([b], k) => fs.copyFileSync(b[1], path.join(xd, `${String(k).padStart(2, '0')}.jpg`)));
+      execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '1', '-i', path.join(xd, '%02d.jpg'), '-vf', 'scale=640:-1,tile=3x2:padding=6:color=0x09090b', '-frames:v', '1', path.join(OUT, 'crossover.jpg')]); }
     console.log(JSON.stringify({ stills: board.length, board: path.join(OUT, 'board.jpg'), cuts }));
     return;
   }

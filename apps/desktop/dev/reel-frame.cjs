@@ -60,17 +60,21 @@ function faceBoxes(files, py) {
   } catch (e) { console.warn('faces: python failed (' + String(e.message).split('\n')[0] + '); photos framed by estimate'); return files.map(() => null); }
 }
 /**
- * Places a photo (iw x ih) in a W x H window by its face: face 42 % of the window's height, eyes 40 % from the top, the
- * face horizontally centred; scaled up just enough to cover when it cannot at that scale. Returns CSS for the window.
+ * Places a photo (iw x ih) in a W x H window by its face, never cover-cropping it: the window is filled #121215 and the
+ * photo is set at the window's full height with its aspect, horizontally centred on the face (kept inside the window
+ * so no edge of the photo is lost); when the photo is wider than the window at that height it covers instead, with the
+ * eyes at 40 % from the top. Returns CSS for the window.
  */
 function placeFace(info, iw, ih, W, H) {
   const face = info?.face || [0.18 * iw, 0.12 * ih, 0.5 * iw, 0.6 * ih];
   const [fx, fy, fw, fh] = face;
   const cx = fx + fw / 2, ey = info?.face ? fy + 0.4 * fh : 0.25 * ih;
-  const s = Math.max((0.42 * H) / fh, W / iw, H / ih, (0.4 * H) / ey, (0.6 * H) / (ih - ey));
-  // the face is centred as far as the photo still covers the window; the eyes sit at 40 % exactly
-  const ox = Math.min(0, Math.max(W - iw * s, W / 2 - cx * s)), oy = 0.4 * H - ey * s;
-  return { css: `background-size:${(iw * s).toFixed(1)}px ${(ih * s).toFixed(1)}px;background-position:${ox.toFixed(1)}px ${oy.toFixed(1)}px;background-repeat:no-repeat`, scale: s, faceShare: (fh * s) / H, eyeAt: (oy + ey * s) / H };
+  const s = H / ih; // the photo's full height (wider than the window: it covers, same scale)
+  const pw = iw * s, ph = ih * s;
+  const ox = pw <= W ? Math.min(W - pw, Math.max(0, W / 2 - cx * s)) : Math.min(0, Math.max(W - pw, W / 2 - cx * s));
+  const oy = ph <= H ? 0 : Math.min(0, Math.max(H - ph, 0.4 * H - ey * s));
+  const topOfHead = oy + Math.max(0, fy - 0.35 * fh) * s;
+  return { css: `background-color:#121215;background-size:${pw.toFixed(1)}px ${ph.toFixed(1)}px;background-position:${ox.toFixed(1)}px ${oy.toFixed(1)}px;background-repeat:no-repeat`, scale: s, faceShare: (fh * s) / H, eyeAt: (oy + ey * s) / H, headTop: topOfHead, left: ox, width: pw };
 }
 
 // ───── AIR's virtual camera (spec 7) ─────

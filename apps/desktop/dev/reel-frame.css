@@ -26,6 +26,9 @@ body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); c
 /* Type */
 .d132 { font: 700 132px/.95 Inter, sans-serif; letter-spacing: -.04em; }
 .d96 { font: 700 96px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.d72 { font: 700 72px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.d60 { font: 700 60px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.d56 { font: 700 56px/.95 Inter, sans-serif; letter-spacing: -.04em; }
 .d64 { font: 700 64px/.95 Inter, sans-serif; letter-spacing: -.04em; }
 .wd { display: inline-block; white-space: pre; padding: .12em .06em .22em 0; margin: -.12em -.06em -.22em 0; }
 .m { font: 500 16px/1 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
@@ -62,7 +65,9 @@ body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); c
 .ch-prog b { position: absolute; left: 0; top: 0; width: 100%; height: 2px; transform-origin: 0 50%; transform: scaleX(0); background: var(--muted); }
 .ch-prog b.cur { background: var(--rose); }
 .chrome.over .ch-tag, .chrome.over .ch-tc { padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); margin: -9px -11px; }
-.chrome.over .ch-sub { background: var(--bg); top: 100px; }
+.chrome.over .ch-sub { background: var(--bg); top: 984px; left: 262px; }
+/* full-bleed scenes: the chapter tag and timecode sit on the bottom row above the progress hairline, clear of the graphics' own headers */
+.chrome.over .ch-tag, .chrome.over .ch-tc { top: 992px; }
 
 /* Texture: feTurbulence grain over the whole viewport, 3.5 %, the top layer of every scene. */
 .grain { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 100; pointer-events: none; opacity: .035;
