@@ -36,6 +36,16 @@ const LOOP_CUES = [
   [15.0, 'riser-1.mp3', -17], [78.1, 'glitch-0.mp3', -15],
 ];
 
+/** The v2 loop reel's cues (dev/showreel-loop2.cjs): a whoosh as each crossover begins (the outgoing frame leaves over
+ *  its first 600 ms), ticks as the retyped pile grows and as the studio is edited. */
+const LOOP2_CUES = [
+  ...[1.5, 7.5, 9.5, 11.5, 13.5, 16.9, 17.5, 21.5, 27.5, 28.83, 30.17, 31.5, 32.83, 34.17, 35.5, 41.5, 43.5, 49.5, 51.5, 53.5, 57.5, 59.5, 61.5, 63.5, 69.5, 73.5, 76.5]
+    .map((t, k) => [t - 0.07, W[k % W.length], k % 3 ? -14 : -12]),
+  ...[0, 1, 2, 3, 4, 5, 6].map((k) => [3.5 + k * 0.04, k % 2 ? 'glitch-1.mp3' : 'glitch-0.mp3', -24]),
+  ...[0.7, 1.5, 3.1, 4.0, 5.6, 6.2, 7.3, 7.8].map((t, k) => [63.5 + t * (6 / 8.4), k % 2 ? 'glitch-1.mp3' : 'glitch-0.mp3', -17]),
+  [15.0, 'riser-1.mp3', -17], [78.1, 'glitch-0.mp3', -15],
+];
+
 function mix(picture, music, sfxDir, out, cues = V7_CUES, end = 60, { loop = false } = {}) {
   const usable = sfxDir ? cues.filter(([, f]) => fs.existsSync(path.join(sfxDir, f))) : [];
   const args = ['-y', '-loglevel', 'error', '-i', picture, '-i', music];
@@ -49,4 +59,4 @@ function mix(picture, music, sfxDir, out, cues = V7_CUES, end = 60, { loop = fal
   return usable.length;
 }
 
-module.exports = { mix, V7_CUES, V8_CUES, LOOP_CUES };
+module.exports = { mix, V7_CUES, V8_CUES, LOOP_CUES, LOOP2_CUES };
