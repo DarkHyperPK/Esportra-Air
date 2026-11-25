@@ -28,19 +28,21 @@ function connect(H, ENGINE) {
 /**
  * The producer's data, a recorded PUBG MOBILE game and the Valorant Esportra import. Ends with Valorant chosen.
  * `opts.logo(i)` and `opts.photo(i, j)` give data URLs for team i's logo and its player j's photo; each is uploaded
- * through Air (`uploadImage`) and saved on the team or player, as the Teams/Players screen does.
+ * through Air (`uploadImage`) and saved on the team or player, as the Teams/Players screen does. `opts.names`/`opts.tags`
+ * replace the lobby's team names and tags (same order and length as NAMES).
  */
 async function prepare(h, opts = {}) {
   const { call, dev, roomState } = h;
+  const names = opts.names || NAMES, tags = opts.tags || TAGS;
   await call('chooseGame', ['valorant']); await call('finishOnboarding');
   await call('esportraSignIn', ['producer@example.com', 'correct horse battery']);
   await call('artDownload');
   await call('chooseGame', ['pubgm']); // PUBG MOBILE players have in-game names, not Riot IDs
   const upload = async (url) => (url ? call('uploadImage', [url]) : '');
   const logos = [];
-  for (const [i, n] of NAMES.entries()) { logos[i] = await upload(opts.logo?.(i)); await call('saveTeam', [{ name: n, tag: TAGS[i], color: COLORS[i % COLORS.length], logo: logos[i] }]); }
+  for (const [i, n] of names.entries()) { logos[i] = await upload(opts.logo?.(i)); await call('saveTeam', [{ name: n, tag: tags[i], color: COLORS[i % COLORS.length], logo: logos[i] }]); }
   let snap = await call('snapshot');
-  for (const t of snap.library.teams) { const i = NAMES.indexOf(t.name); for (const [j, p] of ['ACE', 'ROOK', 'VEX', 'KAI'].entries()) await call('savePlayer', [{ name: `${TAGS[i]}_${p}`, realName: '', gameId: `${TAGS[i]}_${p}`, photo: await upload(opts.photo?.(i, j)), role: '', teamId: t.id }]); }
+  for (const t of snap.library.teams) { const i = names.indexOf(t.name); if (i < 0) continue; for (const [j, p] of ['ACE', 'ROOK', 'VEX', 'KAI'].entries()) await call('savePlayer', [{ name: `${tags[i]}_${p}`, realName: '', gameId: `${tags[i]}_${p}`, photo: await upload(opts.photo?.(i, j)), role: '', teamId: t.id }]); }
   await call('createEvent', ['Air Showcase Cup']);
   snap = await call('snapshot');
   const ev = snap.events.find((e) => e.name === 'Air Showcase Cup');
@@ -49,7 +51,7 @@ async function prepare(h, opts = {}) {
   await call('lobbyCreate', [{ eventId: ev.id, game: 'pubgm', title: 'Group A · Day 2', games: 6 }]);
   snap = await call('snapshot');
   const lobby = snap.lobbies[0], code = lobby.code;
-  await call('lobbyTeams', [lobby.id, NAMES.map((n) => snap.library.teams.find((t) => t.name === n).id)]);
+  await call('lobbyTeams', [lobby.id, names.map((n) => snap.library.teams.find((t) => t.name === n).id)]);
   await call('lobbyUpdate', [lobby.id, { stage: 'Group stage', games: ['Erangel', 'Miramar', 'Sanhok', 'Erangel', 'Vikendi', 'Rondo'].map((map) => ({ map })) }]);
   await call('lobbySelect', [lobby.id]);
   for (let i = 0; i < 120 && !(await call('snapshot')).packs?.some((p) => p.game === 'pubgm' && p.state === 'ready'); i++) await sleep(500);
