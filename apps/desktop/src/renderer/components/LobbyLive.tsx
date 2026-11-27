@@ -18,6 +18,12 @@ import type { PageProps, Run } from '../App.tsx';
 import { GraphicList, type Item, type Phase } from './ControlPanel.tsx';
 import { Composite, Preview } from './Preview.tsx';
 import { Results } from '../screens/LobbyScreen.tsx';
+import { MatchStrip } from './br-run/MatchStrip.tsx';
+import { ProvisionalPanel } from './br-run/ProvisionalPanel.tsx';
+import { Adjustments } from './br-run/Adjustments.tsx';
+import { actionFor, isTyping } from '../../shared/keymap.ts';
+import { currentMatch } from '../../shared/br-run.ts';
+import { gameState } from '../../shared/br.ts';
 
 const HUD_ID = 'brhud';
 
@@ -188,28 +194,43 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
   const [results, setResults] = useState(false);
   const [sources, setSources] = useState(false);
   const [data, setData] = useState(false);
+  const [review, setReview] = useState<number | null>(null);
+  const [adjust, setAdjust] = useState(false);
   const [view, setView] = useState<'control' | 'insights'>('control');
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setResults(false); setSources(false); setData(false); }
+      if (e.key === 'Escape') { setResults(false); setSources(false); setData(false); setReview(null); setAdjust(false); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); setView((v) => (v === 'control' ? 'insights' : 'control')); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // Ctrl+Enter confirms the provisional match (the key comes from the keymap, so it can be rebound).
+  const confirmId = l?.games.find((g) => gameState(g) === 'provisional')?.id ?? null;
+  useEffect(() => {
+    if (!l || !confirmId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e.target as HTMLElement) || actionFor(s.keymap, e) !== 'confirm') return;
+      e.preventDefault();
+      void run(async () => { await air.lobbyConfirm(l.id, confirmId); });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [l?.id, confirmId, s.keymap, run]);
   if (!l) return <div className="cp"><div className="notice">No lobby on the graphics. <button className="btn fix" onClick={() => go('ready')}>Choose a lobby in Events</button></div></div>;
   const game = gameOf(l.game);
   const word = game?.words?.game ?? 'Match';
   const items = lobbyItems(s, l);
   const inPhase = items.filter((x) => x.phase === phase);
   const sel = items.find((x) => x.id === selected && x.phase === phase) ?? inPhase.find((x) => x.state === 'onair') ?? inPhase[0] ?? null;
-  const played = l.games.filter((g) => g.results?.length).length;
-  const next = l.games.find((g) => !g.results?.length) ?? null;
+  const played = l.games.filter((g) => gameState(g) === 'confirmed' && g.results?.length).length;
+  const next = currentMatch(l);
   const top = standings(l)[0];
   const leader = top ? l.teams.find((t) => t.id === top.team) : null;
   const port = s.engine.port ?? 0;
   return (
     <div className="cp">
+      <MatchStrip s={s} run={run} l={l} review={() => setReview(l.games.find((g) => gameState(g) === 'provisional')?.n ?? null)} />
       <div className="cp-bar">
         <div className="cp-teams">
           <div className="seg" role="group" aria-label="View">
@@ -227,6 +248,7 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
         <div className="row-gap">
           <button className={`btn small pcob-btn ${s.pcob.state}`} title="Read the game from the PUBG MOBILE observer client (PCOB)" onClick={() => setData(true)}><i className="dot" />Game data · {pcobLabel(s)}</button>
           <button className="btn small" title="Places and elims per match: from the game, or typed" onClick={() => setResults(true)}>Results</button>
+          <button className="btn small" title="Points added or taken away, with a reason" onClick={() => setAdjust(true)}>Adjustments{(l.adjustments?.length ?? 0) > 0 ? ` · ${l.adjustments!.length}` : ''}</button>
           <button className="btn small" onClick={() => setSources(true)}>Sources</button>
           <span className="br-auto t-sm" title="Runs the lobby's Rundown (Events › lobby › Rundown) from the game"><Switch on={showOf(l).autopilot} label="Autopilot" onChange={(v) => void run(() => air.lobbyShow(l.id, { autopilot: v }))} />Autopilot</span>
           {s.lobbyOnAir && <button className="btn small" onClick={() => void run(() => air.lobbyTake(l.id, null))}>Clear full screen</button>}
@@ -260,6 +282,8 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
           </div>
         </div>
       )}
+      {review !== null && <ProvisionalPanel s={s} run={run} l={l} n={review} close={() => setReview(null)} edit={() => { setReview(null); setResults(true); }} />}
+      {adjust && <Adjustments run={run} l={l} close={() => setAdjust(false)} />}
       {sources && <Sources s={s} l={l} close={() => setSources(false)} />}
       {data && <PcobPanel s={s} run={run} l={l} close={() => setData(false)} />}
     </div>

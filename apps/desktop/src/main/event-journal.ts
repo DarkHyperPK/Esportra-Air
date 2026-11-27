@@ -130,6 +130,8 @@ export function replay(lines: JournalLine[]): Replay {
       for (const n of Object.keys(x.results)) x.results[Number(n)] = x.results[Number(n)]!.filter((r) => ids.has(r.team));
     } else if (l.kind === 'result.set' || (l.kind === 'result.feed' && d.applied === true)) {
       x.results[Number(d.game)] = rows(d.results);
+    } else if ((l.kind === 'match.confirm' || l.kind === 'match.edit') && Array.isArray(d.results)) {
+      x.results[Number(d.game)] = rows(d.results);
     } else if (l.kind === 'result.clear') {
       delete x.results[Number(d.game)];
     }

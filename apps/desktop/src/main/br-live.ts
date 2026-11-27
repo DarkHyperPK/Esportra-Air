@@ -6,7 +6,9 @@
 // and the producer's edits win (src/main/br-lobbies.ts keeps the game's own copy).
 import type { Lobby } from '../shared/api.ts';
 import { PCOB_ROUTES, finalResults, readCircle, readGlobal, readInGame, readKills, readPlayers, readTeams, seatTeams, toBrLive, type BrLive, type PcobCircle, type PcobGlobal, type PcobKill, type PcobPlayer, type PcobTeamList } from '../shared/pcob.ts';
-import { PCOB_OFF, localHost, type PcobStatus } from '../shared/pcob-status.ts';
+import { NO_DATA_MS, PCOB_OFF, localHost, type PcobStatus } from '../shared/pcob-status.ts';
+import type { GameChecks, MatchState } from '../shared/br.ts';
+import { gameChecks, type BrCheckpoint } from '../shared/br-run.ts';
 import { MVP_WEIGHTS, mvpRating, statOf, type GameFeed } from '../shared/br-stats.ts';
 import { MOMENT_SECONDS, showOf, type BrMomentKind, type BrMomentShown } from '../shared/br-rundown.ts';
 import { standings } from '../shared/br.ts';
@@ -16,8 +18,14 @@ export interface BrLiveContext {
   lobby: () => Lobby | null;
   /** Writes fields into the lobby's room. */
   patch: (code: string, fields: Record<string, unknown>) => Promise<void>;
-  /** Saves a finished game (results may be null when not every team got a place). */
-  save: (lobbyId: string, game: number, results: Array<{ team: string; place: number; elims: number }> | null, feed: GameFeed) => void;
+  /** Saves a finished game as provisional (results may be null when not every team got a place; `draft` then has what the game gave). */
+  save: (lobbyId: string, game: number, results: Array<{ team: string; place: number; elims: number }> | null, feed: GameFeed, extra: { draft: Array<{ team: string; place: number | null; elims: number }>; checks: GameChecks; at: number }) => void;
+  /** The match Air saves into: the armed one (or the one already live), by number. Nothing armed: the data is only kept in memory. */
+  target: (lobby: Lobby) => { n: number; state: MatchState } | null;
+  /** The feed's match went live (a game started in the armed match), or a winner is known and it is finishing. */
+  state: (lobbyId: string, n: number, to: 'live' | 'finishing', at: number) => void;
+  /** Live state saved every 2 s (null clears it once the match is saved or the feed stops). */
+  checkpoint?: (cp: Omit<BrCheckpoint, 'matchId' | 'attempt'> | null) => void;
   /** Teams/Players learns each seated player's OpenID. */
   learn: (lobbyId: string, players: Array<{ team: string; name: string; openId: string }>) => void;
   /** Moments for the lobby's Rundown and autopilot. */
@@ -66,6 +74,11 @@ export class BrLiveFeed {
   private saved = false;
   private said = new Set<string>();
   private shownAt = 0;
+  // Verified-data rules (27 Nov): when a number last changed, the last checkpoint, and a restart to resume from.
+  private signature = '';
+  private lastChange: number | null = null;
+  private lastCp = 0;
+  private resumeCp: Omit<BrCheckpoint, 'matchId' | 'attempt'> | null = null;
   // Moments over the HUD: one at a time, each for MOMENT_SECONDS, the rest wait their turn.
   private queue: BrMomentShown[] = [];
   private current: BrMomentShown | null = null;
@@ -99,6 +112,14 @@ export class BrLiveFeed {
   private stop() {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null; this.base = null; this.inGame = false;
+    this.ctx.checkpoint?.(null);
+  }
+
+  /** After a restart: the next game this feed sees in that live match carries on from the checkpoint (placed teams, moments shown). */
+  resume(cp: Omit<BrCheckpoint, 'matchId' | 'attempt'> | null) {
+    this.resumeCp = cp;
+    // Already reading that match (Game data connected before Resume was pressed): restore its memory now.
+    if (cp && this.game === cp.n && this.inGame && !this.saved) { this.placed = new Set(cp.placed); this.said = new Set(cp.moments); this.resumeCp = null; }
   }
 
   get live() { return this.status.state === 'live'; }
@@ -146,9 +167,12 @@ export class BrLiveFeed {
       }
       if (this.ctx.recording?.()) await this.readRest(inGame, slow);
       this.status = { ...this.status, lastAt: this.now, error: null };
+      if (inGame) this.noteChange();
       await this.step(inGame);
+      this.watchData();
     } catch (e) {
       this.status = { ...this.status, state: 'error', error: e instanceof Error ? e.message.replace(/^fetch failed$/, 'No answer from the observer PC') : String(e) };
+      this.watchData();
       this.ctx.changed();
     } finally {
       this.busy = false;
@@ -169,9 +193,11 @@ export class BrLiveFeed {
   private async step(inGame: boolean) {
     const lobby = this.ctx.lobby();
     if (inGame && !this.inGame) this.startGame(lobby);
-    if (!inGame && this.inGame) { this.ctx.air?.({ name: 'game.end.detected', why: 'isingame false' }); await this.endGame(lobby, 'left'); this.inGame = false; }
+    if (!inGame && this.inGame) { this.leftGame(lobby); this.inGame = false; }
     if (!inGame) { this.setState('waiting'); return; }
     this.setState('live');
+    // A game is on with nothing armed: keep reading, and adopt the match the moment the producer arms it.
+    if (lobby && this.game === null) this.attach(lobby);
     if (!lobby || this.game === null) return;
     const seats = seatTeams(this.teams.teams, this.players, lobby.teams.map((t) => ({ id: t.id, name: t.name, tag: t.tag, players: t.players, openIds: t.openIds })), this.seats(lobby));
     const slots = this.slots(lobby, seats);
@@ -206,41 +232,134 @@ export class BrLiveFeed {
     const results = finalResults(this.players, this.teams, seats);
     if ((this.teams.finishedStart || results) && this.finishedAt === null) {
       this.finishedAt = this.now;
+      this.status = { ...this.status, noWinner: false };
+      this.ctx.state(lobby.id, this.game, 'finishing', this.now);
       const win = results?.find((r) => r.place === 1);
       this.ctx.air?.({ name: 'game.end.detected', why: results ? (this.teams.finishedStart ? 'finishedStart and every place' : 'every place') : 'finishedStart', winner: win?.team ?? null });
       if (win) this.moment('wwcd', { team: win.team }, 'wwcd');
     }
     if (this.finishedAt !== null && !this.saved && this.now - this.finishedAt >= SETTLE) await this.endGame(lobby, 'finished');
+    else this.checkpoint(lobby);
   }
+
+  /** PCOB left the game. With a winner the match saves now; without one Air only asks whether to remake (the producer decides). */
+  private leftGame(lobby: Lobby | null) {
+    this.ctx.air?.({ name: 'game.end.detected', why: 'isingame false', winner: this.finishedAt !== null });
+    if (this.finishedAt !== null) { void this.endGame(lobby, 'left'); return; }
+    if (this.game === null) return;
+    this.status = { ...this.status, noWinner: true };
+    this.ctx.log(`Game data: the game ended before a winner. Remake Match ${this.game}? (Air never remakes by itself)`);
+    this.ctx.changed();
+  }
+
+  /** Records a change in the game's own numbers (PCOB pushes changed data every 2 s). */
+  private noteChange() {
+    const sig = JSON.stringify([this.players.map((p) => [p.uid, p.state, p.kills, p.damage, p.rank, Math.round(p.health)]), this.teams.teams.map((t) => [t.teamId, t.kills, t.alive]), this.kills.length, this.circle?.index, this.circle?.status, this.teams.gameTime]);
+    if (sig !== this.signature || this.lastChange === null) { this.signature = sig; this.lastChange = this.now; }
+  }
+
+  /** The "No data for 10 s" warning, only while a game is on; it never ends the match. */
+  private watchData() {
+    const on = this.inGame && this.game !== null;
+    const noData = on && this.lastChange !== null && this.now - this.lastChange >= NO_DATA_MS;
+    if (noData !== this.status.noData || (on && this.status.lastChangeAt !== this.lastChange)) {
+      this.status = { ...this.status, noData, lastChangeAt: on ? this.lastChange : null };
+      this.ctx.changed();
+    }
+  }
+
+  private checkpoint(lobby: Lobby) {
+    if (this.game === null || this.saved || this.now - this.lastCp < 2000) return;
+    this.lastCp = this.now;
+    this.ctx.checkpoint?.({ lobbyId: lobby.id, n: this.game, placed: [...this.placed], kills: this.kills.length, moments: [...this.said], lastDataAt: this.lastChange, savedAt: this.now });
+  }
+
+  /** Points the feed at the armed match (or the live one it resumes); false when nothing is armed. */
+  private attach(lobby: Lobby): boolean {
+    const t = this.ctx.target(lobby);
+    if (!t) return false;
+    this.game = t.n;
+    this.status = { ...this.status, game: t.n, unarmed: false };
+    const cp = this.resumeCp;
+    if (cp && cp.lobbyId === lobby.id && cp.n === t.n && t.state !== 'armed') {
+      // Carrying on after a restart: the teams already out and the moments already shown stay as they were.
+      this.placed = new Set(cp.placed); this.said = new Set(cp.moments); this.resumeCp = null;
+      this.ctx.log(`Game data: resumed match ${t.n} of ${lobby.title} (${cp.placed.length} teams out, ${cp.moments.length} moments already shown)`);
+      return true;
+    }
+    if (t.state === 'armed') this.ctx.state(lobby.id, t.n, 'live', this.now);
+    else { this.status = { ...this.status, restarted: true }; this.ctx.log(`Game data: a new game started while Match ${t.n} was still live. Remake it if the earlier game was thrown away.`); }
+    const game = lobby.games.find((g) => g.n === t.n);
+    this.ctx.log(`Game data: match ${t.n} of ${lobby.title} started${game?.map ? ` · ${game.map}` : ''}`);
+    this.moment('game.start', { game: t.n }, 'start');
+    // Match point: the team on top is already at the line, so a win takes the title.
+    const mp = lobby.scoring.matchPoint, top = standings(lobby)[0];
+    if (mp && top && top.total >= mp) this.show(lobby, { kind: 'match.point', team: top.team });
+    return true;
+  }
+
+  /** The producer remade the match: this attempt's memory is cleared (placed teams, moments) and the next game starts clean. */
+  remade() {
+    this.lastOut = null; this.placed = new Set(); this.finishedAt = null; this.saved = false; this.said = new Set();
+    this.queue = []; this.current = null; this.leader = null; this.last = null; this.resumeCp = null;
+    this.signature = ''; this.lastChange = null;
+    this.game = null;
+    this.status = { ...this.status, game: null, noWinner: false, restarted: false, noData: false, lastChangeAt: null, unarmed: false };
+    this.ctx.checkpoint?.(null);
+    this.ctx.changed();
+  }
+
+  /** What the feed has read of the current game so far, for an attempt that is kept (a remake). Null before any data. */
+  partialFeed(lobby: Lobby): GameFeed | null {
+    if (!this.players.length) return null;
+    const seats = this.seatsOf(lobby);
+    return { source: 'pcob', gameId: this.teams.gameId || this.gameId, stats: this.players.map((p) => statOf(p, seats.get(p.teamId) ?? null)), kills: this.kills, circles: this.global?.circles ?? [], plane: this.global?.plane ?? null, savedAt: this.now };
+  }
+
+  /** The producer ends the match: what the feed has becomes the provisional results; teams without a place are typed. False without data. */
+  async endNow(): Promise<boolean> {
+    const lobby = this.ctx.lobby();
+    if (!lobby || this.game === null || !this.players.length || this.saved) return false;
+    await this.endGame(lobby, 'producer');
+    return true;
+  }
+
+  private seatsOf(lobby: Lobby) { return seatTeams(this.teams.teams, this.players, lobby.teams.map((t) => ({ id: t.id, name: t.name, tag: t.tag, players: t.players, openIds: t.openIds })), this.seats(lobby)); }
 
   private startGame(lobby: Lobby | null) {
     this.inGame = true;
     this.ctx.air?.({ name: 'game.start', lobby: lobby?.title ?? null });
-    // The poll that saw the game start already read this game's players, teams and feed: keep them.
-    this.lastOut = null; this.placed = new Set(); this.finishedAt = null; this.saved = false; this.said = new Set();
-    this.queue = []; this.current = null; this.leader = null; this.last = null;
-    // The next match without results; none left means the feed shows live data but saves nothing.
-    const next = lobby?.games.find((g) => !g.results?.length) ?? null;
-    this.game = next?.n ?? null;
-    this.gameId = '';
-    this.status.game = this.game;
-    if (!lobby) this.ctx.log('Game data: a game started, but no lobby is on the graphics');
-    else if (!next) this.ctx.log(`Game data: a game started, but every match of ${lobby.title} has results. Add a match to save it.`);
-    else {
-      this.ctx.log(`Game data: match ${next.n} of ${lobby.title} started${next.map ? ` · ${next.map}` : ''}`);
-      this.moment('game.start', { game: next.n }, 'start');
-      // Match point: the team on top is already at the line, so a win takes the title.
-      const mp = lobby.scoring.matchPoint, top = standings(lobby)[0];
-      if (mp && top && top.total >= mp) this.show(lobby, { kind: 'match.point', team: top.team });
+    this.signature = ''; this.lastChange = null; this.lastCp = 0;
+    // A new PCOB game while the same match is still live (no remake): the memory stays until the producer remakes.
+    const held = lobby ? this.ctx.target(lobby) : null;
+    if (lobby && held && held.state !== 'armed' && this.game === held.n && !this.saved) {
+      this.status = { ...this.status, restarted: true, noWinner: false };
+      this.ctx.log(`Game data: a new game started while Match ${held.n} was still live. Remake it if the earlier game was thrown away.`);
+      return;
     }
+    // The poll that saw the game start already read this game's players, teams and feed: keep them.
+    const keepMemory = !!(this.resumeCp && lobby && held && this.resumeCp.lobbyId === lobby.id && this.resumeCp.n === held.n);
+    if (!keepMemory) { this.lastOut = null; this.placed = new Set(); this.said = new Set(); }
+    this.finishedAt = null; this.saved = false;
+    this.queue = []; this.current = null; this.leader = null; if (!keepMemory) this.last = null;
+    this.game = null;
+    this.gameId = '';
+    this.status = { ...this.status, game: null, unarmed: false, noWinner: false, restarted: false };
+    if (!lobby) { this.ctx.log('Game data: a game started, but no lobby is on the graphics'); return; }
+    if (!this.attach(lobby)) {
+      this.status = { ...this.status, unarmed: true };
+      this.ctx.log('Game data: a game started but no match is armed. Arm a match to save it; the data is only kept in memory until then.');
+    }
+    this.ctx.changed();
   }
 
   /** A new kill leader (five or more, alone on top), at most once a minute. */
   private killLeader(lobby: Lobby, players: Array<{ team: string; name: string; elims: number }>) {
     const [a, b] = players;
-    if (!a || a.elims < 5 || (b && b.elims >= a.elims) || this.leader?.name === a.name) return;
+    if (!a || a.elims < 5 || (b && b.elims >= a.elims) || this.leader?.name === a.name || this.said.has(`leader:${a.name}`)) return;
     if (this.leader && this.now - this.leader.at < 60_000) return;
     this.leader = { name: a.name, at: this.now };
+    this.said.add(`leader:${a.name}`);
     this.show(lobby, { kind: 'kill.leader', team: a.team, name: a.name, kills: a.elims });
   }
 
@@ -258,22 +377,21 @@ export class BrLiveFeed {
     return this.current;
   }
 
-  /** Saves the game once: on the settled end, or with what Air has when PCOB leaves the game early. */
-  private async endGame(lobby: Lobby | null, why: 'finished' | 'left') {
+  /** Saves the game once, as provisional: on the settled end, with what Air has when PCOB leaves a finished game, or when the producer ends it. */
+  private async endGame(lobby: Lobby | null, why: 'finished' | 'left' | 'producer') {
     if (this.saved || !lobby || this.game === null || !this.players.length) return;
     this.saved = true;
-    const seats = seatTeams(this.teams.teams, this.players, lobby.teams.map((t) => ({ id: t.id, name: t.name, tag: t.tag, players: t.players, openIds: t.openIds })), this.seats(lobby));
+    const seats = this.seatsOf(lobby);
     const results = finalResults(this.players, this.teams, seats);
-    const feed: GameFeed = {
-      source: 'pcob', gameId: this.teams.gameId || this.gameId,
-      stats: this.players.map((p) => statOf(p, seats.get(p.teamId) ?? null)),
-      kills: this.kills, circles: this.global?.circles ?? [], plane: this.global?.plane ?? null, savedAt: this.now,
-    };
-    this.ctx.save(lobby.id, this.game, results, feed);
+    const feed = this.partialFeed(lobby)!;
+    const draft = [...seats].map(([pcobId, team]) => ({ team, place: Math.max(0, ...this.players.filter((p) => p.teamId === pcobId).map((p) => p.rank)) || null, elims: this.teams.teams.find((t) => t.teamId === pcobId)?.kills ?? this.players.filter((p) => p.teamId === pcobId).reduce((n, p) => n + p.kills, 0) }));
+    const checks = gameChecks(this.players, this.teams, seats, lobby.teams);
+    this.ctx.save(lobby.id, this.game, results, feed, { draft, checks, at: this.now });
+    this.ctx.checkpoint?.(null);
     this.ctx.learn(lobby.id, feed.stats.filter((s) => s.team && s.openId).map((s) => ({ team: s.team!, name: s.name, openId: s.openId })));
-    this.status.saved = { game: this.game, at: this.now };
-    this.ctx.air?.({ name: 'results.saved', game: this.game, why, results: results ?? null });
-    this.ctx.log(results ? `Game data: match ${this.game} saved from the game (places, kills and every player's numbers)` : `Game data: match ${this.game} ended ${why === 'left' ? 'early' : ''} without a place for every team; its players' numbers are saved, type the results`);
+    this.status = { ...this.status, saved: { game: this.game, at: this.now }, noWinner: false, restarted: false, noData: false };
+    this.ctx.air?.({ name: 'results.saved', game: this.game, why, results: results ?? null, state: 'provisional' });
+    this.ctx.log(results ? `Game data: match ${this.game} saved from the game as provisional (places, kills and every player's numbers). Confirm it to make it official.` : `Game data: match ${this.game} ended ${why === 'finished' ? '' : 'early '}without a place for every team; it is provisional, type the missing places.`);
     this.moment('game.end', { game: this.game, results: !!results }, 'end');
     this.ctx.changed();
   }
@@ -287,7 +405,7 @@ export class BrLiveFeed {
   }
 
   private setState(state: PcobStatus['state']) {
-    if (this.status.state !== state) { this.status = { ...this.status, state, ...(state === 'waiting' ? { game: null } : {}) }; this.ctx.changed(); }
+    if (this.status.state !== state) { this.status = { ...this.status, state, ...(state === 'waiting' ? { game: null, unarmed: false, noData: false, lastChangeAt: null } : {}) }; this.ctx.changed(); }
   }
 
   private slots(lobby: Lobby, seats: Map<number, string>) {

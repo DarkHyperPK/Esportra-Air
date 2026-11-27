@@ -1,41 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { Store } from '../src/main/store.ts';
-import { Lobbies } from '../src/main/br-lobbies.ts';
-import { BrLiveFeed, type BrMoment } from '../src/main/br-live.ts';
-import { FakePcob } from '../dev/fake-pcob.ts';
+import { type BrMoment } from '../src/main/br-live.ts';
+import { kit } from './br-kit.ts';
 
 // The PUBG MOBILE observer feed end to end (24 Nov): Air reads the stand-in PCOB (the official API's routes and
 // shapes) only after consent and only on the local network, writes `brLive` while the game runs, and saves the
 // match by itself when it ends: places and team kills as the results, every player's numbers as the game's feed.
 // The producer's typed results win, the game's copy is kept, and a dropped connection recovers.
-const NAMES = ['NIGHT OWLS', 'CRIMSON FIVE', 'IRON PINE', 'DUNE RUNNERS', 'SILVER FOX', 'NORTH TIDE', 'BLUE HARBOR', 'STONE WOLVES', 'RED KESTREL', 'LOW ORBIT', 'WILD CARD', 'GREY MOUNTAIN', 'FERAL SIX', 'ECHO VALLEY', 'QUIET STORM', 'HIGH GROUND'];
-const tag = (i: number) => `T${String(i).padStart(2, '0')}`;
-const roster = (i: number) => ['ACE', 'ROOK', 'VEX', 'KAI'].map((p) => `${tag(i)}_${p}`);
-
 async function setup(opts: { generic?: boolean } = {}) {
-  const store = new Store(join(mkdtempSync(join(tmpdir(), 'pcob-')), 'air.json'));
-  store.data.events = [{ id: 'ev', name: 'Cup', stages: [], logo: '', logoLight: '', accent: '#ffb60e', talent: [], sponsors: [], tournamentId: null }];
-  store.data.teams = NAMES.map((name, i) => ({ id: `t${i}`, name, tag: tag(i), color: '#ffffff', logo: '' }));
-  store.data.players = NAMES.flatMap((_, i) => roster(i).map((n, k) => ({ id: `p${i}-${k}`, name: n, realName: '', gameId: n, photo: '', role: '', teamId: `t${i}` })));
-  const patches: Array<{ code: string; fields: any }> = [];
-  const lobbies = new Lobbies({ store, patch: async (code, fields) => void patches.push({ code, fields }), live: () => false, log: () => {}, changed: () => {} });
-  const l = await lobbies.create({ eventId: 'ev', game: 'pubgm', title: 'Group A', games: 3, maps: ['Erangel', 'Miramar', 'Sanhok'] });
-  lobbies.setTeams(l.id, NAMES.map((_, i) => `t${i}`));
-  let now = 1_000_000;
-  const pcob = await new FakePcob({ teams: NAMES.map((name, i) => ({ name, players: roster(i) })), genericNames: opts.generic ?? false, length: 900, now: () => now }).listen();
-  const moments: Array<[BrMoment, Record<string, unknown>]> = [];
-  const logs: string[] = [];
-  const feed = new BrLiveFeed({
-    lobby: () => lobbies.selected, patch: async (code, fields) => void patches.push({ code, fields }),
-    save: (id, n, results, f) => lobbies.saveFeed(id, n, results, f), learn: (id, seen) => lobbies.learnOpenIds(id, seen),
-    event: (n, d) => void moments.push([n, d]), log: (t) => logs.push(t), changed: () => {}, now: () => now, manual: true,
-  });
-  const step = async (seconds: number) => { now += seconds * 1000; await feed.tick(); };
-  return { store, lobbies, lobby: () => lobbies.find(l.id), patches, pcob, feed, step, moments, logs, close: () => pcob.close() };
+  const k = await kit(opts);
+  return { ...k, pcob: k.pcob, close: k.close, arm: (n: number) => k.run.arm(k.lobbyId, k.game(n).id!) };
 }
 
 test('consent first, local network only', async () => {
@@ -55,10 +29,12 @@ test('a whole game: live brLive, moments, then results and every player saved by
   const s = await setup();
   try {
     s.feed.connect(`127.0.0.1:${s.pcob.port}`, true);
+    s.arm(1);
     s.pcob.begin();
     await s.step(0);
     assert.equal(s.feed.status.state, 'live');
-    assert.equal(s.feed.status.game, 1, 'the first match without results');
+    assert.equal(s.feed.status.game, 1, 'the armed match');
+    assert.equal(s.game(1).state, 'live');
     let sawLive = false, sawOut = false;
     const shown = new Map<string, any>();
     for (let t = 0; t < s.pcob.gameEnd + 40; t += 2) {
@@ -80,6 +56,8 @@ test('a whole game: live brLive, moments, then results and every player saved by
     assert.equal(s.feed.status.slots.filter((x) => x.seat).length, 16, 'every PCOB team seated by name');
     const g = s.lobby().games[0]!;
     assert.equal(g.source, 'pcob');
+    assert.equal(g.state, 'provisional', 'what the game gave is provisional, never official');
+    assert.equal(s.lobbies.find(s.lobbyId).games[0]!.results!.length, 16);
     assert.equal(g.results!.length, 16);
     assert.deepEqual(g.results!.map((r) => r.place), Array.from({ length: 16 }, (_, i) => i + 1));
     const kills = g.results!.reduce((n, r) => n + r.elims, 0);
@@ -91,7 +69,9 @@ test('a whole game: live brLive, moments, then results and every player saved by
     for (const m of ['game.start', 'plane', 'first.blood', 'team.out', 'final.teams', 'wwcd', 'game.end'] as BrMoment[]) assert.ok(names.includes(m), `moment ${m}`);
     assert.equal(names.filter((n) => n === 'wwcd').length, 1, 'WWCD once');
     assert.ok((s.store.data.players ?? []).every((p) => p.openId), 'Teams/Players learned every OpenID');
-    // The next game fills match 2.
+    // Confirm makes it official and arms match 2, which the next game fills.
+    s.run.confirm(s.lobbyId, g.id!);
+    assert.equal(s.game(2).state, 'armed');
     s.pcob.stop(); await s.step(1);
     s.pcob.begin(); await s.step(0);
     assert.equal(s.feed.status.game, 2);
@@ -105,6 +85,7 @@ test('generic PCOB names seat by players; the producer pairs the rest; typed res
     s.store.data.players!.filter((p) => p.teamId === 't0' || p.teamId === 't1').forEach((p) => { p.gameId = `${p.gameId}X`; });
     s.lobbies.refresh();
     s.feed.connect(`127.0.0.1:${s.pcob.port}`, true);
+    s.arm(1);
     s.pcob.begin(); await s.step(100);
     const slots = s.feed.status.slots;
     assert.equal(slots.length, 16);

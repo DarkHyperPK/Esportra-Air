@@ -121,6 +121,10 @@ export interface Lobby {
   pcobSeats?: Record<string, string>;
   /** What runs by itself (24 Nov): moments, the Rundown and autopilot, the post-game pick (src/shared/br-rundown.ts). */
   show?: Partial<import('./br-rundown.ts').BrShow>;
+  /** Days of matches (27 Nov): a broadcast session each; every match belongs to one. Filled in for older lobbies on load. */
+  days?: import('./br.ts').LobbyDay[];
+  /** Points added or taken away with a reason; they count in the official standings. */
+  adjustments?: import('./br.ts').Adjustment[];
   createdAt: number;
 }
 export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; templates: Record<string, string>; theme?: import('./br-screens.ts').BrTheme }
@@ -425,6 +429,8 @@ export interface Snapshot {
   selectedLobbyId: string | null;
   /** The full screen Air last took on the selected lobby's room (src/main/br-graphics.ts). */
   lobbyOnAir: string | null;
+  /** Air closed while a match was live (27 Nov): what Live offers to resume. */
+  brResume: import('./br-run.ts').BrResume | null;
   /** The lobby's autopilot: the graphic it runs now and the ones after it. */
   brAuto: import('./br-rundown.ts').BrAutoStatus;
   /** The match being played, as the observer feed last read it (Live › Insights › Now). */
@@ -635,6 +641,25 @@ export interface AirApi {
   pcobSeat(lobbyId: string, pcobTeamId: number, team: string | null): Promise<Snapshot>;
   /** Take one of the lobby's full screens on its room, or clear with null. */
   lobbyTake(id: string, screen: string | null): Promise<Snapshot>;
+  /** The run sheet (27 Nov): arm a match, remake, void with a reason, end it, confirm, edit a confirmed one with a reason. */
+  lobbyArm(lobbyId: string, matchId: string): Promise<Snapshot>;
+  lobbyDisarm(lobbyId: string): Promise<Snapshot>;
+  lobbyRemake(lobbyId: string, matchId: string): Promise<Snapshot>;
+  lobbyVoid(lobbyId: string, matchId: string, reason: string): Promise<Snapshot>;
+  lobbyEndMatch(lobbyId: string, matchId: string): Promise<Snapshot>;
+  lobbyConfirm(lobbyId: string, matchId: string): Promise<Snapshot>;
+  lobbyEditConfirmed(lobbyId: string, matchId: string, results: import('./br.ts').TeamResult[], reason: string): Promise<Snapshot>;
+  lobbyAdjust(lobbyId: string, team: string, points: number, reason: string): Promise<Snapshot>;
+  lobbyAdjustRemove(lobbyId: string, id: string): Promise<Snapshot>;
+  lobbyDayAdd(lobbyId: string, input: { date?: string; title?: string; opensAt?: string }): Promise<Snapshot>;
+  lobbyDayEdit(lobbyId: string, dayId: string, patch: { date?: string; title?: string; opensAt?: string; matchIds?: string[]; reopen?: boolean }): Promise<Snapshot>;
+  /** Start day: the checklist (go false), or start it and arm its first match (go true). */
+  lobbyDayStart(lobbyId: string, dayId: string, go?: boolean): Promise<import('../main/br-run.ts').DayStart>;
+  /** Close day: the summary and what stops it (close false), or close it (close true; refused while a match is open). */
+  lobbyDayClose(lobbyId: string, dayId: string, close?: boolean): Promise<import('./br-run.ts').DaySummary & { problems: string[] }>;
+  /** After a restart: carry on with the live match and the autopilot run that was in progress, or not. */
+  lobbyResume(): Promise<Snapshot>;
+  lobbyResumeDismiss(): Promise<Snapshot>;
   packAssets(game: string): Promise<Array<import('./game-assets.ts').GameAsset & { src: string; thumbSrc: string }>>;
   /** Forgets this match's autopilot progress so the rundown starts again from the first step. */
   autopilotRestart(): Promise<Snapshot>;

@@ -33,6 +33,9 @@ import { EventJournal } from './event-journal.ts';
 import { EventFiles } from './event-files.ts';
 import { BrGraphics, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
 import { BrLiveFeed } from './br-live.ts';
+import { BrRun } from './br-run.ts';
+import { gameState } from '../shared/br.ts';
+import { targetMatch } from '../shared/br-run.ts';
 import { PcobRecorder } from './pcob-recorder.ts';
 import { BrAutopilot } from './br-autopilot.ts';
 import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
@@ -168,6 +171,8 @@ export class Production extends EventEmitter {
   readonly brGraphics: BrGraphics;
   /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
   readonly brLive: BrLiveFeed;
+  /** The run sheet: arm, remake, void, end, confirm, edit, adjust, days, resume (src/main/br-run.ts). */
+  readonly brRun: BrRun;
   readonly pcobRecorder: PcobRecorder;
   readonly brAuto: BrAutopilot;
   readonly rehearsal: Rehearsal;
@@ -216,13 +221,17 @@ export class Production extends EventEmitter {
       templateGraphic: (id) => this.looks.templates.find((t) => t.id === id)?.graphic ?? null,
       eventName: (l) => deps.store.data.events.find((e) => e.id === l.eventId)?.name ?? '',
       event: (l) => deps.store.data.events.find((e) => e.id === l.eventId) ?? null,
+      persist: (shown) => { deps.store.data.lobbyShown = shown; deps.store.save(); },
     });
     // PUBG MOBILE live data (24 Nov): src/main/br-live.ts.
     this.pcobRecorder = new PcobRecorder({ dir: deps.recordingsDir ?? join(tmpdir(), 'Esportra Air recordings'), changed: () => this.emit('change'), now: deps.now });
     this.brLive = new BrLiveFeed({
       lobby: () => this.lobbies.selected,
       patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
-      save: (id, n, results, feed) => this.lobbies.saveFeed(id, n, results, feed),
+      save: (id, n, results, feed, extra) => this.lobbies.saveFeed(id, n, results, feed, extra),
+      target: (l) => { const g = targetMatch(l); return g ? { n: g.n, state: gameState(g) } : null; },
+      state: (id, n, to, at) => this.brRun.onFeedState(id, n, to, at),
+      checkpoint: (cp) => this.brRun.checkpoint(cp),
       learn: (id, seen) => this.lobbies.learnOpenIds(id, seen),
       event: (name, data) => this.brAuto.onMoment(name, data),
       log: (t) => this.log.add(t), changed: () => this.emit('change'),
@@ -236,6 +245,18 @@ export class Production extends EventEmitter {
       lobby: () => this.lobbies.selected,
       take: async (l, screen) => { await this.brGraphics.take(l, screen); this.emit('change'); },
       log: (t) => this.log.add(t), changed: () => this.emit('change'),
+      persist: (lobbyId, p) => { const d = deps.store.data; d.brAutopilot = { ...(d.brAutopilot ?? {}) }; if (p) d.brAutopilot[lobbyId] = p; else delete d.brAutopilot[lobbyId]; deps.store.save(); },
+    });
+    // What was running before Air closed: the on-air lobby graphic, and an autopilot run to offer again.
+    this.brGraphics.load(deps.store.data.lobbyShown);
+    this.brAuto.load(deps.store.data.brAutopilot?.[deps.store.data.selectedLobbyId ?? ''] ?? null);
+    // The run sheet (27 Nov): days, armed matches, confirm, remake, void, adjustments, checkpoints.
+    this.brRun = new BrRun({
+      lobbies: this.lobbies, store: deps.store, feed: this.brLive, journal: this.journal,
+      pcob: () => this.brLive.status, testRunning: () => !!this.gameLocked(),
+      user: () => deps.store.data.esportra?.email,
+      log: (t) => this.log.add(t), changed: () => this.emit('change'), now: deps.now,
+      autopilot: { pending: () => this.brAuto.pending, resume: () => this.brAuto.resume(), discard: () => this.brAuto.discard() },
     });
     this.eventFiles = new EventFiles({
       store: deps.store, journal: this.journal, version: deps.version, now: deps.now, debounceMs: deps.autoBackupMs,
@@ -1141,6 +1162,13 @@ export class Production extends EventEmitter {
     this.lobbies.setShow(id, (patch ?? {}) as Record<string, unknown>);
     if ((patch as Record<string, unknown> | null)?.autopilot === false) this.brAuto.stop();
   }
+  /** Arms a match (and puts its lobby on the graphics first: the feed writes into the selected lobby only). */
+  async lobbyArm(lobbyId: string, matchId: string) {
+    this.lobbies.find(lobbyId);
+    await this.lobbies.select(lobbyId);
+    this.brRun.arm(lobbyId, matchId);
+  }
+  async lobbyResume() { await this.lobbies.select(this.brRun.resumeOffer()?.lobbyId ?? this.deps.store.data.selectedLobbyId ?? null); await this.brRun.resume(); }
   async lobbyTake(id: string, screen: string | null) {
     const l = this.lobbies.find(id);
     // The producer's Take wins over whatever autopilot is running.
@@ -1997,6 +2025,7 @@ export class Production extends EventEmitter {
       packs: this.packsView(),
       lobbies: this.lobbies.list(),
       lobbyOnAir: this.lobbies.selected ? this.brGraphics.onAir(this.lobbies.selected) : null,
+      brResume: this.brRun.resumeOffer(),
       brAuto: this.brAuto.status(),
       pcobLive: this.brLive.live ? this.brLive.last : null,
       pcobRecording: this.pcobRecorder.view(),

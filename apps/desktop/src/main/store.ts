@@ -33,6 +33,11 @@ export interface Saved {
   /** The PCOB observer address last used (the consent is asked every time). */
   pcobHost?: string;
   selectedLobbyId?: string | null;
+  /** The live match's state, saved every 2 s while a battle royale match is live (27 Nov): a restart offers to resume it. */
+  brCheckpoint?: import('../shared/br-run.ts').BrCheckpoint | null;
+  /** Each lobby's autopilot run in progress, and the full screen each lobby room shows (so a restart knows). */
+  brAutopilot?: Record<string, import('./br-autopilot.ts').SavedAutopilot>;
+  lobbyShown?: Record<string, string | null>;
   owned: Owned;
   enginePort: number;
   /** The producer's rundown rows, per match (older saves hold edits and are migrated). Whether autopilot is on is never saved. */

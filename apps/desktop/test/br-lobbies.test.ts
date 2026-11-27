@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Lobbies } from '../src/main/br-lobbies.ts';
 import { Store } from '../src/main/store.ts';
+import { BrRun } from '../src/main/br-run.ts';
+import { PCOB_OFF } from '../src/shared/pcob-status.ts';
 
 function setup(live = false) {
   const store = new Store(join(mkdtempSync(join(tmpdir(), 'lobby-')), 'air.json'));
@@ -15,7 +17,8 @@ function setup(live = false) {
   const patches: Array<{ code: string; fields: any }> = [];
   const logs: string[] = [];
   const lobbies = new Lobbies({ store, patch: async (code, fields) => void patches.push({ code, fields }), live: () => live, log: (t) => logs.push(t), changed: () => {} });
-  return { store, lobbies, patches, logs };
+  const run = new BrRun({ lobbies, store, feed: { endNow: async () => false, remade: () => {}, partialFeed: () => null, resume: () => {} }, pcob: () => PCOB_OFF, log: () => {}, changed: () => {} });
+  return { store, lobbies, patches, logs, run };
 }
 
 test('a lobby is for a battle royale game; its teams follow Teams/Players', async () => {
@@ -36,22 +39,31 @@ test('a lobby is for a battle royale game; its teams follow Teams/Players', asyn
   assert.deepEqual(Lobbies.roomField(lobbies.find(l.id)).br.teams[1]!.photos, [], 'the room always has a list');
 });
 
-test('saving a result puts the standings in the selected lobby room; a cleared game drops out', async () => {
-  const { lobbies, patches, logs } = setup();
+test('saving a result is provisional; Confirm puts the standings in the selected lobby room; a cleared game drops out', async () => {
+  const { lobbies, patches, logs, run } = setup();
   const l = await lobbies.create({ eventId: 'ev', game: 'pubgm', games: 2 });
   lobbies.setTeams(l.id, ['t0', 't1', 't2']);
   const [a, b, c] = lobbies.find(l.id).teams.map((t) => t.id);
   lobbies.setResult(l.id, 1, [{ team: a, place: 2, elims: 6 }, { team: b, place: 1, elims: 1 }, { team: c, place: 3, elims: 0 }]);
   await new Promise((r) => setTimeout(r, 0));
-  const last = patches.at(-1)!;
+  let last = patches.at(-1)!;
   assert.equal(last.code, l.code);
-  assert.deepEqual(last.fields.br.standings.map((s: any) => [s.team, s.total]), [[a, 12], [b, 11], [c, 5]]);
-  assert.equal(last.fields.br.current, 2);
-  assert.match(logs.at(-1)!, /Team 0 leads on 12/);
-  assert.throws(() => lobbies.setResult(l.id, 2, [{ team: a, place: 1, elims: 0 }, { team: b, place: 1, elims: 0 }]), /both in place 1/);
-  lobbies.clearResult(l.id, 1);
+  assert.deepEqual(last.fields.br.standings.map((s: any) => s.total), [0, 0, 0], 'official standings do not count a provisional match');
+  assert.deepEqual(last.fields.br.provisional.standings.map((s: any) => [s.team, s.total]), [[a, 12], [b, 11], [c, 5]]);
+  assert.match(logs.at(-1)!, /provisional/);
+  run.confirm(l.id, lobbies.find(l.id).games[0]!.id!);
   await new Promise((r) => setTimeout(r, 0));
-  assert.equal(patches.at(-1)!.fields.br.played, 0);
+  last = patches.at(-1)!;
+  assert.deepEqual(last.fields.br.standings.map((s: any) => [s.team, s.total]), [[a, 12], [b, 11], [c, 5]]);
+  assert.equal(last.fields.br.provisional, null);
+  assert.equal(last.fields.br.current, 2);
+  assert.equal(last.fields.br.games[0].state, 'confirmed');
+  assert.throws(() => lobbies.setResult(l.id, 1, [{ team: a, place: 1, elims: 0 }]), /confirmed/, 'a confirmed match is edited with a reason');
+  assert.throws(() => lobbies.setResult(l.id, 2, [{ team: a, place: 1, elims: 0 }, { team: b, place: 1, elims: 0 }]), /both in place 1/);
+  lobbies.setResult(l.id, 2, [{ team: a, place: 1, elims: 0 }]);
+  lobbies.clearResult(l.id, 2);
+  assert.equal(lobbies.find(l.id).games[1]!.state, 'scheduled');
+  assert.throws(() => lobbies.clearResult(l.id, 1), /confirmed/);
 });
 
 test('a live lobby cannot be deleted', async () => {

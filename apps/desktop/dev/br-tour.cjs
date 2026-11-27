@@ -187,6 +187,8 @@ async function card(browser, title, sub, secs) {
   const order2 = [0, 2, 1, 6, 3, 4, 5, 8, 7, 12, 9, 10, 11, 13, 15, 14], el2 = [11, 5, 6, 4, 2, 3, 1, 2, 1, 0, 2, 1, 0, 1, 0, 0];
   await call('lobbyResult', [lobby.id, 1, order1.map((t, i) => ({ team: teams[t].id, place: i + 1, elims: el1[i] }))]);
   await call('lobbyResult', [lobby.id, 2, order2.map((t, i) => ({ team: teams[t].id, place: i + 1, elims: el2[i] }))]);
+  // Typed results are provisional until confirmed (27 Nov).
+  for (const n of [1, 2]) await call('lobbyConfirm', [lobby.id, (await call('snapshot')).lobbies[0].games[n - 1].id]);
 
   // 2 · HUD library: choose
   chapter('HUD library: choose');
@@ -321,7 +323,10 @@ async function card(browser, title, sub, secs) {
 
   // Three more matches (typed the same way), then the title.
   const more = [[2, 0, 1, 5, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], [0, 2, 3, 1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]];
-  for (const [k, o] of more.entries()) await call('lobbyResult', [lobby.id, 4 + k, o.map((t, i) => ({ team: teams[t].id, place: i + 1, elims: Math.max(0, 8 - i) }))]);
+  for (const [k, o] of more.entries()) {
+    await call('lobbyResult', [lobby.id, 4 + k, o.map((t, i) => ({ team: teams[t].id, place: i + 1, elims: Math.max(0, 8 - i) }))]);
+    await call('lobbyConfirm', [lobby.id, (await call('snapshot')).lobbies[0].games[3 + k].id]);
+  }
   await take('Champions', 'Live', 'After the last match: Champions.');
   await reel(browser, out('fullscreen'), 8, 'On air', 'Champions: the title winners, their points, wins and eliminations, and their road through the day.');
 

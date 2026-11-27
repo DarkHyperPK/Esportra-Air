@@ -29,6 +29,8 @@ export interface BrGraphicsContext {
   templateGraphic: (id: string) => string | null;
   /** The lobby's event, for its emblem and sponsors. */
   event?: (lobby: Lobby) => EventInfo | null;
+  /** What each lobby room shows full screen, saved so a restart still knows what is on air (27 Nov). */
+  persist?: (shown: Record<string, string | null>) => void;
 }
 
 /** The pictures core/br.js reads: logos (white variant first), lists of wallpapers and characters, maps by name. */
@@ -103,6 +105,11 @@ export class BrGraphics {
   private readonly shown = new Map<string, BrScreen | null>();
   constructor(ctx: BrGraphicsContext) { this.ctx = ctx; }
 
+  /** What was on air before Air closed (the engine kept showing it). */
+  load(saved: Record<string, string | null> | undefined) {
+    for (const [room, screen] of Object.entries(saved ?? {})) if (screen === null || BR_SCREENS.includes(screen as BrScreen)) this.shown.set(room, screen as BrScreen | null);
+  }
+
   static lookOf(l: Lobby): LobbyLook { return { ...DEFAULT_LOOK, ...(l.look ?? {}), templates: { ...(l.look?.templates ?? {}) } }; }
 
   /** Room fields besides `br`: pictures, layout, pop-up and looks. */
@@ -126,5 +133,6 @@ export class BrGraphics {
     const template = screen ? BrGraphics.lookOf(l).templates[`${screen}|full`] ?? null : null;
     await this.ctx.action(l.code, 'fullscreen.show', { screen, style: 'full', template });
     this.shown.set(l.code, screen as BrScreen | null);
+    this.ctx.persist?.(Object.fromEntries(this.shown));
   }
 }

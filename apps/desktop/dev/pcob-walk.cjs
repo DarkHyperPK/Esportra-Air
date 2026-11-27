@@ -34,11 +34,19 @@ const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'L
   const dlg = p.getByRole('dialog', { name: 'Game data' });
   await dlg.getByLabel('Observer PC address').fill(`127.0.0.1:${fake.port}`);
   if (!(await dlg.getByRole('button', { name: 'Connect' }).isDisabled())) throw new Error('Connect works without consent');
-  await dlg.getByRole('checkbox').check();
+  await dlg.getByRole('checkbox', { name: /Let Air read game data/ }).check();
   await dlg.getByRole('button', { name: 'Connect' }).click();
   await p.locator('.pcob-state.waiting').waitFor({ timeout: 15000 }).catch(async (e) => { if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'fail.png') }); throw e; });
+  // A game that starts with nothing armed is only read: Live asks to arm a match (27 Nov), nothing is saved until then.
   await dev('do=begin');
   await p.locator('.pcob-state.live').waitFor({ timeout: 15000 });
+  await p.keyboard.press('Escape');
+  await p.getByText('A game started but no match is armed.', { exact: true }).waitFor({ timeout: 8000 });
+  snap = await call('snapshot');
+  if (snap.lobbies[0].games.some((x) => x.state !== 'scheduled')) throw new Error('an unarmed game changed a match');
+  await p.getByRole('button', { name: 'Arm Match 1' }).first().click();
+  await p.locator('.run-st.live').first().waitFor({ timeout: 8000 });
+  await p.locator('.pcob-btn').click();
   await p.waitForTimeout(6000);
   if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'pcob-panel.png') });
   await dlg.locator('.pcob-slot').nth(15).waitFor({ timeout: 8000 });
@@ -59,6 +67,19 @@ const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'L
   for (let i = 0; i < 90; i++) { snap = await call('snapshot'); if (snap.lobbies[0].games[0].results?.length) break; await p.waitForTimeout(1000); }
   const g = snap.lobbies[0].games[0];
   if (g.source !== 'pcob' || g.results.length !== 16 || g.feed.stats.length !== 64) throw new Error('match 1 was not saved from the game: ' + JSON.stringify({ source: g.source, n: g.results?.length }));
+  // What the game gave is provisional: the strip says so, the panel lists the checks, Ctrl+Enter confirms and arms Match 2.
+  if (g.state !== 'provisional') throw new Error('the game saved as ' + g.state);
+  await p.locator('.run-st.provisional').first().waitFor();
+  await p.getByRole('button', { name: 'Review results' }).click();
+  const pr = p.getByRole('dialog', { name: 'Match 1 results' });
+  await pr.getByText('Each place once').waitFor();
+  await pr.getByText('Team kills equal the players’ kills').waitFor();
+  if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'run-provisional.png') });
+  await p.keyboard.press('Escape');
+  await p.keyboard.press('Control+Enter');
+  for (let i = 0; i < 20; i++) { snap = await call('snapshot'); if (snap.lobbies[0].games[0].state === 'confirmed') break; await p.waitForTimeout(250); }
+  if (snap.lobbies[0].games[0].state !== 'confirmed' || snap.lobbies[0].games[1].state !== 'armed') throw new Error('Confirm did not confirm and arm the next match: ' + JSON.stringify(snap.lobbies[0].games.map((x) => x.state)));
+  await p.locator('.run-st.armed').first().waitFor();
   // Autopilot: the Standard Rundown runs the post-game set by itself.
   for (let i = 0; i < 20 && !snap.lobbyOnAir; i++) { await p.waitForTimeout(250); snap = await call('snapshot'); }
   if (!['br-wwcd', 'br-rankings'].includes(snap.lobbyOnAir)) throw new Error('autopilot did not take WWCD: ' + snap.lobbyOnAir);
@@ -106,6 +127,22 @@ const TAGS = ['NOW', 'CF5', 'IRP', 'DUNE', 'SFX', 'NTD', 'BHB', 'STW', 'RKS', 'L
   await p.locator('.ev-card').first().click();
   await p.getByRole('tab', { name: 'Lobbies' }).waitFor();
   await p.getByRole('button', { name: 'Open' }).first().click();
+  // The run sheet: Day 1 with its matches and their states.
+  await p.getByRole('tab', { name: 'Run sheet' }).waitFor();
+  await p.getByLabel('Day 1').getByText('Confirmed', { exact: true }).first().waitFor();
+  if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, 'run-sheet.png'), fullPage: true }); }
+  // Start day: the checklist opens (and renders); starting the day is allowed, closing it is refused while Match 2 is open.
+  await p.getByRole('button', { name: 'Start day 1' }).click();
+  const sd = p.getByRole('dialog', { name: 'Start Day 1' });
+  await sd.getByText('Points carried in').waitFor();
+  if (SHOTS) { await p.waitForTimeout(400); await p.screenshot({ path: path.join(SHOTS, 'run-startday.png') }); }
+  await sd.getByRole('button', { name: 'Start day 1' }).click();
+  await p.getByRole('button', { name: 'Close day 1' }).click();
+  const cd = p.getByRole('dialog', { name: 'Close Day 1' });
+  await cd.getByText(/Match 2 is armed\. Confirm it or void it first/).waitFor();
+  if (!(await cd.getByRole('button', { name: 'Close day 1' }).isDisabled())) throw new Error('Close day was allowed with an open match');
+  if (SHOTS) { await p.waitForTimeout(400); await p.screenshot({ path: path.join(SHOTS, 'run-closeday.png') }); }
+  await p.keyboard.press('Escape');
   await p.getByRole('tab', { name: 'Rundown' }).click();
   await p.getByRole('button', { name: 'Standard', pressed: true }).waitFor();
   if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, 'pcob-rundown.png'), fullPage: true }); }

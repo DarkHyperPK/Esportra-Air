@@ -3,14 +3,16 @@
 // rule the room's `br` field is worked out with.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Lobby, Snapshot } from '../../shared/api.ts';
-import { SCORING_PRESETS, gamePoints, standings, type Scoring, type TeamResult } from '../../shared/br.ts';
+import { SCORING_PRESETS, gamePoints, gameState, standings, type Scoring, type TeamResult } from '../../shared/br.ts';
+import { RunSheet } from '../components/br-run/RunSheet.tsx';
+import { StateBadge } from '../components/br-run/parts.tsx';
 import { gameOf } from '../../shared/games.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { BrRundown } from '../components/BrRundown.tsx';
 import { BrInsights } from '../components/BrInsights.tsx';
 
-type Tab = 'results' | 'teams' | 'games' | 'scoring' | 'rundown';
+type Tab = 'run' | 'results' | 'teams' | 'games' | 'scoring' | 'rundown';
 type Draft = Record<string, { place: string; elims: string }>;
 
 const MAPS: Record<string, string[]> = { pubgm: ['Erangel', 'Miramar', 'Sanhok', 'Vikendi', 'Livik', 'Rondo', 'Nusa', 'Karakin'], freefire: ['Bermuda', 'Purgatory', 'Kalahari', 'Alpine', 'Nexterra'] };
@@ -20,7 +22,7 @@ function Tag({ color, tag }: { color: string; tag: string }) {
 }
 
 export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lobby: Lobby; back: () => void }) {
-  const [tab, setTab] = useState<Tab>(lobby.teams.length ? 'results' : 'teams');
+  const [tab, setTab] = useState<Tab>(lobby.teams.length ? 'run' : 'teams');
   const [insights, setInsights] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setInsights(false); };
@@ -45,8 +47,9 @@ export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lo
         </span>
       </header>
       <div className="tabs" role="tablist" aria-label="Lobby">
-        {([['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['games', `${word}es and maps`], ['scoring', 'Scoring'], ['rundown', 'Rundown']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+        {([['run', 'Run sheet'], ['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['games', `${word}es and maps`], ['scoring', 'Scoring'], ['rundown', 'Rundown']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
+      {tab === 'run' && <RunSheet s={s} run={run} lobby={lobby} />}
       {tab === 'results' && <Results run={run} lobby={lobby} word={word} goTeams={() => setTab('teams')} />}
       {tab === 'teams' && <Teams s={s} run={run} lobby={lobby} />}
       {tab === 'games' && <Games run={run} lobby={lobby} word={word} />}
@@ -67,11 +70,12 @@ export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lo
 const scoringLine = (sc: Scoring) => `${sc.placement.join('-')} + ${sc.perElim}/elim${sc.matchPoint ? `, match point ${sc.matchPoint}` : ''}`;
 
 export function Results({ run, lobby, word, goTeams }: { run: Run; lobby: Lobby; word: string; goTeams: () => void }) {
-  const firstOpen = lobby.games.find((g) => !g.results?.length)?.n ?? lobby.games.at(-1)?.n ?? 1;
+  const firstOpen = lobby.games.find((g) => gameState(g) === 'provisional')?.n ?? lobby.games.find((g) => !g.results?.length && gameState(g) !== 'void')?.n ?? lobby.games.at(-1)?.n ?? 1;
   const [n, setN] = useState(firstOpen);
   const game = lobby.games.find((g) => g.n === n) ?? lobby.games[0]!;
   const fromSaved = (): Draft => Object.fromEntries(lobby.teams.map((t) => { const r = game?.results?.find((x) => x.team === t.id); return [t.id, { place: r ? String(r.place) : '', elims: r ? String(r.elims) : '' }]; }));
   const [draft, setDraft] = useState<Draft>(fromSaved);
+  const [reason, setReason] = useState('');
   const savedKey = JSON.stringify(game?.results ?? null) + lobby.teams.map((t) => t.id).join();
   useEffect(() => { setDraft(fromSaved()); }, [n, savedKey]);
   const grid = useRef<HTMLTableSectionElement>(null);
@@ -83,7 +87,9 @@ export function Results({ run, lobby, word, goTeams }: { run: Run; lobby: Lobby;
   const outOfRange = rows.some((r) => r.place < 1 || r.place > lobby.teams.length);
   const missing = lobby.teams.length - rows.length;
   const changed = JSON.stringify(rows.slice().sort((a, b) => a.place - b.place)) !== JSON.stringify((game?.results ?? []).map(({ team, place, elims }) => ({ team, place, elims })));
-  const preview = useMemo(() => standings({ ...lobby, games: lobby.games.map((g) => (g.n === n ? { ...g, results: rows } : g)) }), [lobby, n, JSON.stringify(rows)]);
+  const confirmed = gameState(game) === 'confirmed';
+  // The draft is shown as if it counted, so the producer sees what saving it does.
+  const preview = useMemo(() => standings({ ...lobby, games: lobby.games.map((g) => (g.n === n ? { ...g, results: rows, state: 'confirmed' as const } : g)) }, { provisional: true }), [lobby, n, JSON.stringify(rows)]);
   const team = (id: string) => lobby.teams.find((t) => t.id === id)!;
   const set = (id: string, k: 'place' | 'elims', v: string) => setDraft((d) => ({ ...d, [id]: { ...d[id]!, [k]: v.replace(/\D/g, '').slice(0, 2) } }));
   const down = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -92,7 +98,7 @@ export function Results({ run, lobby, word, goTeams }: { run: Run; lobby: Lobby;
     const next = list[list.indexOf(el) + 1];
     if (next) { e.preventDefault(); next.focus(); next.select(); }
   };
-  const canSave = rows.length > 0 && !dup.size && !outOfRange && changed;
+  const canSave = rows.length > 0 && !dup.size && !outOfRange && changed && game && gameState(game) !== 'void' && (!confirmed || (!missing && !!reason.trim()));
   return (
     <div className="lbs-grid">
       <section className="card" aria-label="Results">
@@ -101,12 +107,15 @@ export function Results({ run, lobby, word, goTeams }: { run: Run; lobby: Lobby;
           {!changed && game.source === 'producer' && game.gameResults && <span className="chip" title="You changed what the game gave; the game's own results are kept.">Edited · the game&rsquo;s copy kept</span>}
           {!changed && game.feed && !game.results?.length && <span className="chip warn" title="The game ended without a place for every team; its players' numbers are saved.">Players saved · type the places</span>}
           <span style={{ flex: 1 }} />
-          {!!game.results?.length && <button className="btn small" onClick={() => void run(() => air.lobbyClearResult(lobby.id, game.n))}>Clear</button>}
-          <button className="btn primary small" disabled={!canSave} onClick={() => void run(() => air.lobbyResult(lobby.id, game.n, rows))}>Save and put on air</button></div>
+          <StateBadge state={gameState(game)} />
+          {!!game.results?.length && !confirmed && gameState(game) !== 'live' && <button className="btn small" onClick={() => void run(() => air.lobbyClearResult(lobby.id, game.n))}>Clear</button>}
+          {gameState(game) === 'provisional' && !changed && !missing && <button className="btn small" onClick={() => void run(async () => { await air.lobbyConfirm(lobby.id, game.id!); })}>Confirm match {game.n}</button>}
+          <button className="btn primary small" disabled={!canSave} onClick={() => void run(async () => { await (confirmed ? air.lobbyEditConfirmed(lobby.id, game.id!, rows, reason) : air.lobbyResult(lobby.id, game.n, rows)); setReason(''); })}>{confirmed ? 'Save change' : 'Save results'}</button></div>
+        {confirmed && <div className="row-gap" style={{ padding: '0 14px 10px', flexWrap: 'wrap' }}><span className="chip warn">Confirmed</span><input className="cell" aria-label="Reason for the change" placeholder="Why are you changing a confirmed match? (required, kept with the match)" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} style={{ flex: 1, minWidth: 260 }} />{(game.edits?.length ?? 0) > 0 && <span className="faint t-xs">{game.edits!.length} earlier edit{game.edits!.length > 1 ? 's' : ''}: “{game.edits!.at(-1)!.reason}”</span>}</div>}
         <div className="lb-games" role="tablist" aria-label={`${word}es`}>
           {lobby.games.map((g) => (
             <button key={g.n} role="tab" aria-selected={g.n === n} className={`lb-g ${g.results?.length ? 'done' : ''} ${g.n === n ? 'on' : ''}`} onClick={() => setN(g.n)}>
-              {word} {g.n}{g.map ? ` · ${g.map}` : ''}<small>{g.results?.length ? (g.source === 'pcob' ? 'From the game' : 'Saved') : g.n === n ? 'Entering' : 'To play'}</small>
+              {word} {g.n}{g.map ? ` · ${g.map}` : ''}<small>{gameState(g) === 'confirmed' ? 'Confirmed' : gameState(g) === 'provisional' ? 'Provisional' : gameState(g) === 'void' ? 'Void' : gameState(g) === 'live' || gameState(g) === 'finishing' ? 'Live' : g.n === n ? 'Entering' : 'To play'}</small>
             </button>
           ))}
         </div>
@@ -131,11 +140,11 @@ export function Results({ run, lobby, word, goTeams }: { run: Run; lobby: Lobby;
         </div>
       </section>
       <section className="card" aria-label="Standings">
-        <div className="lb-head"><h2 className="title-sm">Standings</h2><span style={{ flex: 1 }} /><span className="chip">{changed ? 'with this draft' : `after ${lobby.games.filter((g) => g.results?.length).length} played`}</span></div>
+        <div className="lb-head"><h2 className="title-sm">Standings</h2><span style={{ flex: 1 }} /><span className="chip">{changed ? 'with this draft' : `official after ${lobby.games.filter((g) => gameState(g) === 'confirmed').length} confirmed`}</span></div>
         <table className="lb-st"><tbody>{preview.map((r) => (
           <tr key={r.team}><td className="faint">{r.rank}</td><td><Tag color={team(r.team).color} tag={team(r.team).tag} /> {team(r.team).name}{r.matchPoint && <span className="lb-mp">MATCH PT</span>}</td><td className="faint t-xs">{r.wins ? `${r.wins} win${r.wins > 1 ? 's' : ''}` : ''}</td><td className="r mono"><b>{r.total}</b></td></tr>
         ))}</tbody></table>
-        <p className="faint t-xs" style={{ padding: '0 14px 12px' }}>Ties: {lobby.scoring.tiebreak.map((t) => ({ wins: 'wins', placementPts: 'placement points', elims: 'elims', lastGame: 'last match' })[t]).join(', then ')}. Saving puts it on the lobby’s graphics.</p>
+        <p className="faint t-xs" style={{ padding: '0 14px 12px' }}>Ties: {lobby.scoring.tiebreak.map((t) => ({ wins: 'wins', placementPts: 'placement points', elims: 'elims', lastGame: 'last match' })[t]).join(', then ')}. Saved results are provisional until you confirm the match.</p>
       </section>
     </div>
   );
@@ -235,7 +244,7 @@ export function LobbyList({ s, run, eventId, open }: { s: Snapshot; run: Run; ev
       {!lobbies.length && <p className="muted ap-empty">No lobbies in this event yet.</p>}
       <div className="lst">
         {lobbies.map((l) => {
-          const done = l.games.filter((g) => g.results?.length).length;
+          const done = l.games.filter((g) => gameState(g) === 'confirmed').length;
           const lead = standings(l)[0];
           const leader = done && lead ? l.teams.find((t) => t.id === lead.team) : null;
           return (

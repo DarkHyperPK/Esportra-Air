@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { Store } from '../src/main/store.ts';
 import { Lobbies } from '../src/main/br-lobbies.ts';
 import { BrLiveFeed } from '../src/main/br-live.ts';
+import { BrRun } from '../src/main/br-run.ts';
+import { gameState } from '../src/shared/br.ts';
+import { targetMatch } from '../src/shared/br-run.ts';
 import { PcobRecorder } from '../src/main/pcob-recorder.ts';
 import { PCOB_ROUTES } from '../src/shared/pcob.ts';
 import { FakePcob } from '../dev/fake-pcob.ts';
@@ -27,12 +30,16 @@ async function setup(limits: { maxBytes?: number; maxMs?: number } = {}) {
   let now = new Date(2026, 10, 27, 14, 5, 0).getTime();
   const pcob = await new FakePcob({ teams: NAMES.map((name, i) => ({ name, players: roster(i) })), length: 300, now: () => now }).listen();
   const rec = new PcobRecorder({ dir: join(dir, 'rec'), now: () => now, ...limits });
+  let run!: BrRun;
   const feed = new BrLiveFeed({
     lobby: () => lobbies.selected, patch: async () => {},
-    save: (id, n, results, f) => lobbies.saveFeed(id, n, results, f), learn: (id, seen) => lobbies.learnOpenIds(id, seen),
+    save: (id, n, results, f, extra) => lobbies.saveFeed(id, n, results, f, extra), learn: (id, seen) => lobbies.learnOpenIds(id, seen),
+    target: (lob) => { const g = targetMatch(lob); return g ? { n: g.n, state: gameState(g) } : null; }, state: (id, n, to, at) => run.onFeedState(id, n, to, at),
     log: () => {}, changed: () => {}, now: () => now, manual: true,
     tap: (route, status, body) => rec.record(route, status, body), air: (e) => rec.air(e), recording: () => rec.on,
   });
+  run = new BrRun({ lobbies, store, feed, pcob: () => feed.status, log: () => {}, changed: () => {}, now: () => now });
+  run.arm(l.id, lobbies.find(l.id).games[0]!.id!);
   const step = async (s: number) => { now += s * 1000; await feed.tick(); };
   const lines = () => { const f = rec.view().file; return f ? readFileSync(f, 'utf8').split('\n').filter(Boolean).map((x) => JSON.parse(x)) : []; };
   return { dir, rec, feed, pcob, step, lines, close: () => pcob.close() };

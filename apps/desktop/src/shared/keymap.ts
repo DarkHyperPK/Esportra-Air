@@ -20,6 +20,7 @@ const SHOW: KeyAction[] = [
   { id: 'all', label: 'All graphics', group: 'show', key: 'Ctrl+G' },
   { id: 'fix', label: 'Fix data', group: 'show', key: 'Ctrl+D' },
   { id: 'match', label: 'Match: veto, show text, event data', group: 'show', key: 'Ctrl+M' },
+  { id: 'confirm', label: 'Confirm the provisional match (battle royale)', group: 'show', key: 'Ctrl+Enter' },
 ];
 
 /** Moments: one press for what happens during a show. Up to six are on Live. */

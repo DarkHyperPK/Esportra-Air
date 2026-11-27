@@ -60,6 +60,21 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'pcobShowRecording': { const f = p.pcobRecordingFile(); if (f && ctx.showFile) ctx.showFile(f); break; }
     case 'pcobSeat': p.pcobSeat(String(a[0]), a[1], a[2]); break;
     case 'lobbyPreview': return p.lobbyPreview(String(a[0]), a[1]);
+    case 'lobbyArm': await p.lobbyArm(String(a[0]), String(a[1])); break;
+    case 'lobbyDisarm': p.brRun.disarm(String(a[0])); break;
+    case 'lobbyRemake': p.brRun.remake(String(a[0]), String(a[1])); break;
+    case 'lobbyVoid': p.brRun.voidMatch(String(a[0]), String(a[1]), a[2]); break;
+    case 'lobbyEndMatch': await p.brRun.endMatch(String(a[0]), String(a[1])); break;
+    case 'lobbyConfirm': p.brRun.confirm(String(a[0]), String(a[1])); break;
+    case 'lobbyEditConfirmed': p.brRun.editConfirmed(String(a[0]), String(a[1]), a[2], a[3]); break;
+    case 'lobbyAdjust': p.brRun.adjust(String(a[0]), a[1], a[2], a[3]); break;
+    case 'lobbyAdjustRemove': p.brRun.removeAdjustment(String(a[0]), String(a[1])); break;
+    case 'lobbyDayAdd': p.brRun.dayAdd(String(a[0]), (a[1] ?? {}) as Record<string, unknown>); break;
+    case 'lobbyDayEdit': p.brRun.dayEdit(String(a[0]), String(a[1]), (a[2] ?? {}) as Record<string, unknown>); break;
+    case 'lobbyDayStart': return p.brRun.dayStart(String(a[0]), String(a[1]), a[2] === true);
+    case 'lobbyDayClose': return a[2] === true ? p.brRun.dayClose(String(a[0]), String(a[1])) : p.brRun.dayCloseCheck(String(a[0]), String(a[1]));
+    case 'lobbyResume': await p.lobbyResume(); break;
+    case 'lobbyResumeDismiss': p.brRun.dismissResume(); break;
     case 'lobbyTake': await p.lobbyTake(String(a[0]), a[1] === null ? null : String(a[1])); break;
     case 'autopilotRestart': p.autopilotRestart(); break;
     case 'recoveryDismiss': p.dismissRecovery(); break;

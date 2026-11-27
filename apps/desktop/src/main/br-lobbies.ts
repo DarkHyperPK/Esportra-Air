@@ -4,7 +4,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { LibTeam, LibPlayer, Lobby } from '../shared/api.ts';
-import { SCORING_PRESETS, champion, gamePoints, standings, validResults, validScoring, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
+import { SCORING_PRESETS, champion, gamePoints, gameState, standings, validResults, validScoring, type GameChecks, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
+import { currentMatch, isBusy, liveMatch, normalizeLobby, standingsView, targetMatch } from '../shared/br-run.ts';
 import { playerTotals, teamTotals, type GameFeed } from '../shared/br-stats.ts';
 import { patchShow, showOf } from '../shared/br-rundown.ts';
 import { gameOf, type GameId } from '../shared/games.ts';
@@ -44,7 +45,7 @@ export class Lobbies {
    * Writes one line to the event's journal. A lobby the journal has not met yet gets a baseline of what it was before
    * this change, so the journal alone can rebuild it. A journal that cannot be written is logged and never stops the change.
    */
-  private note(l: Lobby, kind: string, data: Record<string, unknown> = {}) {
+  note(l: Lobby, kind: string, data: Record<string, unknown> = {}) {
     const j = this.ctx.journal;
     if (!j) return;
     try {
@@ -64,7 +65,14 @@ export class Lobbies {
     const l = this.find(id);
     this.note(l, 'adjust', data);
   }
-  list(): Lobby[] { return this.data.lobbies ?? []; }
+  /** Every lobby, with days, match ids and states (older lobbies are brought up to date on first sight). */
+  list(): Lobby[] {
+    const all = this.data.lobbies ?? [];
+    if (all.some((l) => normalizeLobby(l) !== l)) this.data.lobbies = all.map(normalizeLobby);
+    return this.data.lobbies ?? [];
+  }
+  /** The lobby a match is being read in (live or finishing), if any: nothing else may change until it is confirmed or ended. */
+  busy(): Lobby | null { return this.list().find(isBusy) ?? null; }
   get selected(): Lobby | null { return this.list().find((l) => l.id === this.data.selectedLobbyId) ?? null; }
   find(id: string) {
     const l = this.list().find((x) => x.id === id);
@@ -72,7 +80,14 @@ export class Lobbies {
     return l;
   }
 
-  private put(next: Lobby) {
+  /** Saves a changed lobby (journalled under `kind` when given) and puts it on the graphics when selected. */
+  commit(next: Lobby, kind?: string, data: Record<string, unknown> = {}) {
+    if (kind) this.note(this.find(next.id), kind, data);
+    this.put(next);
+  }
+
+  private put(raw: Lobby) {
+    const next = normalizeLobby(raw);
     this.data.lobbies = this.list().map((l) => (l.id === next.id ? next : l));
     this.ctx.store.save();
     this.ctx.changed();
@@ -93,12 +108,12 @@ export class Lobbies {
       scoring: structuredClone(SCORING_PRESETS[game.scoring ?? 'pmgc'].scoring), createdAt: Date.now(),
     };
     this.note(lobby, 'lobby.create', { title: lobby.title, game: lobby.game, games: lobby.games.length, teams: [], maps: lobby.games.map((g) => g.map) });
-    this.data.lobbies = [...this.list(), lobby];
+    this.data.lobbies = [...this.list(), normalizeLobby(lobby)];
     this.data.selectedLobbyId ??= id;
     this.ctx.store.save();
     this.ctx.changed();
     await this.publish();
-    return lobby;
+    return this.find(id);
   }
 
   update(id: string, patch: { title?: unknown; stage?: unknown; scoring?: unknown; games?: unknown }) {
@@ -113,7 +128,7 @@ export class Lobbies {
       next.games = patch.games.map((g, i) => {
         const x = (g ?? {}) as Record<string, unknown>;
         const had = l.games.find((o) => o.n === i + 1);
-        return { ...(had ?? {}), n: i + 1, map: text(x.map, 30, 'Map', false), ...(typeof x.startsAt === 'string' && x.startsAt ? { startsAt: text(x.startsAt, 20, 'Time', false) } : {}) };
+        return { ...(had ?? {}), n: i + 1, map: text(x.map, 30, 'Map', false), ...(typeof x.startsAt === 'string' && x.startsAt ? (() => { const t = text(x.startsAt, 20, 'Time', false); return { startsAt: t, ...(/^\d{1,2}:\d{2}$/.test(t) ? { scheduledAt: t } : {}) }; })() : {}) };
       });
     }
     const fields: Record<string, unknown> = {};
@@ -128,6 +143,8 @@ export class Lobbies {
   /** The lobby's teams, picked from Teams/Players (in order); results for teams taken out are dropped. */
   setTeams(id: string, teamIds: unknown) {
     const l = this.find(id);
+    const held = targetMatch(l);
+    if (held) throw new Error(`Match ${held.n} is ${gameState(held)}. ${gameState(held) === 'armed' ? 'Disarm it' : 'Confirm, remake or end it'} before changing the lobby’s teams.`);
     if (!Array.isArray(teamIds) || teamIds.length > MAX_TEAMS) throw new Error(`A lobby has up to ${MAX_TEAMS} teams.`);
     const lib = this.data.teams ?? [];
     const picked = [...new Set(teamIds.map(String))].map((tid) => {
@@ -157,6 +174,11 @@ export class Lobbies {
       const teams = l.teams.map((t) => { const lt = t.teamId ? lib.get(t.teamId) : null; return lt ? this.lobbyTeam(lt, t.id) : t; });
       if (JSON.stringify(teams) === JSON.stringify(l.teams)) return l;
       any = true;
+      // Roster changes are journalled, so the next day's Start day can list who changed since yesterday.
+      for (const [i, t] of teams.entries()) {
+        const was = l.teams[i]!.players, added = t.players.filter((p) => !was.includes(p)), removed = was.filter((p) => !t.players.includes(p));
+        if (added.length || removed.length) this.note(l, 'roster.change', { team: t.id, name: t.name, added, removed });
+      }
       return { ...l, teams };
     });
     if (any) { this.ctx.store.save(); this.ctx.changed(); void this.publish(); }
@@ -167,17 +189,19 @@ export class Lobbies {
     const l = this.find(id);
     const game = l.games.find((g) => g.n === n);
     if (!game) throw new Error('That game is not in this lobby.');
+    const state = gameState(game);
+    if (state === 'confirmed') throw new Error(`Match ${n} is confirmed. Edit it with a reason instead.`);
+    if (state === 'void') throw new Error(`Match ${n} is void. Arm it again to play or type it.`);
     const results = validResults(rows, l.teams);
-    // Typed by the producer; a game the feed filled keeps its own copy beside the edit.
-    const mark = (g: LobbyGame): LobbyGame => ({ ...g, results, finishedAt: Date.now(), source: 'producer', ...(g.source === 'pcob' && g.results ? { gameResults: g.results } : {}) });
+    // Typed by the producer; a game the feed filled keeps its own copy beside the edit. A match typed without being
+    // played (or one that was only armed) becomes provisional: Confirm makes it official.
+    const mark = (g: LobbyGame): LobbyGame => ({ ...g, results, finishedAt: Date.now(), source: 'producer', ...(state === 'scheduled' || state === 'armed' ? { state: 'provisional' as const } : {}), ...(g.source === 'pcob' && g.results ? { gameResults: g.results } : {}) });
     const next = { ...l, games: l.games.map((g) => (g.n === n ? mark(g) : g)) };
     this.note(l, 'result.set', { game: n, results, source: 'producer' });
     this.put(next);
-    const top = standings(next)[0];
+    const top = standings(next, { provisional: true })[0];
     const lead = top ? l.teams.find((t) => t.id === top.team) : null;
-    this.ctx.log(`${l.title}: results of ${gameOf(l.game)?.words?.game.toLowerCase() ?? 'game'} ${n} saved${lead ? ` · ${lead.name} leads on ${top!.total}` : ''}`);
-    const won = champion(next);
-    if (won && !champion(l)) this.ctx.log(`${l.title}: ${l.teams.find((t) => t.id === won.team)?.name ?? 'A team'} took the title in game ${won.game} (match point)`);
+    this.ctx.log(`${l.title}: results of ${gameOf(l.game)?.words?.game.toLowerCase() ?? 'game'} ${n} saved (provisional)${lead ? ` · ${lead.name} would lead on ${top!.total}` : ''}`);
     if (!game.results?.length) this.ctx.typed?.(next, n);
   }
 
@@ -185,17 +209,22 @@ export class Lobbies {
    * A game the observer feed finished (src/main/br-live.ts): its results go in unless the producer already typed
    * this game (then the game's copy is kept beside them), and its players' numbers are kept either way.
    */
-  saveFeed(id: string, n: number, rows: TeamResult[] | null, feed: GameFeed) {
+  saveFeed(id: string, n: number, rows: TeamResult[] | null, feed: GameFeed, extra: { draft?: LobbyGame['draft']; checks?: GameChecks; at?: number } = {}) {
     const l = this.find(id);
     const game = l.games.find((g) => g.n === n);
     if (!game) throw new Error('That game is not in this lobby.');
+    if (gameState(game) === 'confirmed' || gameState(game) === 'void') throw new Error(`Match ${n} is ${gameState(game)}; game data is not saved into it.`);
     const results = rows ? validResults(rows, l.teams) : null;
+    // What the game gave lands as provisional, never official: the producer confirms it.
+    const end = extra.at ?? Date.now();
+    const attempts = (game.attempts ?? []).map((a, i, all) => (i === all.length - 1 ? { ...a, endedAt: end, reason: 'ended' as const } : a));
     const next = (g: LobbyGame): LobbyGame => {
-      if (g.source === 'producer' && g.results?.length) return { ...g, feed, ...(results ? { gameResults: results } : {}) };
-      return results ? { ...g, results, source: 'pcob', finishedAt: Date.now(), feed } : { ...g, feed };
+      const base: LobbyGame = { ...g, feed, state: 'provisional', attempts, ...(extra.checks ? { checks: extra.checks } : {}), ...(extra.draft && !results ? { draft: extra.draft } : {}) };
+      if (g.source === 'producer' && g.results?.length) return { ...base, ...(results ? { gameResults: results } : {}) };
+      return results ? { ...base, results, source: 'pcob', finishedAt: end } : base;
     };
     const applied = !!results && !(game.source === 'producer' && game.results?.length);
-    this.note(l, 'result.feed', { game: n, results: applied ? results : null, applied, source: 'pcob' });
+    this.note(l, 'result.feed', { game: n, results: applied ? results : null, applied, source: 'pcob', state: 'provisional' });
     this.put({ ...l, games: l.games.map((g) => (g.n === n ? next(g) : g)) });
   }
 
@@ -234,14 +263,22 @@ export class Lobbies {
 
   clearResult(id: string, n: number) {
     const l = this.find(id);
+    const state = gameState(l.games.find((g) => g.n === n) ?? { n, map: '' });
+    if (state === 'confirmed') throw new Error(`Match ${n} is confirmed. Edit it with a reason instead.`);
+    if (state === 'live' || state === 'finishing') throw new Error(`Match ${n} is being played. End or remake it first.`);
     // The results go; what the observer feed gave (its own results and the players' numbers) stays with the game.
     this.note(l, 'result.clear', { game: n });
-    const keep = (g: LobbyGame): LobbyGame => ({ n: g.n, map: g.map, ...(g.startsAt ? { startsAt: g.startsAt } : {}), ...(g.feed ? { feed: g.feed } : {}), ...(g.source === 'pcob' && g.results ? { gameResults: g.results } : g.gameResults ? { gameResults: g.gameResults } : {}) });
+    const keep = (g: LobbyGame): LobbyGame => {
+      const { results: _r, finishedAt: _f, source: _s, gameResults: _gr, draft: _d, checks: _c, ...rest } = g;
+      return { ...rest, state: state === 'provisional' ? 'scheduled' : (g.state ?? 'scheduled'), ...(g.source === 'pcob' && g.results ? { gameResults: g.results } : g.gameResults ? { gameResults: g.gameResults } : {}) };
+    };
     this.put({ ...l, games: l.games.map((g) => (g.n === n ? keep(g) : g)) });
   }
 
   async select(id: string | null) {
     if (id !== null) this.find(id);
+    const busy = this.busy();
+    if (busy && busy.id !== id) throw new Error(`Match ${liveMatch(busy)!.n} of ${busy.title} is live. Confirm, remake or end it before switching lobby.`);
     this.data.selectedLobbyId = id;
     this.ctx.store.save();
     this.ctx.changed();
@@ -250,7 +287,7 @@ export class Lobbies {
 
   remove(id: string) {
     const l = this.find(id);
-    if (this.ctx.live(id)) throw new Error('This lobby is live. Stop its data or test before deleting it.');
+    if (this.ctx.live(id) || isBusy(l)) throw new Error('This lobby is live. Confirm, remake or end its match, or stop its data, before deleting it.');
     this.note(l, 'lobby.delete');
     this.data.lobbies = this.list().filter((x) => x.id !== l.id);
     if (this.data.selectedLobbyId === id) this.data.selectedLobbyId = null;
@@ -261,14 +298,17 @@ export class Lobbies {
   /** What the lobby graphics read from the room. */
   static roomField(l: Lobby, scoring: Scoring = l.scoring) {
     const lobby = { ...l, scoring };
-    const table = standings(lobby);
-    const next = l.games.find((g) => !g.results?.length) ?? null;
+    // Official standings by default (confirmed matches and adjustments); the provisional view rides along, marked.
+    const view = standingsView(lobby);
+    const next = currentMatch(lobby);
     return {
       br: {
         title: l.title, stage: l.stage, game: l.game,
         teams: l.teams.map(({ id, name, tag, color, logo, players, photos }) => ({ id, name, tag, color, logo, players, photos: photos ?? [] })),
-        games: l.games.map((g) => ({ n: g.n, map: g.map, startsAt: g.startsAt ?? null, done: !!g.results?.length, results: g.results ?? [] })),
-        scoring, standings: table, current: next?.n ?? null, played: l.games.filter((g) => g.results?.length).length,
+        games: l.games.map((g) => ({ n: g.n, map: g.map, startsAt: g.startsAt ?? null, done: !!g.results?.length, state: gameState(g), results: g.results ?? [] })),
+        scoring, standings: view.official, provisional: view.provisional ? { standings: view.provisional, games: view.provisionalGames } : null,
+        adjustments: (l.adjustments ?? []).map(({ team, points, reason }) => ({ team, points, reason })),
+        current: next?.n ?? null, played: l.games.filter((g) => gameState(g) === 'confirmed' && g.results?.length).length,
         champion: champion(lobby),
       },
       brStats: Lobbies.stats(lobby), brPick: showOf(l).pick, brLtf: showOf(l).ltf,

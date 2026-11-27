@@ -30,10 +30,13 @@ const NAMES = ['NIGHT OWLS','CRIMSON FIVE','IRON PINE','DUNE RUNNERS','SILVER FO
   for (let place = 1; place <= 16; place++) { const t = NAMES[order[place - 1]]; await p.getByLabel(`${t} place`).fill(String(place)); await p.getByLabel(`${t} elims`).fill(String(elims[place - 1])); }
   // a duplicate blocks Save
   await p.getByLabel(`${NAMES[4]} place`).fill('1');
-  if (!(await p.getByText(/is used twice/).isVisible()) || !(await p.getByRole('button', { name: 'Save and put on air' }).isDisabled())) throw new Error('a duplicate place did not block Save');
+  if (!(await p.getByText(/is used twice/).isVisible()) || !(await p.getByRole('button', { name: 'Save results' }).isDisabled())) throw new Error('a duplicate place did not block Save');
   await p.getByLabel(`${NAMES[4]} place`).fill('15');
-  await p.getByRole('button', { name: 'Save and put on air' }).click();
-  await p.getByText('Saved', { exact: true }).first().waitFor();
+  await p.getByRole('button', { name: 'Save results' }).click();
+  // Typed results are provisional (27 Nov): Confirm makes them official and puts the standings on the graphics.
+  await p.getByText('Provisional', { exact: true }).first().waitFor();
+  await p.getByRole('button', { name: 'Confirm match 1' }).click();
+  await p.getByText('Confirmed', { exact: true }).first().waitFor();
   const snap = await call('snapshot');
   const l = snap.lobbies[0];
   const room = await (await fetch(`http://127.0.0.1:${ENGINE}/api/${l.code}`)).json().catch((e) => ({ err: String(e) }));

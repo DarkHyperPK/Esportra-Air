@@ -7,7 +7,7 @@ import { onAir } from './model.ts';
 export type KeyCommand = { method: ApiMethod; args: unknown[] } | 'ui' | null;
 
 /** Actions that open something inside Air; over the game they do nothing. */
-export const UI_ACTIONS = new Set(['all', 'fix', 'match', 'toast', 'poll']);
+export const UI_ACTIONS = new Set(['all', 'fix', 'match', 'toast', 'poll', 'confirm']);
 
 export const sponsorsOn = (s: Snapshot) => (s.match ? onAir(s.match, s.event).sponsors : []);
 

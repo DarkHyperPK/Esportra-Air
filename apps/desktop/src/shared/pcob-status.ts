@@ -12,8 +12,19 @@ export interface PcobStatus {
   slots: PcobSlot[];
   /** The last game the feed saved: its match number and when. */
   saved: { game: number; at: number } | null;
+  /** A game is on but no match is armed: the data is read and kept in memory, nothing is saved until the producer arms one. */
+  unarmed: boolean;
+  /** When any PCOB number last changed while a game was on, and whether that was 10 s or more ago (PCOB pushes every 2 s). */
+  lastChangeAt: number | null;
+  noData: boolean;
+  /** PCOB left the game with no winner (FinishedStartTime never set): Air only asks whether to remake; the producer decides. */
+  noWinner: boolean;
+  /** A new PCOB game started while the match was still live and not remade. */
+  restarted: boolean;
 }
-export const PCOB_OFF: PcobStatus = { state: 'off', host: '', lastAt: null, error: null, game: null, slots: [], saved: null };
+export const PCOB_OFF: PcobStatus = { state: 'off', host: '', lastAt: null, error: null, game: null, slots: [], saved: null, unarmed: false, lastChangeAt: null, noData: false, noWinner: false, restarted: false };
+/** PCOB updates every 2 s; this long without a changed number while in game is worth a warning (never an end). */
+export const NO_DATA_MS = 10_000;
 /** Only addresses on this PC or the local network (Air never sends game data elsewhere, nor reads it from elsewhere). */
 export function localHost(input: string): { host: string; port: number } | null {
   const m = /^\s*([a-z0-9.-]+)(?::(\d{1,5}))?\s*$/i.exec(input || '');

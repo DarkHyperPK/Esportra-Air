@@ -21,8 +21,37 @@ export const SCORING_PRESETS: Record<'pmgc' | 'ffws', { name: string; scoring: S
 
 export interface TeamResult { team: string; place: number; elims: number }
 export interface LobbyTeam { teamId: string | null; id: string; name: string; tag: string; color: string; logo: string; players: string[]; /** Each player's Teams/Players photo, '' for none (the graphics draw a grey shadow). */ photos?: string[]; /** PCOB OpenIDs Teams/Players has learned for these players (seat the team at once). */ openIds?: string[] }
+/** A match's state (27 Nov): Scheduled → Armed → Live → Finishing → Provisional → Confirmed; Void is the other way out. */
+export type MatchState = 'scheduled' | 'armed' | 'live' | 'finishing' | 'provisional' | 'confirmed' | 'void';
+/** One go at a match. A remake closes the attempt (kept for the record) and starts the next; only the last counts. */
+export interface Attempt { n: number; startedAt: number; endedAt?: number; reason?: 'remake' | 'ended' | 'void'; feed?: import('./br-stats.ts').GameFeed; /** What this attempt had saved when it was remade (kept for the record, never counted). */ results?: TeamResult[] }
+/** A change to a confirmed match's results, with why. */
+export interface ResultEdit { at: number; reason: string; before: TeamResult[]; after: TeamResult[] }
+/** What Air checked in the game's own (verified PCOB) numbers when the match ended; the provisional panel lists them. */
+export interface GameChecks {
+  /** Lobby teams PCOB still showed with rank 0 when the game ended: their place is typed. */
+  unplaced: string[];
+  /** Teams whose team kills (getteaminfolist killNum) differ from the sum of their players' killNum. */
+  teamKills: Array<{ team: string; teamKills: number; playerKills: number }>;
+  /** Players on a team's seat who are not on its roster (counted to the seat, flagged). */
+  unknown: Array<{ team: string; name: string; uid: string }>;
+  /** Players PCOB reported as disconnected (liveState 6) at the end. */
+  disconnected: Array<{ team: string; name: string }>;
+}
 export interface LobbyGame {
   n: number; map: string; startsAt?: string; results?: TeamResult[]; finishedAt?: number;
+  /** Stable id (27 Nov): days and the journal name matches by it, `n` is only the position. */
+  id?: string; dayId?: string;
+  /** ISO date-time or HH:MM. */
+  scheduledAt?: string;
+  state?: MatchState;
+  attempts?: Attempt[];
+  confirmedAt?: number; confirmedBy?: string;
+  edits?: ResultEdit[];
+  voidReason?: string;
+  /** Places and team kills the feed had when the game ended without a place for every team (place null: typed). */
+  draft?: Array<{ team: string; place: number | null; elims: number }>;
+  checks?: GameChecks;
   /** Where the results came from (24 Nov): the observer feed, or the producer (typed, or an edit of the game's). */
   source?: 'pcob' | 'producer';
   /** The game's own results, kept when the producer edits them. */
@@ -30,7 +59,14 @@ export interface LobbyGame {
   /** What the observer feed gave for this game: every player's final numbers, the kill feed, the circles. */
   feed?: import('./br-stats.ts').GameFeed;
 }
-export interface LobbyCore { teams: LobbyTeam[]; games: LobbyGame[]; scoring: Scoring }
+/** The day a match belongs to (27 Nov): a broadcast session with its date, doors-open time and matches in run order. */
+export interface LobbyDay { id: string; date: string; title: string; opensAt?: string; startedAt?: number; closedAt?: number; matchIds: string[] }
+/** Points added or taken away from a team with a reason (a DQ, a late start, a rule breach). */
+export interface Adjustment { id: string; team: string; points: number; reason: string; at: number; dayId?: string }
+export interface LobbyCore { teams: LobbyTeam[]; games: LobbyGame[]; scoring: Scoring; adjustments?: Adjustment[] }
+
+/** The state of a game; a game from before states existed counts as confirmed once it has results. */
+export const gameState = (g: LobbyGame): MatchState => g.state ?? (g.results?.length ? 'confirmed' : 'scheduled');
 
 export interface Standing {
   team: string;
@@ -45,6 +81,8 @@ export interface Standing {
   lastPlace: number | null;
   /** At or over the match-point threshold (always false without one). */
   matchPoint: boolean;
+  /** Points added or taken away by the organiser (already in `total`). */
+  adjusted: number;
 }
 
 const placePts = (s: Scoring, place: number) => s.placement[place - 1] ?? 0;
@@ -56,13 +94,14 @@ export function gamePoints(r: TeamResult, s: Scoring) {
   return { placementPts: p, elimPts: e, total: p + e };
 }
 
-/** Finished games in order (a game counts once it has results). */
-const played = (lobby: LobbyCore) => lobby.games.filter((g) => g.results?.length).sort((a, b) => a.n - b.n);
+/** Games that count, in order: confirmed ones (official), plus provisional ones when asked. */
+const played = (lobby: LobbyCore, provisional = false) => lobby.games.filter((g) => g.results?.length && (gameState(g) === 'confirmed' || (provisional && gameState(g) === 'provisional'))).sort((a, b) => a.n - b.n);
 
-export function standings(lobby: LobbyCore): Standing[] {
+/** Official standings: confirmed matches and adjustments. `provisional` adds matches saved but not yet confirmed. */
+export function standings(lobby: LobbyCore, opts: { provisional?: boolean } = {}): Standing[] {
   const s = lobby.scoring;
-  const by = new Map<string, Standing>(lobby.teams.map((t) => [t.id, { team: t.id, rank: 0, total: 0, placementPts: 0, elims: 0, elimPts: 0, wins: 0, played: 0, bestPlace: null, lastPlace: null, matchPoint: false }]));
-  for (const g of played(lobby)) {
+  const by = new Map<string, Standing>(lobby.teams.map((t) => [t.id, { team: t.id, rank: 0, total: 0, placementPts: 0, elims: 0, elimPts: 0, wins: 0, played: 0, bestPlace: null, lastPlace: null, matchPoint: false, adjusted: 0 }]));
+  for (const g of played(lobby, opts.provisional)) {
     for (const r of g.results!) {
       const row = by.get(r.team); if (!row) continue;
       const pts = gamePoints(r, s);
@@ -72,6 +111,7 @@ export function standings(lobby: LobbyCore): Standing[] {
       row.lastPlace = r.place;
     }
   }
+  for (const a of lobby.adjustments ?? []) { const row = by.get(a.team); if (row) { row.total += a.points; row.adjusted += a.points; } }
   const rows = [...by.values()];
   for (const r of rows) r.matchPoint = s.matchPoint !== undefined && r.total >= s.matchPoint;
   const cmp = (a: Standing, b: Standing) => {
