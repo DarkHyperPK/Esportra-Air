@@ -71,7 +71,7 @@ async function main() {
     const { width } = image.getSize();
     return (width > 512 ? image.resize({ width: 512, quality: 'best' }) : image).toPNG();
   };
-  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, toPng, version: app.getVersion() });
+  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, toPng, recordingsDir: join(app.getPath('documents'), 'Esportra Air recordings'), version: app.getVersion() });
   void esportra.start();
   if (store.data.mode === 'capture') production.link.resume();
   // The manual as a PDF: the same source as Help, printed in a hidden window, saved where the producer chooses.
@@ -129,7 +129,7 @@ async function main() {
     },
     log: (url, e) => console.warn(`[thumbnails] ${url.replace(/key=[^&]+/, 'key=…')}: ${e instanceof Error ? e.message : String(e)}`),
   });
-  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf, pickVideo, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
+  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), showFile: (path: string) => shell.showItemInFolder(path), saveManualPdf, pickVideo, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 
   // Keys over the game (F-keys and Ctrl/Alt keys): a press runs the same call as inside Air.
   production.attachKeys(globalShortcut, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });

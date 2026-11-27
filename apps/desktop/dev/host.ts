@@ -83,7 +83,7 @@ const backend = await new FakeEsportra().start();
 console.log(JSON.stringify({ esportra: backend.url, email: backend.email, password: backend.password }));
 store.data.deviceId ??= randomUUID();
 const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets, deviceId: store.data.deviceId, deviceName: 'DEV-PC', changed: () => production.emit('change') });
-const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, version: 'dev' });
+const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, recordingsDir: join(dir, 'Esportra Air recordings'), version: 'dev' });
 let clipboard = '';
 let fakePcob: FakePcob | null = null;
 // The manual as a PDF, printed by the same Chromium the walkthrough uses (no save dialog in the dev host).

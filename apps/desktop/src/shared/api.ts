@@ -431,6 +431,8 @@ export interface Snapshot {
   pcobLive?: import('./pcob.ts').BrLive | null;
   /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
   pcob: import('./pcob-status.ts').PcobStatus;
+  /** Record PCOB (27 Nov): the raw PCOB answers being saved to a file on this PC (src/main/pcob-recorder.ts). */
+  pcobRecording: import('../main/pcob-recorder.ts').PcobRecordingView;
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
   /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
   recovery: string | null;
@@ -621,6 +623,10 @@ export interface AirApi {
   /** Reads the PUBG MOBILE observer client's API (PCOB) on this PC or the local network; consent every time. */
   pcobConnect(host: string, consent: boolean): Promise<Snapshot>;
   pcobDisconnect(): Promise<Snapshot>;
+  /** Saves every raw answer of PCOB to a file on this PC while on (needs the connection and its consent). */
+  pcobRecord(on: boolean): Promise<Snapshot>;
+  /** Shows the recording in its folder. */
+  pcobShowRecording(): Promise<void>;
   /** Pairs a PCOB team slot with a lobby team (null: automatic). */
   pcobSeat(lobbyId: string, pcobTeamId: number, team: string | null): Promise<Snapshot>;
   /** Take one of the lobby's full screens on its room, or clear with null. */

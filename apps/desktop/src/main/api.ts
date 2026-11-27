@@ -14,6 +14,8 @@ export interface ApiContext {
   /** Saves the manual as a PDF where the producer chooses (the app), or next to the dev data (dev host). */
   saveManualPdf?: () => Promise<string | null>;
   pickVideo?: () => Promise<string | null>;
+  /** Shows a file in its folder (the app); the dev host does nothing. */
+  showFile?: (path: string) => void;
   /** A still picture of an overlay preview page, for lists (see thumbnails.ts). */
   thumbnail?: (url: string, key: string) => Promise<string | null>;
 }
@@ -49,6 +51,8 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'lobbyShow': p.lobbyShow(String(a[0]), a[1]); break;
     case 'pcobConnect': p.pcobConnect(a[0], a[1]); break;
     case 'pcobDisconnect': p.pcobDisconnect(); break;
+    case 'pcobRecord': p.pcobRecord(a[0]); break;
+    case 'pcobShowRecording': { const f = p.pcobRecordingFile(); if (f && ctx.showFile) ctx.showFile(f); break; }
     case 'pcobSeat': p.pcobSeat(String(a[0]), a[1], a[2]); break;
     case 'lobbyPreview': return p.lobbyPreview(String(a[0]), a[1]);
     case 'lobbyTake': await p.lobbyTake(String(a[0]), a[1] === null ? null : String(a[1])); break;

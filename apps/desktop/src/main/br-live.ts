@@ -25,6 +25,12 @@ export interface BrLiveContext {
   log: (text: string) => void;
   changed: () => void;
   fetch?: typeof fetch;
+  /** Record PCOB: every raw answer (status 0 = no answer, body = the error text), exactly as received. */
+  tap?: (route: string, status: number, body: string) => void;
+  /** Record PCOB: Air's own decisions (game start, game end, results saved). */
+  air?: (event: Record<string, unknown>) => void;
+  /** True while Record PCOB is on: every route is then read every second. */
+  recording?: () => boolean;
   now?: () => number;
   /** Tests drive `tick()` themselves. */
   manual?: boolean;
@@ -107,9 +113,18 @@ export class BrLiveFeed {
   }
 
   private async get(route: string) {
-    const r = await this.fetch(`${this.base}/${route}`, { signal: AbortSignal.timeout(1500) });
-    if (!r.ok) throw new Error(`PCOB answered ${r.status} for ${route}`);
-    return r.json();
+    let status = 0, text = '';
+    try {
+      const r = await this.fetch(`${this.base}/${route}`, { signal: AbortSignal.timeout(1500) });
+      status = r.status;
+      text = await r.text();
+    } catch (e) {
+      this.ctx.tap?.(route, 0, e instanceof Error ? e.message : String(e));
+      throw e;
+    }
+    this.ctx.tap?.(route, status, text);
+    if (status < 200 || status > 299) throw new Error(`PCOB answered ${status} for ${route}`);
+    return JSON.parse(text) as unknown;
   }
 
   async tick() {
@@ -129,6 +144,7 @@ export class BrLiveFeed {
           if (global.status === 'fulfilled') this.global = readGlobal(global.value) ?? this.global;
         }
       }
+      if (this.ctx.recording?.()) await this.readRest(inGame, slow);
       this.status = { ...this.status, lastAt: this.now, error: null };
       await this.step(inGame);
     } catch (e) {
@@ -141,11 +157,19 @@ export class BrLiveFeed {
     }
   }
 
+  /** While recording: every route every second, whether or not a game runs (what the routes say between games is one of the open questions). */
+  private async readRest(inGame: boolean, slow: boolean) {
+    const done = new Set<string>([PCOB_ROUTES.inGame]);
+    if (inGame) { done.add(PCOB_ROUTES.players); done.add(PCOB_ROUTES.teams); }
+    if (inGame && slow) { done.add(PCOB_ROUTES.kills); done.add(PCOB_ROUTES.circle); done.add(PCOB_ROUTES.global); }
+    await Promise.allSettled(Object.values(PCOB_ROUTES).filter((r) => !done.has(r)).map((r) => this.get(r)));
+  }
+
   /** The game's lifecycle from one poll. */
   private async step(inGame: boolean) {
     const lobby = this.ctx.lobby();
     if (inGame && !this.inGame) this.startGame(lobby);
-    if (!inGame && this.inGame) { await this.endGame(lobby, 'left'); this.inGame = false; }
+    if (!inGame && this.inGame) { this.ctx.air?.({ name: 'game.end.detected', why: 'isingame false' }); await this.endGame(lobby, 'left'); this.inGame = false; }
     if (!inGame) { this.setState('waiting'); return; }
     this.setState('live');
     if (!lobby || this.game === null) return;
@@ -183,6 +207,7 @@ export class BrLiveFeed {
     if ((this.teams.finishedStart || results) && this.finishedAt === null) {
       this.finishedAt = this.now;
       const win = results?.find((r) => r.place === 1);
+      this.ctx.air?.({ name: 'game.end.detected', why: results ? (this.teams.finishedStart ? 'finishedStart and every place' : 'every place') : 'finishedStart', winner: win?.team ?? null });
       if (win) this.moment('wwcd', { team: win.team }, 'wwcd');
     }
     if (this.finishedAt !== null && !this.saved && this.now - this.finishedAt >= SETTLE) await this.endGame(lobby, 'finished');
@@ -190,6 +215,7 @@ export class BrLiveFeed {
 
   private startGame(lobby: Lobby | null) {
     this.inGame = true;
+    this.ctx.air?.({ name: 'game.start', lobby: lobby?.title ?? null });
     // The poll that saw the game start already read this game's players, teams and feed: keep them.
     this.lastOut = null; this.placed = new Set(); this.finishedAt = null; this.saved = false; this.said = new Set();
     this.queue = []; this.current = null; this.leader = null; this.last = null;
@@ -246,6 +272,7 @@ export class BrLiveFeed {
     this.ctx.save(lobby.id, this.game, results, feed);
     this.ctx.learn(lobby.id, feed.stats.filter((s) => s.team && s.openId).map((s) => ({ team: s.team!, name: s.name, openId: s.openId })));
     this.status.saved = { game: this.game, at: this.now };
+    this.ctx.air?.({ name: 'results.saved', game: this.game, why, results: results ?? null });
     this.ctx.log(results ? `Game data: match ${this.game} saved from the game (places, kills and every player's numbers)` : `Game data: match ${this.game} ended ${why === 'left' ? 'early' : ''} without a place for every team; its players' numbers are saved, type the results`);
     this.moment('game.end', { game: this.game, results: !!results }, 'end');
     this.ctx.changed();

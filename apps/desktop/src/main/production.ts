@@ -4,7 +4,7 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { hostname } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type LayerRow, type MonitorFrame, type PollInput, type SceneStatus, type QuickMatchInput, type NewMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
 import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
@@ -31,6 +31,7 @@ import { GamePacks } from './game-packs.ts';
 import { Lobbies } from './br-lobbies.ts';
 import { BrGraphics, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
 import { BrLiveFeed } from './br-live.ts';
+import { PcobRecorder } from './pcob-recorder.ts';
 import { BrAutopilot } from './br-autopilot.ts';
 import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
 import { Rehearsal } from './rehearsal.ts';
@@ -92,6 +93,8 @@ export interface ProductionDeps {
   artFetch?: typeof fetch;
   /** How Air reads the PUBG MOBILE observer client (tests pass their own). */
   pcobFetch?: typeof fetch;
+  /** Where Record PCOB writes (Documents/Esportra Air recordings); without it recording is not available. */
+  recordingsDir?: string;
   /** Where agent and map pictures are downloaded from (tests use a stand-in). */
   artOrigin?: string;
   ingest: Pick<IngestClient, 'target'>;
@@ -156,6 +159,7 @@ export class Production extends EventEmitter {
   readonly brGraphics: BrGraphics;
   /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
   readonly brLive: BrLiveFeed;
+  readonly pcobRecorder: PcobRecorder;
   readonly brAuto: BrAutopilot;
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
@@ -202,6 +206,7 @@ export class Production extends EventEmitter {
       event: (l) => deps.store.data.events.find((e) => e.id === l.eventId) ?? null,
     });
     // PUBG MOBILE live data (24 Nov): src/main/br-live.ts.
+    this.pcobRecorder = new PcobRecorder({ dir: deps.recordingsDir ?? join(tmpdir(), 'Esportra Air recordings'), changed: () => this.emit('change'), now: deps.now });
     this.brLive = new BrLiveFeed({
       lobby: () => this.lobbies.selected,
       patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
@@ -210,6 +215,9 @@ export class Production extends EventEmitter {
       event: (name, data) => this.brAuto.onMoment(name, data),
       log: (t) => this.log.add(t), changed: () => this.emit('change'),
       fetch: deps.pcobFetch,
+      tap: (route, status, body) => this.pcobRecorder.record(route, status, body),
+      air: (event) => this.pcobRecorder.air(event),
+      recording: () => this.pcobRecorder.on,
     });
     // The lobby's Rundown run from the feed (24 Nov): src/main/br-autopilot.ts.
     this.brAuto = new BrAutopilot({
@@ -1071,7 +1079,14 @@ export class Production extends EventEmitter {
     this.deps.store.data.pcobHost = this.brLive.status.host;
     this.deps.store.save();
   }
-  pcobDisconnect() { this.brLive.disconnect(); }
+  pcobDisconnect() { this.pcobRecorder.stop('Game data was disconnected.'); this.brLive.disconnect(); }
+  /** Record PCOB: only while Air reads the observer PC (the producer's consent is given when connecting). */
+  pcobRecord(on: unknown) {
+    if (on !== true) { this.pcobRecorder.stop(); return; }
+    if (this.brLive.status.state === 'off') throw new Error('Connect to the observer PC first (and tick the consent box). Nothing is recorded without it.');
+    this.pcobRecorder.start();
+  }
+  pcobRecordingFile() { return this.pcobRecorder.view().file; }
   pcobSeat(lobbyId: string, pcobTeamId: unknown, team: unknown) {
     const id = Number(pcobTeamId);
     if (!Number.isInteger(id) || id < 0 || id > 999) throw new Error('That team slot is not valid.');
@@ -1938,6 +1953,7 @@ export class Production extends EventEmitter {
       lobbyOnAir: this.lobbies.selected ? this.brGraphics.onAir(this.lobbies.selected) : null,
       brAuto: this.brAuto.status(),
       pcobLive: this.brLive.live ? this.brLive.last : null,
+      pcobRecording: this.pcobRecorder.view(),
       pcob: { ...this.brLive.status, host: this.brLive.status.host || this.deps.store.data.pcobHost || '127.0.0.1:10086' },
       selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),

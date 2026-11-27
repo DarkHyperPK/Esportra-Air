@@ -48,6 +48,7 @@ export function PcobPanel({ s, run, l, close }: { s: Snapshot; run: Run; l: Lobb
           ) : (
             <div><button className="btn" onClick={() => void run(() => air.pcobDisconnect())}>Disconnect</button></div>
           )}
+          <RecordPcob s={s} run={run} />
           {p.slots.length > 0 && (
             <section className="stack g-2">
               <div className="between"><b className="t-sm">Team slots</b><span className={`t-xs ${unpaired.length ? 'warn-text' : 'faint'}`}>{unpaired.length ? `${unpaired.length} not paired: their points don't count until you pair them` : 'Every PCOB team is paired'}</span></div>
@@ -68,5 +69,28 @@ export function PcobPanel({ s, run, l, close }: { s: Snapshot; run: Run; l: Lobb
         </div>
       </div>
     </div>
+  );
+}
+
+function size(bytes: number) { return bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`; }
+
+/** Record PCOB (27 Nov): the raw answers go to a file on this PC, to check the observer API against real games. */
+function RecordPcob({ s, run }: { s: Snapshot; run: Run }) {
+  const r = s.pcobRecording;
+  const connected = s.pcob.state !== 'off';
+  const name = r.file ? r.file.split(/[\\/]/).pop() : null;
+  return (
+    <section className="card body-pad stack g-2" aria-label="Record game data">
+      <label className="row g-2 t-sm"><input type="checkbox" checked={r.on} disabled={!r.on && !connected} onChange={(e) => void run(() => air.pcobRecord(e.target.checked))} /> <b>Record game data</b></label>
+      <span className="faint t-xs">Saves everything PCOB sends to a file on this PC (Documents/Esportra Air recordings). Use it in a scrim: play one game to the winner, one remake, and leave it running a few minutes after the game ends. Nothing leaves this PC.</span>
+      {!connected && !r.on && <span className="faint t-xs">Connect to the observer PC first.</span>}
+      {r.stopped && !r.on && <span className="warn-text t-xs">Recording stopped: {r.stopped}</span>}
+      {name && (
+        <div className="between">
+          <span className="t-sm"><span className="mono">{name}</span> · {size(r.bytes)}{r.on ? ' · recording' : ''}</span>
+          <button className="btn small" onClick={() => void run(() => air.pcobShowRecording())}>Show in folder</button>
+        </div>
+      )}
+    </section>
   );
 }
