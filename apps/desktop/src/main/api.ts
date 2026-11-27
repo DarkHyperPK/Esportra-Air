@@ -4,6 +4,7 @@ import type { Production } from './production.ts';
 import type { EventPatch, SponsorInput, TalentInput } from '../shared/model.ts';
 import type { GameId, Profile } from '../shared/games.ts';
 import type { ObsLink } from './obs.ts';
+import { readFileSync } from 'node:fs';
 import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 
 export interface ApiContext {
@@ -14,13 +15,17 @@ export interface ApiContext {
   /** Saves the manual as a PDF where the producer chooses (the app), or next to the dev data (dev host). */
   saveManualPdf?: () => Promise<string | null>;
   pickVideo?: () => Promise<string | null>;
+  /** Event files (27 Nov): where to save one, which one to open, and which folder is the auto-backup folder (null: cancelled). */
+  pickEventSave?: (defaultName: string) => Promise<string | null>;
+  pickEventOpen?: () => Promise<string | null>;
+  pickFolder?: () => Promise<string | null>;
   /** Shows a file in its folder (the app); the dev host does nothing. */
   showFile?: (path: string) => void;
   /** A still picture of an overlay preview page, for lists (see thumbnails.ts). */
   thumbnail?: (url: string, key: string) => Promise<string | null>;
 }
 
-export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void | { id: string; name: string; url: string } | unknown[] | Record<string, unknown>> {
+export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void | { id: string; name: string; url: string } | unknown[] | Record<string, unknown> | object> {
   const p = ctx.production;
   const a = args as any[];
   switch (method) {
@@ -58,6 +63,26 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'lobbyTake': await p.lobbyTake(String(a[0]), a[1] === null ? null : String(a[1])); break;
     case 'autopilotRestart': p.autopilotRestart(); break;
     case 'recoveryDismiss': p.dismissRecovery(); break;
+    case 'recoveredDismiss': p.dismissRecovered(); break;
+    case 'eventExport': {
+      const id = String(a[0] ?? '');
+      const path = ctx.pickEventSave ? await ctx.pickEventSave(p.eventFiles.defaultFileName(id)) : null;
+      return path ? p.eventFiles.save(id, path) : null;
+    }
+    case 'eventImportOpen': {
+      const path = ctx.pickEventOpen ? await ctx.pickEventOpen() : null;
+      return path ? p.eventFiles.check(readFileSync(path, 'utf8')) : null;
+    }
+    case 'eventImportConfirm': return p.eventFiles.confirm(String(a[0] ?? ''), a[1] === 'replace' ? 'replace' : 'copy');
+    case 'backupList': return p.backupList();
+    case 'backupRestore': await p.backupRestore(String(a[0] ?? '')); break;
+    case 'autoBackupChoose': {
+      const folder = ctx.pickFolder ? await ctx.pickFolder() : null;
+      if (folder) p.eventFiles.setFolder(folder);
+      break;
+    }
+    case 'autoBackupOff': p.eventFiles.setFolder(null); break;
+    case 'autoBackupNow': return p.eventFiles.backupNow();
     case 'rehearsalStart': await p.rehearsal.start(a[0] && typeof a[0] === 'object' ? a[0] : {}); break;
     case 'rehearsalStop': p.rehearsal.stop(); break;
     case 'rehearsalTake': await p.rehearsal.take(); break;

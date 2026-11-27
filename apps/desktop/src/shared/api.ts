@@ -436,6 +436,10 @@ export interface Snapshot {
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
   /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
   recovery: string | null;
+  /** Air could not read its saved data on start (27 Nov): what it loaded instead. Shown once, until dismissed. */
+  recovered: { from: string | null; fromAt: number | null; at: number; brokenFile: string } | null;
+  /** The auto-backup folder (27 Nov): where the selected event's file is written after changes. */
+  autoBackup: { folder: string | null; lastAt: number | null; file: string | null; error: string | null };
   /** The private rehearsal of the selected match (never on air). */
   rehearsal: RehearsalView;
 }
@@ -635,6 +639,17 @@ export interface AirApi {
   /** Forgets this match's autopilot progress so the rundown starts again from the first step. */
   autopilotRestart(): Promise<Snapshot>;
   recoveryDismiss(): Promise<Snapshot>;
+  recoveredDismiss(): Promise<Snapshot>;
+  /** Save event file… (null: cancelled). */
+  eventExport(eventId: string): Promise<import('../main/event-files.ts').EventFileSaved | null>;
+  /** Open event file…: reads the file the producer picks and says what is in it (null: cancelled). Nothing changes yet. */
+  eventImportOpen(): Promise<import('../main/event-files.ts').EventFileCheck | null>;
+  eventImportConfirm(token: string, mode: 'copy' | 'replace'): Promise<{ eventId: string; name: string }>;
+  backupList(): Promise<Array<{ name: string; at: number; bytes: number }>>;
+  backupRestore(name: string): Promise<Snapshot>;
+  autoBackupChoose(): Promise<Snapshot>;
+  autoBackupOff(): Promise<Snapshot>;
+  autoBackupNow(): Promise<string | null>;
   /** Plays the match privately inside Air, with autopilot firing. Nothing reaches OBS. */
   rehearsalStart(options: Partial<RehearsalOptions>): Promise<Snapshot>;
   rehearsalStop(): Promise<Snapshot>;

@@ -9,7 +9,7 @@ import { manualHtml } from '../src/shared/manual.ts';
 import { gameOf } from '../src/shared/games.ts';
 import { createServer } from 'node:http';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { dispatch } from '../src/main/api.ts';
@@ -83,7 +83,7 @@ const backend = await new FakeEsportra().start();
 console.log(JSON.stringify({ esportra: backend.url, email: backend.email, password: backend.password }));
 store.data.deviceId ??= randomUUID();
 const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets, deviceId: store.data.deviceId, deviceName: 'DEV-PC', changed: () => production.emit('change') });
-const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, recordingsDir: join(dir, 'Esportra Air recordings'), version: 'dev' });
+const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, recordingsDir: join(dir, 'Esportra Air recordings'), journalDir: join(dir, 'events'), version: 'dev' });
 let clipboard = '';
 let fakePcob: FakePcob | null = null;
 // The manual as a PDF, printed by the same Chromium the walkthrough uses (no save dialog in the dev host).
@@ -115,7 +115,13 @@ const thumbs = new Thumbnails(async (url) => {
     await page.close();
   }
 });
-const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; }, saveManualPdf, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
+// Event files: the dev host has no dialogs. Save writes into <data>/Event files, Open reads the newest file there,
+// and the auto-backup folder is <data>/Auto backup.
+const eventFolder = join(dir, 'Event files');
+const pickEventSave = async (name: string) => { mkdirSync(eventFolder, { recursive: true }); return join(eventFolder, name); };
+const pickEventOpen = async () => { try { return readdirSync(eventFolder).filter((f) => f.endsWith('.airevent')).map((f) => join(eventFolder, f)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ?? null; } catch { return null; } };
+const pickFolder = async () => join(dir, 'Auto backup');
+const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; }, saveManualPdf, pickEventSave, pickEventOpen, pickFolder, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 // Keys over the game: F12 stands for a key another app holds (Windows keeps F12 for debuggers).
 const shortcuts = new FakeShortcuts(new Set(['F12']));
 production.attachKeys(shortcuts, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });

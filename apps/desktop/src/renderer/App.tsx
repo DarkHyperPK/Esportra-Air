@@ -19,6 +19,7 @@ import { HelpScreen } from './screens/HelpScreen.tsx';
 import { TeamsScreen } from './screens/TeamsScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 import { FirstRun } from './components/FirstRun.tsx';
+import { RecoveredNotice } from './components/EventFileUi.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
@@ -213,6 +214,7 @@ export function App() {
               {s.engine.state === 'starting' ? 'Starting the graphics engine…' : s.engine.error}
             </div>
           )}
+          <RecoveredNotice s={s} run={run} />
           {s.recovery && (
             <div className="notice info" role="status" style={{ margin: '12px 24px 0' }}>
               <span className="grow">{s.recovery}</span>

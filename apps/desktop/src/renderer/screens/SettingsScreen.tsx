@@ -7,6 +7,7 @@ import { air } from '../bridge.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import { PcModeCard } from '../components/Join.tsx';
 import { ProfilePicker } from '../components/FirstRun.tsx';
+import { BackupsPanel } from '../components/EventFileUi.tsx';
 import { SyncScreen } from './SyncScreen.tsx';
 import type { PageProps } from '../App.tsx';
 
@@ -14,6 +15,7 @@ const SECTIONS = [
   ['setup', 'Setup'],
   ['pc', 'This PC'],
   ['account', 'Esportra account'],
+  ['backups', 'Backups'],
   ['keys', 'Keyboard'],
   ['moments', 'Moments on Live'],
   ['about', 'About'],
@@ -193,6 +195,7 @@ export function SettingsScreen(props: PageProps) {
         </section>
         <div id="set-pc"><PcModeCard s={s} run={run} /></div>
         <div id="set-account"><SyncScreen {...props} /></div>
+        <div id="set-backups"><BackupsPanel s={s} run={run} /></div>
         <div id="set-keys"><KeyboardSettings s={s} run={run} /></div>
         <div id="set-moments"><MomentSettings s={s} run={run} /></div>
         <section className="panel" id="set-about">

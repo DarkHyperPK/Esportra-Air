@@ -2,8 +2,10 @@
 // Secrets (engine key, OBS password) are kept separately, encrypted by the OS (see secrets.ts).
 
 import { loadShowTemplates } from './show-templates.ts';
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { copyFileSync, readFileSync, renameSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { writeDurable } from './durable.ts';
+import { BACKUP_EVERY_MS, listBackups, readBackup, stamp, writeBackup, type BackupInfo } from './store-backups.ts';
 import { randomUUID } from 'node:crypto';
 import { ownScreen, ownScreenId } from '../shared/own-graphics.ts';
 import type { Match, Screen, Setup } from '../shared/api.ts';
@@ -82,6 +84,8 @@ export interface Saved {
   join?: { enabled: boolean; port: number };
   /** Capture-only side: the producer's address and this PC's role. The code is kept encrypted. */
   link?: { address: string; role: 'observer' | 'player' };
+  /** Auto-backup folder (27 Nov): the selected event's event file is written here after changes (src/main/event-files.ts). */
+  autoBackup?: { folder: string };
   /** Player camera links (VDO.Ninja ids) per player slot, and how the cameras are laid out. */
   cams?: { layout: 'ingame' | 'grid5' | 'grid10'; delayMs: number; ids: Array<Array<string | null>> };
 }
@@ -144,27 +148,108 @@ export function defaults(): Saved {
   return { version: 1, setup: defaultSetup(), onboarding: { done: false }, matches: [], events: [], selectedMatchId: null, owned: emptyOwned(), enginePort: 5300 };
 }
 
+/** Air could not read its saved data on start (27 Nov): what it did instead, shown once. */
+export interface Recovered {
+  /** The backup Air loaded, or null when there was none and it started empty. */
+  from: string | null;
+  /** When that backup was made. */
+  fromAt: number | null;
+  at: number;
+  /** The unreadable file, kept beside air.json. */
+  brokenFile: string;
+}
+
+export interface StoreOptions {
+  now?: () => number;
+  /** Writes air.json (default: temp file, fsync, rename, fsync folder). Tests make it fail half way. */
+  write?: (file: string, text: string) => void;
+}
+
 export class Store {
   data: Saved;
+  /** Set when air.json could not be read on start; the interface shows it once, then clears it. */
+  recovered: Recovered | null = null;
   private readonly file: string;
+  private readonly now: () => number;
+  private readonly writeFile: (file: string, text: string) => void;
+  private lastBackupAt = 0;
+  private readonly saved = new Set<() => void>();
 
-  constructor(file: string) {
+  constructor(file: string, options: StoreOptions = {}) {
     this.file = file;
+    this.now = options.now ?? Date.now;
+    this.writeFile = options.write ?? writeDurable;
     this.data = defaults();
+    let text: string | null = null;
     try {
-      const saved = JSON.parse(readFileSync(file, 'utf8')) as Partial<Saved>;
-      if (saved.version === 1) this.data = { ...defaults(), ...saved, setup: { ...defaultSetup(), ...saved.setup } as Setup };
+      text = readFileSync(file, 'utf8');
+    } catch (e) {
+      // No file: first run. Any other failure (a folder, no permission) is an unreadable file.
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') text = '';
+    }
+    if (text !== null && !this.load(text)) this.recover();
+  }
+
+  get backupsDir() { return join(dirname(this.file), 'backups'); }
+
+  /** Parses and migrates a saved file into this.data. Leaves this.data as it was and returns false when it cannot. */
+  private load(text: string): boolean {
+    const before = this.data;
+    try {
+      const saved = JSON.parse(text) as Partial<Saved> | null;
+      if (!saved || typeof saved !== 'object' || saved.version !== 1) throw new Error('not an Air save');
+      this.data = { ...defaults(), ...saved, setup: { ...defaultSetup(), ...saved.setup } as Setup };
       // Every screen needs a UUID output alias (older saves may lack one).
       this.migrate();
       // Saves from before first run existed were set up by hand, and every match then was Valorant.
-      if (saved.version === 1 && !saved.onboarding) {
+      if (!saved.onboarding) {
         this.data.onboarding = { done: true };
         this.data.setup.game ??= 'valorant';
       }
+      return true;
     } catch {
-      // First run, or an unreadable file: start from defaults (the old file is overwritten on save).
+      this.data = before;
+      return false;
     }
   }
+
+  /**
+   * air.json exists but cannot be read (27 Nov): never start from defaults silently, because the next save would overwrite
+   * the producer's data. The bad file is kept beside it, the newest backup that reads is loaded, and the interface says so.
+   */
+  private recover() {
+    const at = this.now();
+    const brokenFile = `${this.file}.broken-${stamp(at)}`;
+    try { renameSync(this.file, brokenFile); } catch { try { copyFileSync(this.file, brokenFile); } catch { /* keep going */ } }
+    for (const b of listBackups(this.backupsDir)) {
+      let text: string;
+      try { text = readBackup(this.backupsDir, b.name); } catch { continue; }
+      if (!this.load(text)) continue;
+      try { this.writeFile(this.file, text); } catch { /* the next save writes it */ }
+      this.recovered = { from: b.name, fromAt: b.at, at, brokenFile };
+      return;
+    }
+    this.data = defaults();
+    this.recovered = { from: null, fromAt: null, at, brokenFile };
+  }
+
+  /** The saved copies, newest first. */
+  backups(): BackupInfo[] { return listBackups(this.backupsDir); }
+
+  /** Loads one of the backups as the current data. The data as it is now is backed up first, so a restore can be undone. */
+  restoreBackup(name: string) {
+    const text = readBackup(this.backupsDir, name);
+    const before = this.data;
+    if (!this.load(text)) throw new Error('That backup cannot be read.');
+    const after = this.data;
+    this.data = before;
+    this.save(true);
+    this.data = after;
+    this.save();
+  }
+
+  /** Called after every save (the auto-backup folder follows it). */
+  onSaved(fn: () => void) { this.saved.add(fn); return () => void this.saved.delete(fn); }
 
   /** Brings an older save up to the current scene model, keeping what the producer chose. */
   private migrate() {
@@ -216,10 +301,17 @@ export class Store {
     this.data.players = lib.players;
   }
 
-  save() {
-    mkdirSync(dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.data, null, 1));
-    renameSync(tmp, this.file);
+  /** Writes air.json (flushed to disk before it replaces the old file) and, at most every 30 s, a backup of it. */
+  save(forceBackup = false) {
+    const text = JSON.stringify(this.data, null, 1);
+    this.writeFile(this.file, text);
+    const now = this.now();
+    if (forceBackup || now - this.lastBackupAt >= BACKUP_EVERY_MS) {
+      try {
+        writeBackup(this.backupsDir, text, now);
+        this.lastBackupAt = now;
+      } catch { /* a backup that cannot be written never stops a save */ }
+    }
+    for (const fn of this.saved) { try { fn(); } catch { /* a listener never stops a save */ } }
   }
 }

@@ -29,6 +29,8 @@ import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { GamePacks } from './game-packs.ts';
 import { Lobbies } from './br-lobbies.ts';
+import { EventJournal } from './event-journal.ts';
+import { EventFiles } from './event-files.ts';
 import { BrGraphics, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
 import { BrLiveFeed } from './br-live.ts';
 import { PcobRecorder } from './pcob-recorder.ts';
@@ -95,6 +97,8 @@ export interface ProductionDeps {
   pcobFetch?: typeof fetch;
   /** Where Record PCOB writes (Documents/Esportra Air recordings); without it recording is not available. */
   recordingsDir?: string;
+  /** Where the event journals are kept (userData/events); without it no journal is written. */
+  journalDir?: string;
   /** Where agent and map pictures are downloaded from (tests use a stand-in). */
   artOrigin?: string;
   ingest: Pick<IngestClient, 'target'>;
@@ -106,6 +110,8 @@ export interface ProductionDeps {
   now?: () => number;
   /** Fixed Companion port (tests). */
   companionPort?: number;
+  /** Auto-backup debounce in ms (tests; default 10 s). */
+  autoBackupMs?: number;
 }
 
 export { tagFor, tagsFor } from './team-tags.ts';
@@ -156,6 +162,9 @@ export class Production extends EventEmitter {
   readonly art: ArtCache;
   readonly packs: GamePacks;
   readonly lobbies: Lobbies;
+  /** Safe saves (27 Nov): the event journal, event files and the auto-backup folder. */
+  readonly journal: EventJournal | null;
+  readonly eventFiles: EventFiles;
   readonly brGraphics: BrGraphics;
   /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
   readonly brLive: BrLiveFeed;
@@ -187,8 +196,11 @@ export class Production extends EventEmitter {
       offer: async (game) => { if (!deps.esportra) throw new Error('Sign in to Esportra to download the game pack.'); return deps.esportra.gamePack(game); },
     });
     this.packs.on('change', () => this.emit('change'));
+    // The event journal and event files (27 Nov): src/main/event-journal.ts, src/main/event-files.ts.
+    this.journal = deps.journalDir ? new EventJournal(deps.journalDir, deps.now) : null;
     // Battle royale lobbies (20 Nov): src/main/br-lobbies.ts.
     this.lobbies = new Lobbies({
+      journal: this.journal ?? undefined,
       store: deps.store, log: (t) => this.log.add(t), changed: () => this.emit('change'),
       patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
       live: (id) => (!!this.gameLocked() || this.brLive.live) && deps.store.data.selectedLobbyId === id,
@@ -224,6 +236,17 @@ export class Production extends EventEmitter {
       lobby: () => this.lobbies.selected,
       take: async (l, screen) => { await this.brGraphics.take(l, screen); this.emit('change'); },
       log: (t) => this.log.add(t), changed: () => this.emit('change'),
+    });
+    this.eventFiles = new EventFiles({
+      store: deps.store, journal: this.journal, version: deps.version, now: deps.now, debounceMs: deps.autoBackupMs,
+      assets: {
+        get: async (id) => { try { return await this.client.getBytes(`/air-assets/${id}`); } catch { return null; } },
+        put: async (id, bytes) => { if (!deps.engine.status) throw new Error('The graphics engine is not running, so the pictures in the file cannot be kept. Start it and open the file again.'); await this.client.putBytes(`/control/assets/${id}`, bytes); },
+      },
+      selectedEventId: () => (gameOf(this.setup.game)?.shape === 'lobby' ? this.lobbies.selected?.eventId : this.match?.eventId) ?? this.lobbies.selected?.eventId ?? this.match?.eventId ?? null,
+      live: () => !!this.gameLocked() || this.brLive.live,
+      imported: async () => { this.own.syncScreens(); this.lobbies.refresh(); this.save(); await this.lobbies.publish().catch(() => {}); },
+      changed: () => this.emit('change'), log: (t) => this.log.add(t),
     });
     this.packs.on('change', () => void this.lobbies.publish().catch(() => {}));
     void this.startPacks();
@@ -492,6 +515,27 @@ export class Production extends EventEmitter {
 
   stopKeys() {
     this.globalKeys?.stop();
+    this.eventFiles.stop();
+  }
+
+  // ── safe saves (27 Nov) ──
+
+  /** The saved copies of air.json, newest first. */
+  backupList() { return this.deps.store.backups(); }
+
+  /** Loads a backup as the current data. Refused while game data or a test round runs; the data as it is now is backed up first. */
+  async backupRestore(name: string) {
+    if (this.gameLocked() || this.brLive.live) throw new Error('Game data or a test is running. Stop it before restoring a backup.');
+    this.deps.store.restoreBackup(name);
+    this.log.add('Restored a backup of Air’s saved data');
+    this.autopilot.loadForMatch();
+    await this.syncEngine().catch(() => {});
+    this.emit('change');
+  }
+
+  dismissRecovered() {
+    this.deps.store.recovered = null;
+    this.emit('change');
   }
 
   async setMoments(ids: string[]) {
@@ -1947,6 +1991,8 @@ export class Production extends EventEmitter {
       log: this.log.list(),
       checks: [],
       recovery: this.recoveryText(),
+      recovered: this.deps.store.recovered,
+      autoBackup: this.eventFiles.view(),
       art: this.art.status,
       packs: this.packsView(),
       lobbies: this.lobbies.list(),

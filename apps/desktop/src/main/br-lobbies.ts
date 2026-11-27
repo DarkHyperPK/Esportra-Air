@@ -9,6 +9,7 @@ import { playerTotals, teamTotals, type GameFeed } from '../shared/br-stats.ts';
 import { patchShow, showOf } from '../shared/br-rundown.ts';
 import { gameOf, type GameId } from '../shared/games.ts';
 import type { Store } from './store.ts';
+import type { EventJournal } from './event-journal.ts';
 
 export interface LobbyContext {
   store: Store;
@@ -22,6 +23,8 @@ export interface LobbyContext {
   typed?: (lobby: Lobby, game: number) => void;
   /** Room fields the lobby graphics read besides `br` (src/main/br-graphics.ts). */
   extra?: (lobby: Lobby) => Record<string, unknown>;
+  /** The event journal (27 Nov): every change to a lobby's structure or results is also written there. */
+  journal?: EventJournal;
 }
 
 const MAX_TEAMS = 25, MAX_GAMES = 24;
@@ -36,6 +39,31 @@ export class Lobbies {
   constructor(ctx: LobbyContext) { this.ctx = ctx; }
 
   private get data() { return this.ctx.store.data; }
+
+  /**
+   * Writes one line to the event's journal. A lobby the journal has not met yet gets a baseline of what it was before
+   * this change, so the journal alone can rebuild it. A journal that cannot be written is logged and never stops the change.
+   */
+  private note(l: Lobby, kind: string, data: Record<string, unknown> = {}) {
+    const j = this.ctx.journal;
+    if (!j) return;
+    try {
+      if (kind !== 'lobby.create' && !j.knows(l.eventId, l.id)) {
+        const results: Record<number, TeamResult[]> = {};
+        for (const g of l.games) if (g.results?.length) results[g.n] = g.results;
+        j.append(l.eventId, 'lobby.baseline', { lobbyId: l.id, title: l.title, game: l.game, teams: l.teams.map((t) => t.id), games: l.games.length, results });
+      }
+      j.append(l.eventId, kind, { lobbyId: l.id, ...data });
+    } catch (e) {
+      this.ctx.log(`Could not write the event journal: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /** Hook for points added or taken away later (Esportra adjustments): recorded with its reason, standings unchanged. */
+  noteAdjustment(id: string, data: Record<string, unknown>) {
+    const l = this.find(id);
+    this.note(l, 'adjust', data);
+  }
   list(): Lobby[] { return this.data.lobbies ?? []; }
   get selected(): Lobby | null { return this.list().find((l) => l.id === this.data.selectedLobbyId) ?? null; }
   find(id: string) {
@@ -64,6 +92,7 @@ export class Lobbies {
       games: Array.from({ length: count }, (_, i) => ({ n: i + 1, map: text(maps[i] ?? '', 30, 'Map', false) })),
       scoring: structuredClone(SCORING_PRESETS[game.scoring ?? 'pmgc'].scoring), createdAt: Date.now(),
     };
+    this.note(lobby, 'lobby.create', { title: lobby.title, game: lobby.game, games: lobby.games.length, teams: [], maps: lobby.games.map((g) => g.map) });
     this.data.lobbies = [...this.list(), lobby];
     this.data.selectedLobbyId ??= id;
     this.ctx.store.save();
@@ -87,6 +116,12 @@ export class Lobbies {
         return { ...(had ?? {}), n: i + 1, map: text(x.map, 30, 'Map', false), ...(typeof x.startsAt === 'string' && x.startsAt ? { startsAt: text(x.startsAt, 20, 'Time', false) } : {}) };
       });
     }
+    const fields: Record<string, unknown> = {};
+    if (patch.title !== undefined) fields.title = next.title;
+    if (patch.stage !== undefined) fields.stage = next.stage;
+    if (patch.scoring !== undefined) fields.scoring = next.scoring;
+    if (patch.games !== undefined) fields.games = next.games.map((g) => ({ n: g.n, map: g.map, startsAt: g.startsAt ?? null }));
+    this.note(l, 'lobby.update', { fields });
     this.put(next);
   }
 
@@ -102,6 +137,7 @@ export class Lobbies {
     });
     const ids = new Set(picked.map((t) => t.id));
     const games = l.games.map((g) => (g.results ? { ...g, results: g.results.filter((r) => ids.has(r.team)) } : g));
+    this.note(l, 'lobby.teams', { teams: picked.map((t) => t.id) });
     this.put({ ...l, teams: picked, games });
   }
 
@@ -135,6 +171,7 @@ export class Lobbies {
     // Typed by the producer; a game the feed filled keeps its own copy beside the edit.
     const mark = (g: LobbyGame): LobbyGame => ({ ...g, results, finishedAt: Date.now(), source: 'producer', ...(g.source === 'pcob' && g.results ? { gameResults: g.results } : {}) });
     const next = { ...l, games: l.games.map((g) => (g.n === n ? mark(g) : g)) };
+    this.note(l, 'result.set', { game: n, results, source: 'producer' });
     this.put(next);
     const top = standings(next)[0];
     const lead = top ? l.teams.find((t) => t.id === top.team) : null;
@@ -157,6 +194,8 @@ export class Lobbies {
       if (g.source === 'producer' && g.results?.length) return { ...g, feed, ...(results ? { gameResults: results } : {}) };
       return results ? { ...g, results, source: 'pcob', finishedAt: Date.now(), feed } : { ...g, feed };
     };
+    const applied = !!results && !(game.source === 'producer' && game.results?.length);
+    this.note(l, 'result.feed', { game: n, results: applied ? results : null, applied, source: 'pcob' });
     this.put({ ...l, games: l.games.map((g) => (g.n === n ? next(g) : g)) });
   }
 
@@ -196,6 +235,7 @@ export class Lobbies {
   clearResult(id: string, n: number) {
     const l = this.find(id);
     // The results go; what the observer feed gave (its own results and the players' numbers) stays with the game.
+    this.note(l, 'result.clear', { game: n });
     const keep = (g: LobbyGame): LobbyGame => ({ n: g.n, map: g.map, ...(g.startsAt ? { startsAt: g.startsAt } : {}), ...(g.feed ? { feed: g.feed } : {}), ...(g.source === 'pcob' && g.results ? { gameResults: g.results } : g.gameResults ? { gameResults: g.gameResults } : {}) });
     this.put({ ...l, games: l.games.map((g) => (g.n === n ? keep(g) : g)) });
   }
@@ -211,6 +251,7 @@ export class Lobbies {
   remove(id: string) {
     const l = this.find(id);
     if (this.ctx.live(id)) throw new Error('This lobby is live. Stop its data or test before deleting it.');
+    this.note(l, 'lobby.delete');
     this.data.lobbies = this.list().filter((x) => x.id !== l.id);
     if (this.data.selectedLobbyId === id) this.data.selectedLobbyId = null;
     this.ctx.store.save();

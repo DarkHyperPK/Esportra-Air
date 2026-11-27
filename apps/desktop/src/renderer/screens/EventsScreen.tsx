@@ -10,6 +10,7 @@ import { air } from '../bridge.ts';
 import type { PageProps } from '../App.tsx';
 import { StageLight } from '../components/FirstRun.tsx';
 import { EventBranding, EventLogo, EventTalent } from './EventScreen.tsx';
+import { EventFileMenu, OpenEventFile } from '../components/EventFileUi.tsx';
 import { AccessRequest } from '../components/AccessRequest.tsx';
 import { TeamMark } from './MatchWorkspace.tsx';
 import { LobbyList, LobbyScreen } from './LobbyScreen.tsx';
@@ -85,6 +86,7 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
           <h2 className="title-lg">Set up your first event</h2>
           <p className="muted">An event holds its matches, its logo, and the people and sponsors on air. Start with its name.</p>
           <div className="fr-actions" style={{ justifyContent: 'center' }}>{form}</div>
+          <OpenEventFile run={run} />
           {s.esportra.state === 'signed-out' && <button className="btn quiet" onClick={openSignIn}>Sign in to load your Esportra tournaments</button>}
           {s.esportra.state === 'denied' && <div style={{ textAlign: 'left', maxWidth: 520, margin: '0 auto' }}><AccessRequest e={s.esportra} run={run} /></div>}
         </div>
@@ -95,7 +97,7 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
     <div className="stack" style={{ gap: 20 }}>
       <div className="between">
         <div><h1 className="title-lg">Events</h1><p className="muted">Each event holds its matches, its branding, and the people and sponsors on air.</p></div>
-        {form}
+        <span className="row-gap">{form}<OpenEventFile run={run} /></span>
       </div>
       <div className="ev-cards">
         {s.events.map((e) => {
@@ -169,6 +171,7 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
           <div><h1 className="title-lg">{event.name}</h1><p className="muted">{event.stages.length ? event.stages.join(' · ') : 'No stages yet'}{event.tournamentId ? ' · from Esportra' : ''}</p></div>
         </div>
         <div className="row-gap">
+          <EventFileMenu eventId={event.id} run={run} />
           <DeleteButton label="Delete event" ask={matches.length ? `Delete ${event.name} and its ${matches.length} match${matches.length === 1 ? '' : 'es'}?` : `Delete ${event.name}?`} onDelete={() => void run(async () => { await air.deleteEvent(event.id); back(); })} />
           {!lobbyGame && <button className="btn primary" onClick={newMatch}>New match</button>}
         </div>

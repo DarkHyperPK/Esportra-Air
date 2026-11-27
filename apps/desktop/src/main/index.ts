@@ -71,7 +71,7 @@ async function main() {
     const { width } = image.getSize();
     return (width > 512 ? image.resize({ width: 512, quality: 'best' }) : image).toPNG();
   };
-  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, toPng, recordingsDir: join(app.getPath('documents'), 'Esportra Air recordings'), version: app.getVersion() });
+  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, toPng, recordingsDir: join(app.getPath('documents'), 'Esportra Air recordings'), journalDir: join(app.getPath('userData'), 'events'), version: app.getVersion() });
   void esportra.start();
   if (store.data.mode === 'capture') production.link.resume();
   // The manual as a PDF: the same source as Help, printed in a hidden window, saved where the producer chooses.
@@ -91,6 +91,20 @@ async function main() {
   // A sponsor's break loop: OBS plays the file from this PC, so Air keeps only its path.
   const pickVideo = async () => {
     const choice = await dialog.showOpenDialog(window!, { title: 'Choose the sponsor video', properties: ['openFile'], filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'flv', 'ts', 'm4v'] }] });
+    return choice.canceled ? null : choice.filePaths[0] ?? null;
+  };
+  // Event files (27 Nov): Save event file…, Open event file… and the auto-backup folder.
+  const pickEventSave = async (defaultName: string) => {
+    const target = await dialog.showSaveDialog(window!, { title: 'Save event file', defaultPath: join(app.getPath('documents'), defaultName), filters: [{ name: 'Esportra Air event file', extensions: ['airevent'] }] });
+    if (target.canceled || !target.filePath) return null;
+    return /\.airevent$/i.test(target.filePath) ? target.filePath : `${target.filePath}.airevent`;
+  };
+  const pickEventOpen = async () => {
+    const choice = await dialog.showOpenDialog(window!, { title: 'Open event file', defaultPath: app.getPath('documents'), properties: ['openFile'], filters: [{ name: 'Esportra Air event file', extensions: ['airevent'] }] });
+    return choice.canceled ? null : choice.filePaths[0] ?? null;
+  };
+  const pickFolder = async () => {
+    const choice = await dialog.showOpenDialog(window!, { title: 'Choose the auto-backup folder', defaultPath: app.getPath('documents'), properties: ['openDirectory', 'createDirectory'] });
     return choice.canceled ? null : choice.filePaths[0] ?? null;
   };
   // Still pictures for list cards: each preview page is rendered once in a hidden 1280×720 window (thumbnails.ts).
@@ -129,7 +143,7 @@ async function main() {
     },
     log: (url, e) => console.warn(`[thumbnails] ${url.replace(/key=[^&]+/, 'key=…')}: ${e instanceof Error ? e.message : String(e)}`),
   });
-  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), showFile: (path: string) => shell.showItemInFolder(path), saveManualPdf, pickVideo, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
+  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), showFile: (path: string) => shell.showItemInFolder(path), saveManualPdf, pickVideo, pickEventSave, pickEventOpen, pickFolder, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 
   // Keys over the game (F-keys and Ctrl/Alt keys): a press runs the same call as inside Air.
   production.attachKeys(globalShortcut, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });
