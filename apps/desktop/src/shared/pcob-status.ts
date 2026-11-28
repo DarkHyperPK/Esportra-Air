@@ -26,10 +26,10 @@ export const PCOB_OFF: PcobStatus = { state: 'off', host: '', lastAt: null, erro
 /** PCOB updates every 2 s; this long without a changed number while in game is worth a warning (never an end). */
 export const NO_DATA_MS = 10_000;
 /** Only addresses on this PC or the local network (Air never sends game data elsewhere, nor reads it from elsewhere). */
-export function localHost(input: string): { host: string; port: number } | null {
+export function localHost(input: string, defaultPort = 10086): { host: string; port: number } | null {
   const m = /^\s*([a-z0-9.-]+)(?::(\d{1,5}))?\s*$/i.exec(input || '');
   if (!m) return null;
-  const host = m[1]!.toLowerCase(), port = m[2] ? Number(m[2]) : 10086;
+  const host = m[1]!.toLowerCase(), port = m[2] ? Number(m[2]) : defaultPort;
   if (port < 1 || port > 65535) return null;
   const ip = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (host === 'localhost') return { host, port };

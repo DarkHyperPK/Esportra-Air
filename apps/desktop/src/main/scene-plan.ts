@@ -1,11 +1,12 @@
 // What Air builds in OBS, as plain data (PRD picture 9): its five scenes, the browser source of each
 // graphic in its scene, the slot scenes the crew fills, the desk cameras and the hidden sponsor loops.
 // A pure function of the setup and the match's people, so it can be checked without OBS.
-import { LOBBY_SCENE_KEYS, SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, lobbySlotWanted, sourceName } from '../shared/scenes.ts';
+import { LOBBY_SCENE_KEYS, SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, lobbySlotWanted, shortName, sourceName } from '../shared/scenes.ts';
 import { lobbyPage } from '../shared/br-screens.ts';
 import { cameraViewUrl, type OnAir } from '../shared/model.ts';
 import type { Screen } from '../shared/api.ts';
 import type { BuildScene, BuildSlot } from './scene-build.ts';
+import type { VmixPage } from '../shared/vmix.ts';
 
 export interface PlanInput {
   /** The graphics engine's port (sources load http://127.0.0.1:<port>/o/<output>). */
@@ -101,4 +102,16 @@ export function sourcesMissing(plan: BuildScene[], items: Record<string, string[
     if (!have) return [];
     return [...scene.sources.map((x) => x.inputName), ...scene.slots.map((x) => x.sceneName)].filter((n) => !have.includes(n));
   });
+}
+
+/**
+ * The Air pages a vMix show needs (28 Nov): every browser source of the OBS plan, so vMix and OBS get the same pages
+ * (the HUD, the full-screen host over the game and on its own, Starting soon/Break, a match's graphics and scenes).
+ * Sponsor video files and camera slots are not pages. The input is titled like the OBS source: `ESPORTRA · <page>`.
+ */
+export function vmixPages(plan: BuildScene[]): VmixPage[] {
+  const seen = new Set<string>();
+  return plan.flatMap((scene) => scene.sources
+    .filter((x) => x.kind !== 'media' && !seen.has(x.id) && !!seen.add(x.id))
+    .map((x) => ({ id: x.id, label: shortName(x.inputName), name: x.inputName, url: x.url })));
 }
