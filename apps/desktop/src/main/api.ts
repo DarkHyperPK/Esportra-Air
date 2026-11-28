@@ -19,6 +19,8 @@ export interface ApiContext {
   pickEventSave?: (defaultName: string) => Promise<string | null>;
   pickEventOpen?: () => Promise<string | null>;
   pickFolder?: () => Promise<string | null>;
+  /** The pictures folder for an import (the app's folder dialog); the dev host passes the folder in the call instead. */
+  pickPictures?: () => Promise<string | null>;
   /** Shows a file in its folder (the app); the dev host does nothing. */
   showFile?: (path: string) => void;
   /** A still picture of an overlay preview page, for lists (see thumbnails.ts). */
@@ -73,6 +75,17 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'lobbyDayEdit': p.brRun.dayEdit(String(a[0]), String(a[1]), (a[2] ?? {}) as Record<string, unknown>); break;
     case 'lobbyDayStart': return p.brRun.dayStart(String(a[0]), String(a[1]), a[2] === true);
     case 'lobbyDayClose': return a[2] === true ? p.brRun.dayClose(String(a[0]), String(a[1])) : p.brRun.dayCloseCheck(String(a[0]), String(a[1]));
+    case 'sheetPictures': {
+      const input = (a[0] ?? {}) as Parameters<typeof p.sheetPictures>[0];
+      const folder = input.token ? null : typeof input.folder === 'string' && input.folder ? input.folder : ctx.pickPictures ? await ctx.pickPictures() : null;
+      return input.token || folder ? p.sheetPictures({ ...input, folder }) : null;
+    }
+    case 'sheetImport': return p.sheetImport(a[0]);
+    case 'pointsTableSave': return p.pointsTableSave(a[0]);
+    case 'pointsTableDelete': p.pointsTableDelete(String(a[0] ?? '')); break;
+    case 'lobbyFormat': p.lobbyFormat(String(a[0]), String(a[1]), a[2]); break;
+    case 'lobbyCopy': await p.lobbyCopy(String(a[0]), a[1]); break;
+    case 'rosterUid': p.rosterUid(String(a[0]), String(a[1]), String(a[2] ?? '')); break;
     case 'lobbyResume': await p.lobbyResume(); break;
     case 'lobbyResumeDismiss': p.brRun.dismissResume(); break;
     case 'lobbyTake': await p.lobbyTake(String(a[0]), a[1] === null ? null : String(a[1])); break;

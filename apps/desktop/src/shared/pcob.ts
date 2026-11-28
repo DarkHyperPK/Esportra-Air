@@ -132,13 +132,29 @@ export function readObserving(raw: unknown): string | null {
 
 // ── the lobby side ──
 
-export interface LobbyTeamRef { id: string; name: string; tag: string; players: string[]; openIds?: string[] }
+export interface LobbyTeamRef { id: string; name: string; tag: string; players: string[]; openIds?: string[]; /** Character IDs, same order as `players` ('' for none). */ uids?: string[] }
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
+export interface RosterEntry { name: string; uid?: string; openId?: string }
+export type MatchedBy = 'uid' | 'openId' | 'name';
 /**
- * Which lobby team each PCOB team is. The producer's own pairs win; then a team name or tag that matches; then the
- * lobby team owning most of that PCOB team's players, by the OpenIDs Teams/Players learned or by in-game name (two
- * or more). Each lobby team is used once.
+ * Which roster entry a PCOB player is: the Character ID first (PCOB's `uID` is the Character ID), then the OpenID
+ * Teams/Players learned, then the in-game name. Null when none of the three matches.
+ */
+export function matchPlayer(p: { uid: string; openId: string; name: string }, roster: RosterEntry[]): { index: number; by: MatchedBy } | null {
+  if (p.uid) { const i = roster.findIndex((r) => r.uid && r.uid === p.uid); if (i >= 0) return { index: i, by: 'uid' }; }
+  if (p.openId) { const i = roster.findIndex((r) => r.openId && r.openId === p.openId); if (i >= 0) return { index: i, by: 'openId' }; }
+  const n = norm(p.name);
+  if (n) { const i = roster.findIndex((r) => norm(r.name) === n); if (i >= 0) return { index: i, by: 'name' }; }
+  return null;
+}
+export const normName = (s: string) => norm(s);
+
+/**
+ * Which lobby team each PCOB team is. The producer's own pairs win; then the Character IDs (PCOB `uID`) that a lobby
+ * team's roster lists, the team with the most; then a team name or tag that matches; then the lobby team owning most
+ * of that PCOB team's players, by the OpenIDs Teams/Players learned or by in-game name (two or more). Each lobby team
+ * is used once.
  */
 export function seatTeams(teams: PcobTeam[], players: PcobPlayer[], lobby: LobbyTeamRef[], manual: Record<string, string> = {}): Map<number, string> {
   const out = new Map<number, string>();
@@ -146,6 +162,18 @@ export function seatTeams(teams: PcobTeam[], players: PcobPlayer[], lobby: Lobby
   const ids = new Set(lobby.map((t) => t.id));
   const pcobIds = [...new Set([...teams.map((t) => t.teamId), ...players.map((p) => p.teamId)])].sort((a, b) => a - b);
   for (const id of pcobIds) { const m = manual[String(id)]; if (m && ids.has(m) && !used.has(m)) { out.set(id, m); used.add(m); } }
+  // A Character ID is exact: one shared id seats the team, and a name that happens to match another team cannot outvote it.
+  for (const id of pcobIds) {
+    if (out.has(id)) continue;
+    const uids = new Set(players.filter((p) => p.teamId === id).map((p) => p.uid).filter(Boolean));
+    let best: { id: string; n: number } | null = null;
+    for (const t of lobby) {
+      if (used.has(t.id)) continue;
+      const n = (t.uids ?? []).filter((u) => u && uids.has(u)).length;
+      if (n >= 1 && (!best || n > best.n)) best = { id: t.id, n };
+    }
+    if (best) { out.set(id, best.id); used.add(best.id); }
+  }
   const nameOf = (id: number) => teams.find((t) => t.teamId === id)?.name || players.find((p) => p.teamId === id)?.teamName || '';
   for (const id of pcobIds) {
     if (out.has(id)) continue;

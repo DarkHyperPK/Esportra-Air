@@ -1569,3 +1569,56 @@ tr.run-flag td { background: rgba(251, 191, 36, 0.06); }
   body.print-run .editor.run-print * { color: #000 !important; background: transparent !important; border-color: #999 !important; }
   body.print-run .editor.run-print footer, body.print-run .editor.run-print header button { display: none !important; }
 }
+
+/* PUBG MOBILE preparation (28 Nov): import, format, readiness, roster check, start cards */
+.rb-chip[aria-pressed='true'], .rb-chip[aria-pressed='true']:hover:not(:disabled) { background: var(--white); border-color: var(--white); color: #09090b; font-weight: 600; }
+.pp-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .pp-two { grid-template-columns: 1fr; } }
+.pp-ready { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; }
+.pp-ready.compact { grid-template-columns: 1fr; gap: 8px; }
+@media (max-width: 1000px) { .pp-ready { grid-template-columns: 1fr; } }
+.pp-box { padding: 12px 16px; border: 1px solid var(--hair-strong); border-radius: var(--r-lg, 12px); display: grid; gap: 8px; align-content: start; }
+.pp-box.warn { border-color: var(--edge-warn); background: var(--wash-warn); }
+.pp-box.ok { border-color: var(--edge-ok); background: var(--wash-ok); }
+.pp-box.warn h3 { color: var(--amber); } .pp-box.ok h3 { color: var(--ok); }
+.pp-need { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--hair); font-size: 13px; }
+.pp-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 2px 10px; border: 1px solid var(--hair-strong); border-radius: var(--r-pill); font-size: var(--t-xs); }
+.pp-chip.ok { border-color: var(--edge-ok); color: var(--ok); } .pp-chip.partial { border-color: var(--edge-warn); color: var(--amber); }
+.pp-pill { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: var(--r-pill); font-size: 11px; border: 1px solid var(--hair-strong); white-space: nowrap; }
+.pp-pill.ok { color: var(--ok); border-color: var(--edge-ok); } .pp-pill.warn { color: var(--amber); border-color: var(--edge-warn); } .pp-pill.info { color: #93c5fd; border-color: rgba(147, 197, 253, 0.4); }
+.pp-start { gap: 14px; }
+.pp-start.off { opacity: 0.55; }
+.pp-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--text-2); font-size: var(--t-sm); }
+.pp-opt { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); }
+.pp-drop { display: grid; gap: 8px; padding: 14px; border: 1px dashed var(--hair-hover); border-radius: var(--r-md); justify-items: start; }
+.pp-drop textarea { width: 100%; resize: vertical; }
+.pp-sample { max-height: 190px; overflow: auto; }
+.pp-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1300px) { .pp-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pp-col { display: grid; gap: 4px; padding: 8px; border: 1px solid var(--hair); border-radius: var(--r-md); }
+.pp-tbl td, .pp-tbl th { white-space: nowrap; }
+.pp-tbl tr.flag td { background: rgba(251, 191, 36, 0.05); }
+.pp-fold { border: 0; background: none; color: var(--text-2); width: 20px; }
+.pp-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.pp-stat { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); }
+.pp-stat b { font-size: 22px; } .pp-stat.ok { border-color: var(--edge-ok); background: var(--wash-ok); } .pp-stat.warn { border-color: var(--edge-warn); background: var(--wash-warn); }
+.pp-miss { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--hair); font-size: 13px; }
+.pp-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; position: sticky; bottom: 8px; }
+.pp-places { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 1300px) { .pp-places { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.pp-place { display: grid; gap: 3px; } .pp-place input { text-align: center; } .pp-place input.gap { border-color: var(--edge-warn); background: var(--wash-warn); }
+.pp-ties { display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-tie { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 6px 0 10px; border: 1px solid var(--hair-strong); border-radius: var(--r-pill); font-size: var(--t-sm); }
+.pp-tie b { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--white); color: #09090b; font-size: 11px; }
+.pp-tie button { border: 0; background: none; color: var(--text-2); padding: 0 3px; font-size: 14px; } .pp-tie button:disabled { opacity: 0.3; }
+.pp-tie.add { padding: 0 12px; background: none; color: var(--text-2); border-style: dashed; }
+.pp-example { padding: 10px 12px; border-radius: var(--r-md); background: rgba(255, 255, 255, 0.03); margin: 0; }
+.pp-matches { display: grid; }
+.pp-match { display: grid; grid-template-columns: 78px 100px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--hair); }
+.pp-match.nomap select { border-color: var(--edge-warn); color: var(--amber); }
+.pp-roster.warn { border-color: var(--edge-warn); background: var(--wash-warn); } .pp-roster.ok { border-color: var(--edge-ok); }
+.pp-big { font-size: 30px; font-weight: 700; }
+.pp-bar { height: 8px; border-radius: 4px; background: var(--amber-soft); overflow: hidden; } .pp-bar i { display: block; height: 100%; background: var(--ok); }
+.pp-row { display: grid; grid-template-columns: 1fr 120px 2fr; gap: 14px; padding: 12px 0; border-top: 1px solid var(--hair); font-size: 13px; }
+.pp-note { padding: 10px 12px; border: 1px solid var(--hair-strong); border-radius: var(--r-md); font-size: var(--t-sm); color: var(--text-2); }

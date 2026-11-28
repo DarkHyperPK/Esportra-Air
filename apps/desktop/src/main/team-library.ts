@@ -3,14 +3,16 @@
 // working) and that copy follows the library: `teamIds` per side, `libraryId` per lineup entry.
 
 import { randomUUID } from 'node:crypto';
-import { PLAYER_ROLES, type LibPlayer, type LibTeam, type Library, type Match, type PlayerInfo } from '../shared/api.ts';
+import type { LibPlayer, LibTeam, Library, Match, PlayerInfo } from '../shared/api.ts';
 import { HEX, IMAGE, text } from './validate.ts';
 import { RIOT_ID, isPuuid } from '../shared/riot.ts';
+import { playerRoles } from '../shared/games.ts';
+import { cleanUid } from '../shared/uid.ts';
 
 const COLORS = ['#22d3ee', '#f43f5e'];
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 /** A short tag from a name: initials of several words, or the first three letters of one. */
-const tagOf = (name: string) => {
+export const tagOf = (name: string) => {
   const words = name.toUpperCase().match(/[A-Z0-9]+/g) ?? ['TEAM'];
   return (words.length > 1 ? words.map((w) => w[0]).join('') : words[0]!).slice(0, 3);
 };
@@ -41,13 +43,19 @@ export function validPlayer(input: Partial<LibPlayer>, lib: Library, game: strin
   if (gameId && lib.players.some((p) => p.id !== id && p.gameId && same(p.gameId, gameId))) throw new Error(`${gameId} is already a player.`);
   const photo = typeof input?.photo === 'string' ? input.photo : '';
   if (photo && !IMAGE.test(photo)) throw new Error('Choose the photo again.');
-  const role = typeof input?.role === 'string' && (PLAYER_ROLES as readonly string[]).includes(input.role) ? input.role : '';
+  const role = typeof input?.role === 'string' && playerRoles(game).includes(input.role) ? input.role : '';
   const teamId = typeof input?.teamId === 'string' && lib.teams.some((t) => t.id === input.teamId) ? input.teamId : null;
   // The PUUID comes from Esportra, never from the form: an edit keeps the one already known.
   const known = lib.players.find((p) => p.id === id)?.puuid;
   const puuid = isPuuid(input?.puuid) ? input.puuid.trim() : known;
   const esportraId = lib.players.find((p) => p.id === id)?.esportraId;
-  return { id, name, realName: input?.realName ? text(input.realName, 60, 'Real name') : '', gameId, ...(puuid ? { puuid } : {}), ...(esportraId ? { esportraId } : {}), photo, role, teamId };
+  // The Character ID (PUBG MOBILE `uID`): digits only, and one player each, so a typo can never place the wrong person.
+  const { uid, problem } = cleanUid(input?.uid);
+  if (problem) throw new Error(problem);
+  const owner = uid ? lib.players.find((p) => p.id !== id && p.uid === uid) : undefined;
+  if (owner) throw new Error(`${uid} is already ${owner.name}’s UID.`);
+  const openId = lib.players.find((p) => p.id === id)?.openId;
+  return { id, name, realName: input?.realName ? text(input.realName, 60, 'Real name') : '', gameId, ...(puuid ? { puuid } : {}), ...(esportraId ? { esportraId } : {}), ...(openId ? { openId } : {}), ...(uid ? { uid } : {}), photo, role, teamId };
 }
 
 const entry = (p: LibPlayer, id: string = randomUUID()): PlayerInfo => ({ id, name: p.name, realName: p.realName, gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), ...(p.esportraId ? { esportraId: p.esportraId } : {}), photo: p.photo, libraryId: p.id });

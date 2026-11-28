@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import type { Lobby, Snapshot } from '../../shared/api.ts';
 import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
+import { RosterCheck } from './br-prep/RosterCheck.tsx';
 
 const STATE: Record<Snapshot['pcob']['state'], [string, string]> = {
   off: ['Off', 'Results are typed in Results.'],
@@ -37,6 +38,7 @@ export function PcobPanel({ s, run, l, close }: { s: Snapshot; run: Run; l: Lobb
             <span className="muted t-sm">{p.error && p.state === 'error' ? `${p.error}. ` : ''}{STATE[p.state][1]}</span>
             {p.saved && <span className="t-sm">Match {p.saved.game} saved from the game at {new Date(p.saved.at).toLocaleTimeString('en-GB')}: places, kills and every player&rsquo;s numbers.</span>}
           </section>
+          <RosterCheck s={s} run={run} l={l} />
           {!on ? (
             <section className="stack g-2">
               <label className="stack g-1"><span className="cap">Observer PC running PCOB</span>

@@ -7,6 +7,7 @@ import type { DayStart } from '../../../main/br-run.ts';
 import { air } from '../../bridge.ts';
 import type { Run } from '../../App.tsx';
 import { TeamTag, matchTime } from './parts.tsx';
+import { ReadinessStrip } from '../br-prep/Readiness.tsx';
 
 const Row = ({ ok, title, note, aside }: { ok: boolean | null; title: string; note?: string; aside?: string }) => (
   <div className="run-check"><i className={`run-tick ${ok === null ? 'na' : ok ? 'ok' : 'warn'}`}>{ok === null ? '–' : ok ? '✓' : '!'}</i><span><b>{title}</b>{note && <><br /><span className="muted t-sm">{note}</span></>}</span>{aside && <span className="faint t-sm">{aside}</span>}</div>
@@ -39,6 +40,10 @@ export function StartDay({ s, run, lobby, dayId, close }: { s: Snapshot; run: Ru
               <section className="card run-sec"><h3 className="cap">3 · Data checks</h3>
                 <Row ok={pcobOk} title={pcobOk ? 'Game data connected' : 'Game data not connected'} note={pcobOk ? 'Reading the observer PC.' : 'Connect on Live (with the consent tick). Nothing starts by itself.'} />
                 <Row ok={!d.data.test} title={d.data.test ? 'A test is running' : 'No test running'} note={d.data.test ? 'Stop it before the show.' : undefined} />
+              </section>
+              <section className="card run-sec"><h3 className="cap">3b · Ready before the show</h3>
+                <ReadinessStrip s={s} lobby={lobby} compact />
+                <span className="faint t-xs">Nothing here stops the day: a missing UID or map is flagged, never blocked.</span>
               </section>
               <section className="card run-sec"><h3 className="cap">4 · Run sheet · {d.matches.length} matches</h3>
                 {d.matches.map((m) => <div key={m.id} className="run-check"><b className="mono">M{m.n}</b><span>{m.map || 'Map to be announced'} <span className="faint">{matchTime(lobby.games.find((g) => g.id === m.id)!)}</span></span><span className="faint t-sm">{m.state}</span></div>)}

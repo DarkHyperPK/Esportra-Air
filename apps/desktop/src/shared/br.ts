@@ -20,7 +20,7 @@ export const SCORING_PRESETS: Record<'pmgc' | 'ffws', { name: string; scoring: S
 };
 
 export interface TeamResult { team: string; place: number; elims: number }
-export interface LobbyTeam { teamId: string | null; id: string; name: string; tag: string; color: string; logo: string; players: string[]; /** Each player's Teams/Players photo, '' for none (the graphics draw a grey shadow). */ photos?: string[]; /** PCOB OpenIDs Teams/Players has learned for these players (seat the team at once). */ openIds?: string[] }
+export interface LobbyTeam { teamId: string | null; id: string; name: string; tag: string; color: string; logo: string; players: string[]; /** Each player's Teams/Players photo, '' for none (the graphics draw a grey shadow). */ photos?: string[]; /** PCOB OpenIDs Teams/Players has learned for these players (seat the team at once). */ openIds?: string[]; /** Character IDs (PCOB `uID`) from Teams/Players, '' for none: the first thing that seats a team and places a player (28 Nov). */ uids?: string[]; /** The Teams/Players player each entry is, in the same order (roster check writes a UID back by it). */ playerIds?: string[] }
 /** A match's state (27 Nov): Scheduled → Armed → Live → Finishing → Provisional → Confirmed; Void is the other way out. */
 export type MatchState = 'scheduled' | 'armed' | 'live' | 'finishing' | 'provisional' | 'confirmed' | 'void';
 /** One go at a match. A remake closes the attempt (kept for the record) and starts the next; only the last counts. */
@@ -63,6 +63,9 @@ export interface LobbyGame {
 export interface LobbyDay { id: string; date: string; title: string; opensAt?: string; startedAt?: number; closedAt?: number; matchIds: string[] }
 /** Points added or taken away from a team with a reason (a DQ, a late start, a rule breach). */
 export interface Adjustment { id: string; team: string; points: number; reason: string; at: number; dayId?: string }
+/** A points table the producer saved on this PC (28 Nov), picked in any event beside the PMGC and FFWS presets. */
+export interface SavedPointsTable { id: string; name: string; scoring: Scoring }
+export const TIEBREAK_NAME: Record<Tiebreak, string> = { wins: 'WWCD', placementPts: 'Placement points', elims: 'Kills', lastGame: 'Last match' };
 export interface LobbyCore { teams: LobbyTeam[]; games: LobbyGame[]; scoring: Scoring; adjustments?: Adjustment[] }
 
 /** The state of a game; a game from before states existed counts as confirmed once it has results. */

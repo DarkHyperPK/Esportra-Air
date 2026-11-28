@@ -97,11 +97,11 @@ export function gameChecks(players: PcobPlayer[], teams: PcobTeamList, seats: Ma
     const sum = mine.reduce((n, p) => n + p.kills, 0);
     if (t && t.kills !== sum) out.teamKills.push({ team, teamKills: t.kills, playerKills: sum });
     const lt = lobbyTeams.find((x) => x.id === team);
-    const names = new Set((lt?.players ?? []).map(norm)), opens = new Set((lt?.openIds ?? []).filter(Boolean));
+    const names = new Set((lt?.players ?? []).map(norm)), opens = new Set((lt?.openIds ?? []).filter(Boolean)), uids = new Set((lt?.uids ?? []).filter(Boolean));
     for (const p of mine) {
       if (p.state === 'disconnected') out.disconnected.push({ team, name: p.name });
       // Nothing to compare with when the lobby team has no roster: then nobody is "unknown".
-      if (names.size && !names.has(norm(p.name)) && !(p.openId && opens.has(p.openId))) out.unknown.push({ team, name: p.name, uid: p.uid });
+      if (names.size && !(p.uid && uids.has(p.uid)) && !names.has(norm(p.name)) && !(p.openId && opens.has(p.openId))) out.unknown.push({ team, name: p.name, uid: p.uid });
     }
   }
   return out;

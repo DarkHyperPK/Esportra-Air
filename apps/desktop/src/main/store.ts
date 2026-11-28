@@ -45,6 +45,8 @@ export interface Saved {
   /** The producer's show templates (16 Nov), and which one each match's show was last set from. */
   showTemplates?: import('../shared/show-templates.ts').ShowTemplate[];
   showTemplateOf?: Record<string, string>;
+  /** Points tables the producer saved on this PC (28 Nov), beside the PMGC and FFWS presets. */
+  pointsTables?: import('../shared/br.ts').SavedPointsTable[];
   /** Where autopilot is in each match's rundown, so a restart resumes instead of starting over. */
   autopilotProgress?: Record<string, { states: Record<string, 'done' | 'on_air'>; savedAt: number }>;
   /** The signed-in Esportra account (tokens are kept separately, encrypted). */

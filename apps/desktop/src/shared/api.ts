@@ -40,8 +40,6 @@ export interface LibTeam extends Team {
   id: string;
 }
 
-export const PLAYER_ROLES = ['', 'Duelist', 'Initiator', 'Controller', 'Sentinel', 'Flex', 'Substitute', 'Coach'] as const;
-
 /** A player in Teams/Players, on a team or on none. */
 export interface LibPlayer {
   id: string;
@@ -58,6 +56,8 @@ export interface LibPlayer {
   teamId: string | null;
   /** The player's PUBG MOBILE OpenID, learned from the observer feed (seats their team in later lobbies). */
   openId?: string;
+  /** PUBG MOBILE Character ID, digits (28 Nov). The observer API's `uID` is this same value, so it places the player in the game. */
+  uid?: string;
 }
 
 export interface Library {
@@ -384,6 +384,10 @@ export interface Snapshot {
   templateUse: Record<string, number>;
   /** Show templates (built in and yours), and the one the selected match's show was last set from. */
   showTemplates: import('./show-templates.ts').ShowTemplateView[];
+  /** The points tables saved on this PC (28 Nov). */
+  pointsTables: import('./br.ts').SavedPointsTable[];
+  /** The test-game roster check (28 Nov): set while the observer feed is in a game. */
+  rosterCheck: import('../main/br-roster-view.ts').RosterView | null;
   showTemplateOf: string | null;
   /** Teams/Players. */
   library: Library;
@@ -625,6 +629,19 @@ export interface AirApi {
   lobbyClearResult(id: string, game: number): Promise<Snapshot>;
   lobbySelect(id: string | null): Promise<Snapshot>;
   lobbyDelete(id: string): Promise<Snapshot>;
+  /** Import (28 Nov): looks through a pictures folder (asked for when `folder` is null; later calls pass the `token`) and matches what it finds. Null when cancelled. */
+  sheetPictures(input: import('../main/sheet-import.ts').PictureInput): Promise<import('../main/sheet-import.ts').PictureScan | null>;
+  /** Saves an import into Teams/Players (and lobbies). Refused while a match is live. */
+  sheetImport(input: import('../main/sheet-import.ts').ImportInput): Promise<import('../main/sheet-import.ts').ImportResult>;
+  /** Saved points tables on this PC. */
+  pointsTableSave(input: { id?: string; name: string; scoring: import('./br.ts').Scoring }): Promise<import('./br.ts').SavedPointsTable>;
+  pointsTableDelete(id: string): Promise<Snapshot>;
+  /** The match generator: fills a day with matches (count, first start, gap in minutes, map rotation). */
+  lobbyFormat(id: string, dayId: string, spec: import('./br-format.ts').FormatSpec): Promise<Snapshot>;
+  /** A new lobby with this one's format and points, no teams or results (Group A → Group B). */
+  lobbyCopy(id: string, title?: string): Promise<Snapshot>;
+  /** The roster check: this UID is that Teams/Players player's. Refused while a match is live. */
+  rosterUid(lobbyId: string, playerId: string, uid: string): Promise<Snapshot>;
   lobbyLook(id: string, look: Partial<LobbyLook>): Promise<Snapshot>;
   /** Moments, Rundown (`preset` or `rows`), autopilot, the top fraggers band and the post-game pick. */
   lobbyShow(id: string, patch: Partial<Omit<import('./br-rundown.ts').BrShow, 'moments'>> & { preset?: import('./br-rundown.ts').BrPreset; moments?: Partial<Record<import('./br-rundown.ts').BrMomentKind, boolean>> }): Promise<Snapshot>;

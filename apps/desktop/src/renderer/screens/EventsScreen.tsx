@@ -14,6 +14,7 @@ import { EventFileMenu, OpenEventFile } from '../components/EventFileUi.tsx';
 import { AccessRequest } from '../components/AccessRequest.tsx';
 import { TeamMark } from './MatchWorkspace.tsx';
 import { LobbyList, LobbyScreen } from './LobbyScreen.tsx';
+import { SheetImport } from '../components/br-prep/SheetImport.tsx';
 import { gameOf } from '../../shared/games.ts';
 
 export type EventTab = 'matches' | 'branding' | 'talent';
@@ -159,7 +160,10 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
   const lobbyGame = gameOf(s.setup.game)?.shape === 'lobby';
   const [lobbyId, setLobbyId] = useState<string | null>(null);
   const lobby = lobbyId ? s.lobbies.find((l) => l.id === lobbyId) ?? null : null;
-  if (lobbyGame && lobby) return <LobbyScreen s={s} run={run} lobby={lobby} back={() => setLobbyId(null)} />;
+  // Import teams and players (28 Nov): from the event's lobbies, or from inside one lobby (which then takes the teams).
+  const [importing, setImporting] = useState(false);
+  if (lobbyGame && importing) return <SheetImport s={s} run={run} eventId={event.id} lobby={lobby} back={() => setImporting(false)} />;
+  if (lobbyGame && lobby) return <LobbyScreen s={s} run={run} lobby={lobby} back={() => setLobbyId(null)} importList={() => setImporting(true)} />;
   // Finished matches go last; the rest by schedule, then newest first.
   const matches = s.matches.filter((m) => m.eventId === event.id).sort((a, b) => Number(!!a.finishedAt) - Number(!!b.finishedAt) || (a.source?.scheduledAt ?? '').localeCompare(b.source?.scheduledAt ?? '') || b.createdAt - a.createdAt);
   return (
@@ -181,7 +185,7 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
       </div>
       {tab === 'branding' && <EventBranding s={s} run={run} event={event} />}
       {tab === 'talent' && <EventTalent s={s} run={run} event={event} />}
-      {tab === 'matches' && lobbyGame && <LobbyList s={s} run={run} eventId={event.id} open={setLobbyId} />}
+      {tab === 'matches' && lobbyGame && <LobbyList s={s} run={run} eventId={event.id} open={setLobbyId} importList={() => setImporting(true)} />}
       {tab === 'matches' && !lobbyGame && (
         <section className="stack" style={{ gap: 8 }}>
           {!matches.length && !remote.length && <p className="muted ap-empty">No matches in this event yet. Press New match to add one.</p>}

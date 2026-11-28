@@ -124,6 +124,11 @@ export class BrLiveFeed {
 
   get live() { return this.status.state === 'live'; }
 
+  /** The players and teams of the game being read now (the roster check), or null when no game is on. */
+  gameNow(): { players: PcobPlayer[]; teams: PcobTeamList['teams'] } | null {
+    return this.status.state === 'live' && this.inGame && this.players.length ? { players: this.players, teams: this.teams.teams } : null;
+  }
+
   /** The producer pairs a PCOB team slot with a lobby team (null clears the pair). */
   seats(lobby: Lobby): Record<string, string> { return lobby.pcobSeats ?? {}; }
 
@@ -199,7 +204,7 @@ export class BrLiveFeed {
     // A game is on with nothing armed: keep reading, and adopt the match the moment the producer arms it.
     if (lobby && this.game === null) this.attach(lobby);
     if (!lobby || this.game === null) return;
-    const seats = seatTeams(this.teams.teams, this.players, lobby.teams.map((t) => ({ id: t.id, name: t.name, tag: t.tag, players: t.players, openIds: t.openIds })), this.seats(lobby));
+    const seats = seatTeams(this.teams.teams, this.players, lobby.teams.map((t) => ({ id: t.id, name: t.name, tag: t.tag, players: t.players, openIds: t.openIds, uids: t.uids })), this.seats(lobby));
     const slots = this.slots(lobby, seats);
     // Live shows the slots and "last data N s ago": tell it when the pairs change, else every few seconds.
     if (JSON.stringify(slots) !== JSON.stringify(this.status.slots) || this.now - this.shownAt >= 3000) {
@@ -324,7 +329,7 @@ export class BrLiveFeed {
     return true;
   }
 
-  private seatsOf(lobby: Lobby) { return seatTeams(this.teams.teams, this.players, lobby.teams.map((t) => ({ id: t.id, name: t.name, tag: t.tag, players: t.players, openIds: t.openIds })), this.seats(lobby)); }
+  private seatsOf(lobby: Lobby) { return seatTeams(this.teams.teams, this.players, lobby.teams.map((t) => ({ id: t.id, name: t.name, tag: t.tag, players: t.players, openIds: t.openIds, uids: t.uids })), this.seats(lobby)); }
 
   private startGame(lobby: Lobby | null) {
     this.inGame = true;

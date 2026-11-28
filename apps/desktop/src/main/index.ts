@@ -107,6 +107,10 @@ async function main() {
     const choice = await dialog.showOpenDialog(window!, { title: 'Choose the auto-backup folder', defaultPath: app.getPath('documents'), properties: ['openDirectory', 'createDirectory'] });
     return choice.canceled ? null : choice.filePaths[0] ?? null;
   };
+  const pickPictures = async () => {
+    const choice = await dialog.showOpenDialog(window!, { title: 'Choose the folder with the logos and photos', defaultPath: app.getPath('pictures'), properties: ['openDirectory'] });
+    return choice.canceled ? null : choice.filePaths[0] ?? null;
+  };
   // Still pictures for list cards: each preview page is rendered once in a hidden 1280×720 window (thumbnails.ts).
   // 19 Nov: an offscreen window's capturePage can come back blank on some Windows GPUs, so the picture is taken from
   // its own paint events first, then capturePage, then once more from a hidden normal window. Pictures are kept on
@@ -143,7 +147,7 @@ async function main() {
     },
     log: (url, e) => console.warn(`[thumbnails] ${url.replace(/key=[^&]+/, 'key=…')}: ${e instanceof Error ? e.message : String(e)}`),
   });
-  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), showFile: (path: string) => shell.showItemInFolder(path), saveManualPdf, pickVideo, pickEventSave, pickEventOpen, pickFolder, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
+  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), showFile: (path: string) => shell.showItemInFolder(path), saveManualPdf, pickVideo, pickEventSave, pickEventOpen, pickFolder, pickPictures, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 
   // Keys over the game (F-keys and Ctrl/Alt keys): a press runs the same call as inside Air.
   production.attachKeys(globalShortcut, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });

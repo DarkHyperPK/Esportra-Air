@@ -3,7 +3,7 @@
 // rule the room's `br` field is worked out with.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Lobby, Snapshot } from '../../shared/api.ts';
-import { SCORING_PRESETS, gamePoints, gameState, standings, type Scoring, type TeamResult } from '../../shared/br.ts';
+import { gamePoints, gameState, standings, type Scoring, type TeamResult } from '../../shared/br.ts';
 import { RunSheet } from '../components/br-run/RunSheet.tsx';
 import { StateBadge } from '../components/br-run/parts.tsx';
 import { gameOf } from '../../shared/games.ts';
@@ -11,17 +11,19 @@ import { air } from '../bridge.ts';
 import type { Run } from '../App.tsx';
 import { BrRundown } from '../components/BrRundown.tsx';
 import { BrInsights } from '../components/BrInsights.tsx';
+import { FormatTab } from '../components/br-prep/FormatTab.tsx';
+import { PointsTable } from '../components/br-prep/PointsTable.tsx';
+import { ReadinessStrip } from '../components/br-prep/Readiness.tsx';
+import { StartCards } from '../components/br-prep/StartCards.tsx';
 
-type Tab = 'run' | 'results' | 'teams' | 'games' | 'scoring' | 'rundown';
+type Tab = 'run' | 'results' | 'teams' | 'format' | 'games' | 'scoring' | 'rundown';
 type Draft = Record<string, { place: string; elims: string }>;
-
-const MAPS: Record<string, string[]> = { pubgm: ['Erangel', 'Miramar', 'Sanhok', 'Vikendi', 'Livik', 'Rondo', 'Nusa', 'Karakin'], freefire: ['Bermuda', 'Purgatory', 'Kalahari', 'Alpine', 'Nexterra'] };
 
 function Tag({ color, tag }: { color: string; tag: string }) {
   return <span className="lb-tag" style={{ background: color || '#555' }}>{tag || '—'}</span>;
 }
 
-export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lobby: Lobby; back: () => void }) {
+export function LobbyScreen({ s, run, lobby, back, importList }: { s: Snapshot; run: Run; lobby: Lobby; back: () => void; importList?: () => void }) {
   const [tab, setTab] = useState<Tab>(lobby.teams.length ? 'run' : 'teams');
   const [insights, setInsights] = useState(false);
   useEffect(() => {
@@ -47,13 +49,14 @@ export function LobbyScreen({ s, run, lobby, back }: { s: Snapshot; run: Run; lo
         </span>
       </header>
       <div className="tabs" role="tablist" aria-label="Lobby">
-        {([['run', 'Run sheet'], ['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['games', `${word}es and maps`], ['scoring', 'Scoring'], ['rundown', 'Rundown']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+        {([['run', 'Run sheet'], ['results', 'Results'], ['teams', `Teams · ${lobby.teams.length}`], ['format', 'Format'], ['games', `${word}es and maps`], ['scoring', 'Scoring'], ['rundown', 'Rundown']] as Array<[Tab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
       {tab === 'run' && <RunSheet s={s} run={run} lobby={lobby} />}
       {tab === 'results' && <Results run={run} lobby={lobby} word={word} goTeams={() => setTab('teams')} />}
-      {tab === 'teams' && <Teams s={s} run={run} lobby={lobby} />}
+      {tab === 'teams' && <Teams s={s} run={run} lobby={lobby} goTab={setTab} importList={importList} />}
+      {tab === 'format' && <FormatTab s={s} run={run} lobby={lobby} goTeams={() => setTab('teams')} />}
       {tab === 'games' && <Games run={run} lobby={lobby} word={word} />}
-      {tab === 'scoring' && <ScoringTab run={run} lobby={lobby} />}
+      {tab === 'scoring' && <PointsTable s={s} run={run} lobby={lobby} />}
       {tab === 'rundown' && <BrRundown run={run} lobby={lobby} />}
       {insights && (
         <div className="scrim right" onClick={(e) => e.target === e.currentTarget && setInsights(false)}>
@@ -150,18 +153,21 @@ export function Results({ run, lobby, word, goTeams }: { run: Run; lobby: Lobby;
   );
 }
 
-function Teams({ s, run, lobby }: { s: Snapshot; run: Run; lobby: Lobby }) {
+function Teams({ s, run, lobby, goTab, importList }: { s: Snapshot; run: Run; lobby: Lobby; goTab: (t: Tab) => void; importList?: () => void }) {
   const [picked, setPicked] = useState<string[]>(lobby.teams.map((t) => t.teamId).filter((x): x is string => !!x));
   const [q, setQ] = useState('');
   const lib = s.library.teams.filter((t) => !q || t.name.toLowerCase().includes(q.toLowerCase()) || t.tag.toLowerCase().includes(q.toLowerCase()));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const same = JSON.stringify(picked) === JSON.stringify(lobby.teams.map((t) => t.teamId));
   return (
+    <div className="stack" style={{ gap: 14 }}>
+    <ReadinessStrip s={s} lobby={lobby} go={(g) => goTab(g === 'teams' ? 'teams' : g)} />
     <section className="card body-pad stack" style={{ gap: 12 }}>
       <div className="row g-2" style={{ flexWrap: 'wrap' }}>
         <input className="cell" type="search" placeholder="Search teams" aria-label="Search teams" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 260 }} />
         <span className="muted t-sm">{picked.length} picked{picked.length > 25 ? ' · a lobby has up to 25' : ''}</span>
         <span style={{ flex: 1 }} />
+        {importList && <button className="btn small" onClick={importList}>Import more</button>}
         <button className="btn primary small" disabled={same || picked.length > 25} onClick={() => void run(() => air.lobbyTeams(lobby.id, picked))}>Save teams</button>
       </div>
       {!s.library.teams.length && <p className="muted">No teams yet. Add them in Teams/Players.</p>}
@@ -176,12 +182,13 @@ function Teams({ s, run, lobby }: { s: Snapshot; run: Run; lobby: Lobby }) {
       </div>
       <p className="faint t-xs">Teams keep following Teams/Players: renaming a team or changing its players there updates this lobby. Results stay with the team.</p>
     </section>
+    </div>
   );
 }
 
 function Games({ run, lobby, word }: { run: Run; lobby: Lobby; word: string }) {
   const [games, setGames] = useState(lobby.games.map((g) => ({ map: g.map, startsAt: g.startsAt ?? '' })));
-  const maps = MAPS[lobby.game] ?? [];
+  const maps = gameOf(lobby.game)?.maps ?? [];
   const same = JSON.stringify(games) === JSON.stringify(lobby.games.map((g) => ({ map: g.map, startsAt: g.startsAt ?? '' })));
   const played = (i: number) => !!lobby.games[i]?.results?.length;
   return (
@@ -205,43 +212,21 @@ function Games({ run, lobby, word }: { run: Run; lobby: Lobby; word: string }) {
   );
 }
 
-function ScoringTab({ run, lobby }: { run: Run; lobby: Lobby }) {
-  const [sc, setSc] = useState<Scoring>(lobby.scoring);
-  const [places, setPlaces] = useState(lobby.scoring.placement.join(', '));
-  const parsed = places.split(/[\s,]+/).filter(Boolean).map(Number);
-  const bad = !parsed.length || parsed.some((x) => !Number.isInteger(x) || x < 0 || x > 100);
-  const next: Scoring = { ...sc, placement: bad ? sc.placement : parsed };
-  const same = JSON.stringify(next) === JSON.stringify(lobby.scoring);
-  const preset = (k: keyof typeof SCORING_PRESETS) => { const p = SCORING_PRESETS[k].scoring; setSc({ ...p, ...(sc.matchPoint ? { matchPoint: sc.matchPoint } : {}) }); setPlaces(p.placement.join(', ')); };
-  return (
-    <section className="card body-pad stack" style={{ gap: 12, maxWidth: 640 }}>
-      <div className="row g-2"><span className="cap">Start from</span>{(Object.keys(SCORING_PRESETS) as Array<keyof typeof SCORING_PRESETS>).map((k) => <button key={k} className="btn small" onClick={() => preset(k)}>{SCORING_PRESETS[k].name}</button>)}</div>
-      <label className="stack g-1"><span className="cap">Points for 1st, 2nd, 3rd…</span><input className={`cell ${bad ? 'bad' : ''}`} value={places} onChange={(e) => setPlaces(e.target.value)} aria-invalid={bad} /></label>
-      <div className="row g-2" style={{ flexWrap: 'wrap' }}>
-        <label className="stack g-1"><span className="cap">Points per elim</span><input className="cell" type="number" min={0} max={10} value={sc.perElim} onChange={(e) => setSc({ ...sc, perElim: Math.max(0, Math.min(10, Number(e.target.value) || 0)) })} /></label>
-        <label className="stack g-1"><span className="cap">Elim cap per match · optional</span><input className="cell" type="number" min={0} max={100} value={sc.elimCap ?? ''} onChange={(e) => { const v = e.target.value; setSc(({ elimCap: _x, ...rest }) => (v === '' ? rest : { ...rest, elimCap: Number(v) })); }} /></label>
-        <label className="stack g-1"><span className="cap">Match point · optional</span><input className="cell" type="number" min={1} max={1000} value={sc.matchPoint ?? ''} onChange={(e) => { const v = e.target.value; setSc(({ matchPoint: _x, ...rest }) => (v === '' ? rest : { ...rest, matchPoint: Number(v) })); }} /></label>
-      </div>
-      <p className="faint t-xs">Match point: a team at or over it that then wins a match takes the title (PMGC Smash, FFWS Champions Rush). Scoring rules differ per event; check yours.</p>
-      <div><button className="btn primary small" disabled={same || bad} onClick={() => void run(() => air.lobbyUpdate(lobby.id, { scoring: next }))}>Save scoring</button></div>
-    </section>
-  );
-}
-
 /** The event's Lobbies tab (lobby games): its lobbies and New lobby. */
-export function LobbyList({ s, run, eventId, open }: { s: Snapshot; run: Run; eventId: string; open: (id: string) => void }) {
+export function LobbyList({ s, run, eventId, open, importList }: { s: Snapshot; run: Run; eventId: string; open: (id: string) => void; importList: () => void }) {
   const lobbies = s.lobbies.filter((l) => l.eventId === eventId);
   const game = gameOf(s.setup.game);
   const [name, setName] = useState('');
   const [count, setCount] = useState(6);
+  if (!lobbies.length) return <StartCards s={s} run={run} eventId={eventId} open={open} importList={importList} />;
   return (
     <section className="stack" style={{ gap: 10 }}>
       <div className="card body-pad row g-2" style={{ flexWrap: 'wrap' }}>
         <input className="cell" placeholder="Lobby name, e.g. Group A · Day 2" aria-label="Lobby name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} style={{ maxWidth: 300 }} />
         <label className="row g-1"><span className="muted t-sm">{game?.words?.game ?? 'Match'}es</span><input className="cell" type="number" min={1} max={24} value={count} onChange={(e) => setCount(Math.max(1, Math.min(24, Number(e.target.value) || 1)))} style={{ width: 70 }} aria-label="Number of matches" /></label>
         <button className="btn primary" onClick={() => void run(async () => { await air.lobbyCreate({ eventId, game: s.setup.game!, title: name.trim() || 'Lobby', games: count }); setName(''); })}>New lobby</button>
+        <button className="btn" onClick={importList}>Import teams and players</button>
       </div>
-      {!lobbies.length && <p className="muted ap-empty">No lobbies in this event yet.</p>}
       <div className="lst">
         {lobbies.map((l) => {
           const done = l.games.filter((g) => gameState(g) === 'confirmed').length;

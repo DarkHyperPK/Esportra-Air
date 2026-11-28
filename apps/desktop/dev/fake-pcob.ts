@@ -6,7 +6,9 @@
 // run is the same every time and tests can step the clock.
 import { createServer, type Server } from 'node:http';
 
-export interface FakeTeam { name: string; players: string[] }
+export interface FakeTeam { name: string; players: string[]; /** The uID each player sends (the Character ID); by default 510000001, 510000002… in team and player order. */ uids?: number[] }
+/** The uID the stand-in sends for the n-th player (0-based, teams in order) unless a team lists its own. */
+export const fakeUid = (index: number) => 510000001 + index;
 export interface FakePcobOptions {
   teams: FakeTeam[];
   seed?: number;
@@ -84,7 +86,7 @@ export class FakePcob {
   // ── the game plan ──
   private players(): P[] {
     let uid = 510000000;
-    return this.opts.teams.flatMap((t, ti) => t.players.map((name, i) => ({ team: ti + 1, name, uid: ++uid, openId: String(900000 + ti * 10 + i), key: 1253580000 + ti * 10 + i, state: 0, health: 100, kills: 0, knocks: 0, assists: 0, damage: 0, taken: 0, heal: 0, hs: 0, rescues: 0, diedAt: null, maxDist: 0, airdrops: 0 })));
+    return this.opts.teams.flatMap((t, ti) => t.players.map((name, i) => { const seq = ++uid; return { team: ti + 1, name, uid: t.uids?.[i] ?? seq, openId: String(900000 + ti * 10 + i), key: 1253580000 + ti * 10 + i, state: 0, health: 100, kills: 0, knocks: 0, assists: 0, damage: 0, taken: 0, heal: 0, hs: 0, rescues: 0, diedAt: null, maxDist: 0, airdrops: 0 }; }));
   }
   /** Plans knocks, kills and revives until one team is left. Fights start after the drop (90 s). */
   private planGame(seed: number) {

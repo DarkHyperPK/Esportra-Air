@@ -5,10 +5,11 @@
 import { randomUUID } from 'node:crypto';
 import type { LibTeam, LibPlayer, Lobby } from '../shared/api.ts';
 import { SCORING_PRESETS, champion, gamePoints, gameState, standings, validResults, validScoring, type GameChecks, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
+import { cleanUid } from '../shared/uid.ts';
 import { currentMatch, isBusy, liveMatch, normalizeLobby, standingsView, targetMatch } from '../shared/br-run.ts';
 import { playerTotals, teamTotals, type GameFeed } from '../shared/br-stats.ts';
 import { patchShow, showOf } from '../shared/br-rundown.ts';
-import { gameOf, type GameId } from '../shared/games.ts';
+import { gameOf, isCoach, type GameId } from '../shared/games.ts';
 import type { Store } from './store.ts';
 import type { EventJournal } from './event-journal.ts';
 
@@ -116,6 +117,18 @@ export class Lobbies {
     return this.find(id);
   }
 
+  /** Adds a finished lobby built elsewhere (Copy this lobby): journalled like a new one, put on the graphics when nothing is. */
+  async adopt(raw: Lobby) {
+    const lobby = normalizeLobby(raw);
+    this.note(lobby, 'lobby.create', { title: lobby.title, game: lobby.game, games: lobby.games.length, teams: [], maps: lobby.games.map((g) => g.map) });
+    this.data.lobbies = [...this.list(), lobby];
+    this.data.selectedLobbyId ??= lobby.id;
+    this.ctx.store.save();
+    this.ctx.changed();
+    await this.publish();
+    return this.find(lobby.id);
+  }
+
   update(id: string, patch: { title?: unknown; stage?: unknown; scoring?: unknown; games?: unknown }) {
     const l = this.find(id);
     const next: Lobby = { ...l };
@@ -159,11 +172,13 @@ export class Lobbies {
   }
 
   private lobbyTeam(t: LibTeam, keepId?: string): LobbyTeam {
-    const roster = (this.data.players ?? []).filter((p: LibPlayer) => p.teamId === t.id);
+    // A coach belongs to the team but is never in the game: not on the squad, not counted, not matched.
+    const roster = (this.data.players ?? []).filter((p: LibPlayer) => p.teamId === t.id && !isCoach(p.role));
     const players = roster.map((p) => p.gameId || p.name);
     const photos = roster.map((p) => p.photo || '');
     const openIds = roster.map((p) => p.openId || '');
-    return { id: keepId ?? randomUUID(), teamId: t.id, name: t.name, tag: t.tag, color: t.color, logo: t.logo, players, ...(photos.some(Boolean) ? { photos } : {}), ...(openIds.some(Boolean) ? { openIds } : {}) };
+    const uids = roster.map((p) => p.uid || '');
+    return { id: keepId ?? randomUUID(), teamId: t.id, name: t.name, tag: t.tag, color: t.color, logo: t.logo, players, playerIds: roster.map((p) => p.id), ...(photos.some(Boolean) ? { photos } : {}), ...(openIds.some(Boolean) ? { openIds } : {}), ...(uids.some(Boolean) ? { uids } : {}) };
   }
 
   /** Teams/Players changed: every lobby follows its teams' names, colours, logos and players. */
@@ -250,6 +265,28 @@ export class Lobbies {
       if (p && p.openId !== s.openId && !(this.data.players ?? []).some((x) => x.openId === s.openId && x.id !== p.id)) { p.openId = s.openId; any = true; }
     }
     if (any) { this.ctx.store.save(); this.refresh(); }
+  }
+
+  /**
+   * The roster check (28 Nov, test games only): writes a Character ID onto a Teams/Players player. Refused while a match
+   * is live, so a roster never changes under a game being read; the change is journalled with the player and the id.
+   */
+  setPlayerUid(id: string, playerId: string, uid: string) {
+    const l = this.find(id);
+    const live = liveMatch(l);
+    if (live) throw new Error(`Match ${live.n} is live. The roster only changes in a test game, never while a match is being read.`);
+    const { uid: clean, problem } = cleanUid(uid);
+    if (problem || !clean) throw new Error(problem ?? 'Choose a UID.');
+    const players = this.data.players ?? [];
+    const p = players.find((x) => x.id === playerId);
+    if (!p) throw new Error('That player is no longer in Teams/Players.');
+    const owner = players.find((x) => x.uid === clean && x.id !== p.id);
+    if (owner) throw new Error(`${clean} is already ${owner.name}’s UID.`);
+    p.uid = clean;
+    this.ctx.store.save();
+    const team = l.teams.find((t) => t.teamId === p.teamId);
+    this.note(l, 'roster.change', { team: team?.id ?? '', name: team?.name ?? '', added: [`${p.gameId || p.name} (UID ${clean})`], removed: [], uid: clean, player: p.gameId || p.name });
+    this.refresh();
   }
 
   /** Moments, the Rundown, autopilot and the post-game pick (src/shared/br-rundown.ts). */

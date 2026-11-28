@@ -29,6 +29,9 @@ import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
 import { GamePacks } from './game-packs.ts';
 import { Lobbies } from './br-lobbies.ts';
+import { rosterView } from './br-roster-view.ts';
+import { BrFormat } from './br-format.ts';
+import { SheetImporter, type ImportInput, type PictureInput } from './sheet-import.ts';
 import { EventJournal } from './event-journal.ts';
 import { EventFiles } from './event-files.ts';
 import { BrGraphics, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
@@ -173,6 +176,9 @@ export class Production extends EventEmitter {
   readonly brLive: BrLiveFeed;
   /** The run sheet: arm, remake, void, end, confirm, edit, adjust, days, resume (src/main/br-run.ts). */
   readonly brRun: BrRun;
+  /** Format (match generator, copy a lobby, saved points tables) and the list import: src/main/br-format.ts, src/main/sheet-import.ts. */
+  readonly brFormat: BrFormat;
+  readonly sheets: SheetImporter;
   readonly pcobRecorder: PcobRecorder;
   readonly brAuto: BrAutopilot;
   readonly rehearsal: Rehearsal;
@@ -257,6 +263,11 @@ export class Production extends EventEmitter {
       user: () => deps.store.data.esportra?.email,
       log: (t) => this.log.add(t), changed: () => this.emit('change'), now: deps.now,
       autopilot: { pending: () => this.brAuto.pending, resume: () => this.brAuto.resume(), discard: () => this.brAuto.discard() },
+    });
+    this.brFormat = new BrFormat({ lobbies: this.lobbies, store: deps.store, changed: () => this.emit('change') });
+    this.sheets = new SheetImporter({
+      store: deps.store, storeImage: (raw, type) => this.storeImage(raw, type), libraryChanged: () => this.libraryChanged(),
+      lobbies: this.lobbies, game: () => this.setup.game ?? null, log: (t) => this.log.add(t),
     });
     this.eventFiles = new EventFiles({
       store: deps.store, journal: this.journal, version: deps.version, now: deps.now, debounceMs: deps.autoBackupMs,
@@ -1151,6 +1162,20 @@ export class Production extends EventEmitter {
     if (this.brLive.status.state === 'off') throw new Error('Connect to the observer PC first (and tick the consent box). Nothing is recorded without it.');
     this.pcobRecorder.start();
   }
+  // ── PUBG MOBILE preparation (28 Nov) ──
+  sheetPictures(input: PictureInput) { return this.sheets.pictures(input); }
+  /** Saves an import. Refused while a match is live or a test runs: Teams/Players must not change under a show. */
+  async sheetImport(input: ImportInput) {
+    const live = this.lobbies.busy();
+    if (live || this.gameLocked()) throw new Error(live ? `Match ${live.games.find((g) => g.state === 'live' || g.state === 'finishing')?.n ?? ''} of ${live.title} is live. Import after it is confirmed, remade or ended.` : 'A test or game data is running. Stop it before importing.');
+    return this.sheets.import(input);
+  }
+  pointsTableSave(input: unknown) { return this.brFormat.saveTable(input); }
+  pointsTableDelete(id: string) { this.brFormat.deleteTable(id); }
+  lobbyFormat(id: string, dayId: string, spec: unknown) { this.brFormat.generate(id, dayId, spec); }
+  async lobbyCopy(id: string, title: unknown) { await this.brFormat.copy(id, title); }
+  /** The roster check's "Use this UID" and "Pick player". */
+  rosterUid(lobbyId: string, playerId: string, uid: string) { this.lobbies.setPlayerUid(lobbyId, playerId, uid); }
   pcobRecordingFile() { return this.pcobRecorder.view().file; }
   pcobSeat(lobbyId: string, pcobTeamId: unknown, team: unknown) {
     const id = Number(pcobTeamId);
@@ -2001,6 +2026,8 @@ export class Production extends EventEmitter {
       playerPrep: this.deps.store.data.playerPrep ?? {},
       templateUse: this.templateUse(),
       showTemplates: this.shows.views(),
+      pointsTables: this.deps.store.data.pointsTables ?? [],
+      rosterCheck: rosterView(this.lobbies.selected, this.brLive.gameNow()),
       showTemplateOf: this.match ? this.deps.store.data.showTemplateOf?.[this.match.id] ?? null : null,
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,
