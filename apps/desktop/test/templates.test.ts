@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { GRAPHICS, DEFAULT_BRAND, graphicPage, templatesFor, validBrand, validTemplate, type Template } from '../src/shared/templates.ts';
+import { BUILTIN_BR_HUD, GRAPHICS, partsForLayout, DEFAULT_BRAND, graphicPage, templatesFor, validBrand, validTemplate, type Template } from '../src/shared/templates.ts';
 import { validRow } from '../src/main/autopilot/rundown.ts';
 import type { RowInput } from '../src/shared/autopilot.ts';
 
@@ -123,4 +123,20 @@ test('picture slots: the same in Air and the HUD; only pack or upload pictures, 
   const css = hud.styles(t.parts.background);
   assert.equal(css['background-image'], `url("${pack}")`);
   assert.equal(css.transform, 'scaleX(-1)');
+});
+
+test('battle royale HUD templates: three built-ins, a layout only on the battle royale HUD (28 Nov)', () => {
+  assert.deepEqual(BUILTIN_BR_HUD.map((b) => [b.layout, b.name]), [['rail', 'Pro Rail'], ['grid', 'Broadcast Grid'], ['strip', 'Strip']]);
+  assert.equal(new Set(BUILTIN_BR_HUD.map((b) => b.id)).size, 3);
+  assert.equal(validTemplate({ id: 'br-1', name: 'My grid', graphic: 'brhud', layout: 'grid', parts: { 'grid.tiles': { radius: 8 } } }).layout, 'grid');
+  assert.equal(validTemplate({ id: 'br-2', name: 'Any', graphic: 'brhud', parts: {} }).layout, undefined);
+  assert.throws(() => validTemplate({ id: 'br-3', name: 'Bad', graphic: 'brhud', layout: 'wide', parts: {} }), /rail, grid or strip/);
+  assert.throws(() => validTemplate({ id: 'br-4', name: 'Bad', graphic: 'hud', layout: 'grid', parts: {} }), /rail, grid or strip/);
+  // The parts of the new elements are listed, with the same selectors in Air and the HUD.
+  const ids = GRAPHICS.brhud!.parts.map((p) => p[0]);
+  for (const id of ['rail.elims', 'rail.emblem', 'grid.head', 'grid.elims', 'grid.out', 'strip.alive', 'popup.foot', 'popup.pages', 'elim.tick']) assert.ok(ids.includes(id), id);
+  const strip = partsForLayout(GRAPHICS.brhud!.parts, 'strip').map((p) => p[0]);
+  assert.ok(strip.includes('strip.alive') && strip.includes('popup.rows') && strip.includes('elim.name') && strip.includes('moment'), 'its own and the common parts');
+  assert.ok(!strip.some((id) => id.startsWith('rail') || id.startsWith('grid') || id.startsWith('chip')), 'not the other layouts');
+  assert.equal(partsForLayout(GRAPHICS.brhud!.parts, undefined).length, GRAPHICS.brhud!.parts.length, 'no layout: every part');
 });

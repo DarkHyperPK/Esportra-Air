@@ -64,7 +64,8 @@ async function audit(page, graphic) {
   const graphics = await page.evaluate(() => Object.keys(window.AirTemplates.GRAPHICS));
   const report = {};
   let gaps = 0;
-  for (const g of graphics) {
+  const only = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7);
+  for (const g of graphics.filter((x) => !only || x === only)) {
     for (const sample of SAMPLES[g] || ['']) {
       const q = new URLSearchParams({ preview: '1', screen: '1', ...(sample && g === 'hud' ? { sample } : {}), ...(sample && g !== 'hud' ? { mode: sample } : {}) });
       await page.goto(`${base}${PAGE(g)}.html?${q}`);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrGraphics, packField, sponsorsOf, validLook, validTheme } from '../src/main/br-graphics.ts';
+import { BrGraphics, mergeLook, packField, sponsorsOf, validLook, validTheme } from '../src/main/br-graphics.ts';
 import type { Lobby } from '../src/shared/api.ts';
 import type { GameAsset } from '../src/shared/game-assets.ts';
 
@@ -54,7 +54,7 @@ test('Take and Clear go to the lobby room with the chosen look', async () => {
   await assert.rejects(g.take(l, 'map-veto'), /lobby graphics/);
   await assert.rejects(g.take(lobby({ teams: [] }), 'br-overall'), /teams first/);
   const f = g.roomFields(l);
-  assert.deepEqual(f.layout, { brHud: 'strip' });
+  assert.deepEqual(f.layout, { brHud: 'strip', brHudBrand: false });
   assert.equal(f.brPopup, true);
   assert.equal(f.brEvent, 'Cup');
   assert.deepEqual(f.airPageTemplates, { 'holding|full': null, brhud: 'th' });
@@ -84,4 +84,19 @@ test('the room gets the theme, the event emblem and its sponsors, title first', 
   assert.equal(f.brEmblem, '/air-assets/x');
   assert.equal((f.brSponsors as unknown[]).length, 3);
   assert.deepEqual(g.roomFields(lobby()).airBrTheme, { preset: 'sky', props: { crate: true, chutes: true, side: 'right' } }, 'no theme: Sky');
+});
+
+test('a HUD look: the brand switch is kept; a template made for a layout sets it, a hand-picked layout drops a template of another (28 Nov)', () => {
+  const graphicOf = (id: string) => (id === 'mine' ? 'brhud' : null);
+  assert.equal(validLook({ hud: 'grid', hudBrand: true }, graphicOf).hudBrand, true);
+  assert.equal('hudBrand' in validLook({ hud: 'grid' }, graphicOf), false, 'off is not stored');
+  const layoutOf = (id: string) => (id === 'mine' ? ('grid' as const) : undefined);
+  const cur = { hud: 'rail' as const, popup: false, templates: {} as Record<string, string> };
+  const picked = mergeLook(cur, { templates: { brhud: 'mine' } }, layoutOf);
+  assert.equal(picked.hud, 'grid', 'choosing the template sets its layout');
+  const next = mergeLook({ ...cur, hud: 'grid', templates: { brhud: 'mine' } }, { hud: 'strip' }, layoutOf);
+  assert.equal((next.templates as Record<string, string>).brhud, '', 'a layout chosen by hand drops a template made for another');
+  assert.equal(mergeLook({ ...cur, hud: 'grid', templates: { brhud: 'mine' } }, { popup: true }, layoutOf).hud, 'grid', 'other changes keep both');
+  const builtin = mergeLook({ ...cur, hud: 'grid', templates: { brhud: 'mine' } }, { hud: 'strip', templates: { brhud: '' }, hudBrand: true }, layoutOf);
+  assert.deepEqual(validLook(builtin, graphicOf), { hud: 'strip', popup: false, hudBrand: true, templates: {} }, 'a built-in HUD is a layout and no template');
 });

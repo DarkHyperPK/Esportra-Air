@@ -79,6 +79,18 @@ export function validTheme(v: unknown): BrTheme {
   };
 }
 
+/** A look patch laid over the current look. A HUD template made for a layout sets it; choosing another layout by hand drops
+ *  a template made for the old one (28 Nov). Not checked yet: `validLook` does that. */
+export function mergeLook(cur: LobbyLook, patch: Record<string, unknown>, layoutOf: (templateId: string) => LobbyLook['hud'] | undefined): Record<string, unknown> {
+  const picked = patch.templates as Record<string, string> | undefined;
+  const merged = { ...cur, ...patch, templates: picked === undefined ? cur.templates : { ...cur.templates, ...picked } } as Record<string, unknown> & { templates: Record<string, string> };
+  const tid = merged.templates.brhud;
+  const layout = tid ? layoutOf(tid) : undefined;
+  if (layout && (patch.hud === undefined || picked?.brhud)) merged.hud = layout;
+  else if (layout && patch.hud !== layout) merged.templates = { ...merged.templates, brhud: '' };
+  return merged;
+}
+
 export function validLook(v: unknown, templateGraphic: (id: string) => string | null): LobbyLook {
   const x = (v ?? {}) as Record<string, unknown>;
   const hud = HUD_LAYOUTS.includes(x.hud as never) ? (x.hud as LobbyLook['hud']) : DEFAULT_LOOK.hud;
@@ -89,7 +101,7 @@ export function validLook(v: unknown, templateGraphic: (id: string) => string | 
     if (typeof id !== 'string' || !isLobbyGraphic(graphic) || templateGraphic(id) !== graphic) throw new Error('That look is not for this graphic.');
     templates[graphic] = id;
   }
-  return { hud, popup: x.popup === true, templates, ...(x.theme === undefined ? {} : { theme: validTheme(x.theme) }) };
+  return { hud, popup: x.popup === true, ...(x.hudBrand === true ? { hudBrand: true } : {}), templates, ...(x.theme === undefined ? {} : { theme: validTheme(x.theme) }) };
 }
 
 const TIER_ORDER = { title: 0, partner: 1, supporter: 2 } as const;
@@ -119,7 +131,7 @@ export class BrGraphics {
     const pages = { ...((tpl.airPageTemplates as Record<string, string | null>) ?? {}), brhud: look.templates.brhud ?? null };
     const ev = this.ctx.event?.(l) ?? null;
     return {
-      airPack: packField(l.game, this.ctx.assets(l)), layout: { brHud: look.hud }, brPopup: look.popup, brEvent: this.ctx.eventName(l),
+      airPack: packField(l.game, this.ctx.assets(l)), layout: { brHud: look.hud, brHudBrand: look.hudBrand === true }, brPopup: look.popup, brEvent: this.ctx.eventName(l),
       airBrTheme: look.theme ?? DEFAULT_THEME, brEmblem: ev?.logoLight || ev?.logo || '', brSponsors: sponsorsOf(ev), ...tpl, airPageTemplates: pages,
     };
   }

@@ -34,7 +34,7 @@ import { BrFormat } from './br-format.ts';
 import { SheetImporter, type ImportInput, type PictureInput } from './sheet-import.ts';
 import { EventJournal } from './event-journal.ts';
 import { EventFiles } from './event-files.ts';
-import { BrGraphics, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
+import { BrGraphics, mergeLook, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
 import { BrLiveFeed } from './br-live.ts';
 import { BrRun } from './br-run.ts';
 import { gameState } from '../shared/br.ts';
@@ -1165,7 +1165,8 @@ export class Production extends EventEmitter {
     const l = this.lobbies.find(id);
     const p = (patch ?? {}) as Record<string, unknown>;
     const cur = BrGraphics.lookOf(l);
-    this.lobbies.setLook(id, validLobbyLook({ ...cur, ...p, templates: p.templates === undefined ? cur.templates : { ...cur.templates, ...(p.templates as object) } }, (t) => this.looks.templates.find((x) => x.id === t)?.graphic ?? null));
+    const merged = mergeLook(cur, p, (t) => this.looks.templates.find((x) => x.id === t)?.layout);
+    this.lobbies.setLook(id, validLobbyLook(merged, (t) => this.looks.templates.find((x) => x.id === t)?.graphic ?? null));
   }
   lobbyPreview(id: string, theme?: unknown) {
     const l = this.lobbies.find(id);

@@ -51,8 +51,9 @@ const NAMES = ['NIGHT OWLS','CRIMSON FIVE','IRON PINE','DUNE RUNNERS','SILVER FO
   if (await p.getByRole('tab', { name: 'Graphics' }).count()) throw new Error('the lobby page still has a Graphics tab');
   await p.locator('nav.rail').getByRole('button', { name: /HUD library/ }).click();
   await p.locator('.pack-card').first().click();
-  const grid = p.locator('.br-layout').filter({ hasText: 'Points grid' });
-  await grid.click();
+  // 28 Nov: three ready-made HUD templates; Preview a card, then Use for this lobby.
+  await p.getByRole('button', { name: 'Preview Broadcast Grid' }).click();
+  await p.getByRole('button', { name: 'Use for this lobby' }).click();
   for (let i = 0; i < 20 && (await roomNow()).layout?.brHud !== 'grid'; i++) await p.waitForTimeout(150);
   if ((await roomNow()).layout?.brHud !== 'grid') throw new Error('the HUD layout chosen in HUD library did not reach the room');
   if (SHOTS) { await p.waitForTimeout(1200); await p.screenshot({ path: require('node:path').join(SHOTS, 'lobby-library.png') }); }

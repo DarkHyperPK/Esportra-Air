@@ -196,16 +196,19 @@ async function card(browser, title, sub, secs) {
   await dress(app, 'HUD library', 'HUD library is where you choose. The ESPORTRA HUD pack holds every PUBG MOBILE graphic.', true);
   await hold(2);
   await click(app.locator('.pack-card').first(), 1.2);
+  await click(app.getByRole('tab', { name: 'Full screens' }), 0.6);
   for (const name of ['Starting soon', "Today's matches", 'Overall standings', 'Champions']) {
     await dress(app, 'HUD library', { 'Starting soon': 'Starting soon: the countdown over a tilted map, the plane riding its flight path.', "Today's matches": 'Today’s matches: each map as a disc along the flight path, winners marked.', 'Overall standings': 'Overall standings: the points race with the match-point line.', Champions: 'Champions: the title winners and their road through the day.' }[name], true);
     await click(app.locator('.pack-list [role=option]').filter({ hasText: name }), 0.3);
     await app.waitForTimeout(1600); await hold(2.2);
   }
-  await click(app.locator('.pack-list [role=option]').filter({ hasText: 'In-game HUD' }), 0.3);
+  await click(app.getByRole('tab', { name: 'In-game HUD' }), 0.3);
   await dress(app, 'HUD library', 'The in-game HUD comes in three layouts, each kept clear of the observer client’s own minimap, killfeed and compass.', true);
   await app.waitForTimeout(1400); await hold(1.5);
-  await click(app.locator('.br-layout').filter({ hasText: 'Points grid' }), 1.2);
-  await click(app.locator('.br-layout').filter({ hasText: 'Points rail' }), 1.5);
+  await click(app.getByRole('button', { name: 'Preview Broadcast Grid' }), 1.2);
+  await click(app.getByRole('button', { name: 'Use for this lobby' }), 1.2);
+  await click(app.getByRole('button', { name: 'Preview Pro Rail' }), 1.2);
+  await click(app.getByRole('button', { name: 'Use for this lobby' }), 1.5);
   await app.keyboard.press('Escape'); await app.waitForTimeout(300);
 
   // 3 · Graphics studio: edit

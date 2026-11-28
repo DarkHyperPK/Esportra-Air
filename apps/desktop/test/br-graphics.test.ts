@@ -128,3 +128,67 @@ test('the full-screen host shows each BR screen', { skip: !chromium && 'needs Pl
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+
+test('the three HUD layouts: elims column, grid sorted by rank with out teams in place, strip with a rolling pop-up (28 Nov)', { skip: !chromium && 'needs Playwright' }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const errors: string[] = [];
+    page.on('pageerror', (e: Error) => errors.push(e.message));
+    const open = async (q: string) => { await page.goto(`file://${OVERLAYS}/br-hud.html?preview=1&${q}`); await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 }); await page.waitForTimeout(1500); };
+    const teams = 16;
+
+    // Pro Rail: every team, with the team's elims from the feed in their own column.
+    await open('mode=rail');
+    const rail = await page.evaluate(() => ({ rows: document.querySelectorAll('.brh-row').length, el: [...document.querySelectorAll('.brh-row .el')].map((e) => e.textContent), head: document.querySelector('.brh-sub')!.textContent, elim: !!document.querySelector('.brh-elim .cam .c') }));
+    assert.equal(rail.rows, teams);
+    assert.equal(rail.el.length, teams, 'an elims column on every row');
+    assert.equal(rail.el[0], '9', 'the leader has 9 elims in the sample feed');
+    assert.match(rail.head!, /ELIMS/);
+    assert.equal(rail.elim, true, 'Team eliminated keeps its kill-cam frame');
+
+    // Broadcast Grid: tiles in rank order throughout; an out team keeps the rank its points give it, dimmed and struck.
+    await open('mode=grid');
+    const grid = await page.evaluate(() => {
+      const t = [...document.querySelectorAll('.brh-tile')].map((e) => ({ rank: +e.querySelector('.rk')!.textContent!, pts: +e.querySelector('.pt')!.textContent!, out: e.classList.contains('out'), dots: e.querySelectorAll('.brh-dots i').length, el: e.querySelector('.el b')!.textContent, struck: getComputedStyle(e.querySelector('.nm')!).textDecorationLine, op: +getComputedStyle(e).opacity }));
+      return { t, head: document.querySelector('.brh-ghead')!.textContent, elim: document.querySelector('.brh-elim .tx b')!.textContent, box: document.querySelector('.brh-gridbox')!.getBoundingClientRect().toJSON() };
+    });
+    assert.equal(grid.t.length, teams);
+    assert.deepEqual(grid.t.map((x: any) => x.rank), Array.from({ length: teams }, (_, i) => i + 1), 'ranks run 1 to N in tile order');
+    assert.deepEqual(grid.t.map((x: any) => x.pts), [...grid.t.map((x: any) => x.pts)].sort((a: number, b: number) => b - a), 'sorted by live points all the way');
+    const firstOut = grid.t.findIndex((x: any) => x.out), lastAlive = grid.t.map((x: any) => x.out).lastIndexOf(false);
+    assert.ok(firstOut >= 0 && firstOut < lastAlive, 'an out team keeps its rank place, not pushed to the end');
+    assert.ok(grid.t.filter((x: any) => x.out).every((x: any) => x.struck.includes('line-through') && x.op < 0.8), 'out tiles are struck and dimmed');
+    assert.ok(grid.t.every((x: any) => x.dots >= 1 && /^\d+$/.test(x.el)), 'alive dots and an elims count on every tile');
+    assert.match(grid.head, /LIVE POINTS.*MATCH 5.*12 ALIVE/);
+    assert.ok(grid.box.right <= 1920 && grid.box.bottom <= 1080 && grid.box.left > 1000, 'bottom right');
+    assert.ok(grid.elim.length > 0);
+
+    // Strip: top five and the teams left; the pop-up rolls in pages of eight (the first page in a preview).
+    await open('mode=strip');
+    const strip = await page.evaluate(() => ({ teams: document.querySelectorAll('.brh-strip .t').length, left: document.querySelector('.brh-strip .al')!.textContent, rows: document.querySelectorAll('.brh-pr').length, foot: document.querySelector('.brh-pfoot')!.textContent, elim: document.querySelector('.brh-elim')!.getBoundingClientRect().top, bar: document.querySelector('.brh-strip')!.getBoundingClientRect().bottom }));
+    assert.equal(strip.teams, 5);
+    assert.match(strip.left!, /12\s*LEFT/);
+    assert.equal(strip.rows, 8, 'eight rows a page');
+    assert.match(strip.foot!, /ROLLING.*1.8 OF 16/);
+    assert.ok(strip.elim >= strip.bar - 1, 'Team eliminated drops down under the bar');
+
+    // No moment hides Team eliminated; the event brand recolours a layout; the room can ask for it too.
+    await open('mode=grid&moment=none');
+    assert.equal(await page.evaluate(() => !!document.querySelector('.brh-elim')), false);
+    const brand = encodeURIComponent(JSON.stringify({ primary: '#2fe0a0', panel: '#2b1250' }));
+    await open(`mode=rail&brand=${brand}`);
+    assert.equal(await page.evaluate(() => (document.querySelector('.br-layer') as HTMLElement).style.getPropertyValue('--acc')), '#2fe0a0');
+    await open('mode=rail');
+    assert.equal(await page.evaluate(() => (document.querySelector('.br-layer') as HTMLElement).style.getPropertyValue('--hud-acc')), '', 'no brand: the HUD keeps its own colours');
+    await push(page, `s.layout = { ...s.layout, brHudBrand: true }; s.airBrand = { primary: '#12ab34', panel: '#101820' };`);
+    await page.waitForTimeout(150);
+    assert.equal(await page.evaluate(() => (document.querySelector('.br-layer') as HTMLElement).style.getPropertyValue('--acc')), '#12ab34', 'the lobby asks for the brand');
+    // Moments follow the layout they sit in.
+    await open('mode=grid&moment=first.blood');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.brh-mo')!).backgroundColor), 'rgba(246, 248, 251, 0.97)', 'a light card beside the grid');
+    await open('mode=strip&moment=kill.leader');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.brh-mo')!).backgroundColor), 'rgba(7, 9, 12, 0.9)', 'black glass beside the strip');
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});

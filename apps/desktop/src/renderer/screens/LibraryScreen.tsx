@@ -9,7 +9,7 @@ import { air } from '../bridge.ts';
 import { overlayUrl, StillPreview, stillKey } from '../components/Preview.tsx';
 import type { PageProps, Run } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
-import { GRAPHICS, graphicTitle, graphicsFor, type BrandKit, type Template } from '../../shared/templates.ts';
+import { BUILTIN_BR_HUD, GRAPHICS, graphicTitle, graphicsFor, type BrandKit, type Template } from '../../shared/templates.ts';
 import { brandOfMatch, openTemplateEditor, templatePreviewUrl } from '../components/TemplateEditor.tsx';
 import { OwnGraphicEditor, blankOwn } from '../components/OwnGraphicEditor.tsx';
 import { OWN_PURPOSES, ownScreenId, type OwnGraphic } from '../../shared/own-graphics.ts';
@@ -17,9 +17,9 @@ import { ShowTemplateManager } from '../components/ShowTemplates.tsx';
 import { GameAssets } from '../components/GameAssets.tsx';
 
 /** A live thumbnail of a graphic with a template (or its default look). */
-export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit }) {
+export function TemplateThumb({ s, graphic, template, label, brand: kit, mode }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit; mode?: string }) {
   const brand = kit ?? brandOfMatch(s);
-  const extra: Record<string, string> = { ...(graphic.endsWith('|full') ? {} : { bg: '1' }), ...(template ? { template: JSON.stringify(template) } : {}), ...(brand ? { brand: JSON.stringify(brand) } : {}) };
+  const extra: Record<string, string> = { ...(graphic.endsWith('|full') ? {} : { bg: '1' }), ...(mode ?? template?.layout ? { mode: (mode ?? template?.layout)! } : {}), ...(template ? { template: JSON.stringify(template) } : {}), ...(brand ? { brand: JSON.stringify(brand) } : {}) };
   return <StillPreview src={templatePreviewUrl(s, graphic, extra)} label={label} backdrop={false} stamp={stillKey(s)} />;
 }
 
@@ -106,7 +106,17 @@ function TemplatesTab({ s }: { s: Snapshot }) {
                   </div>
                 </div>
               ))}
-              {builtin.map((g) => (
+              {k === 'hud' && builtin.includes('brhud') && BUILTIN_BR_HUD.map((b) => (
+                <div key={b.id} className="card tpl-card builtin">
+                  <TemplateThumb s={s} graphic="brhud" template={null} mode={b.layout} label={`${b.name}, built in`} />
+                  <div className="tpl-meta">
+                    <span className="between"><b>{b.name}</b><span className="tally off"><span aria-hidden="true">🔒 </span>Built in</span></span>
+                    <span className="faint t-xs">{b.line}</span>
+                    <span className="row g-1"><button className="btn small" aria-label={`Make a copy of ${b.name} to edit`} onClick={() => openTemplateEditor({ graphic: 'brhud', layout: b.layout })}>Make a copy to edit</button></span>
+                  </div>
+                </div>
+              ))}
+              {builtin.filter((g) => g !== 'brhud').map((g) => (
                 <div key={g} className="card tpl-card builtin">
                   <TemplateThumb s={s} graphic={g} template={null} label={`${GRAPHICS[g]!.title}, built in`} />
                   <div className="tpl-meta">

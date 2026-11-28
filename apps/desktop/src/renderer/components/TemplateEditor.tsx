@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import {
-  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicsFor, graphicTitle, newTemplateId, parentOf, partsOf, validTemplate, slotsOf, isKitPicture,
+  BRAND_NAME, BRAND_KEYS, BUILTIN_BR_HUD, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicsFor, graphicTitle, newTemplateId, parentOf, partsOf, partsForLayout, validTemplate, slotsOf, isKitPicture,
   type BrandKit, type ColorRef, type PartStyle, type Template,
 } from '../../shared/templates.ts';
 import { air } from '../bridge.ts';
@@ -14,8 +14,9 @@ import { AssetPicker } from './AssetPicker.tsx';
 import { KIND_LABEL } from '../../shared/game-assets.ts';
 import { gameOf } from '../../shared/games.ts';
 import type { Run } from '../App.tsx';
+import type { HudLayout } from '../../shared/br-screens.ts';
 
-export type EditorStart = { id?: string; graphic?: string; from?: Template; returnTo?: string };
+export type EditorStart = { id?: string; graphic?: string; from?: Template; returnTo?: string; layout?: HudLayout };
 
 /** Opens the editor from anywhere (the App shows it over the page). */
 export function openTemplateEditor(start: EditorStart) {
@@ -37,8 +38,9 @@ export const brandOfMatch = (s: Snapshot): BrandKit | null => {
   return ev ? ({ ...DEFAULT_BRAND, ...(ev.brand ?? {}), primary: ev.accent } as BrandKit) : null;
 };
 
-function blank(graphic: string): Template {
-  return { id: newTemplateId(), name: `My ${GRAPHICS[graphic]?.title.toLowerCase() ?? 'graphic'}`, graphic, parts: {}, createdAt: Date.now(), updatedAt: Date.now() };
+function blank(graphic: string, layout?: HudLayout): Template {
+  const base = layout ? BUILTIN_BR_HUD.find((x) => x.layout === layout) : undefined;
+  return { id: newTemplateId(), name: base ? `${base.name} copy` : `My ${GRAPHICS[graphic]?.title.toLowerCase() ?? 'graphic'}`, graphic, parts: {}, ...(layout ? { layout } : {}), createdAt: Date.now(), updatedAt: Date.now() };
 }
 
 /** The colour a reference shows as, for swatches in the interface. */
@@ -52,13 +54,13 @@ function swatchColor(ref: ColorRef | undefined, brand: BrandKit, s: Snapshot): s
 
 export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run; start: EditorStart; close: () => void }) {
   const saved = start.id ? s.templates.find((t) => t.id === start.id) : undefined;
-  const initial = useMemo<Template>(() => saved ? structuredClone(saved) : start.from ? { ...structuredClone(start.from), id: newTemplateId(), name: `${start.from.name} copy` } : blank(start.graphic ?? 'map-veto|band'), []);
+  const initial = useMemo<Template>(() => saved ? structuredClone(saved) : start.from ? { ...structuredClone(start.from), id: newTemplateId(), name: `${start.from.name} copy` } : blank(start.graphic ?? 'map-veto|band', start.layout), []);
   // The draft and its undo history, changed together by pure updates.
   const [h, setH] = useState<{ draft: Template; past: Template[]; future: Template[] }>({ draft: initial, past: [], future: [] });
   const { draft, past, future } = h;
   const [isNew, setIsNew] = useState(!saved);
   const [baseline, setBaseline] = useState(JSON.stringify(initial));
-  const [sel, setSel] = useState<string>(partsOf(initial.graphic)[0]?.[0] ?? '');
+  const [sel, setSel] = useState<string>(partsForLayout(partsOf(initial.graphic), initial.layout)[0]?.[0] ?? '');
   // Double-click on the picture: words a template may replace are typed in place (17 Nov).
   const [wordsAt, setWordsAt] = useState<{ id: string; box: number[] } | null>(null);
   const [dataNote, setDataNote] = useState<{ box: number[]; label: string } | null>(null);
@@ -69,7 +71,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const [backdrop, setBackdrop] = useState<'game' | 'desk' | 'picture' | 'clear'>('game');
   // Your picture: a screenshot of your game or desk, kept in this PC's editor storage only.
   const [picture, setPicture] = useState<string | null>(() => { try { return localStorage.getItem('air-template-backdrop'); } catch { return null; } });
-  const [sample, setSample] = useState<string>('');
+  const [sample, setSample] = useState<string>(initial.layout ?? '');
   const [menu, setMenu] = useState<null | 'sample' | 'backdrop'>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<{ id: string; after: boolean } | null>(null);
@@ -84,13 +86,15 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const lastKey = useRef<{ k: string; at: number } | null>(null);
   const brand = brandOfMatch(s) ?? DEFAULT_BRAND;
   const dirty = JSON.stringify(draft) !== baseline || isNew;
-  const parts = partsOf(draft.graphic);
+  const parts = partsForLayout(partsOf(draft.graphic), draft.layout);
   const part = parts.find((p) => p[0] === sel) ?? parts[0];
   const ps: PartStyle = (part && draft.parts[part[0]]) || {};
   const hud = draft.graphic === 'hud';
+  // A battle royale HUD template is made for one layout: its own sample and the moments.
+  const samples = draft.graphic === 'brhud' && draft.layout ? SAMPLES.brhud!.filter((x) => x.id === draft.layout || x.id === 'moments') : SAMPLES[draft.graphic];
   // Layers (20 Nov, approved mock): a graphic holds components (top-level parts); each holds its own layers
   // (`parent.child` parts). Siblings are listed front to back by their layer order, like Photoshop.
-  const ids = useMemo(() => new Set(parts.map((x) => x[0])), [draft.graphic]);
+  const ids = useMemo(() => new Set(parts.map((x) => x[0])), [draft.graphic, draft.layout]);
   const compOf = (id: string) => { const par = parentOf(id); return par && ids.has(par) ? par : id; };
   const zOf = (id: string) => draft.parts[id]?.z ?? 0;
   const siblingsOf = (id: string) => {
@@ -401,13 +405,13 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 <button aria-pressed={compare === 'default'} onClick={() => setCompare('default')}>Default</button>
                 <button aria-pressed={compare === 'mine'} onClick={() => setCompare('mine')}>Your template</button>
               </div>
-              {SAMPLES[draft.graphic] && (
+              {samples && (
                 <span className="tpl-anchor">
-                  <button className="btn small" aria-haspopup="menu" aria-expanded={menu === 'sample'} onClick={() => setMenu(menu === 'sample' ? null : 'sample')}>Sample: {SAMPLES[draft.graphic]!.find((x) => x.id === sample)?.name ?? SAMPLES[draft.graphic]![0]!.name} ▾</button>
+                  <button className="btn small" aria-haspopup="menu" aria-expanded={menu === 'sample'} onClick={() => setMenu(menu === 'sample' ? null : 'sample')}>Sample: {samples!.find((x) => x.id === sample)?.name ?? samples![0]!.name} ▾</button>
                   {menu === 'sample' && (
                     <div className="tpl-menu" role="menu" aria-label="Sample">
                       <span className="cap">{draft.graphic === 'hud' || draft.graphic === 'brhud' ? 'In-game HUD' : 'Screen'}</span>
-                      {SAMPLES[draft.graphic]!.map((x) => <button key={x.id} role="menuitemradio" aria-checked={(sample || SAMPLES[draft.graphic]![0]!.id) === x.id} onClick={() => { setSample(x.id); setMenu(null); }}>{x.name}</button>)}
+                      {samples!.map((x) => <button key={x.id} role="menuitemradio" aria-checked={(sample || samples![0]!.id) === x.id} onClick={() => { setSample(x.id); setMenu(null); }}>{x.name}</button>)}
                     </div>
                   )}
                 </span>
@@ -436,7 +440,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
             <div className="tpl-cvwrap">
               <div className={`tpl-canvas bd-${backdrop}`} ref={canvas} style={backdrop === 'picture' && picture ? { backgroundImage: `url(${picture})` } : undefined}>
                 <iframe ref={frame} title={`Preview of ${graphicTitle(draft.graphic)}`} tabIndex={-1} key={`${draft.graphic}-${backdrop}`}
-                  src={templatePreviewUrl(s, draft.graphic, { editorKey: key, canvas: '1', ...(backdrop === 'game' ? { bg: '1' } : { clear: '1' }) })}
+                  src={templatePreviewUrl(s, draft.graphic, { editorKey: key, canvas: '1', ...(draft.layout ? { mode: draft.layout } : {}), ...(backdrop === 'game' ? { bg: '1' } : { clear: '1' }) })}
                   style={{ transform: `scale(${scale})` }} />
                 <div className="tpl-safe" aria-hidden="true"><span>TITLE SAFE</span></div>
                 <div className="tpl-hits" onPointerDown={(e) => { if (e.button !== 0) return; setDataNote(null); setHere(null); onDown(e); }} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}

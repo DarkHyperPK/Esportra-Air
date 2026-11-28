@@ -99,7 +99,7 @@
   }
 
   /** A layer that rebuilds only when its data changes; it enters once, then morphs in place. */
-  function layer(root, cls, render, keyOf) {
+  function layer(root, cls, render, keyOf, styleOf) {
     const m = E('div', 'mod on br-layer', root), panel = E('div', 'br ' + cls, m);
     let sig = '';
     return { update(s) {
@@ -108,20 +108,45 @@
       const first = !sig;
       sig = k;
       const d = data(s);
-      m.setAttribute('style', themeStyle(d.th));
+      m.setAttribute('style', themeStyle(d.th) + (styleOf ? styleOf(s) : ''));
       m.dataset.theme = d.th.name;
       const html = render(s, d);
       if (first) { panel.innerHTML = html; panel.classList.remove('br-show'); void panel.offsetWidth; panel.classList.add('br-show'); countUp(panel); }
       else HUD.morph(panel, html);
     }, tick(s) { this.update(s); }, play() { sig = ''; } };
   }
-  const elimOn = d => !!(d.live && d.live.lastOut && (PREVIEW || HUD.now() - (d.live.lastOut.at || 0) < 6000));
+  const elimOn = d => !!(d.live && d.live.lastOut && (PREVIEW ? Q.get('moment') !== 'none' : HUD.now() - (d.live.lastOut.at || 0) < 6000));
   /** A moment Air raised from the feed (first blood, kill leader, zone, final teams, match point), shown for its time. */
   const momentOn = d => { const m = d.live && d.live.moment; return !!(m && (PREVIEW || HUD.now() - (m.at || 0) < (m.for || 6) * 1000)); };
   const key = s => { const d = data(s); return [d.br, d.live, d.pack, s.airBrTheme, s.layout && s.layout.brHud, s.brEvent, s.brEmblem, s.brSponsors, s.brPopup, elimOn(d), momentOn(d), s.brLtf, d.stats, d.pick, PREVIEW && HUD.brSample]; };
   const eventName = s => s.brEvent || (s.event && s.event.name) || '';
 
-  // ═════════════ In-game HUD ═════════════
+  // ═════════════ In-game HUD: Pro Rail, Broadcast Grid, Strip (approved mock 28 Nov) ═════════════
+  // Three layouts of the same data, never drawing what the observer client shows. Pro Rail: every team down the
+  // right edge with an elims column. Broadcast Grid: light tiles bottom right, sorted by rank throughout (an
+  // out team keeps its rank place, dimmed and struck). Strip: a thin black-glass bar under the compass, top five
+  // and teams left, with a rolling standings pop-up. Elims are the verified team kill counts from the feed.
+  const dots = p => `<span class="brh-dots">${String(p || '').split('').map(c => `<i class="${c === 'k' ? 'k' : c === 'd' ? 'd' : ''}"></i>`).join('')}</span>`;
+  const logoTag = t => (logoOk(t.logo) ? tag(t) : '');
+  const POP_ROWS = 8, POP_MS = 6000;
+  const popPages = n => Math.max(1, Math.ceil(n / POP_ROWS));
+  const popPage = n => (PREVIEW ? 0 : Math.floor(HUD.now() / POP_MS) % popPages(n));
+  /** Rank order for the grid: live points, then teams still in, then the better place; out teams stay where their points put them. */
+  const rankOrder = rows => rows.map((r, i) => ({ r, i })).sort((a, b) => b.r.total - a.r.total || a.r.out - b.r.out || (a.r.place || 0) - (b.r.place || 0) || a.i - b.i).map(o => o.r);
+  /** The event's brand on the HUD: Primary is the highlight, Panel the dark plates. Only when the lobby asks (layout.brHudBrand) or a preview passes ?brand=. */
+  function hudBrand(s) {
+    let b = s.layout && s.layout.brHudBrand && s.airBrand && typeof s.airBrand === 'object' ? s.airBrand : null;
+    if (!b && PREVIEW && Q.get('brand')) { try { b = JSON.parse(Q.get('brand')); } catch (_) { b = null; } }
+    return b && hex(b.primary) ? { acc: b.primary.toLowerCase(), ink: (hex(b.panel) || '').toLowerCase() } : null;
+  }
+  function hudStyle(s) {
+    const b = hudBrand(s);
+    if (!b) return '';
+    return `;--acc:${b.acc};--y:${b.acc};--y2:${b.acc};--hud-acc:${b.acc};--hud-on:${b.ink || '#0b1220'}${b.ink ? `;--ink:${b.ink}e6;--k:${b.ink}` : ''}`;
+  }
+  const hudEmblem = s => (hudBrand(s) ? (logoOk(s.brEmblem) ? s.brEmblem : PREVIEW && logoOk(Q.get('emblem')) ? Q.get('emblem') : '') : '');
+  const hkey = s => [...key(s), hudBrand(s), hudEmblem(s), s.brPopup ? popPage((data(s).br || { teams: [] }).teams.length) : 0];
+
   M.brhud = root => layer(root, 'br-hud', (s, d) => {
     if (!d.br) return '';
     const br = d.br, rows = liveRows(br, d.live), game = br.games.find(g => g.n === (d.live ? d.live.game : br.current)) || br.games[0] || { n: 1, map: '' };
@@ -130,9 +155,14 @@
     const out = d.live && d.live.lastOut, showOut = elimOn(d) ? out : null;
     const alive = rows.filter(r => !r.out).length;
     const left = d.live ? d.live.teamsAlive ?? alive : br.teams.length;
+    const mapLine = `${esc(game.map)}`;
+    // Team eliminated, drawn for the layout it sits in: a kill-cam card (rail), a light card (grid), a drop-down (strip).
     const elim = showOut ? (() => {
-      const t = team(br, showOut.team);
-      return `<div class="brh-elim" style="${tc(t)}"><span class="cam">${tag(t)}<i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></span><span class="tx"><em>TEAM ELIMINATED</em><b>${esc(t.name)}</b><span>+${placePts(br, showOut.place) + elimPts(br, (d.live.teams[showOut.team] || {}).elims)} PTS · ${esc(left)} TEAMS LEFT</span></span><span class="place">#${esc(showOut.place)}</span><i class="hz"></i></div>`;
+      const t = team(br, showOut.team), pts = placePts(br, showOut.place) + elimPts(br, (d.live.teams[showOut.team] || {}).elims);
+      const tx = line => `<span class="tx"><em>TEAM ELIMINATED</em><b>${esc(t.name)}</b><span>${line}</span></span>`;
+      if (v === 'grid') return `<div class="brh-elim" style="${tc(t)}"><span class="cam">${tag(t)}</span>${tx(`#${esc(showOut.place)} · +${pts} PTS · ${esc(left)} TEAMS LEFT`)}</div>`;
+      if (v === 'strip') return `<div class="brh-elim" style="${tc(t)}"><i class="tick"></i>${tx(`#${esc(showOut.place)} · +${pts} PTS · ${esc(left)} TEAMS LEFT`)}</div>`;
+      return `<div class="brh-elim" style="${tc(t)}"><span class="cam">${tag(t)}<i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></span>${tx(`+${pts} PTS · ${esc(left)} TEAMS LEFT`)}<span class="place">#${esc(showOut.place)}</span><i class="hz"></i></div>`;
     })() : '';
     const fmtT2 = sec => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
     // Graphics studio's Moments sample shows a moment and the live top fraggers.
@@ -148,20 +178,28 @@
     })() : '';
     const lead = d.live && Array.isArray(d.live.players) ? d.live.players.slice(0, 3) : [];
     const ltf = (s.brLtf || (PREVIEW && window.BR_SAMPLE && (window.BR_SAMPLE.brLtf || sm === 'moments'))) && lead.length ? `<div class="brh-ltf"><em>LIVE TOP FRAGGERS</em>${lead.map((p, i) => { const t = team(br, p.team); return `<span style="${tc(t)}"><i>${i + 1}</i>${tag(t)}<b>${esc(p.name)}</b><em>${esc(p.elims)}</em></span>`; }).join('')}</div>` : '';
-    const chip = `<div class="brh-chip"><span class="m"><b>M${esc(game.n)}</b><span>OF ${br.games.length}</span></span>${slot('mapthumb', mapPic(d.pack, game.map))}<span class="e"><b>${esc(game.map)}</b><span>${esc([eventName(s), br.title].filter(Boolean).join(' · '))}</span></span></div>`;
     const extra = moment + ltf;
-    const counts = d.live ? `${left} TEAMS · ${d.live.playersAlive ?? ''} ALIVE` : `${br.teams.length} TEAMS`;
-    const max = Math.max(1, br.scoring.matchPoint || 0, ...rows.map(r => r.total)) * 1.15;
+    const counts = d.live ? `${left} OF ${br.teams.length} TEAMS ALIVE` : `${br.teams.length} TEAMS`;
+    const matchLine = `${esc(d.word.game)} ${esc(game.n)} · ${mapLine}`;
+
     if (v === 'grid') {
-      return `<div class="brh v-grid"><div class="brh-gridbox"><div class="brh-ghead"><b class="t">LIVE POINTS</b><span class="m">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span><span class="c">${esc(counts)}</span></div><div class="brh-tiles">${rows.map((r, i) => `<div class="brh-tile ${i === 0 && !r.out ? 'lead' : ''} ${r.out ? 'out' : ''} ${/k/.test(r.players) ? 'knock' : ''}" style="--i:${i};${tc(r.t)}"><span class="rk">${r.out ? r.place : i + 1}</span><span class="nm">${esc(r.t.tag)}</span><span class="pt">${r.total}</span>${pips(r.players)}</div>`).join('')}</div></div>${chip}${elim}${extra}</div>`;
+      const tiles = rankOrder(rows);
+      return `<div class="brh v-grid"><div class="brh-gridbox"><div class="brh-ghead"><b class="t">LIVE POINTS</b><span class="m">${matchLine}</span><span class="c">${d.live ? `${esc(left)} ALIVE` : `${br.teams.length} TEAMS`}</span></div><div class="brh-tiles">${tiles.map((r, i) => `<div class="brh-tile ${i === 0 && !r.out ? 'lead' : ''} ${r.out ? 'out' : ''}" style="--i:${i};${tc(r.t)}"><span class="rk">${i + 1}</span><span class="nm">${esc(r.t.tag)}</span><span class="pt">${r.total}</span>${dots(r.players)}<span class="el"><b>${r.elims}</b> EL</span></div>`).join('')}</div></div>${elim}${extra}</div>`;
     }
     if (v === 'strip') {
-      const top = rows.filter(r => !r.out).slice(0, 3);
-      const pop = s.brPopup || (PREVIEW && sm === 'strip') ? `<div class="brh-pop"><div class="brh-phead"><span class="a">STANDINGS</span><span class="b"><b>LIVE · ${d.word.game} ${esc(game.n)} OF ${br.games.length}</b>${br.scoring.matchPoint ? `MATCH POINT ${br.scoring.matchPoint}` : ''}</span></div><div class="brh-pbody">${rows.map((r, i) => `<div class="brh-pr ${i < 3 && !r.out ? 'top' : ''} ${r.out ? 'out' : ''}" style="--i:${i};${tc(r.t)}"><span class="rk">${r.out ? '#' + r.place : i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.name)}</span>${pips(r.players)}<span class="pt">${r.total}</span></div>`).join('')}</div></div>` : '';
-      return `<div class="brh v-strip"><div class="brh-strip"><span class="m">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span>${top.map((r, i) => `<span class="t ${i === 0 ? 'lead' : ''}" style="${tc(r.t)}"><span class="rk">${i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.tag)}</span><span class="pt">${r.total}</span></span>`).join('')}<span class="al"><b>${esc(left)}</b>TEAMS</span></div>${pop}${elim}${extra}</div>`;
+      const top = rows.filter(r => !r.out).slice(0, 5);
+      let pop = '';
+      if (s.brPopup || (PREVIEW && sm === 'strip')) {
+        const pages = popPages(rows.length), pg = Math.min(popPage(rows.length), pages - 1), from = pg * POP_ROWS, page = rows.slice(from, from + POP_ROWS);
+        pop = `<div class="brh-pop"><div class="brh-phead"><span class="a">STANDINGS</span><span class="b"><b>LIVE · ${d.word.game} ${esc(game.n)} OF ${br.games.length}</b>${br.scoring.matchPoint ? `MATCH POINT ${br.scoring.matchPoint}` : ''}</span></div><div class="brh-pbody">${page.map((r, i) => `<div class="brh-pr ${from + i === 0 && !r.out ? 'top' : ''} ${r.out ? 'out' : ''}" style="--i:${i};${tc(r.t)}"><span class="rk">${r.out ? '#' + r.place : from + i + 1}</span>${logoTag(r.t)}<span class="nm">${esc(r.t.name)}</span>${dots(r.players)}<span class="pt">${r.total}</span></div>`).join('')}</div><div class="brh-pfoot"><span>ROLLING · ${from + 1}–${from + page.length} OF ${rows.length}</span><span class="pg">${Array.from({ length: pages }, (_, i) => `<i class="${i === pg ? 'on' : ''}"></i>`).join('')}</span></div></div>`;
+      }
+      return `<div class="brh v-strip"><div class="brh-strip"><span class="m">M${esc(game.n)} · ${mapLine}</span>${top.map((r, i) => `<span class="t ${i === 0 ? 'lead' : ''}" style="${tc(r.t)}"><span class="rk">${i + 1}</span>${logoTag(r.t)}<span class="nm">${esc(r.t.tag)}</span><span class="pt">${r.total}</span></span>`).join('')}<span class="al"><b>${esc(left)}</b> LEFT</span></div>${elim}${pop}${extra}</div>`;
     }
-    return `<div class="brh v-rail"><div class="brh-rail"><div class="brh-head"><b class="t">LIVE POINTS</b><span class="c">${esc(d.word.game)} ${esc(game.n)} · ${esc(game.map)}</span></div><div class="brh-sub"><span>${esc(counts)}</span>${br.scoring.matchPoint ? `<span class="mpx">MATCH POINT ${br.scoring.matchPoint}</span>` : ''}</div>${rows.map((r, i) => `<div class="brh-row ${i === 0 && !r.out ? 'lead' : ''} ${r.out ? 'out' : ''} ${/k/.test(r.players) ? 'knock' : ''}" style="--i:${i};${tc(r.t)};--w:${Math.round(r.total / max * 100)}%;--mpx:${br.scoring.matchPoint ? Math.round(br.scoring.matchPoint / max * 100) : -10}%"><i class="bkx"></i>${r.out || !br.scoring.matchPoint ? '' : '<i class="mpl"></i>'}<span class="rk">${r.out ? '#' + r.place : i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.tag)}${r.mp && !r.out ? '<span class="mpt">MP</span>' : ''}</span>${pips(r.players)}<span class="pt">${r.total}</span></div>`).join('')}<div class="brh-key"><span>ALIVE</span><span class="k">KNOCKED</span><span class="d">OUT</span></div></div>${chip}${elim}${extra}</div>`;
-  }, key);
+    const chip = `<div class="brh-chip"><span class="m"><b>M${esc(game.n)}</b><span>OF ${br.games.length}</span></span>${slot('mapthumb', mapPic(d.pack, game.map))}<span class="e"><b>${mapLine}</b><span>${esc([eventName(s), br.title].filter(Boolean).join(' · '))}</span></span></div>`;
+    const max = Math.max(1, br.scoring.matchPoint || 0, ...rows.map(r => r.total)) * 1.15;
+    const emblem = hudEmblem(s);
+    return `<div class="brh v-rail"><div class="brh-rail"><div class="brh-head">${emblem ? `<i class="brh-lg"><img src="${esc(emblem)}" alt=""></i>` : ''}<b class="t">LIVE POINTS</b><span class="c">${matchLine}</span></div><div class="brh-sub"><span>${esc(counts)}</span>${br.scoring.matchPoint ? `<span class="mpx">MATCH POINT ${br.scoring.matchPoint}</span>` : ''}<span>ALIVE · ELIMS · PTS</span></div>${rows.map((r, i) => `<div class="brh-row ${i === 0 && !r.out ? 'lead' : ''} ${r.out ? 'out' : ''} ${/k/.test(r.players) ? 'knock' : ''}" style="--i:${i};${tc(r.t)};--w:${Math.round(r.total / max * 100)}%;--mpx:${br.scoring.matchPoint ? Math.round(br.scoring.matchPoint / max * 100) : -10}%"><i class="bkx"></i>${r.out || !br.scoring.matchPoint ? '' : '<i class="mpl"></i>'}<span class="rk">${r.out ? '#' + r.place : i + 1}</span>${tag(r.t)}<span class="nm">${esc(r.t.tag)}${r.mp && !r.out ? '<span class="mpt">MP</span>' : ''}</span>${pips(r.players)}<span class="el">${r.elims}</span><span class="pt">${r.total}</span></div>`).join('')}<div class="brh-key"><span>ALIVE</span><span class="k">KNOCKED</span><span class="d">OUT</span></div></div>${chip}${elim}${extra}</div>`;
+  }, hkey, hudStyle);
 
   // ═════════════ Full screens ═════════════
   /** Shared frame: background picture, one veil layer (tint, grid, texture, vignette), props, header, footer. */
