@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { LibTeam, LibPlayer, Lobby } from '../shared/api.ts';
 import { SCORING_PRESETS, champion, editedPart, gamePoints, gameState, standings, validResults, validScoring, type GameChecks, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
 import { cleanUid } from '../shared/uid.ts';
-import { currentMatch, isBusy, liveMatch, normalizeLobby, standingsView, targetMatch } from '../shared/br-run.ts';
+import { currentMatch, dayStandings, isBusy, liveMatch, normalizeLobby, standingsView, targetMatch } from '../shared/br-run.ts';
 import { playerTotals, teamTotals, type GameFeed } from '../shared/br-stats.ts';
 import { patchShow, showOf } from '../shared/br-rundown.ts';
 import { gameOf, isCoach, type GameId } from '../shared/games.ts';
@@ -338,16 +338,19 @@ export class Lobbies {
     // Official standings by default (confirmed matches and adjustments); the provisional view rides along, marked.
     const view = standingsView(lobby);
     const next = currentMatch(lobby);
+    // The producer's choice: standings graphics count matches not yet confirmed and say so (off by default).
+    const mark = l.look?.markProvisional === true && view.provisional !== null;
     return {
       br: {
         title: l.title, stage: l.stage, game: l.game,
         teams: l.teams.map(({ id, name, tag, color, logo, players, photos }) => ({ id, name, tag, color, logo, players, photos: photos ?? [] })),
         games: l.games.map((g) => ({ n: g.n, map: g.map, startsAt: g.startsAt ?? null, done: !!g.results?.length, state: gameState(g), results: g.results ?? [] })),
-        scoring, standings: view.official, provisional: view.provisional ? { standings: view.provisional, games: view.provisionalGames } : null,
+        scoring, standings: view.official, provisional: view.provisional ? { standings: view.provisional, games: view.provisionalGames } : null, markProvisional: mark,
         adjustments: (l.adjustments ?? []).map(({ team, points, reason }) => ({ team, points, reason })),
         current: next?.n ?? null, played: l.games.filter((g) => gameState(g) === 'confirmed' && g.results?.length).length,
         champion: champion(lobby),
       },
+      brDay: dayStandings(lobby, { provisional: mark }),
       brStats: Lobbies.stats(lobby), brPick: showOf(l).pick, brLtf: showOf(l).ltf,
     };
   }

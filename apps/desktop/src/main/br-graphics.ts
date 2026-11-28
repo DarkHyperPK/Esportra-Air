@@ -101,7 +101,7 @@ export function validLook(v: unknown, templateGraphic: (id: string) => string | 
     if (typeof id !== 'string' || !isLobbyGraphic(graphic) || templateGraphic(id) !== graphic) throw new Error('That look is not for this graphic.');
     templates[graphic] = id;
   }
-  return { hud, popup: x.popup === true, ...(x.hudBrand === true ? { hudBrand: true } : {}), templates, ...(x.theme === undefined ? {} : { theme: validTheme(x.theme) }) };
+  return { hud, popup: x.popup === true, ...(x.hudBrand === true ? { hudBrand: true } : {}), ...(x.markProvisional === true ? { markProvisional: true } : {}), templates, ...(x.theme === undefined ? {} : { theme: validTheme(x.theme) }) };
 }
 
 const TIER_ORDER = { title: 0, partner: 1, supporter: 2 } as const;

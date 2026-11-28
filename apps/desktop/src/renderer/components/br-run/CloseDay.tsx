@@ -2,7 +2,7 @@
 // adjustment and edit. Refused while a match is not confirmed or void. Print summary prints this page.
 import { useEffect, useState } from 'react';
 import type { Lobby, Snapshot } from '../../../shared/api.ts';
-import type { DaySummary } from '../../../shared/br-run.ts';
+import { focusDay, type DaySummary } from '../../../shared/br-run.ts';
 import { air } from '../../bridge.ts';
 import type { Run } from '../../App.tsx';
 import { StateBadge, TeamTag } from './parts.tsx';
@@ -16,6 +16,9 @@ export function CloseDay({ run, lobby, dayId, close }: { s: Snapshot; run: Run; 
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && close(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [close]);
   const closed = !!lobby.days?.find((x) => x.id === dayId)?.closedAt;
   const name = (id: string) => lobby.teams.find((t) => t.id === id)?.name ?? id;
+  // Day N standings graphic: it shows the latest day with a counted match, so it is offered when this is that day.
+  const dayIndex = (lobby.days ?? []).findIndex((x) => x.id === dayId);
+  const shown = focusDay(lobby, lobby.look?.markProvisional === true) === dayIndex;
   const print = () => { document.body.classList.add('print-run'); window.print(); setTimeout(() => document.body.classList.remove('print-run'), 500); };
   return (
     <div className="scrim right" onClick={(e) => e.target === e.currentTarget && close()}>
@@ -47,7 +50,7 @@ export function CloseDay({ run, lobby, dayId, close }: { s: Snapshot; run: Run; 
           )}
         </div>
         <footer><span className="muted t-sm">{closed ? 'Closed. Reopen it from the run sheet if something changes.' : 'Closing locks the day; you can reopen it from the run sheet.'}</span>
-          <span className="row-gap"><button className="btn" onClick={print}>Print summary</button><button className="btn" onClick={() => void air.eventExport(lobby.eventId)}>Save event file</button>
+          <span className="row-gap"><button className="btn" disabled={!shown} title={shown ? 'Shows the standings after this day full screen' : `Day ${dayIndex + 1} needs a confirmed match first, and no later day with results`} onClick={() => void run(() => air.lobbyTake(lobby.id, 'br-day'))}>Put Day {dayIndex + 1} standings on air</button><button className="btn" onClick={print}>Print summary</button><button className="btn" onClick={() => void air.eventExport(lobby.eventId)}>Save event file</button>
             {!closed && <button className="btn primary" disabled={!d || d.problems.length > 0} onClick={() => void run(async () => { await air.lobbyDayClose(lobby.id, dayId, true); close(); })}>Close {d?.day.title.toLowerCase() ?? 'day'}</button>}</span></footer>
       </div>
     </div>

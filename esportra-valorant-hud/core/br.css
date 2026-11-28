@@ -476,3 +476,35 @@ img.br-tl{background:rgba(17,17,17,.6)}
 .fd-pvb i{display:block;height:100%;background:linear-gradient(90deg,var(--tc),var(--acc));animation:br-grow .6s cubic-bezier(.2,.9,.2,1) backwards;animation-delay:calc(.35s + var(--i, 0) * .07s)}
 .fd-pvb.l i{transform-origin:100% 50%;background:linear-gradient(270deg,var(--tc),var(--acc))}.fd-pvb.r i{transform-origin:0 50%}
 .fd-vs{justify-self:center;margin-bottom:18px;font:italic 900 72px/1 var(--f);color:var(--acc);letter-spacing:.04em;animation:br-fade .5s .2s backwards}
+/* Day N standings (28 Nov, approved mock): the Overall table's family with a move column, points by day, and an optional
+   PROVISIONAL tag while matches not yet confirmed are counted (hatched segments). Rows shrink past 16 teams (--rh). */
+.b6-ttl{display:flex;align-items:center;gap:28px}
+.b6-prov{display:inline-flex;align-items:center;gap:12px;height:46px;padding:0 30px 0 22px;margin-top:6px;background:var(--acc);color:var(--k);font:italic 900 24px/1 var(--f);letter-spacing:.06em;clip-path:polygon(14px 0,100% 0,calc(100% - 14px) 100%,0 100%)}
+.b6-prov i{width:10px;height:10px;border-radius:50%;background:var(--k);animation:br-blink 1.2s steps(2,jump-none) infinite}
+.b6-tbl.b6-dy{left:96px}
+.b6-dy .b6-th,.b6-dy .b6-tr{grid-template-columns:var(--dycols);gap:12px}
+.b6-dy .b6-tr{height:var(--rh,40px)}
+.b6-dy .b6-th span:nth-child(n+4){text-align:left}
+.b6-dy .b6-th span:nth-child(2){text-align:center}
+.b6-dy .b6-th span:nth-child(n+6){text-align:center}
+.b6-dy .b6-th span:last-child{text-align:right}
+.b6-dy .b6-th span:first-child{text-align:right}
+.b6-dy .b6-th .bh{letter-spacing:.24em}
+.b6-dy .b6-tr .c.dim{color:#b8c2d3}
+.b6-dy .b6-tr .bar{overflow:hidden}
+.b6-dy .b6-tr .bar .d1{background:rgba(255,255,255,.42)}
+.b6-dy .b6-tr .bar .d2{background:var(--tc)}
+.b6-dy .b6-tr .bar .pv,.b6-ov .b6-tr .bar .pv{background:repeating-linear-gradient(-55deg,var(--tc) 0 3px,rgba(255,255,255,.35) 3px 7px)}
+.b6-ov .b6-tr .bar .pv{background:repeating-linear-gradient(-55deg,var(--acc) 0 3px,rgba(255,255,255,.4) 3px 7px)}
+.b6-mv{display:inline-flex;align-items:center;justify-content:center;gap:5px;font:italic 900 19px/1 var(--f);min-width:40px}
+.b6-mv i{display:block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent}
+.b6-mv.up{color:#5fe3a1}.b6-mv.up i{border-bottom:11px solid #5fe3a1}
+.b6-mv.dn{color:#ff7a7e}.b6-mv.dn i{border-top:11px solid #ff7a7e}
+.b6-mv.eq{color:#b8c2d3;font-weight:800}
+.b6-dy .b6-key{margin-top:12px;gap:26px;align-items:center}
+.b6-dy .b6-key i.dd{width:24px;height:10px;background:rgba(255,255,255,.42)}
+.b6-dy .b6-key i.tt{width:24px;height:10px;background:var(--acc)}
+.b6-key i.hh{width:24px;height:10px;background:repeating-linear-gradient(-55deg,var(--acc) 0 3px,rgba(255,255,255,.4) 3px 7px)}
+.b6-dy .b6-key .ar{color:#5fe3a1}.b6-dy .b6-key .ar2{color:#ff7a7e}
+.b6-dy.dn1 .b6-tr .rk{font-size:21px}.b6-dy.dn1 .b6-tr .nm{font-size:19px}.b6-dy.dn1 .b6-tr .br-tl{width:44px;height:26px;font-size:11px}.b6-dy.dn1 .b6-tr .t b{font-size:24px}.b6-dy.dn1 .b6-tr .c{font-size:18px}.b6-dy.dn1 .b6-mv{font-size:17px}
+.b6-dy.dn2 .b6-tr .rk{font-size:18px}.b6-dy.dn2 .b6-tr .nm{font-size:16px}.b6-dy.dn2 .b6-tr .br-tl{width:38px;height:22px;font-size:10px}.b6-dy.dn2 .b6-tr .t b{font-size:20px}.b6-dy.dn2 .b6-tr .c{font-size:16px}.b6-dy.dn2 .b6-mv{font-size:15px}.b6-dy.dn2 .b6-tr{margin-top:3px}

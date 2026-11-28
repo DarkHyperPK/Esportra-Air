@@ -28,6 +28,29 @@
       mvp: [['s0', 'NOW_RAVEN', 6, 688, 1270], ['s2', 'IRP_ASH', 3, 402, 1421], ['s5', 'NTD_FROST', 4, 617, 1195], ['s1', 'CRF_EMBER', 4, 574, 962]].map(([team, name, elims, damage, survived]) => ({ team, name, elims, damage, survived })),
     },
   };
+  // Day standings (28 Nov): matches 1–2 are Day 1, 3–4 Day 2. `?prov=1` leaves match 4 unconfirmed: the standings graphics
+  // then show it marked (as the lobby's "mark provisional" switch does). Same shape as Air's room fields `brDay`, `br.provisional`.
+  const QD = new URLSearchParams(location.search), PROV = QD.get('prov') === '1';
+  const tally = list => {
+    const by = new Map(teams.map(t => [t.id, { team: t.id, total: 0, placementPts: 0, elims: 0, elimPts: 0, wins: 0, played: 0, bestPlace: null, lastPlace: null, matchPoint: false, rank: 0, adjusted: 0 }]));
+    list.forEach(g => g.results.forEach(r => { const x = by.get(r.team), p = placement[r.place - 1] || 0; x.total += p + r.elims; x.placementPts += p; x.elims += r.elims; x.elimPts += r.elims; x.played++; if (r.place === 1) x.wins++; x.lastPlace = r.place; x.bestPlace = x.bestPlace == null ? r.place : Math.min(x.bestPlace, r.place); }));
+    const rows = [...by.values()].sort((a, b) => b.total - a.total || b.wins - a.wins || b.placementPts - a.placementPts || b.elims - a.elims);
+    rows.forEach((r, i) => { r.rank = i + 1; r.matchPoint = r.total >= 55; });
+    return rows;
+  };
+  const done = games.filter(g => g.done), dayOne = done.filter(g => g.n <= 2), dayTwo = done.filter(g => g.n > 2);
+  const sureDone = PROV ? done.filter(g => g.n < 4) : done;
+  const rankBefore = new Map(tally(dayOne).map(r => [r.team, r.rank]));
+  const dayRank = tally(done);
+  const one = new Map(tally(dayOne).map(r => [r.team, r.total])), two = new Map(tally(dayTwo).map(r => [r.team, r.total])), pv = new Map(tally(PROV ? done.filter(g => g.n === 4) : []).map(r => [r.team, r.total]));
+  window.BR_SAMPLE.brDay = { n: 2, id: 'sample-d2', title: 'Day 2', dayCount: 2, matches: 2, confirmed: PROV ? 1 : 2, provisionalGames: PROV ? [4] : [], played: 4,
+    rows: dayRank.map(r => ({ team: r.team, rank: r.rank, move: (rankBefore.get(r.team) || r.rank) - r.rank, total: r.total, days: [one.get(r.team) || 0, two.get(r.team) || 0], today: two.get(r.team) || 0, prov: pv.get(r.team) || 0, wins: r.wins, elims: r.elims })) };
+  if (PROV) {
+    window.BR_SAMPLE.br.provisional = { standings: dayRank, games: [4] };
+    window.BR_SAMPLE.br.standings = tally(sureDone);
+    window.BR_SAMPLE.br.played = 3;
+    window.BR_SAMPLE.br.markProvisional = true;
+  }
   // What Air saves from the observer feed for each played match, and the day's totals (room field `brStats`):
   // made-up numbers that add up (each team's player kills equal its elims in the match).
   const hash = (a, b) => { let h = (a * 2654435761 + b * 40503) >>> 0; h ^= h >>> 13; return (h >>> 0) / 4294967296; };

@@ -133,7 +133,7 @@ export interface Lobby {
   source?: import('./br.ts').LobbySource;
   createdAt: number;
 }
-export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; /** The HUD takes the event's brand colours and logo (28 Nov). */ hudBrand?: boolean; templates: Record<string, string>; theme?: import('./br-screens.ts').BrTheme }
+export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; /** The HUD takes the event's brand colours and logo (28 Nov). */ hudBrand?: boolean; /** Standings graphics count matches that are saved but not confirmed, marked PROVISIONAL (28 Nov). Off by default. */ markProvisional?: boolean; templates: Record<string, string>; theme?: import('./br-screens.ts').BrTheme }
 
 export interface Screen {
   /** Stable id for the screen in Air. */

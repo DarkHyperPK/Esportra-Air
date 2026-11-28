@@ -163,6 +163,11 @@ function Detail({ s, run, l, item }: { s: Snapshot; run: Run; l: Lobby; item: It
               </select>
             </label>
           )}
+          {(id === 'br-day' || id === 'br-overall') && (
+            <label className="row-gap t-sm" title="Off: only matches you have confirmed count. On: matches saved from the game but not confirmed count too, and the graphic says so.">
+              <input type="checkbox" checked={look.markProvisional === true} onChange={(e) => void run(() => air.lobbyLook(l.id, { markProvisional: e.target.checked }))} /> Show matches not confirmed yet, marked PROVISIONAL
+            </label>
+          )}
           <Copy url={lobbyPage(port, l.code, 'fullscreen', `&only=${id}&style=full`, pageHost(s.graphicsLan))} label="Copy browser source" />
         </div>
       </div>

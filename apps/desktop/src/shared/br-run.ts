@@ -225,6 +225,101 @@ export function daySummary(l: Lobby, dayId: string): DaySummary {
   };
 }
 
+// ── day standings (28 Nov) ──
+
+/** One team's line on the Day N standings graphic. */
+export interface DayRow {
+  team: string;
+  rank: number;
+  /** Places gained (positive) or lost since the end of the previous day; null on the first day. */
+  move: number | null;
+  total: number;
+  /** Points per day, first day to the shown day (adjustments count in the day they belong to), so they add up to `total`. */
+  days: number[];
+  /** Points of the shown day alone. */
+  today: number;
+  /** Part of `today` from matches not yet confirmed (only when provisional matches are counted). */
+  prov: number;
+  wins: number;
+  elims: number;
+}
+export interface DayStandings {
+  /** The shown day: its position (Day 1, Day 2 …), id and title. */
+  n: number;
+  id: string;
+  title: string;
+  /** Days up to and including the shown one. */
+  dayCount: number;
+  /** The shown day's matches (void ones left out), the confirmed ones among them, and those counted while not confirmed. */
+  matches: number;
+  confirmed: number;
+  provisionalGames: number[];
+  /** Matches counted in total, up to and including the shown day. */
+  played: number;
+  rows: DayRow[];
+}
+
+/** Which day an adjustment belongs to: its own `dayId`, else the latest day that had started when it was made, else the first. */
+export function adjustmentDay(l: Pick<Lobby, 'days'>, a: Adjustment): number {
+  const days = l.days ?? [];
+  const own = days.findIndex((d) => d.id === a.dayId);
+  if (own >= 0) return own;
+  let at = 0;
+  days.forEach((d, i) => { if (d.startedAt !== undefined && d.startedAt <= a.at) at = i; });
+  return at;
+}
+
+const counts = (g: LobbyGame, provisional: boolean) => !!g.results?.length && (gameState(g) === 'confirmed' || (provisional && gameState(g) === 'provisional'));
+
+/** The day the graphic shows: the latest day with a match that counts (the current day once it has one, else the last closed). */
+export function focusDay(l: Lobby, provisional = false): number {
+  const days = l.days ?? [];
+  for (let i = days.length - 1; i >= 0; i--) if (matchesOfDay(l, days[i]!).some((g) => counts(g, provisional))) return i;
+  return -1;
+}
+
+/**
+ * Standings after a day, built only from official data (confirmed matches and adjustments); `provisional` also counts
+ * matches saved but not yet confirmed, marked per team in `prov`. Each team's points per day add up to its total, and the
+ * move is its rank now against its rank at the end of the previous day. Null while no match counts yet.
+ */
+export function dayStandings(l: Lobby, opts: { provisional?: boolean } = {}): DayStandings | null {
+  const prov = opts.provisional === true;
+  const f = focusDay(l, prov);
+  if (f < 0) return null;
+  const days = l.days!.slice(0, f + 1);
+  const upTo = (k: number): Lobby => ({
+    ...l,
+    games: days.slice(0, k + 1).flatMap((d) => matchesOfDay(l, d)),
+    adjustments: (l.adjustments ?? []).filter((a) => adjustmentDay(l, a) <= k),
+  });
+  const only = (k: number, keep: (g: LobbyGame) => boolean = () => true): Lobby => ({
+    ...l,
+    games: matchesOfDay(l, days[k]!).filter(keep),
+    adjustments: (l.adjustments ?? []).filter((a) => adjustmentDay(l, a) === k),
+  });
+  const total = standings(upTo(f), { provisional: prov });
+  const before = f > 0 ? new Map(standings(upTo(f - 1), { provisional: prov }).map((r) => [r.team, r.rank])) : null;
+  const perDay = days.map((_, k) => new Map(standings(only(k), { provisional: prov }).map((r) => [r.team, r.total])));
+  const unconfirmed = new Map(standings({ ...only(f, (g) => gameState(g) === 'provisional'), adjustments: [] }, { provisional: true }).map((r) => [r.team, r.total]));
+  const today = days[f]!;
+  const games = matchesOfDay(l, today).filter((g) => gameState(g) !== 'void');
+  return {
+    n: f + 1, id: today.id, title: today.title, dayCount: f + 1,
+    matches: games.length,
+    confirmed: games.filter((g) => counts(g, false)).length,
+    provisionalGames: prov ? games.filter((g) => gameState(g) === 'provisional' && g.results?.length).map((g) => g.n) : [],
+    played: upTo(f).games.filter((g) => counts(g, prov)).length,
+    rows: total.map((r) => {
+      const d = perDay.map((m) => m.get(r.team) ?? 0);
+      return { team: r.team, rank: r.rank, move: before ? (before.get(r.team) ?? r.rank) - r.rank : null, total: r.total, days: d, today: d[f]!, prov: prov ? unconfirmed.get(r.team) ?? 0 : 0, wins: r.wins, elims: r.elims };
+    }),
+  };
+}
+
+/** Is there anything to mark: matches saved but not confirmed, anywhere in the lobby. */
+export const hasProvisional = (l: Pick<Lobby, 'games'>) => l.games.some((g) => gameState(g) === 'provisional' && !!g.results?.length);
+
 /** Why a day cannot close; empty means it can. */
 export function closeProblems(l: Lobby, day: LobbyDay): string[] {
   if (day.closedAt) return [`${day.title} is already closed.`];

@@ -51,7 +51,7 @@
     const br = real ? s.br : PREVIEW ? S.br : null;
     const live = s.brLive && s.brLive.teams ? s.brLive : PREVIEW && !real ? S.brLive : null;
     const free = br && br.game === 'freefire';
-    return { br, live, stats: s.brStats || (PREVIEW ? S.brStats : null) || null, pick: s.brPick || null, pack: s.airPack || {}, th: theme(s), word: free ? { win: 'BOOYAH', elims: 'KILLS', game: 'MATCH', line: 'BOOYAH!' } : { win: 'WWCD', elims: 'ELIMS', game: 'MATCH', line: 'WINNER WINNER CHICKEN DINNER' } };
+    return { br, live, day: s.brDay || (PREVIEW && !real ? S.brDay : null) || null, stats: s.brStats || (PREVIEW ? S.brStats : null) || null, pick: s.brPick || null, pack: s.airPack || {}, th: theme(s), word: free ? { win: 'BOOYAH', elims: 'KILLS', game: 'MATCH', line: 'BOOYAH!' } : { win: 'WWCD', elims: 'ELIMS', game: 'MATCH', line: 'WINNER WINNER CHICKEN DINNER' } };
   }
   const team = (br, id) => br.teams.find(t => t.id === id) || { name: '—', tag: '—', color: '#555', logo: '', players: [], photos: [] };
   const tag = (t, cls) => logoOk(t.logo) ? `<img class="br-tl ${cls || ''}" src="${esc(t.logo)}" alt="">` : `<span class="br-tl ${cls || ''}" style="--c:${esc(col(t.color))}">${esc(t.tag)}</span>`;
@@ -207,7 +207,7 @@
     o = o || {};
     const th = d.th, bg = th.background || o.bg || packOf(d.pack, 'wallpaper', o.wall || 0);
     const props = [];
-    if (th.chutes) (th.side === 'left' ? [[250, 330, 130], [120, 600, 86]] : [[1560, 210, 120], [1740, 380, 80], [1240, 70, 56]]).forEach(([x, y, w], i) => props.push(`<i class="b6-chute" style="left:${x}px;top:${y}px;width:${w}px;animation-delay:${-i * 1.4}s"><svg viewBox="0 0 120 170"><path class="cn" d="M4 50 Q60 -12 116 50 Q102 40 88 50 Q74 40 60 50 Q46 40 32 50 Q18 40 4 50 Z"/><path class="cs" d="M32 50 Q46 40 60 50 Q60 12 46 8 Q30 20 32 50 Z M88 50 Q74 40 60 50 Q60 12 74 8 Q90 20 88 50 Z"/><path class="ln" d="M6 50 L56 128 M32 50 L58 128 M60 50 L60 128 M88 50 L62 128 M114 50 L64 128"/><rect x="48" y="128" width="24" height="24" rx="2" fill="#7b2a22"/><rect x="48" y="128" width="24" height="7" fill="#2f6fb8"/></svg></i>`));
+    if (th.chutes) (o.chutes || (th.side === 'left' ? [[250, 330, 130], [120, 600, 86]] : [[1560, 210, 120], [1740, 380, 80], [1240, 70, 56]])).forEach(([x, y, w], i) => props.push(`<i class="b6-chute" style="left:${x}px;top:${y}px;width:${w}px;animation-delay:${-i * 1.4}s"><svg viewBox="0 0 120 170"><path class="cn" d="M4 50 Q60 -12 116 50 Q102 40 88 50 Q74 40 60 50 Q46 40 32 50 Q18 40 4 50 Z"/><path class="cs" d="M32 50 Q46 40 60 50 Q60 12 46 8 Q30 20 32 50 Z M88 50 Q74 40 60 50 Q60 12 74 8 Q90 20 88 50 Z"/><path class="ln" d="M6 50 L56 128 M32 50 L58 128 M60 50 L60 128 M88 50 L62 128 M114 50 L64 128"/><rect x="48" y="128" width="24" height="24" rx="2" fill="#7b2a22"/><rect x="48" y="128" width="24" height="7" fill="#2f6fb8"/></svg></i>`));
     const item = pic(packOf(d.pack, 'item', 0));
     const crate = o.crate && th.crate && item ? `<i class="br-slot b6-crate" style="--pic:url('${esc(item)}');${o.crate}"></i>` : '';
     const emblemSrc = th.emblem || pic(s.brEmblem);
@@ -215,10 +215,15 @@
     return `<div class="brf ${cls}">${slot('bg', bg)}<i class="b6-veil"></i><div class="b6-props">${props.join('')}</div>${crate}${body}${o.header === false ? `${slot('b6-logo solo', d.pack.esports)}` : o.header}${footer(s, d, o.foot)}${o.emblem ? `<div class="b6-emw">${emblem}</div>` : ''}</div>`;
   }
   /** Header: kit logo, a hairline, the event line, the title and its context, then the graphic's own context card. */
-  function header(s, d, title, sub, card) {
+  function header(s, d, title, sub, card, mark) {
     const ev = [eventName(s), d.br.title, d.br.stage].filter(Boolean);
-    return `<header class="b6-hd">${slot('b6-logo', d.pack.esports)}<i class="b6-rule"></i><div class="b6-ht"><div class="b6-k">${ev.map(esc).join('<i></i>')}</div><h1>${esc(title)}</h1><div class="b6-s">${sub}</div></div>${card ? `<div class="b6-card">${card}</div>` : ''}</header>`;
+    return `<header class="b6-hd">${slot('b6-logo', d.pack.esports)}<i class="b6-rule"></i><div class="b6-ht"><div class="b6-k">${ev.map(esc).join('<i></i>')}</div>${mark ? `<div class="b6-ttl"><h1>${esc(title)}</h1>${mark}</div>` : `<h1>${esc(title)}</h1>`}<div class="b6-s">${sub}</div></div>${card ? `<div class="b6-card">${card}</div>` : ''}</header>`;
   }
+  /** The tag beside a standings title while matches that are not confirmed yet are counted (the lobby's choice). */
+  const provTag = '<span class="b6-prov"><i></i>PROVISIONAL</span>';
+  const unconfirmedOf = games => `${games.length === 1 ? 'MATCH' : 'MATCHES'} ${games.join(', ')}`;
+  const notConfirmed = games => `${unconfirmedOf(games)} NOT CONFIRMED`;
+  const keyUnconfirmed = games => `${unconfirmedOf(games)}, NOT CONFIRMED YET`;
   function footer(s, d, line) {
     const sp = Array.isArray(s.brSponsors) ? s.brSponsors.slice(0, 3) : [];
     return `<footer class="b6-ft">${slot('b6-ci', d.pack.ci)}<span class="b6-fl">${esc(line || '')}</span>${sp.length ? `<span class="b6-fr"><b>PRESENTED BY</b>${sp.map(x => logoOk(x.logo) ? `<img class="b6-sp" src="${esc(x.logo)}" alt="">` : `<span class="b6-sp txt">${esc(x.name)}</span>`).join('')}</span>` : ''}</footer>`;
@@ -283,15 +288,54 @@
     return frame(s, d, 'brf-rank', body, { wall: 4, header: header(s, d, `${d.word.game} ${g.n} RESULTS`, `<span>${esc(String(g.map || '').toUpperCase())}</span>${dot}<span>${rows.length} TEAMS</span>${dot}<span>${rows.reduce((a, r) => a + r.elims, 0)} ${esc(d.word.elims)}</span>`, mapCard(d, g.map, String(g.map || '').toUpperCase())), foot: `${d.word.game} ${g.n} · ${String(g.map || '').toUpperCase()}${g.startsAt ? ' · ' + g.startsAt : ''}` });
   });
 
-  // Overall standings: a table with a bar towards match point
+  // Overall standings: a table with a bar towards match point. With the lobby's "mark provisional" switch on and matches
+  // saved but not confirmed, it counts them, says so, and hatches each team's unconfirmed points on the bar.
   full('broverall', (s, d) => {
-    const br = d.br, mp = br.scoring.matchPoint, st = br.standings || [];
+    const br = d.br, mp = br.scoring.matchPoint, prov = br.markProvisional === true && !!(br.provisional && br.provisional.standings);
+    const st = prov ? br.provisional.standings : br.standings || [];
+    const official = new Map((br.standings || []).map(r => [r.team, r]));
+    const unc = prov ? br.provisional.games || [] : [];
     const max = Math.max(1, mp || 0, ...st.map(r => r.total)) * 1.08;
     const lead = st[0], lt = lead ? team(br, lead.team) : null, gap = lead && st[1] ? lead.total - st[1].total : 0;
-    const body = `<div class="b6-tbl b6-ov"><div class="b6-th"><span>#</span><span></span><span>TEAM</span><span>${esc(d.word.win)}</span><span>PLACE</span><span>${esc(d.word.elims)}</span><span class="bh">${mp ? `TO MATCH POINT ${mp}` : ''}</span><span>PTS</span></div>${st.slice(0, 20).map((r, i) => { const t = team(br, r.team); return `<div class="b6-tr ${r.matchPoint ? 'onmp' : ''} ${i < 3 ? 'top' : ''}" style="${tc(t)};--i:${i}"><span class="rk">${i + 1}</span>${tag(t)}<span class="nm">${esc(t.name)}${r.matchPoint ? '<em>MP</em>' : ''}</span><span class="c">${r.wins || '–'}</span><span class="c">${r.placementPts}</span><span class="c">${r.elimPts}</span><span class="bar"><i class="p" style="width:${r.placementPts / max * 100}%"></i><i class="e" style="width:${r.elimPts / max * 100}%"></i>${mp ? `<b class="mpm" style="left:${mp / max * 100}%"></b>` : ''}</span><span class="t">${num(r.total)}</span></div>`; }).join('')}</div>`;
+    const rowBar = r => {
+      const o = prov && official.get(r.team), extra = o ? Math.max(0, r.total - o.total) : 0;
+      if (!extra) return `<i class="p" style="width:${r.placementPts / max * 100}%"></i><i class="e" style="width:${r.elimPts / max * 100}%"></i>`;
+      const p = Math.max(0, o.placementPts), e = Math.max(0, o.elimPts);
+      return `<i class="p" style="width:${p / max * 100}%"></i><i class="e" style="width:${e / max * 100}%"></i><i class="pv" style="width:${extra / max * 100}%"></i>`;
+    };
+    const body = `<div class="b6-tbl b6-ov"><div class="b6-th"><span>#</span><span></span><span>TEAM</span><span>${esc(d.word.win)}</span><span>PLACE</span><span>${esc(d.word.elims)}</span><span class="bh">${mp ? `TO MATCH POINT ${mp}` : ''}</span><span>PTS</span></div>${st.slice(0, 20).map((r, i) => { const t = team(br, r.team); return `<div class="b6-tr ${r.matchPoint ? 'onmp' : ''} ${i < 3 ? 'top' : ''}" style="${tc(t)};--i:${i}"><span class="rk">${i + 1}</span>${tag(t)}<span class="nm">${esc(t.name)}${r.matchPoint ? '<em>MP</em>' : ''}</span><span class="c">${r.wins || '–'}</span><span class="c">${r.placementPts}</span><span class="c">${r.elimPts}</span><span class="bar">${rowBar(r)}${mp ? `<b class="mpm" style="left:${mp / max * 100}%"></b>` : ''}</span><span class="t">${num(r.total)}</span></div>`; }).join('')}${prov ? `<div class="b6-key"><span><i class="hh"></i>${esc(keyUnconfirmed(unc))}</span></div>` : ''}</div>`;
     const tb = (br.scoring.tiebreak || []).map(x => ({ wins: d.word.win, placementPts: 'PLACEMENT POINTS', elims: d.word.elims, lastGame: 'LAST MATCH' })[x] || '').filter(Boolean).join(' · ');
-    return frame(s, d, 'brf-overall', body, { wall: 0, header: header(s, d, 'OVERALL STANDINGS', `<span>AFTER ${esc(d.word.game)} ${br.played} OF ${br.games.length}</span>${progress(br.played, br.games.length)}${mp ? `${dot}<span class="mpx">MATCH POINT ${mp}</span>` : ''}`, lt ? `<div class="b6-ldc" style="${tc(lt)}"><span>LEADER</span><b>${esc(lt.name)}</b><em>${lead.total} PTS${gap ? ` · +${gap}` : ''}</em></div>` : ''), foot: tb ? `TIEBREAK: ${tb}` : '' });
+    const played = prov ? br.played + unc.length : br.played;
+    const sub = `<span>AFTER ${esc(d.word.game)} ${played} OF ${br.games.length}</span>${progress(played, br.games.length)}${prov ? `${dot}<span>${esc(notConfirmed(unc))} · POINTS CAN STILL CHANGE</span>` : mp ? `${dot}<span class="mpx">MATCH POINT ${mp}</span>` : ''}${prov && mp ? `${dot}<span class="mpx">MATCH POINT ${mp}</span>` : ''}`;
+    return frame(s, d, 'brf-overall', body, { wall: 0, header: header(s, d, 'OVERALL STANDINGS', sub, lt ? `<div class="b6-ldc" style="${tc(lt)}"><span>LEADER</span><b>${esc(lt.name)}</b><em>${lead.total} PTS${gap ? ` · +${gap}` : ''}</em></div>` : '', prov ? provTag : ''), foot: tb ? `TIEBREAK: ${tb}` : '' });
   });
+
+  // Day N standings: the table after a day, built by Air from official standings (`brDay`): where each team stands, how
+  // far it moved since the end of the previous day, its points by day (earlier days grey, this day in its colour, matches
+  // not yet confirmed hatched), WWCD, elims and total. At most the last two days show as columns; earlier ones add up as BEFORE.
+  full('brday', (s, d) => {
+    const br = d.br, dy = d.day, tbs = (br.scoring.tiebreak || []).map(x => ({ wins: d.word.win, placementPts: 'PLACEMENT POINTS', elims: d.word.elims, lastGame: 'LAST MATCH' })[x] || '').filter(Boolean).join(' · ');
+    if (!dy || !dy.rows || !dy.rows.length) return frame(s, d, 'brf-overall brf-day', '<p class="b6-none">Day standings show here once a match of the day is confirmed.</p>', { wall: 0, header: header(s, d, 'DAY STANDINGS', '<span>NO MATCH YET</span>', ''), foot: tbs ? `TIEBREAK: ${tbs}` : '' });
+    const prov = (dy.provisionalGames || []).length > 0, n = dy.n, rows = dy.rows.slice(0, 24);
+    const ndays = Math.max(1, dy.dayCount || n);
+    const cols = ndays > 2 ? [{ l: 'BEFORE', of: r => r.days.slice(0, ndays - 2).reduce((a, b) => a + b, 0) }, { l: `DAY ${ndays - 1}`, of: r => r.days[ndays - 2] }, { l: `DAY ${ndays}`, of: r => r.days[ndays - 1] }]
+      : Array.from({ length: ndays }, (_, k) => ({ l: `DAY ${k + 1}`, of: r => r.days[k] }));
+    const max = Math.max(1, ...rows.map(r => r.total)) * 1.04, w = v => `${(Math.max(0, v) / max * 100).toFixed(2)}%`;
+    const mv = m => (m > 0 ? `<span class="b6-mv up"><i></i>${m}</span>` : m < 0 ? `<span class="b6-mv dn"><i></i>${-m}</span>` : '<span class="b6-mv eq">–</span>');
+    const size = rows.length > 20 ? ' dn2' : rows.length > 16 ? ' dn1' : '';
+    const pitch = Math.min(44, Math.floor(719 / rows.length)), cw = `44px 66px 58px 290px 1fr ${'100px '.repeat(cols.length)}84px 96px 116px`;
+    const grid = `--dycols:${cw};--rh:${pitch - 4}px`;
+    const body = `<div class="b6-tbl b6-dy${size}" style="${grid}"><div class="b6-th"><span>#</span><span>MOVE</span><span></span><span>TEAM</span><span class="bh">POINTS BY DAY</span>${cols.map(c => `<span>${c.l}</span>`).join('')}<span>${esc(d.word.win)}</span><span>${esc(d.word.elims)}</span><span>TOTAL</span></div>${rows.map((r, i) => {
+      const t = team(br, r.team), before = r.total - r.today;
+      return `<div class="b6-tr ${i < 3 ? 'top' : ''}" style="${tc(t)};--i:${i}"><span class="rk">${r.rank}</span>${r.move === null ? '<span class="b6-mv eq">–</span>' : mv(r.move)}${tag(t)}<span class="nm">${esc(t.name)}</span><span class="bar"><i class="d1" style="width:${w(before)}"></i><i class="d2" style="width:${w(r.today - r.prov)}"></i>${r.prov > 0 ? `<i class="pv" style="width:${w(r.prov)}"></i>` : ''}</span>${cols.map(c => `<span class="c dim">${esc(c.of(r))}</span>`).join('')}<span class="c dim">${r.wins || '–'}</span><span class="c dim">${r.elims}</span><span class="t">${num(r.total)}</span></div>`;
+    }).join('')}<div class="b6-key">${n > 1 ? `<span><i class="dd"></i>${n > 2 ? 'EARLIER DAYS' : 'DAY 1'}</span>` : ''}<span><i class="tt"></i>DAY ${n}</span>${prov ? `<span><i class="hh"></i>${esc(keyUnconfirmed(dy.provisionalGames))}</span>` : ''}${n > 1 ? `<span><b class="ar">▲</b> <b class="ar2">▼</b> PLACES SINCE THE END OF DAY ${n - 1}</span>` : ''}</div></div>`;
+    const lead = rows[0], lt = team(br, lead.team), gap = rows[1] ? lead.total - rows[1].total : 0;
+    const after = dy.confirmed >= dy.matches && dy.matches ? `AFTER ALL ${dy.matches} ${dy.matches === 1 ? 'MATCH' : 'MATCHES'} TODAY` : dy.confirmed ? `AFTER MATCH ${dy.confirmed} OF ${dy.matches} TODAY` : `NO MATCH CONFIRMED YET TODAY`;
+    const pips = `<span class="b6-pips">${Array.from({ length: dy.matches }, (_, i) => `<i class="${i < dy.confirmed ? 'on' : i < dy.confirmed + dy.provisionalGames.length ? 'nx' : ''}"></i>`).join('')}</span>`;
+    const sub = `<span>${after}</span>${pips}${dot}<span>${prov ? `${esc(notConfirmed(dy.provisionalGames))} · POINTS CAN STILL CHANGE` : `${dy.played} ${dy.played === 1 ? 'MATCH' : 'MATCHES'} IN TOTAL`}</span>`;
+    const card = `<div class="b6-ldc" style="${tc(lt)}"><span>LEADER</span><b>${esc(lt.name)}</b><em>${lead.total} PTS${gap ? ` · +${gap}` : ''}</em></div>`;
+    return frame(s, d, 'brf-overall brf-day', body, { wall: 0, chutes: [[1240, 62, 56], [1392, 118, 78]], header: header(s, d, `DAY ${n} STANDINGS`, sub, card, prov ? provTag : ''), foot: tbs ? `TIEBREAK: ${tbs}` : '' });
+  }, s => [key(s), data(s).day]);
 
   // WWCD / BOOYAH: the winning squad
   full('brwwcd', (s, d) => {

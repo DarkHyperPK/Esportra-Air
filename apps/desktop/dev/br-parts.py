@@ -78,6 +78,13 @@ G = {
     ('leader', 'Leader card', '.b6-ldc'), ('leader.label', 'Leader label', '.b6-ldc span', W), ('leader.name', 'Leader name', '.b6-ldc b'), ('leader.line', 'Leader points', '.b6-ldc em'),
     ('header.mp', 'Match point tag', '.b6-s .mpx'),
   ], {'header.logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item'}),
+  'br-day|full': ('Day standings', frame(True) + TABLE + [
+    ('leader', 'Leader card', '.b6-ldc'), ('leader.label', 'Leader label', '.b6-ldc span', W), ('leader.name', 'Leader name', '.b6-ldc b'), ('leader.line', 'Leader points', '.b6-ldc em'),
+    ('header.tag', 'Provisional tag', '.b6-prov', W), ('header.tagdot', 'Provisional dot', '.b6-prov i'),
+    ('move', 'Place changes', '.b6-mv'), ('move.arrows', 'Arrows', '.b6-mv i'), ('days', 'Day bars', '.b6-dy .b6-tr .bar'), ('days.before', 'Earlier days', '.b6-dy .bar .d1'), ('days.today', 'This day', '.b6-dy .bar .d2'), ('days.pending', 'Unconfirmed points', '.b6-dy .bar .pv'),
+    ('key.days', 'Key marks', '.b6-dy .b6-key i'), ('key.line', 'Key words', '.b6-dy .b6-key > span'), ('key.arrows', 'Key arrows', '.b6-dy .b6-key b'),
+    ('empty', 'Waiting note', '.b6-none', W),
+  ], {'header.logo': 'logo-esports', 'footer.ci': 'logo-ci', 'crate': 'item'}),
   'br-wwcd|full': ('WWCD', frame(header=False) + SQUAD + [
     ('flares', 'Flares', '.b6-flare'), ('shards', 'Shards', '.b6-shard'), ('word', 'Winner word', '.b6-ww .b6-lt'), ('word.depth', 'Word depth', '.b6-ww .dp'), ('word.face', 'Word face', '.b6-ww .fc'),
     ('subline', 'Winner line', '.b6-wl', W), ('team', 'Team plate', '.b6-wteam'), ('team.match', 'Match', '.b6-wteam .a'), ('team.name', 'Team name', '.b6-wteam .b'), ('team.logo', 'Team logo', '.b6-wteam .br-tl'),
