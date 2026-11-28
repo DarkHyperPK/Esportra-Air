@@ -61,12 +61,17 @@ export function EventFileMenu({ eventId, run }: { eventId: string; run: Run }) {
   );
 }
 
+let restoredNote: string | null = null;
+
 /** On Events: Open event file…, the restore check, and Replace or Add as a copy when the event is already here. */
 export function OpenEventFile({ run }: { run: Run }) {
   const [check, setCheck] = useState<EventFileCheck | null>(null);
   const [mode, setMode] = useState<'copy' | 'replace'>('copy');
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
+  // Kept outside the component: restoring the first event on a new PC swaps the empty Events page for the list, which
+  // remounts this button, and the note that the event is here would be lost with it.
+  const [done, setDoneState] = useState<string | null>(restoredNote);
+  const setDone = (v: string | null) => { restoredNote = v; setDoneState(v); };
   const choose = async () => {
     setDone(null);
     await run(async () => { const c = await air.eventImportOpen(); if (c) { setMode('copy'); setCheck(c); } });
