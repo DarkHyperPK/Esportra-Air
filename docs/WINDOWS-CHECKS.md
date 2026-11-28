@@ -90,6 +90,69 @@ Uses Esportra staging (`https://api-staging.esportra.com`), which has the live v
 
 - [ ] vMix: add a Web Browser input with an Air output address (Air › match › OBS step lists them). Check that the background is see-through.
 
+## Battle royale broadcast (PUBG MOBILE)
+
+Needs a licensed tournament with PCOB (PUBG MOBILE's PC observer client), OBS and/or vMix. Use made-up or permitted team data. Tick in show order.
+
+**How PCOB reaches Air:**
+- **Turn the API on:** in the PCOB client, click **API Enable** before the game. PCOB then serves its data at `http://<observer PC address>:10086`.
+- **Connect Air:** in Live › Game data, type the observer PC's address (`127.0.0.1` if Air runs on the same PC), tick consent and press Connect. Air reads the data itself; nothing is installed on the observer PC.
+- **Network:** both PCs must be on the same network, and the observer PC's Windows Firewall must let port 10086 through.
+
+### Link and recording
+- [ ] **Connect:** Game data shows Connected. Without the consent tick nothing is read.
+- [ ] **Record:** switch on **Record game data** and keep it on for the whole first show. The file is in `Documents/Esportra Air recordings/`. Send it back; it settles the open PCOB questions.
+
+### Preparation
+- [ ] **Import:** a CSV of teams and players with UIDs (Character IDs) and a pictures folder. Logos and photos match, and Teams/Players shows the UIDs.
+- [ ] **Format:** generate the matches over the days with your points table. Readiness shows nothing under Needs you.
+- [ ] **Roster check:** in a scrim game, Live › Game data reads "N of M players placed by UID". Fix the rest with Use this UID.
+- [ ] **Esportra (optional):** Use a stage from Esportra brings the groups, schedule and points table. Teams arrive without UIDs; add them.
+
+### Outputs
+- [ ] **OBS on this PC:** Add Air's scenes builds `ESPORTRA · Gameplay`, `Full screen` and `Break`. The HUD and graphics are sharp at 1920×1080 with a see-through background. Air refuses to build while OBS is streaming or recording.
+- [ ] **OBS or vMix on another PC:** in Settings › Graphics, turn on **Let other PCs on this network load the graphics**.
+  - Windows may ask once to allow `air-engine` on private networks; allow it.
+  - The pages load on the other PC.
+  - From the other PC, anything other than the pages is refused.
+- [ ] **vMix:**
+  - Add one Web Browser input per page Air lists.
+  - Connect (Live › Sources), pair each input, and check its name becomes `ESPORTRA · …` with the `·` intact.
+  - Reload works.
+  - Changing lobby re-points the inputs, including one that is on air.
+  - Air never cuts or switches anything.
+- [ ] **HUD library:** pick Pro Rail, Broadcast Grid or Strip. It sits clear of the game's minimap and compass, and the brand colours show.
+
+### Match by match
+- [ ] **Start day:** the checklist is clear, and the first match is armed.
+- [ ] **Live match:** the HUD updates within about 2 seconds of the game. Moments show once each (First blood, Team eliminated, Final teams).
+- [ ] **Game end:** the match lands as **provisional** with checks: each place once, team kills equal player kills, any team to type.
+  - Compare the places with the game's own result screen (key `E` in PCOB).
+  - Press Update from game if the end-of-game stats are late.
+- [ ] **Confirm (Ctrl+Enter):** the standings update and the next match is armed.
+- [ ] **Remake:** works on a restarted game. **End match:** works when PCOB stops sending.
+- [ ] **No data warning:** if PCOB stops, "No data for 10 s" shows and the match stays live.
+
+### End of day and recovery
+- [ ] **Close day:** the summary is right and prints. Day N standings goes on air. Save event file.
+- [ ] **Crash:** close Air in the middle of a match and reopen it. It offers "Resume Match N", and moments already shown don't repeat.
+- [ ] **Another PC:** open the event file there and continue the next day. The standings are the same.
+
+### First licensed show: what to note
+For each of these, note what you see, or send the recording:
+- whether the game ID changes on a remake;
+- what the winner time reads before a winner;
+- whether team names come with the data;
+- whether the kill feed covers the whole game;
+- whether the winner gets rank 1;
+- what PCOB shows after the game;
+- whether players appear before the plane;
+- whether the end-of-game stats arrive late.
+
+`docs/games/pcob-first-show.md` has the details.
+
 ## Report back
 
-For each line that fails: what you did, what you saw, and a screenshot. For game-data problems, a recording file from the Player app helps most.
+For each line that fails: what you did, what you saw, and a screenshot.
+- **Game-data problems:** a recording helps most, from the Player app (Valorant) or Air's Record game data (PUBG MOBILE).
+- **Lost data:** send the files in Air's `backups` folder.
