@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Problem to solution</title>
+<!-- Esportra AIR loop reel v3, 0 to 27.5 s: the brand hook (0-3.5), four 2 s problem cuts (3.5-11.5), Esportra holding it
+     once (11.5-17.5), AIR picking it all up (17.5-27.5). A motion
+     piece on the reel's design system (../reel-frame.css), timed on the Web Animations API (transform, opacity and
+     clip-path only). Standalone it plays at once and has a Replay button. The reel opens it with ?record=1, which hides
+     Replay and exposes window.reelSeek(ms) (the stepped recorder also sets every animation's time itself), and calls
+     window.reelBuild({lockup, emblem, ticks, airFrom}) to pass the producer's lockup, the owl emblem and the seconds at
+     which AIR's window shows each field. #airwin is the window AIR's capture is composited into (window.reelAir).
+     Fonts: Inter and JetBrains Mono from design/implemented/assets/fonts, else the Esportra site's copies beside this repo. -->
+<style>
+@font-face{font-family:Inter;font-weight:400;src:url("../../../../design/implemented/assets/fonts/inter-latin-400-normal.woff2") format("woff2"),url("../../../../../esportra/design/source/fonts/inter-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:Inter;font-weight:500;src:url("../../../../design/implemented/assets/fonts/inter-latin-500-normal.woff2") format("woff2"),url("../../../../../esportra/design/source/fonts/inter-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:Inter;font-weight:600;src:url("../../../../design/implemented/assets/fonts/inter-latin-600-normal.woff2") format("woff2"),url("../../../../../esportra/design/source/fonts/inter-latin-600-normal.woff2") format("woff2")}
+@font-face{font-family:Inter;font-weight:700;src:url("../../../../design/implemented/assets/fonts/inter-latin-700-normal.woff2") format("woff2"),url("../../../../../esportra/design/source/fonts/inter-latin-700-normal.woff2") format("woff2")}
+@font-face{font-family:'JetBrains Mono';font-weight:500;src:url("../../../../design/implemented/assets/fonts/JetBrainsMono.ttf") format("truetype"),url("../../../../../esportra/design/source/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2")}
+</style>
+<link rel="stylesheet" href="../reel-frame.css">
+<style>
+html, body { width: 100%; height: 100%; overflow: hidden; background: #09090B; }
+body { width: 100%; height: 100%; }
+#fit { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+#world > *, #fg > * { position: absolute; }
+.hd { white-space: nowrap; }
+.hd > div { display: block; white-space: nowrap; }
+
+/* the loop frame, then the hook */
+#lock { position: absolute; left: 242px; top: 280px; height: 520px; }
+.hd .rs { color: var(--rose); }
+
+/* the four problems: one line, one simple visual */
+.win { position: absolute; width: 470px; height: 320px; background: #17171B; border-color: #3F3F46; }
+.win .tb { position: absolute; left: 0; top: 0; width: 100%; height: 48px; border-bottom: 1px solid var(--line); }
+.win .tb span { position: absolute; left: 18px; top: 15px; font-size: 18px; color: var(--text); }
+.win .tb i { position: absolute; top: 19px; width: 10px; height: 10px; background: var(--muted); }
+.win .ln { position: absolute; left: 18px; height: 12px; background: #52525B; }
+.fld { position: absolute; left: 242px; width: 1100px; height: 110px; border-color: #3F3F46; }
+.fld .tx { position: absolute; left: 36px; top: 0; height: 110px; line-height: 110px; font: 500 64px/110px 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; text-transform: none; white-space: pre; color: var(--text); }
+.fld .tx s { text-decoration: line-through; text-decoration-color: var(--rose); text-decoration-thickness: 5px; color: var(--text); }
+.caret { display: inline-block; width: 28px; height: 58px; margin-left: 4px; vertical-align: -9px; background: var(--text); }
+.plate { position: absolute; left: 242px; top: 500px; width: 900px; height: 170px; border-color: #3F3F46; }
+.plate .tx { position: absolute; left: 44px; top: 0; line-height: 170px; font: 500 72px/170px 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; text-transform: none; }
+.live { position: absolute; left: 1170px; top: 500px; width: 560px; height: 170px; border: 2px solid var(--rose); background: var(--surface); }
+.live .tx { position: absolute; left: 36px; top: 0; line-height: 166px; font: 500 60px/166px 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; text-transform: none; color: var(--rose); }
+.clk { position: absolute; left: 242px; width: 1000px; height: 190px; }
+.clk .cl { position: absolute; left: 40px; top: 0; line-height: 190px; font-size: 18px; color: var(--muted); }
+.clk .tx { position: absolute; right: 44px; top: 0; line-height: 190px; font: 500 120px/190px 'JetBrains Mono', monospace; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: pre; text-transform: none; }
+.clk.on { border-color: var(--rose); }
+.clk.on .tx { color: var(--rose); }
+
+/* Esportra's ledger: one panel, six rows of 84 px */
+#lhdr { left: 960px; top: 264px; color: var(--muted); font-size: 15px; }
+#ledger { left: 960px; top: 300px; width: 870px; height: 504px; transform-origin: 0 0; }
+.row { position: absolute; left: 0; width: 100%; height: 84px; }
+.row + .row { border-top: 1px solid var(--line); }
+.row .l { position: absolute; left: 30px; top: 34px; font-size: 15px; color: var(--muted); text-transform: none; }
+.row .v { text-transform: none; position: absolute; right: 84px; top: 28px; font: 500 26px/1 'JetBrains Mono', monospace; letter-spacing: 0; white-space: pre; }
+.row .v img { display: block; height: 52px; margin-top: -12px; }
+.row .ck { position: absolute; right: 30px; top: 29px; width: 26px; height: 26px; }
+.row .rb { position: absolute; left: -1px; top: 0; width: 2px; height: 84px; background: var(--rose); }
+
+/* AIR's window */
+#airwin { left: 852px; top: 330px; width: 972px; height: 547px; overflow: hidden; }
+#airimg { position: absolute; left: 0; top: 0; width: 2560px; height: 1440px; transform-origin: 0 0; display: none; }
+#aircap { left: 852px; top: 892px; color: var(--muted); font-size: 14px; }
+#rline { left: 782px; top: 521px; width: 70px; height: 2px; background: var(--rose); transform-origin: 0 50%; }
+#rdot { left: 846px; top: 518px; width: 8px; height: 8px; background: var(--rose); }
+
+#replay { position: fixed; right: 24px; bottom: 24px; z-index: 200; padding: 10px 14px; background: var(--surface); color: var(--text); border: 1px solid var(--line); cursor: pointer; font-size: 14px; }
+#replay:hover { border-color: var(--rose); }
+body.rec #replay { display: none; }
+</style>
+</head>
+<body>
+<div id="fit"><div id="st">
+  <div class="layer" id="L0"></div>
+  <div class="layer" id="L1"><div id="world"></div></div>
+  <div class="layer" id="L2"><div id="fg"></div></div>
+  <div class="grain"></div>
+</div></div>
+<button id="replay" class="m" type="button">Replay</button>
+<script src="frame-chrome.js"></script>
+<script>
+(function () {
+  'use strict';
+  var Q = new URLSearchParams(location.search), REC = Q.get('record') === '1';
+  if (REC) document.body.className = 'rec';
+  var IN = 'cubic-bezier(0.16,1,0.3,1)', OUT = 'cubic-bezier(0.7,0,0.84,0)';
+  var RV = [{ clipPath: 'inset(0 0 100% 0)', transform: 'translateY(20px) scale(.96)' }, { clipPath: 'inset(0 0 0 0)', transform: 'translateY(0) scale(1)' }];
+  var XU = [{ clipPath: 'inset(0 0 0 0)', transform: 'translateY(0) scale(1)' }, { clipPath: 'inset(0 0 100% 0)', transform: 'translateY(-40px) scale(.985)' }];
+  var XD = [{ clipPath: 'inset(0 0 0 0)', transform: 'translateY(0)' }, { clipPath: 'inset(100% 0 0 0)', transform: 'translateY(20px)' }];
+  var WIPE = [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }];
+  var DRAW = [{ clipPath: 'inset(0 0 100% 0)' }, { clipPath: 'inset(0 0 0 0)' }];
+  var END_MS = 27500, DRIFT = 0.035;
+  var ANIMS = [], TYPES = [], raf = 0, t0 = 0;
+
+  var world = document.getElementById('world'), fg = document.getElementById('fg');
+  function el(tag, cls, parent, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; if (parent) parent.appendChild(e); return e; }
+  function A(node, kf, at, dur, easing, fill, extra) {
+    var a = node.animate(kf, Object.assign({ delay: at * 1000, duration: dur * 1000, easing: easing, fill: fill || 'both' }, extra || {}));
+    a.pause(); a.currentTime = 0; ANIMS.push(a); return a;
+  }
+  var reveal = function (n, at, dur) { return A(n, RV, at, dur || .6, IN); };
+  var exitUp = function (n, at, dur) { return A(n, XU, at, dur || .45, OUT, 'forwards'); };
+  var exitDown = function (n, at, dur) { return A(n, XD, at, dur || .34, OUT, 'forwards'); };
+  var wipe = function (n, at, dur) { return A(n, WIPE, at, dur || .4, IN); };
+
+  // the grid: hairlines at the column edges, one under the header band
+  (function grid() {
+    var L0 = document.getElementById('L0'), i;
+    for (i = 0; i < 12; i++) el('div', 'vl', L0).style.left = (96 + i * 146) + 'px';
+    el('div', 'vl', L0).style.left = '1824px';
+    el('div', 'hl', L0);
+    document.getElementById('st').insertAdjacentHTML('beforeend', ReelChrome.html());
+  })();
+
+  /** Display words, one span per word, a line per entry; each reveals 40 ms after the one before. */
+  function words(parent, lines, cls, at, left, top) {
+    var box = el('div', 'hd ' + cls, parent); box.style.left = left + 'px'; box.style.top = top + 'px';
+    var k = 0, out = [];
+    lines.forEach(function (ln) {
+      var row = el('div', '', box);
+      ln.split(' ').forEach(function (w, j) {
+        if (j) row.appendChild(document.createTextNode(' '));
+        var s = el('span', 'wd', row, w); reveal(s, at + k * 0.04); out.push(s); k++;
+      });
+    });
+    return { box: box, words: out };
+  }
+
+  var BAD = /\[([^\]]*)\]/g;
+  function parts(spec) { // 'Jun[0]#NWL' -> [{c:'J'},{c:'0',bad:true},...]
+    var out = [], i = 0, m, last = 0;
+    BAD.lastIndex = 0;
+    while ((m = BAD.exec(spec))) { spec.slice(last, m.index).split('').forEach(function (c) { out.push({ c: c }); }); m[1].split('').forEach(function (c) { out.push({ c: c, bad: true }); }); last = m.index + m[0].length; }
+    spec.slice(last).split('').forEach(function (c) { out.push({ c: c }); });
+    return out;
+  }
+  function typeInto(node, spec, at, cps) { TYPES.push({ node: node, parts: parts(spec), at: at, cps: cps || 36, key: '' }); }
+  function renderTypes(t) {
+    TYPES.forEach(function (T) {
+      var n = Math.max(0, Math.min(T.parts.length, Math.floor((t - T.at) * T.cps) + (t >= T.at ? 1 : 0)));
+      var caret = t >= T.at && t < T.at + T.parts.length / T.cps + 0.45;
+      var key = n + (caret ? 'c' : '');
+      if (key === T.key) return; T.key = key;
+      var h = '';
+      for (var i = 0; i < n; i++) { var p = T.parts[i]; h += p.bad ? '<s>' + p.c + '</s>' : p.c.replace('<', '&lt;'); }
+      T.node.innerHTML = h + (caret ? '<i class="caret"></i>' : '');
+    });
+  }
+
+  var EMB_FALLBACK = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M32 3l26 15v28L32 61 6 46V18z" fill="#121215" stroke="#FAFAFA" stroke-width="3"/><circle cx="23" cy="30" r="6" fill="none" stroke="#FAFAFA" stroke-width="3"/><circle cx="41" cy="30" r="6" fill="none" stroke="#FAFAFA" stroke-width="3"/></svg>');
+  var CHECK = '<svg class="ck" viewBox="0 0 20 20"><path d="M3 10.5 8 15.5 17 5" fill="none" stroke="#F43F5E" stroke-width="2.5" stroke-linecap="butt" stroke-linejoin="miter"/></svg>';
+
+  var ROWS = [['TEAMS', 'NIGHT OWLS'], ['LOGOS', null], ['VETO', 'BAN · BIND'], ['SCHEDULE', '18:30'], ['CASTERS', 'Sam "Sparrow" Reyes'], ['SPONSORS', 'NOVA ENERGY']];
+
+  function build(o) {
+    o = o || {};
+    ANIMS.forEach(function (a) { try { a.cancel(); } catch (e) {} });
+    ANIMS = []; TYPES = []; world.innerHTML = ''; fg.innerHTML = '';
+    var lockup = o.lockup || Q.get('lockup') || '../../../../assets/brand/esportra-mark.png';
+    var emblem = o.emblem || Q.get('emblem') || EMB_FALLBACK;
+    var airFrom = o.airFrom || 20.17;
+    var ticks = o.ticks || [airFrom + .8, airFrom + 1.0, airFrom + 3.3, airFrom + .4, airFrom + 2.0, airFrom + 2.3];
+    var i, w, j;
+
+    // camera: a continuous linear drift, three parallax layers (grid x0.4, UI x1, foreground accents x1.3)
+    [['L0', .4], ['L1', 1], ['L2', 1.3]].forEach(function (p) {
+      A(document.getElementById(p[0]), [{ transform: 'scale(1)' }, { transform: 'scale(' + (1 + DRIFT * p[1]) + ')' }], 0, END_MS / 1000, 'linear');
+    });
+
+    // leave(nodes, at): the crossover; the outgoing nodes exit over 450 ms, the next cut enters on the bar (150 ms before they are gone)
+    var leave = function (nodes, at) { nodes.forEach(function (n, k) { exitUp(n, at + k * 0.04, .45); }); };
+
+    // 0 - 3.5 s: the hook. Frame 0 is the lockup alone (the loop frame); it eases up and smaller to make room for the tagline.
+    var lw = el('div', '', world); lw.style.cssText = 'left:0;top:0;width:1920px;height:1080px;transform-origin:242px 280px';
+    var lk = el('img', '', lw); lk.id = 'lock'; lk.src = lockup;
+    A(lw, [{ transform: 'translateY(0px) scale(1)' }, { transform: 'translateY(-110px) scale(.5)' }], 0.05, .8, IN, 'both');
+    exitUp(lk, 3.2, .45);
+    var hk = words(world, ['Esports operations', 'to live broadcast.', 'One platform.'], 'd96', 0.25, 242, 480);
+    hk.words.slice(-2).forEach(function (n) { n.classList.add('rs'); });
+    leave(hk.words, 3.2);
+
+    // 3.5 - 11.5 s: 01 / PROBLEM, four cuts of 2 s. Every cut: the line (two lines of Inter 96) and one simple visual.
+    var CUTS = [3.5, 5.5, 7.5, 9.5];
+    var LINES = [['Five tools', 'for one match.'], ['Every name', 'typed again.'], ['Graphics', 'a step behind.'], ['Live in five minutes.', 'Ready in fifty.']];
+    var heads = LINES.map(function (ln, c) { var h = words(world, ln, 'd96', CUTS[c], 242, 190); leave(h.words, CUTS[c] + 1.7); return h; });
+    var drift = function (node, k) { A(node, [{ translate: '0px 0px' }, { translate: (5 - k % 3 * 3) + 'px ' + (-4 + k % 2 * 7) + 'px' }], 0, 6 + (k % 4) * 0.9, 'linear', 'none', { iterations: Infinity, direction: 'alternate' }); };
+
+    // 1 · five tools: five square app windows pile in from the right, tilted, 80 ms apart
+    var T1 = CUTS[0] + 0.1, WIN = [['SHEET', 250, 560, -3], ['CHAT', 560, 450, 2.5], ['DOCS', 860, 590, -1.5], ['MAIL', 1130, 440, 3], ['NOTES', 1350, 620, -2]];
+    var wins = WIN.map(function (W, k) {
+      var wd = el('div', 'win sf', world); wd.style.left = W[1] + 'px'; wd.style.top = W[2] + 'px'; wd.style.rotate = W[3] + 'deg'; wd.style.zIndex = 10 + k;
+      el('div', 'tb m', wd, '<span>' + W[0] + '</span><i style="right:18px"></i><i style="right:36px"></i>');
+      [[78, 300], [108, 240], [138, 280], [168, 180], [198, 260]].forEach(function (r) { var l = el('div', 'ln', wd); l.style.top = r[0] + 'px'; l.style.width = r[1] * (0.8 + (k % 3) * 0.1) + 'px'; });
+      A(wd, [{ clipPath: 'inset(0 0 0 100%)', transform: 'translateX(220px)' }, { clipPath: 'inset(0 0 0 0)', transform: 'translateX(0px)' }], T1 + k * 0.08, .6, IN);
+      drift(wd, k);
+      return wd;
+    });
+    leave(wins, CUTS[0] + 1.7);
+
+    // 2 · every name typed again: one mono field, three entries stacking, the typo struck in rose
+    var FIELDS = [['NIGHT OWLS', 450], ['Night Owls', 580], ['NIGHT OWL[5]', 710]];
+    var flds = FIELDS.map(function (F, k) {
+      var f = el('div', 'fld sf', world); f.style.top = F[1] + 'px';
+      var tx = el('span', 'tx', f);
+      var at = CUTS[1] + 0.12 + k * 0.4;
+      reveal(f, at); typeInto(tx, F[0], at + .25, 30);
+      return f;
+    });
+    leave(flds, CUTS[1] + 1.7);
+
+    // 3 · a step behind: a plain scorebug plate that lags the live score
+    var plate = el('div', 'plate sf', world); el('span', 'tx', plate, 'NWL 11 — 12 CRF'); reveal(plate, CUTS[2] + 0.1);
+    var live = el('div', 'live', world); el('span', 'tx', live, 'LIVE 12 — 11'); reveal(live, CUTS[2] + 0.5);
+    A(live, [{ opacity: 1 }, { opacity: .3, offset: .35 }, { opacity: 1 }], CUTS[2] + 1.15, .6, 'linear', 'both');
+    leave([plate, live], CUTS[2] + 1.7);
+
+    // 4 · live in five minutes, ready in fifty: two mono clocks, the rose one counts down
+    var CLK = [['ON AIR', '00:05:00', 450, true], ['READY', '00:50:00', 670, false]];
+    var clks = CLK.map(function (C, k) {
+      var c = el('div', 'clk sf' + (C[3] ? ' on' : ''), world); c.style.top = C[2] + 'px';
+      el('span', 'm cl', c, C[0]); var tx = el('span', 'tx', c, C[1]); if (C[3]) tx.id = 'count';
+      reveal(c, CUTS[3] + 0.1 + k * 0.3);
+      return c;
+    });
+    leave(clks, CUTS[3] + 1.7);
+
+    // 11.5 - 17.5 s: 02 / ESPORTRA. The ledger enters on the bar and holds with drift.
+    var h2 = words(world, ['Esportra holds', 'it once.'], 'd96', 11.5, 242, 196);
+    h2.words.forEach(function (s, k) { exitUp(s, 17.2 + k * 0.04, .45); });
+    var lh = el('div', 'm', world, 'ESPORTRA · ESPORTRA INVITATIONAL'); lh.id = 'lhdr'; reveal(lh, 11.6); exitUp(lh, 17.2, .45);
+    var led = el('div', 'sf', world); led.id = 'ledger'; reveal(led, 11.6);
+    A(led, [{ transform: 'translate(0px,0px) scale(1)' }, { transform: 'translate(-718px,60px) scale(.62)' }], 17.5, .9, IN, 'forwards');
+    var cks = [], rbs = [];
+    ROWS.forEach(function (R, k) {
+      var row = el('div', 'row', led); row.style.top = (k * 84) + 'px';
+      el('span', 'm l', row, R[0]);
+      var v = el('span', 'm v', row);
+      if (R[1] === null) { var im2 = el('img', '', v); im2.src = emblem; } else v.textContent = R[1];
+      var ck = el('span', '', row, CHECK); ck.style.cssText = 'position:absolute;right:0;top:0;width:100%;height:84px'; cks.push(ck);
+      var rb = el('div', 'rb', row); rbs.push(rb);
+      reveal(row.children[0], 11.7 + k * 0.04); reveal(v, 11.7 + k * 0.04);
+      wipe(ck, ticks[k] + .1, .35);
+      A(rb, DRAW, ticks[k], .4, IN);
+    });
+
+    // 21.5 - 27.5 s: 03 / AIR
+    var h3 = words(world, ['AIR picks it all up.', 'Nothing typed twice.'], 'd72', 17.5, 242, 170);
+    var rl = el('div', '', fg); rl.id = 'rline'; A(rl, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], airFrom - .17, .4, IN);
+    var rd = el('div', '', fg); rd.id = 'rdot'; reveal(rd, airFrom + .18, .3);
+    var win = el('div', 'sf', world); win.id = 'airwin'; reveal(win, airFrom);
+    var aimg = el('img', '', win); aimg.id = 'airimg';
+    var cap = el('div', 'm', fg, 'ESPORTRA AIR'); cap.id = 'aircap'; reveal(cap, airFrom + .04);
+    return true;
+  }
+
+  /** AIR's picture into the window; `tf` places the crop (a CSS transform of the 2560x1440 picture). */
+  window.reelAir = function (src, tf) {
+    var im = document.getElementById('airimg');
+    im.style.display = 'block'; im.style.transform = tf;
+    if (src) { im.src = src; return im.decode().catch(function () {}); }
+  };
+  window.reelBuild = build;
+
+  var lastClock = '';
+  function renderClock(t) { // the rose clock counts down on the stepped clock from 9.8 s
+    var n = document.getElementById('count'); if (!n) return;
+    var sec = Math.max(0, Math.floor(t - 9.8)), left = 300 - sec;
+    var txt = '00:0' + Math.floor(left / 60) + ':' + (left % 60 < 10 ? '0' : '') + (left % 60);
+    if (txt !== lastClock) { lastClock = txt; n.textContent = txt; }
+  }
+  function render(ms) { ReelChrome.tick(ms / 1000); renderTypes(ms / 1000); renderClock(ms / 1000); }
+  window.reelSeek = function (ms) { ANIMS.forEach(function (a) { a.pause(); a.currentTime = ms; }); render(ms); };
+
+  function loop() {
+    var ms = performance.now() - t0;
+    render(Math.min(ms, END_MS));
+    if (ms < END_MS) raf = requestAnimationFrame(loop);
+  }
+  function play() {
+    cancelAnimationFrame(raf);
+    ANIMS.forEach(function (a) { a.currentTime = 0; a.play(); });
+    t0 = performance.now(); loop();
+  }
+  document.getElementById('replay').addEventListener('click', play);
+
+  function fit() {
+    var f = document.getElementById('fit');
+    if (REC) { f.style.transform = 'none'; return; }
+    var s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    f.style.transform = 'translate(' + ((innerWidth - 1920 * s) / 2) + 'px,' + ((innerHeight - 1080 * s) / 2) + 'px) scale(' + s + ')';
+  }
+  addEventListener('resize', fit); fit();
+
+  build({});
+  render(0);
+  if (!REC) (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(play);
+})();
+</script>
+</body>
+</html>

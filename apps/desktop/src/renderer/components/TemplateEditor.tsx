@@ -6,13 +6,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import {
-  BRAND_NAME, BRAND_KEYS, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicTitle, newTemplateId, parentOf, partsOf, validTemplate,
+  BRAND_NAME, BRAND_KEYS, BUILTIN_BR_HUD, DEFAULT_BRAND, ENTRANCES, SAMPLES, SHOWS_IN, WEIGHTS, snapWeight, FONTS, GRAPHICS, SWATCHES, graphicPage, graphicStyle, graphicsFor, graphicTitle, newTemplateId, parentOf, partsOf, partsForLayout, validTemplate, slotsOf, isKitPicture,
   type BrandKit, type ColorRef, type PartStyle, type Template,
 } from '../../shared/templates.ts';
 import { air } from '../bridge.ts';
+import { AssetPicker } from './AssetPicker.tsx';
+import { KIND_LABEL } from '../../shared/game-assets.ts';
+import { gameOf } from '../../shared/games.ts';
 import type { Run } from '../App.tsx';
+import type { HudLayout } from '../../shared/br-screens.ts';
 
-export type EditorStart = { id?: string; graphic?: string; from?: Template; returnTo?: string };
+export type EditorStart = { id?: string; graphic?: string; from?: Template; returnTo?: string; layout?: HudLayout };
 
 /** Opens the editor from anywhere (the App shows it over the page). */
 export function openTemplateEditor(start: EditorStart) {
@@ -34,8 +38,9 @@ export const brandOfMatch = (s: Snapshot): BrandKit | null => {
   return ev ? ({ ...DEFAULT_BRAND, ...(ev.brand ?? {}), primary: ev.accent } as BrandKit) : null;
 };
 
-function blank(graphic: string): Template {
-  return { id: newTemplateId(), name: `My ${GRAPHICS[graphic]?.title.toLowerCase() ?? 'graphic'}`, graphic, parts: {}, createdAt: Date.now(), updatedAt: Date.now() };
+function blank(graphic: string, layout?: HudLayout): Template {
+  const base = layout ? BUILTIN_BR_HUD.find((x) => x.layout === layout) : undefined;
+  return { id: newTemplateId(), name: base ? `${base.name} copy` : `My ${GRAPHICS[graphic]?.title.toLowerCase() ?? 'graphic'}`, graphic, parts: {}, ...(layout ? { layout } : {}), createdAt: Date.now(), updatedAt: Date.now() };
 }
 
 /** The colour a reference shows as, for swatches in the interface. */
@@ -49,13 +54,13 @@ function swatchColor(ref: ColorRef | undefined, brand: BrandKit, s: Snapshot): s
 
 export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run; start: EditorStart; close: () => void }) {
   const saved = start.id ? s.templates.find((t) => t.id === start.id) : undefined;
-  const initial = useMemo<Template>(() => saved ? structuredClone(saved) : start.from ? { ...structuredClone(start.from), id: newTemplateId(), name: `${start.from.name} copy` } : blank(start.graphic ?? 'map-veto|band'), []);
+  const initial = useMemo<Template>(() => saved ? structuredClone(saved) : start.from ? { ...structuredClone(start.from), id: newTemplateId(), name: `${start.from.name} copy` } : blank(start.graphic ?? 'map-veto|band', start.layout), []);
   // The draft and its undo history, changed together by pure updates.
   const [h, setH] = useState<{ draft: Template; past: Template[]; future: Template[] }>({ draft: initial, past: [], future: [] });
   const { draft, past, future } = h;
   const [isNew, setIsNew] = useState(!saved);
   const [baseline, setBaseline] = useState(JSON.stringify(initial));
-  const [sel, setSel] = useState<string>(partsOf(initial.graphic)[0]?.[0] ?? '');
+  const [sel, setSel] = useState<string>(partsForLayout(partsOf(initial.graphic), initial.layout)[0]?.[0] ?? '');
   // Double-click on the picture: words a template may replace are typed in place (17 Nov).
   const [wordsAt, setWordsAt] = useState<{ id: string; box: number[] } | null>(null);
   const [dataNote, setDataNote] = useState<{ box: number[]; label: string } | null>(null);
@@ -66,7 +71,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const [backdrop, setBackdrop] = useState<'game' | 'desk' | 'picture' | 'clear'>('game');
   // Your picture: a screenshot of your game or desk, kept in this PC's editor storage only.
   const [picture, setPicture] = useState<string | null>(() => { try { return localStorage.getItem('air-template-backdrop'); } catch { return null; } });
-  const [sample, setSample] = useState<string>('');
+  const [sample, setSample] = useState<string>(initial.layout ?? '');
   const [menu, setMenu] = useState<null | 'sample' | 'backdrop'>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<{ id: string; after: boolean } | null>(null);
@@ -81,10 +86,29 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const lastKey = useRef<{ k: string; at: number } | null>(null);
   const brand = brandOfMatch(s) ?? DEFAULT_BRAND;
   const dirty = JSON.stringify(draft) !== baseline || isNew;
-  const parts = partsOf(draft.graphic);
+  const parts = partsForLayout(partsOf(draft.graphic), draft.layout);
   const part = parts.find((p) => p[0] === sel) ?? parts[0];
   const ps: PartStyle = (part && draft.parts[part[0]]) || {};
   const hud = draft.graphic === 'hud';
+  // A battle royale HUD template is made for one layout: its own sample and the moments.
+  const samples = draft.graphic === 'brhud' && draft.layout ? SAMPLES.brhud!.filter((x) => x.id === draft.layout || x.id === 'moments') : SAMPLES[draft.graphic];
+  // Layers (20 Nov, approved mock): a graphic holds components (top-level parts); each holds its own layers
+  // (`parent.child` parts). Siblings are listed front to back by their layer order, like Photoshop.
+  const ids = useMemo(() => new Set(parts.map((x) => x[0])), [draft.graphic, draft.layout]);
+  const compOf = (id: string) => { const par = parentOf(id); return par && ids.has(par) ? par : id; };
+  const zOf = (id: string) => draft.parts[id]?.z ?? 0;
+  const siblingsOf = (id: string) => {
+    const par = compOf(id) === id ? null : compOf(id);
+    const list = parts.filter((x) => (par ? compOf(x[0]) === par && x[0] !== par : compOf(x[0]) === x[0])).map((x) => x[0]);
+    // Untouched layers keep the page's own order: parts listed later are drawn over earlier ones (the panel first).
+    return list.map((x, i) => ({ x, i })).sort((a, b) => zOf(b.x) - zOf(a.x) || b.i - a.i).map((o) => o.x);
+  };
+  const usable = (id: string) => !draft.parts[id]?.locked && !draft.parts[compOf(id)]?.locked && !draft.parts[id]?.hidden;
+  const labelOf = (id: string) => parts.find((x) => x[0] === id)?.[1] ?? id;
+  const [here, setHere] = useState<{ x: number; y: number; ids: string[] } | null>(null);
+  // Picture slots (20 Nov): parts whose picture can be changed from a game pack.
+  const slots = useMemo(() => slotsOf(draft.graphic), [draft.graphic]);
+  const [picking, setPicking] = useState(false);
 
   /** Every edit goes through here: one undo step, or one per gesture when `coalesce` names it. */
   const change = useCallback((fn: (t: Template) => Template, coalesce?: string) => {
@@ -126,13 +150,27 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
     setPicture(url); setBackdrop('picture'); setMenu(null);
     try { localStorage.setItem('air-template-backdrop', url); } catch { setNotice('The picture is shown but too large to keep for next time.'); }
   };
-  /** Dropping a part above another puts it in front of that part; below, behind it. */
+  /** Puts the sibling list in a new front-to-back order: the first is in front. One undo step. */
+  const reorder = (list: string[]) => change((t) => {
+    list.forEach((x, i) => { const z = list.length - i; t.parts[x] = { ...(t.parts[x] ?? {}), z }; });
+    return t;
+  });
+  /** Dropping a layer above another puts it in front of that layer; below, behind it. Only among its own siblings. */
   const dropPart = (id: string, target: string, after: boolean) => {
     if (id === target) return;
-    const tz = draft.parts[target]?.z ?? 0;
-    const z = Math.max(-9, Math.min(9, after ? tz - 1 : tz + 1));
-    setPart(id, { z: z || undefined });
-    setNotice(`${parts.find((p) => p[0] === id)?.[1]} is now ${after ? 'behind' : 'in front of'} ${parts.find((p) => p[0] === target)?.[1]?.toLowerCase()}.`);
+    const sibs = siblingsOf(id);
+    if (!sibs.includes(target)) { setNotice(`${labelOf(id)} can only move within ${compOf(id) === id ? 'the graphic' : labelOf(compOf(id))}.`); return; }
+    const list = sibs.filter((x) => x !== id);
+    list.splice(list.indexOf(target) + (after ? 1 : 0), 0, id);
+    reorder(list);
+    setNotice(`${labelOf(id)} is now ${after ? 'behind' : 'in front of'} ${labelOf(target).toLowerCase()}.`);
+  };
+  /** Ctrl ] forward, Ctrl [ back: one step among its siblings. */
+  const step = (id: string, dir: 1 | -1) => {
+    const list = siblingsOf(id); const i = list.indexOf(id); const j = i - dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j]!, list[i]!]; reorder(list);
+    setNotice(`${labelOf(id)} moved ${dir > 0 ? 'forward' : 'back'}.`);
   };
   useEffect(() => {
     const el = canvas.current; if (!el) return;
@@ -176,10 +214,11 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
       const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName);
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); return; }
-      if (e.key === 'Escape') { e.preventDefault(); if (menu) setMenu(null); else tryClose(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); if (here) setHere(null); else if (menu) setMenu(null); else if (sel && compOf(sel) !== sel) setSel(compOf(sel)); else tryClose(); return; }
       if (typing) return;
       if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+      if (mod && (e.key === ']' || e.key === '[') && sel) { e.preventDefault(); step(sel, e.key === ']' ? 1 : -1); return; }
       // Delete or Backspace removes the selected part from the graphic, like a layer in Photoshop (17 Nov).
       // It stays in the list, struck through, and Ctrl Z or the eye brings it back.
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel && part?.[0] === sel && !draft.parts[sel]?.hidden) { e.preventDefault(); setPart(part[0], { hidden: true }); return; }
@@ -198,6 +237,9 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
   const drag = useRef<null | { mode: 'move' | 'scale'; id: string; sx: number; sy: number; x0: number; y0: number; s0: number; box: number[]; hits: string[]; moved: boolean; kept: boolean }>(null);
   const [guide, setGuide] = useState<{ v?: number; h?: number } | null>(null);
   const toCanvas = (e: React.PointerEvent) => { const r = canvas.current!.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale] as const; };
+  /** Unlocked, shown parts under a point, smallest first. */
+  const hitsAt = (x: number, y: number) => parts.map((p) => ({ id: p[0], r: (rects[p[0]] ?? []).find((r) => x >= r[0]! && x <= r[0]! + r[2]! && y >= r[1]! && y <= r[1]! + r[3]!) }))
+    .filter((h) => h.r && usable(h.id)).sort((a, b) => a.r![2]! * a.r![3]! - b.r![2]! * b.r![3]!).map((h) => h.id);
   const union = (id: string) => { const list = rects[id]; if (!list?.length) return null; const x = Math.min(...list.map((r) => r[0]!)), y = Math.min(...list.map((r) => r[1]!)); return [x, y, Math.max(...list.map((r) => r[0]! + r[2]!)) - x, Math.max(...list.map((r) => r[1]! + r[3]!)) - y]; };
   const onDown = (e: React.PointerEvent) => {
     if (compare !== 'mine') return;
@@ -205,14 +247,17 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
     const handle = (e.target as HTMLElement).dataset.handle;
     let id = sel, order: string[] = [], kept = false;
     if (!handle) {
-      // The smallest part under the pointer, so nested parts can be picked.
-      const hits = parts.map((p) => ({ id: p[0], r: (rects[p[0]] ?? []).find((r) => x >= r[0]! && x <= r[0]! + r[2]! && y >= r[1]! && y <= r[1]! + r[3]!) })).filter((h) => h.r);
-      hits.sort((a, b) => a.r![2]! * a.r![3]! - b.r![2]! * b.r![3]!);
-      if (!hits.length) return;
-      order = hits.map((h) => h.id);
-      kept = order.includes(sel);
-      id = kept ? sel : order[0]!;
+      // A click picks the component under the pointer, always the same one (20 Nov: no more cycling to the part
+      // behind). While a layer of that component is selected, clicks stay at layer level inside it.
+      order = hitsAt(x, y);
+      if (!order.length) return;
+      const smallest = order[0]!;
+      const inside = compOf(sel) !== sel ? order.filter((h) => compOf(h) === compOf(sel) && h !== compOf(sel)) : [];
+      const comp = compOf(smallest);
+      id = inside.length ? inside[0]! : rects[comp] ? comp : smallest;
+      kept = id === sel;
       setSel(id);
+      if (compOf(id) !== id) setOpenGroups((g) => new Set(g).add(compOf(id)));
     }
     const p = draft.parts[id] ?? {};
     drag.current = { mode: handle ? 'scale' : 'move', id, sx: x, sy: y, x0: p.x ?? 0, y0: p.y ?? 0, s0: p.scale ?? 1, box: union(id) ?? [0, 0, 1, 1], hits: order, moved: false, kept };
@@ -240,18 +285,38 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
     setGuide(g.v !== undefined || g.h !== undefined ? g : null);
     setPart(d.id, { x: nx || undefined, y: ny || undefined }, `move-${d.id}`);
   };
-  // A click (no drag) on the selected part picks the next part under the pointer, so parts behind can be reached.
-  const onUp = () => {
+  // Alt-click (no drag) lists every layer under the pointer; parts behind are reached from that list.
+  const onUp = (e: React.PointerEvent) => {
     const d = drag.current;
-    if (d && !d.moved && d.kept && d.hits.length > 1) setSel(d.hits[(d.hits.indexOf(d.id) + 1) % d.hits.length]!);
+    if (d && !d.moved && e.altKey && d.hits.length) { const r = canvas.current!.getBoundingClientRect(); setHere({ x: e.clientX - r.left, y: e.clientY - r.top, ids: d.hits }); }
     drag.current = null; setGuide(null);
+  };
+  const onContext = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const r = canvas.current!.getBoundingClientRect();
+    const ids = hitsAt((e.clientX - r.left) / scale, (e.clientY - r.top) / scale);
+    if (ids.length) setHere({ x: e.clientX - r.left, y: e.clientY - r.top, ids });
+  };
+  // Double-click goes into the layer under the pointer, inside the selected component; on words, type in place.
+  const onDouble = (e: React.MouseEvent) => {
+    const r = canvas.current!.getBoundingClientRect();
+    const hits = hitsAt((e.clientX - r.left) / scale, (e.clientY - r.top) / scale);
+    const target = hits.find((h) => compOf(h) === compOf(sel) && h !== compOf(sel)) ?? hits[0];
+    if (!target) return;
+    const was = target === sel;
+    setSel(target);
+    if (compOf(target) !== target) setOpenGroups((g) => new Set(g).add(compOf(target)));
+    const pt = parts.find((x) => x[0] === target); const b = pt && union(pt[0]);
+    if (!pt || !b) return;
+    if (pt[2]) setWordsAt({ id: pt[0], box: b });
+    else if (was) setDataNote({ box: b, label: pt[1] });
   };
 
   const set = (patch: Partial<PartStyle>, coalesce?: string) => part && setPart(part[0], patch, coalesce);
   const changed = (k: keyof PartStyle) => ps[k] !== undefined;
   const Reset = ({ k }: { k: keyof PartStyle }) => <button type="button" className={`tpl-rd ${changed(k) ? 'set' : ''}`} title="Back to the graphic's own" aria-label={`Reset ${String(k)}`} disabled={!changed(k)} onClick={() => set({ [k]: undefined })} />;
   const box = part ? union(part[0]) : null;
-  const graphicsList = Object.keys(GRAPHICS);
+  const graphicsList = graphicsFor(gameOf(s.setup.game)?.shape ?? 'versus');
 
   return (
     <div className="scrim tpl-scrim" role="dialog" aria-modal="true" aria-label={`Template editor: ${draft.name}`}>
@@ -284,6 +349,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
               : <><span>{isNew ? 'Discard this new template?' : `Delete “${draft.name}”?${(s.templateUse?.[draft.id] ?? 0) > 0 ? ` It is used in ${s.templateUse[draft.id]} ${s.templateUse[draft.id] === 1 ? 'match' : 'matches'};` : ''} Rundown rows that use it go back to the default look.`}</span><button className="btn small" onClick={() => setConfirm(null)}>Cancel</button><button className="btn danger small" onClick={() => void remove()}>{isNew ? 'Discard' : 'Delete'}</button></>}
           </div>
         )}
+        {picking && part && slots[part[0]] && <AssetPicker s={s} slot={slots[part[0]]!} current={ps.picture} pick={(pic) => { const kit = pic.src.startsWith('/packs/'); setPart(part[0], kit ? { picture: pic, fill: undefined, color: undefined, opacity: undefined } : { picture: pic }); }} close={() => setPicking(false)} />}
         <div className="tpl-body">
           <aside className="tpl-left">
             <label className="stack g-1"><span className="cap">Graphic</span>
@@ -291,21 +357,20 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 <optgroup label="Overlay bar">{graphicsList.filter((g) => g.endsWith('|band') && !g.startsWith('holding|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
                 <optgroup label="Full screen">{graphicsList.filter((g) => g.endsWith('|full') && !g.startsWith('holding|') && !g.startsWith('casters|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
                 <optgroup label="Scene screens">{graphicsList.filter((g) => g.startsWith('holding|') || g.startsWith('casters|')).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
-                <optgroup label="In-game HUD"><option value="hud">In-game HUD</option></optgroup>
+                <optgroup label="In-game HUD">{graphicsList.filter((g) => g === 'hud' || g === 'brhud').map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>
               </select>
             </label>
             {!isNew && <p className="faint t-xs">A template stays with its graphic. For another graphic, start a new template.</p>}
             <div className="stack g-1"><span className="cap">Parts</span>
               <div className="tpl-tree" role="listbox" aria-label="Parts">
                 {(() => {
-                  const ids = new Set(parts.map((x) => x[0]));
-                  const top = parts.filter((x) => { const par = parentOf(x[0]); return !par || !ids.has(par); });
-                  const kids = (id: string) => parts.filter((x) => parentOf(x[0]) === id && ids.has(id) && x[0] !== id);
-                  const selParent = parentOf(sel);
+                  const byId = new Map(parts.map((x) => [x[0], x]));
+                  const top = parts.length ? siblingsOf(parts.find((x) => compOf(x[0]) === x[0])![0]).map((x) => byId.get(x)!) : [];
+                  const kids = (id: string) => parts.filter((x) => compOf(x[0]) === id && x[0] !== id);
                   return top.flatMap((x) => {
                     const children = kids(x[0]);
-                    const open = openGroups.has(x[0]) || selParent === x[0];
-                    return [{ part: x, children: children.length, open }, ...(open ? children.map((c) => ({ part: c, children: 0, open: false })) : [])];
+                    const open = openGroups.has(x[0]) || compOf(sel) === x[0];
+                    return [{ part: x, children: children.length, open }, ...(open && children.length ? siblingsOf(children[0]![0]).map((c) => ({ part: byId.get(c)!, children: 0, open: false })) : [])];
                   });
                 })().map(({ part: [id, label], children, open }) => {
                   const p = draft.parts[id]; const present = !!rects[id];
@@ -317,13 +382,14 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                   return (
                     <div key={id} className={`tpl-node ${parentOf(id) && parts.some((x) => x[0] === parentOf(id)) ? 'child' : ''} ${children ? 'group' : ''} ${id === sel ? 'on' : ''} ${present || p?.hidden ? '' : 'absent'} ${p?.hidden ? 'deleted' : ''} ${dragging === id ? 'dragging' : ''} ${dropAt?.id === id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
                       draggable onDragStart={(e) => { setDragging(id); e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { setDragging(null); setDropAt(null); }}
-                      onDragOver={(e) => { if (!dragging || dragging === id) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDropAt({ id, after: e.clientY > r.top + r.height / 2 }); }}
+                      onDragOver={(e) => { if (!dragging || dragging === id || !siblingsOf(dragging).includes(id)) return; e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); setDropAt({ id, after: e.clientY > r.top + r.height / 2 }); }}
                       onDrop={(e) => { e.preventDefault(); if (dragging && dropAt) dropPart(dragging, dropAt.id, dropAt.after); setDragging(null); setDropAt(null); }}>
                       <button role="option" aria-selected={id === sel} onClick={() => setSel(id)} title={present ? label : `${label} (not in this sample)`}>
-                        <span>{fold}{label}{children ? <small className="faint"> · {children}</small> : null}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
+                        <span>{fold}{slots[id] ? <span aria-label="picture" title="Picture you can change">🖼 </span> : null}{label}{children ? <small className="faint"> · {children}</small> : null}</span>{rects[id] && rects[id]!.length > 1 && <span className="faint t-2xs mono">×{rects[id]!.length}</span>}
                         <i className={`chg ${p ? 'on' : ''}`} aria-label={p ? 'changed' : undefined} />
                       </button>
                       <button className={`eye ${p?.hidden ? 'off' : ''}`} aria-label={p?.hidden ? `Show ${label}` : `Hide ${label}`} title={p?.hidden ? 'Show' : 'Hide'} onClick={() => setPart(id, { hidden: p?.hidden ? undefined : true })}>{p?.hidden ? '◌' : '●'}</button>
+                      <button className={`eye lock ${p?.locked ? 'on' : ''}`} aria-label={p?.locked ? `Unlock ${label}` : `Lock ${label}`} aria-pressed={!!p?.locked} title={p?.locked ? 'Locked: clicks on the picture go past it' : 'Lock'} onClick={() => setPart(id, { locked: p?.locked ? undefined : true })}>{p?.locked ? '🔒' : '🔓'}</button>
                       <button className="eye trash" disabled={!!p?.hidden} aria-label={`Delete ${label}`} title="Delete (Del) · Ctrl Z brings it back" onClick={() => { setSel(id); setPart(id, { hidden: true }); }}>✕</button>
                       {!present && SHOWS_IN[id] && SAMPLES[draft.graphic]?.some((x) => x.id === SHOWS_IN[id]) && <button className="tpl-shows" onClick={() => { setSample(SHOWS_IN[id]!); setSel(id); }}>Shows in: {SAMPLES[draft.graphic]!.find((x) => x.id === SHOWS_IN[id])!.name} ›</button>}
                     </div>
@@ -331,7 +397,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 })}
               </div>
             </div>
-            <p className="faint t-xs">Double-click words on the picture to replace them. Select a part and press Delete to take it off the graphic; Ctrl Z or its eye brings it back. The blue dot means you changed that part. Click a part on the picture to select it; click again to reach the part behind. Drag a part above or below another to put it in front or behind; layers only matter where parts overlap.</p>
+            <p className="faint t-xs">Double-click words on the picture to replace them. Select a part and press Delete to take it off the graphic; Ctrl Z or its eye brings it back. The blue dot means you changed that part. Click the picture to select a component; double-click to go into one of its layers; right-click (or Alt-click) lists every layer under the pointer; Esc goes back up. Layers are listed front to back: drag one above or below its neighbours to change what sits in front (Ctrl ] and Ctrl [ step it). The lock stops a layer being picked on the picture.</p>
           </aside>
           <section className="tpl-mid">
             <div className="tpl-cvbar">
@@ -339,13 +405,13 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 <button aria-pressed={compare === 'default'} onClick={() => setCompare('default')}>Default</button>
                 <button aria-pressed={compare === 'mine'} onClick={() => setCompare('mine')}>Your template</button>
               </div>
-              {SAMPLES[draft.graphic] && (
+              {samples && (
                 <span className="tpl-anchor">
-                  <button className="btn small" aria-haspopup="menu" aria-expanded={menu === 'sample'} onClick={() => setMenu(menu === 'sample' ? null : 'sample')}>Sample: {SAMPLES[draft.graphic]!.find((x) => x.id === sample)?.name ?? (draft.graphic === 'hud' ? 'Round live' : 'Starting soon')} ▾</button>
+                  <button className="btn small" aria-haspopup="menu" aria-expanded={menu === 'sample'} onClick={() => setMenu(menu === 'sample' ? null : 'sample')}>Sample: {samples!.find((x) => x.id === sample)?.name ?? samples![0]!.name} ▾</button>
                   {menu === 'sample' && (
                     <div className="tpl-menu" role="menu" aria-label="Sample">
-                      <span className="cap">{draft.graphic === 'hud' ? 'In-game HUD' : 'Screen'}</span>
-                      {SAMPLES[draft.graphic]!.map((x) => <button key={x.id} role="menuitemradio" aria-checked={(sample || SAMPLES[draft.graphic]![0]!.id) === x.id} onClick={() => { setSample(x.id); setMenu(null); }}>{x.name}</button>)}
+                      <span className="cap">{draft.graphic === 'hud' || draft.graphic === 'brhud' ? 'In-game HUD' : 'Screen'}</span>
+                      {samples!.map((x) => <button key={x.id} role="menuitemradio" aria-checked={(sample || samples![0]!.id) === x.id} onClick={() => { setSample(x.id); setMenu(null); }}>{x.name}</button>)}
                     </div>
                   )}
                 </span>
@@ -374,11 +440,11 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
             <div className="tpl-cvwrap">
               <div className={`tpl-canvas bd-${backdrop}`} ref={canvas} style={backdrop === 'picture' && picture ? { backgroundImage: `url(${picture})` } : undefined}>
                 <iframe ref={frame} title={`Preview of ${graphicTitle(draft.graphic)}`} tabIndex={-1} key={`${draft.graphic}-${backdrop}`}
-                  src={templatePreviewUrl(s, draft.graphic, { editorKey: key, canvas: '1', ...(backdrop === 'game' ? { bg: '1' } : { clear: '1' }) })}
+                  src={templatePreviewUrl(s, draft.graphic, { editorKey: key, canvas: '1', ...(draft.layout ? { mode: draft.layout } : {}), ...(backdrop === 'game' ? { bg: '1' } : { clear: '1' }) })}
                   style={{ transform: `scale(${scale})` }} />
                 <div className="tpl-safe" aria-hidden="true"><span>TITLE SAFE</span></div>
-                <div className="tpl-hits" onPointerDown={(e) => { setDataNote(null); onDown(e); }} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-                  onDoubleClick={() => { const pt = parts.find((x) => x[0] === sel); const b = pt && union(pt[0]); if (!pt || !b) return; if (pt[2]) setWordsAt({ id: pt[0], box: b }); else setDataNote({ box: b, label: pt[1] }); }}>
+                <div className="tpl-hits" onPointerDown={(e) => { if (e.button !== 0) return; setDataNote(null); setHere(null); onDown(e); }} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+                  onDoubleClick={onDouble} onContextMenu={onContext}>
                   {compare === 'mine' && parts.map(([id, label]) => (rects[id] ?? []).map((r, i) => (
                     <div key={id + i} className={`tpl-hot ${id === sel ? 'on' : ''}`} data-label={i === 0 ? label : undefined}
                       style={{ left: r[0]! * scale, top: r[1]! * scale, width: r[2]! * scale, height: r[3]! * scale }} />
@@ -396,6 +462,20 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                       <b>{dataNote.label}</b> shows the match's own words (teams, players, agents, scores), so they can't be typed here. Change its font, size and colour on the right, or the words in Teams/Players and Match data.
                     </div>
                   )}
+                  {here && (
+                    <div className="tpl-here" role="menu" aria-label="Layers here" style={{ left: here.x, top: here.y }} onPointerDown={(e) => e.stopPropagation()}>
+                      <p className="cap">Layers here · smallest first</p>
+                      {here.ids.map((h) => (
+                        <button key={h} role="menuitem" className={h === sel ? 'on' : ''} onClick={() => { setSel(h); if (compOf(h) !== h) setOpenGroups((g) => new Set(g).add(compOf(h))); setHere(null); }}>
+                          {labelOf(h)}{compOf(h) !== h && <small>{labelOf(compOf(h))}</small>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* The selected component's layers, outlined. */}
+                  {compare === 'mine' && compOf(sel) === sel && parts.filter((x) => compOf(x[0]) === sel && x[0] !== sel).flatMap(([id]) => (rects[id] ?? []).map((r, i) => (
+                    <div key={`k${id}${i}`} className="tpl-kid" style={{ left: r[0]! * scale, top: r[1]! * scale, width: r[2]! * scale, height: r[3]! * scale }} />
+                  )))}
                   {guide?.v !== undefined && <div className="tpl-guide v" style={{ left: guide.v * scale }} />}
                   {guide?.h !== undefined && <div className="tpl-guide h" style={{ top: guide.h * scale }} />}
                 </div>
@@ -410,13 +490,29 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                 <Group title="Position and size">
                   <Row label="Move"><div className="tpl-num2"><Num label="X" value={ps.x ?? 0} lo={-1920} hi={1920} onChange={(v) => set({ x: v || undefined }, 'x')} /><Num label="Y" value={ps.y ?? 0} lo={-1080} hi={1080} onChange={(v) => set({ y: v || undefined }, 'y')} /></div><button type="button" className={`tpl-rd ${changed('x') || changed('y') ? 'set' : ''}`} aria-label="Reset position" disabled={!changed('x') && !changed('y')} onClick={() => set({ x: undefined, y: undefined })} /></Row>
                   <Row label="Scale"><Num label="%" value={Math.round((ps.scale ?? 1) * 100)} lo={25} hi={300} onChange={(v) => set({ scale: v === 100 ? undefined : v / 100 }, 'scale')} /><Reset k="scale" /></Row>
-                  <Row label="Layer"><div className="row g-1"><button className="chipbtn" onClick={() => set({ z: Math.max(-9, (ps.z ?? 0) - 1) || undefined })}>Back</button><span className="mono t-xs">{ps.z ?? 0}</span><button className="chipbtn" onClick={() => set({ z: Math.min(9, (ps.z ?? 0) + 1) || undefined })}>Front</button></div><Reset k="z" /></Row>
+                  <Row label="Layer"><div className="row g-1"><button className="chipbtn" onClick={() => step(part[0], -1)}>Back</button><span className="mono t-xs" style={{ whiteSpace: 'nowrap' }} title="Place from the front among its neighbours">{siblingsOf(part[0]).indexOf(part[0]) + 1}/{siblingsOf(part[0]).length}</span><button className="chipbtn" onClick={() => step(part[0], 1)}>Front</button></div><Reset k="z" /></Row>
                 </Group>
+                {slots[part[0]] && (
+                  <Group title="Picture">
+                    <div className="tpl-pic">
+                      <span className="tpl-pic-thumb" style={ps.picture ? { backgroundImage: `url(http://127.0.0.1:${s.engine.port}${ps.picture.src})` } : undefined}>{ps.picture ? '' : 'The graphic’s own'}</span>
+                      <span className="stack g-1"><button className="btn small" onClick={() => setPicking(true)}>Change picture</button>
+                        <span className="faint t-xs">{ps.picture ? `${KIND_LABEL[ps.picture.kind]}${isKitPicture(ps.picture) ? ' · from the official pack' : ''}` : `Takes ${slots[part[0]] === 'background' ? 'wallpapers and maps' : slots[part[0]]!.startsWith('logo-') ? 'the kit’s own logo' : KIND_LABEL[slots[part[0]] as keyof typeof KIND_LABEL]?.toLowerCase() ?? 'pictures'}`}</span></span>
+                    </div>
+                    {ps.picture && (
+                      <>
+                        <Row label="Fit"><Chips value={ps.picture.fit ?? 'cover'} options={[['cover', 'Fill'], ['contain', 'Whole picture']]} onPick={(v) => set({ picture: { ...ps.picture!, fit: v === 'contain' ? 'contain' : undefined } })} /><span /></Row>
+                        <Row label="Flip"><Chips value={ps.picture.flip ? 'on' : 'off'} options={[['off', 'As it is'], ['on', 'Mirrored']]} onPick={(v) => set({ picture: { ...ps.picture!, flip: v === 'on' ? true : undefined } })} /><button type="button" className="tpl-rd set" aria-label="Back to the graphic's own picture" title="Back to the graphic's own picture" onClick={() => set({ picture: undefined })} /></Row>
+                      </>
+                    )}
+                    {isKitPicture(ps.picture) && <p className="faint t-xs">Kit pictures are used as they are: no fill, colour or fading over them. Move, scale and flip are fine.</p>}
+                  </Group>
+                )}
                 <Group title="Visibility and opacity">
                   <Row label="Show"><Chips value={ps.hidden ? 'hidden' : 'shown'} options={[['shown', 'Shown'], ['hidden', 'Hidden']]} onPick={(v) => set({ hidden: v === 'hidden' ? true : undefined })} /><Reset k="hidden" /></Row>
-                  <Row label="Opacity"><Slider value={Math.round((ps.opacity ?? 1) * 100)} onChange={(v) => set({ opacity: v === 100 ? undefined : v / 100 }, 'opacity')} /><Reset k="opacity" /></Row>
+                  {!isKitPicture(ps.picture) && <Row label="Opacity"><Slider value={Math.round((ps.opacity ?? 1) * 100)} onChange={(v) => set({ opacity: v === 100 ? undefined : v / 100 }, 'opacity')} /><Reset k="opacity" /></Row>}
                 </Group>
-                <Group title="Fill">
+                {!isKitPicture(ps.picture) && <Group title="Fill">
                   <Row label="Type"><Chips value={ps.fill?.kind ?? 'own'} options={[['own', 'Own'], ['solid', 'Solid'], ['gradient', 'Gradient'], ['none', 'Clear']]} onPick={(v) => set({ fill: v === 'own' ? undefined : v === 'none' ? { kind: 'none' } : { kind: v as 'solid' | 'gradient', a: ps.fill?.a ?? 'brand.panel', ...(v === 'gradient' ? { b: ps.fill?.b ?? '#05060c', angle: ps.fill?.angle ?? 180 } : {}), alpha: ps.fill?.alpha ?? 0.92 } })} /><Reset k="fill" /></Row>
                   {ps.fill && ps.fill.kind !== 'none' && (
                     <>
@@ -426,7 +522,7 @@ export function TemplateEditor({ s, run, start, close }: { s: Snapshot; run: Run
                       {ps.fill.kind === 'gradient' && <Row label="Angle"><Num label="°" value={ps.fill.angle ?? 180} lo={0} hi={360} onChange={(v) => set({ fill: { ...ps.fill!, angle: v } }, 'fill-angle')} /><span /></Row>}
                     </>
                   )}
-                </Group>
+                </Group>}
                 <Group title="Text">
                   <ColorPick s={s} brand={brand} label="Colour" value={ps.color} own onPick={(c) => set({ color: c }, 'color')} reset={changed('color') ? () => set({ color: undefined }) : undefined} />
                   <Row label="Font"><select className="cell" aria-label="Font" value={ps.font ?? ''} onChange={(e) => { const font = (e.target.value || undefined) as PartStyle['font']; set({ font, ...(ps.weight && font ? { weight: snapWeight(font, ps.weight) } : {}) }); }}><option value="">Own</option>{FONTS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select><Reset k="font" /></Row>

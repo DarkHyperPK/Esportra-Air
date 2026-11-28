@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { GRAPHICS, DEFAULT_BRAND, graphicPage, templatesFor, validBrand, validTemplate, type Template } from '../src/shared/templates.ts';
+import { BUILTIN_BR_HUD, GRAPHICS, partsForLayout, DEFAULT_BRAND, graphicPage, templatesFor, validBrand, validTemplate, type Template } from '../src/shared/templates.ts';
 import { validRow } from '../src/main/autopilot/rundown.ts';
 import type { RowInput } from '../src/shared/autopilot.ts';
 
@@ -96,4 +96,47 @@ test('Break and Desk rows keep a look; for Break, over the game is the frame', (
   const d = validRow({ ...base, section: 'post', show: 'casters', template: 'tpl-d' }, 'd', 3, ['casters'], [frame, desk]);
   assert.equal(d.template, 'tpl-d');
   assert.throws(() => validRow({ ...base, template: 'tpl-d' }, 'b', 3, ['holding'], [frame, desk]), /different graphic/);
+});
+
+test('layers: order among siblings and lock are kept; the HUD draws only the order (20 Nov)', () => {
+  const t = validTemplate({ ...ok, parts: { panel: { z: 12, locked: true }, title: { z: -3 } } });
+  assert.deepEqual(t.parts.panel, { z: 12, locked: true });
+  assert.throws(() => validTemplate({ ...ok, parts: { panel: { z: 140 } } }), /layer must be between -99 and 99/);
+  assert.throws(() => validTemplate({ ...ok, parts: { panel: { locked: 'yes' } } }), /locked or not/);
+  assert.deepEqual(hud.styles({ z: 12, locked: true }), { 'z-index': '12' }, 'lock is an editor setting only');
+});
+
+test('picture slots: the same in Air and the HUD; only pack or upload pictures, of a kind that fits, kit art kept as it is (20 Nov)', async () => {
+  const { slotsOf, SLOTS } = await import('../src/shared/templates.ts');
+  for (const g of Object.keys(GRAPHICS)) assert.deepEqual(hud.slotsOf(g), slotsOf(g), g);
+  assert.deepEqual(hud.SLOTS, SLOTS);
+  const pack = `/packs/pubgm/${'a'.repeat(64)}.png`;
+  const base = { id: 'look1', name: 'Look', graphic: 'map-result|full' };
+  const t = validTemplate({ ...base, parts: { background: { picture: { src: pack, kind: 'wallpaper', flip: true } } } });
+  assert.deepEqual(t.parts.background, { picture: { src: pack, kind: 'wallpaper', flip: true } });
+  assert.throws(() => validTemplate({ ...base, parts: { background: { picture: { src: 'https://example.com/x.png', kind: 'wallpaper' } } } }), /game pack or your uploads/);
+  assert.throws(() => validTemplate({ ...base, parts: { background: { picture: { src: pack, kind: 'logo-ci' } } } }), /doesn't fit here/);
+  assert.throws(() => validTemplate({ ...base, parts: { background: { picture: { src: pack, kind: 'wallpaper' }, opacity: 0.4 } } }), /used as they are/);
+  assert.throws(() => validTemplate({ ...base, parts: { title: { picture: { src: pack, kind: 'wallpaper' } } } }), /comes from the graphic/);
+  // The producer's own upload may be faded.
+  validTemplate({ ...base, parts: { background: { picture: { src: '/air-assets/7d8c2c55-3a4e-4a8c-9f0e-1b2a3c4d5e6f', kind: 'other' }, opacity: 0.4 } } });
+  const css = hud.styles(t.parts.background);
+  assert.equal(css['background-image'], `url("${pack}")`);
+  assert.equal(css.transform, 'scaleX(-1)');
+});
+
+test('battle royale HUD templates: three built-ins, a layout only on the battle royale HUD (28 Nov)', () => {
+  assert.deepEqual(BUILTIN_BR_HUD.map((b) => [b.layout, b.name]), [['rail', 'Pro Rail'], ['grid', 'Broadcast Grid'], ['strip', 'Strip']]);
+  assert.equal(new Set(BUILTIN_BR_HUD.map((b) => b.id)).size, 3);
+  assert.equal(validTemplate({ id: 'br-1', name: 'My grid', graphic: 'brhud', layout: 'grid', parts: { 'grid.tiles': { radius: 8 } } }).layout, 'grid');
+  assert.equal(validTemplate({ id: 'br-2', name: 'Any', graphic: 'brhud', parts: {} }).layout, undefined);
+  assert.throws(() => validTemplate({ id: 'br-3', name: 'Bad', graphic: 'brhud', layout: 'wide', parts: {} }), /rail, grid or strip/);
+  assert.throws(() => validTemplate({ id: 'br-4', name: 'Bad', graphic: 'hud', layout: 'grid', parts: {} }), /rail, grid or strip/);
+  // The parts of the new elements are listed, with the same selectors in Air and the HUD.
+  const ids = GRAPHICS.brhud!.parts.map((p) => p[0]);
+  for (const id of ['rail.elims', 'rail.emblem', 'grid.head', 'grid.elims', 'grid.out', 'strip.alive', 'popup.foot', 'popup.pages', 'elim.tick']) assert.ok(ids.includes(id), id);
+  const strip = partsForLayout(GRAPHICS.brhud!.parts, 'strip').map((p) => p[0]);
+  assert.ok(strip.includes('strip.alive') && strip.includes('popup.rows') && strip.includes('elim.name') && strip.includes('moment'), 'its own and the common parts');
+  assert.ok(!strip.some((id) => id.startsWith('rail') || id.startsWith('grid') || id.startsWith('chip')), 'not the other layouts');
+  assert.equal(partsForLayout(GRAPHICS.brhud!.parts, undefined).length, GRAPHICS.brhud!.parts.length, 'no layout: every part');
 });

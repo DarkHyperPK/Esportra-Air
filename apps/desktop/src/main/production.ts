@@ -4,14 +4,14 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { hostname } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { BANNER_THEMES, type CheckItem, type CorrectionCall, type Match, type LayerRow, type MonitorFrame, type PollInput, type SceneStatus, type QuickMatchInput, type NewMatchInput, type Setup, type Snapshot, type Team } from '../shared/api.ts';
 import type { EngineClient, EngineStatus } from './engine-client.ts';
 import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from '../../../../packages/capture/src/gep.ts';
 import type { ObsLink } from './obs.ts';
 import type { BuildScene, BuildSlot } from './scene-build.ts';
-import { SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, sourceName, type SlotId } from '../shared/scenes.ts';
+import { LOBBY_SCENE_KEYS, SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, lobbySlotWanted, sourceName, type SlotId } from '../shared/scenes.ts';
 import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
@@ -27,6 +27,21 @@ import { isOwnScreen, ownScreen, ownScreenId, pngSize, validOwn, type OwnGraphic
 import { HUD_ROW, defaultSection, type Section } from '../shared/autopilot.ts';
 import { join } from 'node:path';
 import { ArtCache, type ArtStatus } from './art-cache.ts';
+import { GamePacks } from './game-packs.ts';
+import { Lobbies } from './br-lobbies.ts';
+import { rosterView } from './br-roster-view.ts';
+import { BrFormat } from './br-format.ts';
+import { SheetImporter, type ImportInput, type PictureInput } from './sheet-import.ts';
+import { EventJournal } from './event-journal.ts';
+import { EventFiles } from './event-files.ts';
+import { BrGraphics, mergeLook, validLook as validLobbyLook, validTheme } from './br-graphics.ts';
+import { BrLiveFeed } from './br-live.ts';
+import { BrRun } from './br-run.ts';
+import { gameState } from '../shared/br.ts';
+import { targetMatch } from '../shared/br-run.ts';
+import { PcobRecorder } from './pcob-recorder.ts';
+import { BrAutopilot } from './br-autopilot.ts';
+import { LICENSED_PACKS, assetSrc, type PackStatus } from '../shared/game-assets.ts';
 import { Rehearsal } from './rehearsal.ts';
 import type { EsportraAccount } from './esportra.ts';
 import { JoinHost } from './join.ts';
@@ -47,6 +62,7 @@ import { COLORS, tagFor, tagsFor } from './team-tags.ts';
 import { EsportraMatches } from './esportra-matches.ts';
 import { VetoOutbox } from './esportra-veto-outbox.ts';
 import { EsportraSync } from './esportra-sync.ts';
+import { EsportraStages } from './esportra-stages.ts';
 import { MapRecords, type RecordChoice } from './map-records.ts';
 import { PauseHint } from './pause-hint.ts';
 import { MatchDataService } from './match-data.ts';
@@ -61,7 +77,11 @@ import { checks } from './readiness.ts';
 import { CueDeck, type GraphicAction } from './cue-deck.ts';
 import { OwnGraphics } from './own-graphics-service.ts';
 import { Looks } from './looks.ts';
-import { planScenes, sourcesMissing } from './scene-plan.ts';
+import { planLobbyScenes, planScenes, sourcesMissing, vmixPages } from './scene-plan.ts';
+import { VmixLink } from './vmix.ts';
+import { lanAddresses } from './join.ts';
+import { pageHost, type GraphicsLan } from '../shared/graphics-lan.ts';
+import { isLoopback } from '../shared/vmix.ts';
 import { PlayerCams } from './player-cams.ts';
 import { companionAct, companionHello, type CompanionTarget } from './companion-bridge.ts';
 import { obsSceneView, roomReadout } from './snapshot-parts.ts';
@@ -72,7 +92,7 @@ import { applyEventPatch, engineConfig, newEvent, onAir, renewTalentLink, upsert
 
 export interface ProductionDeps {
   store: Store;
-  engine: Pick<EngineSupervisor, 'state' | 'error' | 'reattached' | 'status' | 'port' | 'on' | 'dataDir' | 'hudRoot'> & { client: EngineClient };
+  engine: Pick<EngineSupervisor, 'state' | 'error' | 'reattached' | 'status' | 'port' | 'on' | 'dataDir' | 'hudRoot'> & Partial<Pick<EngineSupervisor, 'host' | 'setHost'>> & { client: EngineClient };
   obs: ObsLink;
   capture: { state: GepBridge['state']; reason: string | null; start(): void; stop(): void; on(event: 'change', listener: () => void): unknown; role?: PcRole; setRole?(role: PcRole): void };
   /** Encrypted small secrets (the join code). Without it they last only for this run. */
@@ -84,6 +104,14 @@ export interface ProductionDeps {
   /** Overrides for tests. */
   lanAddresses?: () => string[];
   artFetch?: typeof fetch;
+  /** How Air reads the PUBG MOBILE observer client (tests pass their own). */
+  pcobFetch?: typeof fetch;
+  /** Test hook: how vMix is reached (src/main/vmix.ts). */
+  vmixFetch?: typeof fetch;
+  /** Where Record PCOB writes (Documents/Esportra Air recordings); without it recording is not available. */
+  recordingsDir?: string;
+  /** Where the event journals are kept (userData/events); without it no journal is written. */
+  journalDir?: string;
   /** Where agent and map pictures are downloaded from (tests use a stand-in). */
   artOrigin?: string;
   ingest: Pick<IngestClient, 'target'>;
@@ -95,6 +123,8 @@ export interface ProductionDeps {
   now?: () => number;
   /** Fixed Companion port (tests). */
   companionPort?: number;
+  /** Auto-backup debounce in ms (tests; default 10 s). */
+  autoBackupMs?: number;
 }
 
 export { tagFor, tagsFor } from './team-tags.ts';
@@ -143,6 +173,24 @@ export class Production extends EventEmitter {
   readonly autopilot: Autopilot;
   readonly stats: CaptureStats;
   readonly art: ArtCache;
+  readonly packs: GamePacks;
+  readonly lobbies: Lobbies;
+  /** Safe saves (27 Nov): the event journal, event files and the auto-backup folder. */
+  readonly journal: EventJournal | null;
+  readonly eventFiles: EventFiles;
+  readonly brGraphics: BrGraphics;
+  /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
+  readonly brLive: BrLiveFeed;
+  /** The run sheet: arm, remake, void, end, confirm, edit, adjust, days, resume (src/main/br-run.ts). */
+  readonly brRun: BrRun;
+  /** Format (match generator, copy a lobby, saved points tables) and the list import: src/main/br-format.ts, src/main/sheet-import.ts. */
+  readonly brFormat: BrFormat;
+  readonly sheets: SheetImporter;
+  readonly stages: EsportraStages;
+  readonly pcobRecorder: PcobRecorder;
+  /** vMix's browser inputs pointed at Air's pages (src/main/vmix.ts). */
+  readonly vmix: VmixLink;
+  readonly brAuto: BrAutopilot;
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
   readonly link: LinkClient;
@@ -163,6 +211,103 @@ export class Production extends EventEmitter {
     this.stats = deps.stats ?? new CaptureStats();
     this.art = new ArtCache({ catalogue: join(deps.engine.hudRoot, 'core', 'catalog.js'), dir: join(deps.engine.dataDir, 'art'), fetch: deps.artFetch, ...(deps.artOrigin ? { origin: deps.artOrigin } : {}) });
     this.art.on('change', () => this.emit('change'));
+    // Game packs (20 Nov): official pictures hosted by Esportra, downloaded once a licence is confirmed.
+    this.packs = new GamePacks({
+      dir: join(deps.engine.dataDir, 'packs'), fetch: deps.artFetch,
+      offer: async (game) => { if (!deps.esportra) throw new Error('Sign in to Esportra to download the game pack.'); return deps.esportra.gamePack(game); },
+    });
+    this.packs.on('change', () => this.emit('change'));
+    // The event journal and event files (27 Nov): src/main/event-journal.ts, src/main/event-files.ts.
+    this.journal = deps.journalDir ? new EventJournal(deps.journalDir, deps.now) : null;
+    // Battle royale lobbies (20 Nov): src/main/br-lobbies.ts.
+    this.lobbies = new Lobbies({
+      journal: this.journal ?? undefined,
+      store: deps.store, log: (t) => this.log.add(t), changed: () => this.emit('change'),
+      patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
+      live: (id) => (!!this.gameLocked() || this.brLive.live) && deps.store.data.selectedLobbyId === id,
+      extra: (l) => this.brGraphics.roomFields(l),
+      // Typed results run the post-game Rundown when no observer feed does it (Free Fire, or no Game data).
+      typed: (l, n) => { if (!this.brLive.live && this.lobbies.selected?.id === l.id) this.brAuto.onMoment('game.end', { game: n, results: true }); },
+    });
+    // Lobby graphics on air (22 Nov): src/main/br-graphics.ts.
+    this.brGraphics = new BrGraphics({
+      action: async (room, name, args) => { if (!deps.engine.status) throw new Error('The graphics engine is not running.'); await this.client.post('/control/action', { match: room, name, args }); },
+      assets: (l) => (deps.store.data.events.find((e) => e.id === l.eventId)?.gameLicence?.[l.game] ? this.packs.assets(l.game) : []),
+      templates: (l) => ({ ...this.looks.state(), airBrand: this.brandOf(deps.store.data.events.find((e) => e.id === l.eventId) ?? null) }),
+      templateGraphic: (id) => this.looks.templates.find((t) => t.id === id)?.graphic ?? null,
+      eventName: (l) => deps.store.data.events.find((e) => e.id === l.eventId)?.name ?? '',
+      event: (l) => deps.store.data.events.find((e) => e.id === l.eventId) ?? null,
+      persist: (shown) => { deps.store.data.lobbyShown = shown; deps.store.save(); },
+    });
+    // vMix (28 Nov): the same pages as the OBS plan, as URLs.
+    this.vmix = new VmixLink({
+      pages: () => vmixPages(this.buildPlan()),
+      load: () => deps.store.data.vmix,
+      save: (v) => { deps.store.data.vmix = v; deps.store.save(); },
+      lan: () => this.graphicsLan().address,
+      lanOn: () => this.graphicsLan().on,
+      fetch: deps.vmixFetch,
+      log: (t) => this.log.add(t), changed: () => this.emit('change'),
+    });
+    // PUBG MOBILE live data (24 Nov): src/main/br-live.ts.
+    this.pcobRecorder = new PcobRecorder({ dir: deps.recordingsDir ?? join(tmpdir(), 'Esportra Air recordings'), changed: () => this.emit('change'), now: deps.now });
+    this.brLive = new BrLiveFeed({
+      lobby: () => this.lobbies.selected,
+      patch: async (code, fields) => { if (deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(code)}`, fields); },
+      save: (id, n, results, feed, extra) => this.lobbies.saveFeed(id, n, results, feed, extra),
+      target: (l) => { const g = targetMatch(l); return g ? { n: g.n, state: gameState(g) } : null; },
+      state: (id, n, to, at) => this.brRun.onFeedState(id, n, to, at),
+      checkpoint: (cp) => this.brRun.checkpoint(cp),
+      learn: (id, seen) => this.lobbies.learnOpenIds(id, seen),
+      event: (name, data) => this.brAuto.onMoment(name, data),
+      log: (t) => this.log.add(t), changed: () => this.emit('change'),
+      fetch: deps.pcobFetch,
+      tap: (route, status, body) => this.pcobRecorder.record(route, status, body),
+      air: (event) => this.pcobRecorder.air(event),
+      recording: () => this.pcobRecorder.on,
+    });
+    // The lobby's Rundown run from the feed (24 Nov): src/main/br-autopilot.ts.
+    this.brAuto = new BrAutopilot({
+      lobby: () => this.lobbies.selected,
+      take: async (l, screen) => { await this.brGraphics.take(l, screen); this.emit('change'); },
+      log: (t) => this.log.add(t), changed: () => this.emit('change'),
+      persist: (lobbyId, p) => { const d = deps.store.data; d.brAutopilot = { ...(d.brAutopilot ?? {}) }; if (p) d.brAutopilot[lobbyId] = p; else delete d.brAutopilot[lobbyId]; deps.store.save(); },
+    });
+    // What was running before Air closed: the on-air lobby graphic, and an autopilot run to offer again.
+    this.brGraphics.load(deps.store.data.lobbyShown);
+    this.brAuto.load(deps.store.data.brAutopilot?.[deps.store.data.selectedLobbyId ?? ''] ?? null);
+    // The run sheet (27 Nov): days, armed matches, confirm, remake, void, adjustments, checkpoints.
+    this.brRun = new BrRun({
+      lobbies: this.lobbies, store: deps.store, feed: this.brLive, journal: this.journal,
+      pcob: () => this.brLive.status, testRunning: () => !!this.gameLocked(),
+      user: () => deps.store.data.esportra?.email,
+      log: (t) => this.log.add(t), changed: () => this.emit('change'), now: deps.now,
+      autopilot: { pending: () => this.brAuto.pending, resume: () => this.brAuto.resume(), discard: () => this.brAuto.discard() },
+    });
+    this.brFormat = new BrFormat({ lobbies: this.lobbies, store: deps.store, changed: () => this.emit('change') });
+    this.sheets = new SheetImporter({
+      store: deps.store, storeImage: (raw, type) => this.storeImage(raw, type), libraryChanged: () => this.libraryChanged(),
+      lobbies: this.lobbies, game: () => this.setup.game ?? null, log: (t) => this.log.add(t),
+    });
+    // Use a stage from Esportra (28 Nov, read only): src/main/esportra-stages.ts.
+    this.stages = new EsportraStages({
+      account: () => deps.esportra, store: deps.store, lobbies: this.lobbies, game: () => this.setup.game ?? null,
+      eventOpen: () => this.lobbies.selected?.eventId ?? null, storeImage: (raw, type) => this.storeImage(raw, type),
+      libraryChanged: () => this.libraryChanged(), save: () => this.save(), log: (t) => this.log.add(t), changed: () => this.emit('change'), now: () => (deps.now ?? Date.now)(),
+    });
+    this.eventFiles = new EventFiles({
+      store: deps.store, journal: this.journal, version: deps.version, now: deps.now, debounceMs: deps.autoBackupMs,
+      assets: {
+        get: async (id) => { try { return await this.client.getBytes(`/air-assets/${id}`); } catch { return null; } },
+        put: async (id, bytes) => { if (!deps.engine.status) throw new Error('The graphics engine is not running, so the pictures in the file cannot be kept. Start it and open the file again.'); await this.client.putBytes(`/control/assets/${id}`, bytes); },
+      },
+      selectedEventId: () => (gameOf(this.setup.game)?.shape === 'lobby' ? this.lobbies.selected?.eventId : this.match?.eventId) ?? this.lobbies.selected?.eventId ?? this.match?.eventId ?? null,
+      live: () => !!this.gameLocked() || this.brLive.live,
+      imported: async () => { this.own.syncScreens(); this.lobbies.refresh(); this.save(); await this.lobbies.publish().catch(() => {}); },
+      changed: () => this.emit('change'), log: (t) => this.log.add(t),
+    });
+    this.packs.on('change', () => void this.lobbies.publish().catch(() => {}));
+    void this.startPacks();
     this.rehearsal = new Rehearsal({
       client: () => deps.engine.client, store: deps.store, match: () => this.match, screens: () => this.setup.screens,
       seed: (room) => this.seedSample(room, { banner: false, firstMap: true }), feedLive: () => deps.capture.state === 'live', changed: () => this.emit('change'),
@@ -236,7 +381,7 @@ export class Production extends EventEmitter {
       store: deps.store, account: () => deps.esportra ?? null, matchData: this.matchData, flipped: (m) => this.esportraSync.flipped(m),
       save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('change'), now: () => (deps.now ?? Date.now)(),
     });
-    if (deps.esportra) this.esportraSync.start();
+    if (deps.esportra) { this.esportraSync.start(); this.stages.start(); }
     this.spaces = new SponsorSpaces({
       match: () => this.match, eventOf: (m) => this.eventOf(m), requireEvent: (id) => this.requireEvent(id), putEvent: (e) => this.putEvent(e),
       patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
@@ -409,6 +554,30 @@ export class Production extends EventEmitter {
     this.applyKeys();
   }
 
+  /** Whether other PCs may load the graphics, and this PC's network address for them. */
+  graphicsLan(): GraphicsLan {
+    return { on: this.deps.store.data.graphicsLan === true, address: (this.deps.lanAddresses ?? lanAddresses)()[0] ?? null };
+  }
+
+  /** Let other PCs on the network read the graphics: the engine restarts listening on the network (or on this PC only). */
+  async setGraphicsLan(on: boolean) {
+    const data = this.deps.store.data;
+    if ((data.graphicsLan === true) === on) return;
+    if (this.gameLocked() || this.brLive.live) throw new Error('Stop game data or the test round before changing this: the graphics restart for a moment.');
+    if (!this.deps.engine.setHost) throw new Error('The graphics engine cannot change who can load it.');
+    const before = data.graphicsLan;
+    data.graphicsLan = on;
+    try {
+      await this.deps.engine.setHost(on ? '0.0.0.0' : '127.0.0.1');
+    } catch (error) {
+      data.graphicsLan = before;
+      throw error;
+    } finally {
+      this.save();
+    }
+    this.log.add(on ? 'Other PCs on the network can now load the graphics (read only).' : 'Graphics are on this PC only again.');
+  }
+
   setGlobalKeys(on: boolean) {
     this.deps.store.data.globalKeys = on === true;
     this.applyKeys();
@@ -428,6 +597,27 @@ export class Production extends EventEmitter {
 
   stopKeys() {
     this.globalKeys?.stop();
+    this.eventFiles.stop();
+  }
+
+  // ── safe saves (27 Nov) ──
+
+  /** The saved copies of air.json, newest first. */
+  backupList() { return this.deps.store.backups(); }
+
+  /** Loads a backup as the current data. Refused while game data or a test round runs; the data as it is now is backed up first. */
+  async backupRestore(name: string) {
+    if (this.gameLocked() || this.brLive.live) throw new Error('Game data or a test is running. Stop it before restoring a backup.');
+    this.deps.store.restoreBackup(name);
+    this.log.add('Restored a backup of Air’s saved data');
+    this.autopilot.loadForMatch();
+    await this.syncEngine().catch(() => {});
+    this.emit('change');
+  }
+
+  dismissRecovered() {
+    this.deps.store.recovered = null;
+    this.emit('change');
   }
 
   async setMoments(ids: string[]) {
@@ -487,6 +677,7 @@ export class Production extends EventEmitter {
     const setup = this.setup;
     const outputs = setup.screens.filter((s) => s.enabled && !s.hosted).map((s) => ({ id: s.outputId, overlay: s.overlay, matchCode: match?.code ?? 'MAIN' }));
     await this.client.put('/control/outputs', { outputs });
+    await this.lobbies.publish().catch(() => {});
     this.deps.ingest.target(match ? this.client.ingestUrl(match.code) : null);
     if (!match) {
       this.log.target(null);
@@ -911,6 +1102,7 @@ export class Production extends EventEmitter {
     }
     this.save();
     if (selected) await this.syncEngine();
+    this.lobbies.refresh();
   }
 
   async saveTeam(input: Partial<LibTeam>) {
@@ -927,7 +1119,7 @@ export class Production extends EventEmitter {
   }
 
   async savePlayer(input: Partial<LibPlayer>) {
-    const player = validPlayer(input, this.library);
+    const player = validPlayer(input, this.library, this.setup.game ?? null);
     const lib = this.library;
     lib.players = lib.players.some((p) => p.id === player.id) ? lib.players.map((p) => (p.id === player.id ? player : p)) : [...lib.players, player];
     await this.libraryChanged();
@@ -986,8 +1178,92 @@ export class Production extends EventEmitter {
 
   readonly looks: Looks;
   get templates(): Template[] { return this.looks.templates; }
-  templateSave(input: unknown) { return this.looks.save(input); }
-  templateDelete(id: string) { return this.looks.delete(id); }
+  templateSave(input: unknown) { const r = this.looks.save(input); void this.lobbies.publish().catch(() => {}); return r; }
+  templateDelete(id: string) {
+    const r = this.looks.delete(id);
+    // A deleted look leaves every lobby that used it.
+    for (const l of this.lobbies.list()) { const t = l.look?.templates ?? {}; if (Object.values(t).includes(id)) this.lobbies.setLook(l.id, { ...BrGraphics.lookOf(l), templates: Object.fromEntries(Object.entries(t).filter(([, v]) => v !== id)) }); }
+    void this.lobbies.publish().catch(() => {});
+    return r;
+  }
+
+  // ── battle royale lobbies on air: src/main/br-graphics.ts ──
+  lobbyLook(id: string, patch: unknown) {
+    const l = this.lobbies.find(id);
+    const p = (patch ?? {}) as Record<string, unknown>;
+    const cur = BrGraphics.lookOf(l);
+    const merged = mergeLook(cur, p, (t) => this.looks.templates.find((x) => x.id === t)?.layout);
+    this.lobbies.setLook(id, validLobbyLook(merged, (t) => this.looks.templates.find((x) => x.id === t)?.graphic ?? null));
+  }
+  lobbyPreview(id: string, theme?: unknown) {
+    const l = this.lobbies.find(id);
+    const f = this.brGraphics.roomFields(theme === undefined ? l : { ...l, look: { ...BrGraphics.lookOf(l), theme: validTheme(theme) } });
+    return { airPack: f.airPack, airBrTheme: f.airBrTheme, brEmblem: f.brEmblem, brEvent: f.brEvent, brSponsors: f.brSponsors };
+  }
+  pcobConnect(host: unknown, consent: unknown) {
+    if (!this.lobbies.selected) throw new Error('Choose the lobby on the graphics first.');
+    this.brLive.connect(String(host ?? ''), consent === true);
+    this.deps.store.data.pcobHost = this.brLive.status.host;
+    this.deps.store.save();
+  }
+  pcobDisconnect() { this.pcobRecorder.stop('Game data was disconnected.'); this.brLive.disconnect(); }
+  /** Record PCOB: only while Air reads the observer PC (the producer's consent is given when connecting). */
+  pcobRecord(on: unknown) {
+    if (on !== true) { this.pcobRecorder.stop(); return; }
+    if (this.brLive.status.state === 'off') throw new Error('Connect to the observer PC first (and tick the consent box). Nothing is recorded without it.');
+    this.pcobRecorder.start();
+  }
+  // ── PUBG MOBILE preparation (28 Nov) ──
+  sheetPictures(input: PictureInput) { return this.sheets.pictures(input); }
+  /** Saves an import. Refused while a match is live or a test runs: Teams/Players must not change under a show. */
+  async sheetImport(input: ImportInput) {
+    const live = this.lobbies.busy();
+    if (live || this.gameLocked()) throw new Error(live ? `Match ${live.games.find((g) => g.state === 'live' || g.state === 'finishing')?.n ?? ''} of ${live.title} is live. Import after it is confirmed, remade or ended.` : 'A test or game data is running. Stop it before importing.');
+    return this.sheets.import(input);
+  }
+  // ── Esportra stages (28 Nov, read only) ──
+  esportraStages() { return this.stages.list(); }
+  esportraStageRead(stageId: string) { return this.stages.detail(String(stageId)); }
+  /** Uses a stage. Refused while a match is live or a test runs: Teams/Players and lobbies must not change under a show. */
+  async esportraStageUse(stageId: string, eventId?: string | null) {
+    const live = this.lobbies.busy();
+    if (live || this.gameLocked()) throw new Error(live ? `Match ${live.games.find((g) => g.state === 'live' || g.state === 'finishing')?.n ?? ''} of ${live.title} is live. Use a stage after it is confirmed, remade or ended.` : 'A test or game data is running. Stop it before using a stage.');
+    await this.stages.use(String(stageId), eventId ? String(eventId) : null);
+  }
+  esportraStageRefresh(stageId: string) { return this.stages.refresh(String(stageId)); }
+  esportraStageFollow(stageId: string, part?: string) { return this.stages.follow(String(stageId), part === 'schedule' || part === 'roster' || part === 'scoring' || part === 'off' ? part : 'all'); }
+  pointsTableSave(input: unknown) { return this.brFormat.saveTable(input); }
+  pointsTableDelete(id: string) { this.brFormat.deleteTable(id); }
+  lobbyFormat(id: string, dayId: string, spec: unknown) { this.brFormat.generate(id, dayId, spec); }
+  async lobbyCopy(id: string, title: unknown) { await this.brFormat.copy(id, title); }
+  /** The roster check's "Use this UID" and "Pick player". */
+  rosterUid(lobbyId: string, playerId: string, uid: string) { this.lobbies.setPlayerUid(lobbyId, playerId, uid); }
+  pcobRecordingFile() { return this.pcobRecorder.view().file; }
+  pcobSeat(lobbyId: string, pcobTeamId: unknown, team: unknown) {
+    const id = Number(pcobTeamId);
+    if (!Number.isInteger(id) || id < 0 || id > 999) throw new Error('That team slot is not valid.');
+    this.lobbies.setSeat(lobbyId, id, typeof team === 'string' && team ? team : null);
+  }
+  /** Moments, the Rundown, autopilot and the post-game pick; switching autopilot off stops what it runs. */
+  lobbyShow(id: string, patch: unknown) {
+    this.lobbies.setShow(id, (patch ?? {}) as Record<string, unknown>);
+    if ((patch as Record<string, unknown> | null)?.autopilot === false) this.brAuto.stop();
+  }
+  /** Arms a match (and puts its lobby on the graphics first: the feed writes into the selected lobby only). */
+  async lobbyArm(lobbyId: string, matchId: string) {
+    this.lobbies.find(lobbyId);
+    await this.lobbies.select(lobbyId);
+    this.brRun.arm(lobbyId, matchId);
+  }
+  async lobbyResume() { await this.lobbies.select(this.brRun.resumeOffer()?.lobbyId ?? this.deps.store.data.selectedLobbyId ?? null); await this.brRun.resume(); }
+  async lobbyTake(id: string, screen: string | null) {
+    const l = this.lobbies.find(id);
+    // The producer's Take wins over whatever autopilot is running.
+    this.brAuto.stop();
+    if (this.deps.store.data.selectedLobbyId !== id) await this.lobbies.select(id);
+    await this.brGraphics.take(l, screen);
+    this.emit('change');
+  }
   private breakLook() { return this.looks.breakLook(); }
   /** Holders Air adds: Break's windows only with the frame look; a desk camera holder only for talent with a camera. */
   private slotWanted(id: string) {
@@ -1017,6 +1293,7 @@ export class Production extends EventEmitter {
       m.sponsorsOff = m.sponsorsOff.filter((id) => next.sponsors.some((s) => s.id === id));
     }
     this.save();
+    void this.lobbies.publish().catch(() => {});
     if (this.match?.eventId === next.id) await this.syncEngine();
   }
 
@@ -1058,6 +1335,7 @@ export class Production extends EventEmitter {
       if (data.autopilotProgress) delete data.autopilotProgress[m.id];
     }
     data.matches = data.matches.filter((m) => m.eventId !== id);
+    for (const [k, f] of Object.entries(data.esportraStages ?? {})) if (f.eventId === id) delete data.esportraStages![k];
     data.events = data.events.filter((e) => e.id !== id);
     if (selected?.eventId === id) {
       this.rehearsal.stop();
@@ -1068,6 +1346,50 @@ export class Production extends EventEmitter {
       return;
     }
     this.save();
+  }
+
+  // ── game packs: src/main/game-packs.ts ──
+
+  /** Whether any event confirmed a licence for this game's pack. */
+  packLicensed(game: string) { return this.deps.store.data.events.some((e) => !!e.gameLicence?.[game]); }
+
+  private async startPacks() {
+    for (const game of Object.keys(LICENSED_PACKS)) {
+      await this.packs.load(game);
+      if (this.packLicensed(game)) this.packs.start(game);
+    }
+  }
+
+  /** The producer confirms the event's tournament licence for a game's pack; the download starts. */
+  async eventLicence(eventId: string, game: string, input: { confirmed?: unknown; number?: unknown } = {}) {
+    if (!LICENSED_PACKS[game]) throw new Error('This game has no licensed pack.');
+    const event = this.requireEvent(eventId);
+    const licences = { ...(event.gameLicence ?? {}) };
+    if (input.confirmed === false) delete licences[game];
+    else {
+      const number = typeof input.number === 'string' ? input.number.replace(/[<>]/g, '').trim().slice(0, 40) : '';
+      licences[game] = { confirmedAt: Date.now(), ...(number ? { number } : {}) };
+    }
+    await this.putEvent({ ...event, gameLicence: licences });
+    if (this.packLicensed(game)) this.packs.start(game);
+  }
+
+  /** Tries the pack's download again now. */
+  async packDownload(game: string) {
+    if (!this.packLicensed(game)) throw new Error('Confirm the tournament licence on an event first.');
+    await this.packs.sync(game);
+    const st = this.packs.statusOf(game);
+    if (st.waiting) throw new Error(st.waiting);
+  }
+
+  /** The pack's pictures with their addresses on the graphics engine (for the asset browser). */
+  packAssets(game: string) {
+    const port = this.deps.engine.port;
+    return this.packs.assets(game).map((a) => ({ ...a, src: assetSrc(port, game, a), thumbSrc: assetSrc(port, game, a, true) }));
+  }
+
+  private packsView(): Array<PackStatus & { licensed: boolean; licence: string; rules: string[] }> {
+    return Object.entries(LICENSED_PACKS).map(([game, p]) => ({ ...this.packs.statusOf(game), licensed: this.packLicensed(game), licence: p.licence, rules: p.rules }));
   }
 
   async updateEvent(id: string, patch: EventPatch) {
@@ -1204,17 +1526,32 @@ export class Production extends EventEmitter {
   // ── OBS ──
 
   /** The scenes Air builds, with each enabled graphic in its scene (PRD picture 9; src/main/scene-plan.ts). */
+  /** Pages for OBS: this PC's address, or (OBS on another PC, and only with Graphics on the local network on) this PC's network address. */
+  private obsPageHost() {
+    return isLoopback(this.setup.obs.host) ? '127.0.0.1' : pageHost(this.graphicsLan());
+  }
+
   buildPlan(): BuildScene[] {
+    // A lobby game (PUBG MOBILE, Free Fire) builds from the selected lobby's pages (28 Nov); nothing without one.
+    if (this.lobbyGame()) {
+      const l = this.lobbies.selected;
+      if (!l) return [];
+      const ev = this.deps.store.data.events.find((e) => e.id === l.eventId) ?? null;
+      return planLobbyScenes({ port: this.deps.engine.port, code: l.code, sponsors: ev?.sponsors ?? [], host: this.obsPageHost() });
+    }
     const on = this.match ? onAir(this.match, this.eventOf(this.match)) : { talent: [], sponsors: [] };
-    return planScenes({ port: this.deps.engine.port, screens: this.setup.screens, talent: on.talent, sponsors: on.sponsors, slotWanted: (id) => this.slotWanted(id) });
+    return planScenes({ port: this.deps.engine.port, host: this.obsPageHost(), screens: this.setup.screens, talent: on.talent, sponsors: on.sponsors, slotWanted: (id) => this.slotWanted(id) });
   }
 
   /** Why the last Add to OBS failed, until one succeeds (shown on the Scenes check, not only as a toast). */
   private installError: string | null = null;
 
+  private lobbyGame() { return gameOf(this.setup.game)?.shape === 'lobby'; }
+
   async installGraphics() {
     const data = this.deps.store.data;
     try {
+      if (this.lobbyGame() && !this.lobbies.selected) throw new Error('Choose or create a lobby first, then add the scenes to OBS.');
       await this.deps.obs.build(this.buildPlan(), data.owned, (owned) => {
         data.owned = owned;
         this.deps.store.save();
@@ -1415,7 +1752,11 @@ export class Production extends EventEmitter {
   // ── Esportra: src/main/esportra-matches.ts ──
 
   readonly esportraMatches: EsportraMatches;
-  esportraSignIn(email: string, password: string) { return this.esportraMatches.signIn(email, password); }
+  async esportraSignIn(email: string, password: string) {
+    await this.esportraMatches.signIn(email, password);
+    // A pack that waited for a sign-in downloads now.
+    for (const game of Object.keys(LICENSED_PACKS)) if (this.packLicensed(game)) this.packs.start(game);
+  }
   async esportraSignOut() { this.esportraMatches.signOut(); }
   esportraRefresh() { return this.esportraMatches.refresh(); }
   esportraCheck() { return this.esportraMatches.check(); }
@@ -1707,6 +2048,7 @@ export class Production extends EventEmitter {
     });
   }
 
+  private snapSeq = 0;
   snapshot(): Snapshot {
     const { engine, obs, capture, version } = this.deps;
     const status: EngineStatus | null = engine.status;
@@ -1719,9 +2061,12 @@ export class Production extends EventEmitter {
       const o = status?.outputs.find((x) => x.id === s.outputId);
       return { screenId: s.id, title: s.title, overlay: s.overlay, url: `http://127.0.0.1:${engine.port}/o/${s.outputId}`, connections: o?.connections ?? 0, lastFrameAt: o?.lastFrameAt ?? null };
     });
-    const { missingScenes, missingSources, installed, sceneStatus } = obsSceneView(obs.status, this.buildPlan(), (id) => this.slotWanted(id));
+    const { missingScenes, missingSources, installed, sceneStatus } = this.lobbyGame()
+      ? obsSceneView(obs.status, this.buildPlan(), lobbySlotWanted, LOBBY_SCENE_KEYS)
+      : obsSceneView(obs.status, this.buildPlan(), (id) => this.slotWanted(id));
     const feedState = capture.state === 'live' && roomStatus?.lastFeedAt == null ? 'waiting' : capture.state;
     const snapshot: Snapshot = {
+      seq: ++this.snapSeq,
       version,
       engine: { state: engine.state, port: engine.port, reattached: engine.reattached, error: engine.error },
       setup: this.setup,
@@ -1761,6 +2106,8 @@ export class Production extends EventEmitter {
       playerPrep: this.deps.store.data.playerPrep ?? {},
       templateUse: this.templateUse(),
       showTemplates: this.shows.views(),
+      pointsTables: this.deps.store.data.pointsTables ?? [],
+      rosterCheck: rosterView(this.lobbies.selected, this.brLive.gameNow()),
       showTemplateOf: this.match ? this.deps.store.data.showTemplateOf?.[this.match.id] ?? null : null,
       library: { teams: this.library.teams, players: this.library.players },
       control: this.control,
@@ -1769,6 +2116,7 @@ export class Production extends EventEmitter {
       esportra: this.deps.esportra?.view() ?? signedOut(),
       esportraResults: this.esportraSync.view(this.match),
       esportraVeto: this.esportraSync.vetoView(this.match),
+      esportraStages: this.stages.view(),
       mapRecords: this.mapRecords.view(this.match),
       pauseHint: this.room?.airPause ? null : this.pauseHint.view(),
       mode: this.mode,
@@ -1779,7 +2127,20 @@ export class Production extends EventEmitter {
       log: this.log.list(),
       checks: [],
       recovery: this.recoveryText(),
+      recovered: this.deps.store.recovered,
+      autoBackup: this.eventFiles.view(),
       art: this.art.status,
+      packs: this.packsView(),
+      lobbies: this.lobbies.list(),
+      lobbyOnAir: this.lobbies.selected ? this.brGraphics.onAir(this.lobbies.selected) : null,
+      brResume: this.brRun.resumeOffer(),
+      brAuto: this.brAuto.status(),
+      pcobLive: this.brLive.live ? this.brLive.last : null,
+      pcobRecording: this.pcobRecorder.view(),
+      vmix: this.vmix.view(),
+      graphicsLan: this.graphicsLan(),
+      pcob: { ...this.brLive.status, host: this.brLive.status.host || this.deps.store.data.pcobHost || '127.0.0.1:10086' },
+      selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),
     };
     snapshot.checks = checks(snapshot);

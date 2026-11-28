@@ -22,6 +22,20 @@ test('existing matches move into Teams/Players once: teams by name, players by R
   assert.equal(lib.players.find((x) => x.name === 'Juno')!.photo, '/air-assets/00000000-0000-4000-8000-000000000001', 'a photo from a later match fills the gap');
 });
 
+test('a match arriving without photos or a logo takes them from Teams/Players (an Esportra import)', () => {
+  const lib = emptyLibrary();
+  const photo = '/air-assets/00000000-0000-4000-8000-000000000002', logo = '/air-assets/00000000-0000-4000-8000-000000000003';
+  linkMatch(match('Night Owls', 'Crimson Five', [[p('JUNO', 'Juno#NWL', photo)], [p('Kairo', 'Kairo#CRF')]]), lib);
+  lib.teams[0]!.logo = logo;
+  const fromEsportra = match('NIGHT OWLS', 'Crimson Five', [[p('Juno', 'Juno#NWL'), p('Newcomer', 'New#NWL')], [p('Kairo', 'Kairo#CRF')]]);
+  linkMatch(fromEsportra, lib);
+  assert.equal(fromEsportra.players[0][0]!.photo, photo, 'the player found by Riot ID brings the photo');
+  assert.equal(fromEsportra.players[0][0]!.name, 'Juno', 'the match keeps its own name');
+  assert.equal(fromEsportra.players[0][1]!.photo, '', 'a player the library does not know stays without one');
+  assert.equal(fromEsportra.teams[0].logo, logo, 'the team brings its logo');
+  assert.equal(fromEsportra.teams[1].logo, '', 'no logo anywhere: none');
+});
+
 test('a match follows the library: renames, moves and deletions', () => {
   const lib = emptyLibrary();
   const m = match('Night Owls', 'Crimson Five', [[p('Juno', 'JUNO#EU1'), p('Mira')], [p('Kairo')]]);
@@ -59,6 +73,8 @@ test('picking a team and its starters', () => {
   assert.equal(validTeam({ id: a.id, name: 'Paper Rex', color: '#123456' }, lib).id, a.id, 'saving a team under its own name is fine');
   assert.throws(() => validTeam({ name: 'paper rex' }, { ...lib, teams: lib.teams }), /already a team/);
   assert.throws(() => validPlayer({ name: 'X', gameId: 'nohash' }, lib), /Name#TAG/);
+  assert.equal(validPlayer({ name: 'X', gameId: 'IRP_ACE' }, lib, 'pubgm').gameId, 'IRP_ACE', 'PUBG MOBILE names have no #TAG');
+  assert.throws(() => validPlayer({ name: 'X', gameId: 'a'.repeat(33) }, lib, 'freefire'), /32 characters/);
   assert.equal(validTeam({ name: 'Team Liquid' }, emptyLibrary()).tag, 'TL');
 });
 

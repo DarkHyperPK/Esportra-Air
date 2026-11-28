@@ -62,6 +62,8 @@ export const LIBRARY: Record<GameId, LibraryItem[]> = {
     { overlay: 'casters', title: 'Casters', group: 'show', what: 'Two caster camera windows with names.', when: 'Desk segments.', scene: 'Casters' },
     { overlay: 'replay', title: 'Replay bug', group: 'show', what: 'A “Replay” mark over replays.', when: 'While a replay plays.', scene: 'Replay' },
   ],
+  pubgm: [],
+  freefire: [],
   cs2: [],
   lol: [],
   dota2: [],

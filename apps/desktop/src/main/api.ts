@@ -4,6 +4,7 @@ import type { Production } from './production.ts';
 import type { EventPatch, SponsorInput, TalentInput } from '../shared/model.ts';
 import type { GameId, Profile } from '../shared/games.ts';
 import type { ObsLink } from './obs.ts';
+import { readFileSync } from 'node:fs';
 import type { Secrets } from '../../../../packages/capture/src/secrets.ts';
 
 export interface ApiContext {
@@ -14,11 +15,19 @@ export interface ApiContext {
   /** Saves the manual as a PDF where the producer chooses (the app), or next to the dev data (dev host). */
   saveManualPdf?: () => Promise<string | null>;
   pickVideo?: () => Promise<string | null>;
+  /** Event files (27 Nov): where to save one, which one to open, and which folder is the auto-backup folder (null: cancelled). */
+  pickEventSave?: (defaultName: string) => Promise<string | null>;
+  pickEventOpen?: () => Promise<string | null>;
+  pickFolder?: () => Promise<string | null>;
+  /** The pictures folder for an import (the app's folder dialog); the dev host passes the folder in the call instead. */
+  pickPictures?: () => Promise<string | null>;
+  /** Shows a file in its folder (the app); the dev host does nothing. */
+  showFile?: (path: string) => void;
   /** A still picture of an overlay preview page, for lists (see thumbnails.ts). */
   thumbnail?: (url: string, key: string) => Promise<string | null>;
 }
 
-export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void | { id: string; name: string; url: string }> {
+export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown[]): Promise<Snapshot | string | null | void | { id: string; name: string; url: string } | unknown[] | Record<string, unknown> | object> {
   const p = ctx.production;
   const a = args as any[];
   switch (method) {
@@ -35,8 +44,83 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
       if (missing > 0) throw new Error(`${missing} picture${missing === 1 ? ' is' : 's are'} still missing. ${a.lastError ?? 'Riot’s picture server could not be reached.'}`);
       break;
     }
+    case 'eventLicence': await p.eventLicence(String(a[0]), String(a[1]), a[2] && typeof a[2] === 'object' ? a[2] : {}); break;
+    case 'packDownload': await p.packDownload(String(a[0])); break;
+    case 'packAssets': return p.packAssets(String(a[0]));
+    case 'lobbyCreate': await p.lobbies.create((a[0] ?? {}) as Parameters<typeof p.lobbies.create>[0]); break;
+    case 'lobbyUpdate': p.lobbies.update(String(a[0]), (a[1] ?? {}) as Record<string, unknown>); break;
+    case 'lobbyTeams': p.lobbies.setTeams(String(a[0]), a[1]); break;
+    case 'lobbyResult': p.lobbies.setResult(String(a[0]), Number(a[1]), a[2]); break;
+    case 'lobbyClearResult': p.lobbies.clearResult(String(a[0]), Number(a[1])); break;
+    case 'lobbySelect': await p.lobbies.select(a[0] === null ? null : String(a[0])); break;
+    case 'lobbyDelete': p.lobbies.remove(String(a[0])); break;
+    case 'lobbyLook': p.lobbyLook(String(a[0]), a[1]); break;
+    case 'lobbyShow': p.lobbyShow(String(a[0]), a[1]); break;
+    case 'pcobConnect': p.pcobConnect(a[0], a[1]); break;
+    case 'pcobDisconnect': p.pcobDisconnect(); break;
+    case 'vmixConnect': p.vmix.connect(String(a[0] ?? '')); break;
+    case 'vmixDisconnect': p.vmix.disconnect(); break;
+    case 'vmixPair': await p.vmix.pair(String(a[0]), a[1] === null || a[1] === undefined ? null : String(a[1])); break;
+    case 'vmixReload': await p.vmix.reload(String(a[0])); break;
+    case 'pcobRecord': p.pcobRecord(a[0]); break;
+    case 'pcobShowRecording': { const f = p.pcobRecordingFile(); if (f && ctx.showFile) ctx.showFile(f); break; }
+    case 'pcobSeat': p.pcobSeat(String(a[0]), a[1], a[2]); break;
+    case 'lobbyPreview': return p.lobbyPreview(String(a[0]), a[1]);
+    case 'lobbyArm': await p.lobbyArm(String(a[0]), String(a[1])); break;
+    case 'lobbyDisarm': p.brRun.disarm(String(a[0])); break;
+    case 'lobbyRemake': p.brRun.remake(String(a[0]), String(a[1])); break;
+    case 'lobbyVoid': p.brRun.voidMatch(String(a[0]), String(a[1]), a[2]); break;
+    case 'lobbyEndMatch': await p.brRun.endMatch(String(a[0]), String(a[1])); break;
+    case 'lobbyUpdateFromGame': await p.brRun.updateFromGame(String(a[0])); break;
+    case 'lobbyConfirm': p.brRun.confirm(String(a[0]), String(a[1])); break;
+    case 'lobbyEditConfirmed': p.brRun.editConfirmed(String(a[0]), String(a[1]), a[2], a[3]); break;
+    case 'lobbyAdjust': p.brRun.adjust(String(a[0]), a[1], a[2], a[3]); break;
+    case 'lobbyAdjustRemove': p.brRun.removeAdjustment(String(a[0]), String(a[1])); break;
+    case 'lobbyDayAdd': p.brRun.dayAdd(String(a[0]), (a[1] ?? {}) as Record<string, unknown>); break;
+    case 'lobbyDayEdit': p.brRun.dayEdit(String(a[0]), String(a[1]), (a[2] ?? {}) as Record<string, unknown>); break;
+    case 'lobbyDayStart': return p.brRun.dayStart(String(a[0]), String(a[1]), a[2] === true);
+    case 'lobbyDayClose': return a[2] === true ? p.brRun.dayClose(String(a[0]), String(a[1])) : p.brRun.dayCloseCheck(String(a[0]), String(a[1]));
+    case 'sheetPictures': {
+      const input = (a[0] ?? {}) as Parameters<typeof p.sheetPictures>[0];
+      const folder = input.token ? null : typeof input.folder === 'string' && input.folder ? input.folder : ctx.pickPictures ? await ctx.pickPictures() : null;
+      return input.token || folder ? p.sheetPictures({ ...input, folder }) : null;
+    }
+    case 'sheetImport': return p.sheetImport(a[0]);
+    case 'esportraStages': return p.esportraStages();
+    case 'esportraStageRead': return p.esportraStageRead(String(a[0] ?? ''));
+    case 'esportraStageUse': await p.esportraStageUse(String(a[0] ?? ''), typeof a[1] === 'string' ? a[1] : null); break;
+    case 'esportraStageRefresh': await p.esportraStageRefresh(String(a[0] ?? '')); break;
+    case 'esportraStageFollow': await p.esportraStageFollow(String(a[0] ?? ''), typeof a[1] === 'string' ? a[1] : undefined); break;
+    case 'pointsTableSave': return p.pointsTableSave(a[0]);
+    case 'pointsTableDelete': p.pointsTableDelete(String(a[0] ?? '')); break;
+    case 'lobbyFormat': p.lobbyFormat(String(a[0]), String(a[1]), a[2]); break;
+    case 'lobbyCopy': await p.lobbyCopy(String(a[0]), a[1]); break;
+    case 'rosterUid': p.rosterUid(String(a[0]), String(a[1]), String(a[2] ?? '')); break;
+    case 'lobbyResume': await p.lobbyResume(); break;
+    case 'lobbyResumeDismiss': p.brRun.dismissResume(); break;
+    case 'lobbyTake': await p.lobbyTake(String(a[0]), a[1] === null ? null : String(a[1])); break;
     case 'autopilotRestart': p.autopilotRestart(); break;
     case 'recoveryDismiss': p.dismissRecovery(); break;
+    case 'recoveredDismiss': p.dismissRecovered(); break;
+    case 'eventExport': {
+      const id = String(a[0] ?? '');
+      const path = ctx.pickEventSave ? await ctx.pickEventSave(p.eventFiles.defaultFileName(id)) : null;
+      return path ? p.eventFiles.save(id, path) : null;
+    }
+    case 'eventImportOpen': {
+      const path = ctx.pickEventOpen ? await ctx.pickEventOpen() : null;
+      return path ? p.eventFiles.check(readFileSync(path, 'utf8')) : null;
+    }
+    case 'eventImportConfirm': return p.eventFiles.confirm(String(a[0] ?? ''), a[1] === 'replace' ? 'replace' : 'copy');
+    case 'backupList': return p.backupList();
+    case 'backupRestore': await p.backupRestore(String(a[0] ?? '')); break;
+    case 'autoBackupChoose': {
+      const folder = ctx.pickFolder ? await ctx.pickFolder() : null;
+      if (folder) p.eventFiles.setFolder(folder);
+      break;
+    }
+    case 'autoBackupOff': p.eventFiles.setFolder(null); break;
+    case 'autoBackupNow': return p.eventFiles.backupNow();
     case 'rehearsalStart': await p.rehearsal.start(a[0] && typeof a[0] === 'object' ? a[0] : {}); break;
     case 'rehearsalStop': p.rehearsal.stop(); break;
     case 'rehearsalTake': await p.rehearsal.take(); break;
@@ -48,6 +132,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'resetKeys': await p.resetKeys(); break;
     case 'setMoments': await p.setMoments(a[0] as string[]); break;
     case 'setGlobalKeys': p.setGlobalKeys(a[0] === true); break;
+    case 'setGraphicsLan': await p.setGraphicsLan(a[0] === true); break;
     case 'holdGlobalKeys': p.holdGlobalKeys(a[0] === true); break;
     case 'saveManualPdf': return ctx.saveManualPdf ? ctx.saveManualPdf() : null;
     case 'pickVideo': return ctx.pickVideo ? ctx.pickVideo() : null;

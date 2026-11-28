@@ -145,7 +145,7 @@ pub fn run(room: &Arc<Room>, name: &str, args: &Value) -> Result<u64, String> {
 }
 
 /// The graphics the full-screen host page can show (`overlays/fullscreen.html`).
-const FULLSCREEN: [&str; 15] = ["match-intro", "map-veto", "agent-select", "map-result", "series", "halftime", "standings", "player-profile", "champion", "cam-grid", "schedule", "bracket", "map-breakdown", "postgame-player", "postgame-matchup"];
+const FULLSCREEN: [&str; 30] = ["match-intro", "map-veto", "agent-select", "map-result", "series", "halftime", "standings", "player-profile", "champion", "cam-grid", "schedule", "bracket", "map-breakdown", "postgame-player", "postgame-matchup", "br-lobby", "br-today", "br-rankings", "br-overall", "br-day", "br-wwcd", "br-mvp", "br-champion", "br-teams", "br-drop", "br-fraggers", "br-tom", "br-profile", "br-mstats", "br-pvp"];
 
 fn camera_id(v: &Value) -> Result<Value, String> {
     match v {
@@ -197,5 +197,14 @@ mod tests {
         assert_eq!(slot(&json!({ "p": 3 }), "p", 4), Ok(3));
         assert!(slot(&json!({ "p": 5 }), "p", 4).is_err());
         assert!(slot(&json!({ "p": 1.5 }), "p", 4).is_err());
+    }
+
+    #[test]
+    fn day_standings_is_a_full_screen_graphic() {
+        // Day N standings (28 Nov): the lobby room may take it, next to the other battle royale screens.
+        for name in ["br-day", "br-overall", "br-champion"] {
+            assert!(FULLSCREEN.contains(&name), "{name} is on the full-screen list");
+        }
+        assert_eq!(FULLSCREEN.len(), FULLSCREEN.iter().collect::<std::collections::HashSet<_>>().len(), "no duplicates");
     }
 }

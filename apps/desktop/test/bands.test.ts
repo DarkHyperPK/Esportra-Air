@@ -275,3 +275,48 @@ test('veto steps follow the best-of; a lock-in flashes only that card', { skip: 
     await browser.close();
   }
 });
+
+test('an editor draft shows each change at once, though its id and save time stay the same (20 Nov)', { skip: !chromium && 'needs Playwright' }, async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    // As in the editor: the overlay in a frame, with a one-off key, and drafts posted by the parent.
+    await page.goto(`file://${OVERLAYS}/map-result.html?preview=1`);
+    await page.setContent(`<iframe id="f" style="width:1920px;height:1080px;border:0" src="file://${OVERLAYS}/map-result.html?preview=1&editorKey=k1"></iframe>`);
+    const frame = () => page.frames().find((f: any) => f.url().includes('editorKey=k1'));
+    for (let i = 0; i < 50 && !(await frame()?.evaluate(() => (window as any).HUD_READY === true).catch(() => false)); i++) await page.waitForTimeout(200);
+    const send = (parts: object) => page.evaluate((p: object) => (document.getElementById('f') as HTMLIFrameElement).contentWindow!.postMessage({ type: 'AIR_TEMPLATE_DRAFT', key: 'k1', template: { id: 'same', updatedAt: 5, graphic: 'map-result|full', parts: p } }, '*'), parts);
+    const style = () => frame()!.evaluate(() => document.querySelector('.scene')!.getAttribute('style') ?? '');
+    await send({});
+    await page.waitForTimeout(300);
+    await send({ background: { radius: 12 } });
+    await page.waitForTimeout(300);
+    assert.match(await style(), /border-radius: 12px/);
+    const pic = `/packs/pubgm/${'b'.repeat(64)}.png`;
+    await send({ background: { picture: { src: pic, kind: 'wallpaper' } } });
+    await page.waitForTimeout(300);
+    assert.match(await style(), new RegExp(`background-image: url\\("${pic}"\\)`));
+    assert.doesNotMatch(await style(), /border-radius/);
+  } finally { await browser.close(); }
+});
+
+test('on air, the bracket page draws the event bracket when no broadcast bracket is set (26 Nov)', { skip: !chromium && 'needs Playwright' }, async () => {
+  // bracket-presentation.js draws Esportra's broadcastBracket; nothing sets it yet, so on air (no preview) the page
+  // must fall back to the event's own bracket, as previews always did. Before, it said "Bracket not selected".
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    const errors: string[] = [];
+    page.on('pageerror', (e: Error) => errors.push(e.message));
+    await page.goto(`file://${OVERLAYS}/bracket.html`);
+    await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
+    await page.waitForTimeout(500);
+    const text = await page.evaluate(() => document.body.innerText);
+    assert.deepEqual(errors, []);
+    assert.ok(!/Bracket not selected/.test(text), 'no empty panel on air');
+    assert.match(text, /PLAYOFFS/);
+    assert.match(text, /NIGHT OWLS/);
+  } finally {
+    await browser.close();
+  }
+});

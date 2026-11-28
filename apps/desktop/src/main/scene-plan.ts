@@ -1,14 +1,18 @@
 // What Air builds in OBS, as plain data (PRD picture 9): its five scenes, the browser source of each
 // graphic in its scene, the slot scenes the crew fills, the desk cameras and the hidden sponsor loops.
 // A pure function of the setup and the match's people, so it can be checked without OBS.
-import { SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, sourceName } from '../shared/scenes.ts';
+import { LOBBY_SCENE_KEYS, SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, lobbySlotWanted, shortName, sourceName } from '../shared/scenes.ts';
+import { lobbyPage } from '../shared/br-screens.ts';
 import { cameraViewUrl, type OnAir } from '../shared/model.ts';
 import type { Screen } from '../shared/api.ts';
 import type { BuildScene, BuildSlot } from './scene-build.ts';
+import type { VmixPage } from '../shared/vmix.ts';
 
 export interface PlanInput {
   /** The graphics engine's port (sources load http://127.0.0.1:<port>/o/<output>). */
   port: number;
+  /** Address of this PC in the page URLs (default 127.0.0.1; the network address for OBS on another PC). */
+  host?: string;
   screens: Screen[];
   talent: OnAir['talent'];
   sponsors: OnAir['sponsors'];
@@ -16,7 +20,7 @@ export interface PlanInput {
   slotWanted(id: string): boolean;
 }
 
-export function planScenes({ port, screens, talent, sponsors, slotWanted }: PlanInput): BuildScene[] {
+export function planScenes({ port, host: at = '127.0.0.1', screens, talent, sponsors, slotWanted }: PlanInput): BuildScene[] {
   const full = { x: 0, y: 0, width: 1920, height: 1080 };
   // Sponsor loops of the match's sponsors, hidden until shown (a break, or by autopilot).
   const sponsorVideos = sponsors.filter((x) => x.video);
@@ -29,7 +33,7 @@ export function planScenes({ port, screens, talent, sponsors, slotWanted }: Plan
     if (t.camera.kind === 'link' && t.camera.linkId) return { kind: 'link', inputName: sourceName(`Camera · ${t.name}`), url: cameraViewUrl(t.camera.linkId) };
     return null;
   };
-  const page = (x: Screen) => `http://127.0.0.1:${port}/o/${x.outputId}`;
+  const page = (x: Screen) => `http://${at}:${port}/o/${x.outputId}`;
   // Over the game and over the desk the host shows only over-the-game versions (never a graphic that covers everything).
   const over = (x: Screen) => `${page(x)}?over=1`;
   const host = screens.filter((x) => x.id === 'fullscreen' && x.enabled);
@@ -55,6 +59,46 @@ export function planScenes({ port, screens, talent, sponsors, slotWanted }: Plan
   });
 }
 
+export interface LobbyPlanInput {
+  /** The graphics engine's port. */
+  port: number;
+  /** The selected lobby's room code: every page follows it. */
+  code: string;
+  /** Address of this PC in the page URLs (default 127.0.0.1). */
+  host?: string;
+  /** The event's sponsors; those with a video get a hidden loop in Break, as for a match. */
+  sponsors: OnAir['sponsors'];
+}
+
+/**
+ * What Air builds in OBS for a battle royale lobby (28 Nov): Gameplay (game feed holder, the lobby's HUD and the
+ * full-screen host showing only overlay-bar versions), Full screen (the host) and Break (Starting soon, sponsor
+ * loops). The same names and rules as a match; pages come from `lobbyPage`, the function the Sources drawer uses.
+ */
+export function planLobbyScenes({ port, code, sponsors, host: at }: LobbyPlanInput): BuildScene[] {
+  const full = { x: 0, y: 0, width: 1920, height: 1080 };
+  const hud = lobbyPage(port, code, 'br-hud', '', at);
+  const host = lobbyPage(port, code, 'fullscreen', '', at);
+  const over = lobbyPage(port, code, 'fullscreen', '&over=1', at);
+  const startingSoon = lobbyPage(port, code, 'fullscreen', '&only=br-lobby&always=1&style=full', at);
+  const src = (id: string, title: string, url: string) => ({ id, inputName: graphicSourceName(title), formerly: legacySourceName(title), url, frame: full, enabled: true });
+  return LOBBY_SCENE_KEYS.map((key) => {
+    const def = SCENES[key];
+    return {
+      name: def.name,
+      formerly: def.formerly,
+      exclusive: def.exclusive,
+      slots: def.slots.filter((slot) => lobbySlotWanted(slot.id)).map((slot) => ({ id: slot.id, sceneName: slot.scene, formerly: slot.formerly, frame: slot.frame })),
+      sources: [
+        ...(key === 'gameplay' ? [src('in-game', 'In-game HUD', hud), { ...src('fullscreen-over-game', 'Full screen over game', over) }] : []),
+        ...(key === 'fullscreen' ? [src('fullscreen', 'Full screen', host)] : []),
+        ...(key === 'holding' ? [src('holding', 'Holding', startingSoon)] : []),
+        ...(key === 'holding' ? sponsors.filter((x) => x.video).map((x) => ({ id: `sponsor:${x.id}`, inputName: sourceName(`Sponsor video · ${x.name}`), kind: 'media' as const, url: x.video, frame: full, enabled: false })) : []),
+      ],
+    };
+  });
+}
+
 /** Drift: what Air put in its own scenes that is no longer there (deleted or renamed in OBS since). Scenes not in OBS are left to the missing-scenes check. */
 export function sourcesMissing(plan: BuildScene[], items: Record<string, string[]>): string[] {
   return plan.flatMap((scene) => {
@@ -62,4 +106,16 @@ export function sourcesMissing(plan: BuildScene[], items: Record<string, string[
     if (!have) return [];
     return [...scene.sources.map((x) => x.inputName), ...scene.slots.map((x) => x.sceneName)].filter((n) => !have.includes(n));
   });
+}
+
+/**
+ * The Air pages a vMix show needs (28 Nov): every browser source of the OBS plan, so vMix and OBS get the same pages
+ * (the HUD, the full-screen host over the game and on its own, Starting soon/Break, a match's graphics and scenes).
+ * Sponsor video files and camera slots are not pages. The input is titled like the OBS source: `ESPORTRA · <page>`.
+ */
+export function vmixPages(plan: BuildScene[]): VmixPage[] {
+  const seen = new Set<string>();
+  return plan.flatMap((scene) => scene.sources
+    .filter((x) => x.kind !== 'media' && !seen.has(x.id) && !!seen.add(x.id))
+    .map((x) => ({ id: x.id, label: shortName(x.inputName), name: x.inputName, url: x.url })));
 }

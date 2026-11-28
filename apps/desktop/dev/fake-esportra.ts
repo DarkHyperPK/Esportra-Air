@@ -5,6 +5,7 @@
 // the match list, prepare (configurationJson is a JSON string), the live veto, the bracket, result
 // proposals and their review, heartbeats and logos uploaded on Esportra.
 import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { fakePack, localPack } from './fake-pack.ts';
 import { generateKeyPairSync, randomUUID, sign, constants } from 'node:crypto';
 
 export interface FakeMatch {
@@ -30,7 +31,47 @@ export interface FakeProposal { id: string; packageId: string; mapNumber: number
 /** A 1×1 PNG, served as a sponsor logo uploaded on Esportra. */
 export const FAKE_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
+/** A battle royale stage as the backend sends it (GET /api/air/br/stages/{id}, esportra-backend PR #12): made-up teams only. */
+export interface FakeStage {
+  stage: { stageId: string; stageName: string; tournamentId: string; tournamentName: string; game: string | null; startsAt: string | null };
+  config: { placements: number[]; killPoints: number; killCap: number | null; tiebreakers: string[]; gamesPerLobby: number; format: string };
+  groups: Array<{ id: string; name: string; order: number; teams: Array<{ teamId: string; name: string; tag: string; logoUrl: string | null; players: Array<{ id: string | null; name: string; ign: string | null; role: 'starter' | 'substitute' | 'registered' }> }> }>;
+  lobbies: Array<{ id: string; wave: number; index: number; groupIds: string[]; map: string | null; scheduledAt: string | null; status: string; games: Array<{ id: string; number: number; map: string | null; scheduledAt: string | null; status: string }> }>;
+}
+
+const STAGE_TEAMS = ['Night Owls', 'Crimson Five', 'Iron Pine', 'Dune Runners', 'Silver Fox', 'North Tide', 'Blue Harbor', 'Stone Wolves', 'Red Kestrel', 'Low Orbit', 'Wild Card', 'Grey Mountain', 'Feral Six', 'Echo Valley', 'Quiet Storm', 'High Ground'];
+const STAGE_MAPS = ['Erangel', 'Miramar', 'Rondo'];
+const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+/** 2 groups × 16 teams × 4 players, 6 games per group over 2 days (3 on Saturday, 3 on Sunday), PMGC-like points. */
+export function fakeStage(): FakeStage {
+  const day1 = new Date(); day1.setUTCDate(day1.getUTCDate() + 2); day1.setUTCHours(12, 0, 0, 0);
+  const at = (day: number, k: number, group: number) => new Date(day1.getTime() + day * 86400_000 + group * 3 * 3600_000 + k * 40 * 60_000).toISOString();
+  const groups = ['Group A', 'Group B'].map((name, g) => ({
+    id: uid(100 + g), name, order: g,
+    teams: STAGE_TEAMS.map((t, i) => {
+      const n = g * 16 + i;
+      const tag = (t.split(' ').map((w) => w[0]).join('') + String(n)).slice(0, 4).toUpperCase();
+      return { teamId: uid(1000 + n), name: `${t} ${g ? 'B' : 'A'}`, tag, logoUrl: `__LOGO__/fake-logo/${n}.png`, players: ['One', 'Two', 'Three', 'Four'].map((p, k) => ({ id: uid(5000 + n * 10 + k), name: `${tag} ${p}`, ign: k === 3 ? null : `${tag}_${p}`, role: 'starter' as const })).concat(i % 4 === 0 ? [{ id: uid(5000 + n * 10 + 9), name: `${tag} Sub`, ign: `${tag}_Sub`, role: 'substitute' as never }] : []) };
+    }),
+  }));
+  const lobbies = groups.map((grp, g) => ({
+    id: uid(200 + g), wave: 1, index: g, groupIds: [grp.id], map: null, scheduledAt: at(0, 0, g), status: 'pending',
+    games: Array.from({ length: 6 }, (_, k) => ({ id: uid(300 + g * 10 + k), number: k + 1, map: STAGE_MAPS[k % 3]!, scheduledAt: at(k < 3 ? 0 : 1, k % 3, g), status: 'pending' })),
+  }));
+  return {
+    stage: { stageId: uid(10), stageName: 'Qualifiers', tournamentId: uid(11), tournamentName: 'Spring Clash', game: 'pubgm', startsAt: lobbies[0]!.games[0]!.scheduledAt },
+    config: { placements: [15, 12, 10, 8, 6, 4, 2, 1, 1, 1, 1, 1, 0, 0, 0, 0], killPoints: 1, killCap: null, tiebreakers: ['points', 'wins', 'kills', 'avg_placement'], gamesPerLobby: 6, format: 'groups' },
+    groups, lobbies,
+  };
+}
+
 export class FakeEsportra {
+  /** The battle royale stage Esportra offers (edit it to see Air follow); `stageGone` makes it a 404, `brAllowed` false a 403. */
+  brStage: FakeStage = fakeStage();
+  stageGone = false;
+  brAllowed = true;
+
   readonly userId = randomUUID();
   readonly email = 'producer@example.com';
   readonly password = 'correct horse battery';
@@ -40,6 +81,8 @@ export class FakeEsportra {
   request: { id: string; note: string; status: 'pending' | 'granted' | 'declined' | 'withdrawn'; reason: string | null; createdAt: string; decidedAt: string | null } | null = null;
   /** Simulates the backend being unreachable (connections are dropped). */
   down = false;
+  /** The PUBG Mobile game pack Esportra hosts (stand-in pictures, never the real kit). */
+  pack = process.env.AIR_DEV_PACK ? localPack('pubgm', process.env.AIR_DEV_PACK) : fakePack('pubgm');
   /** Token lifetime in seconds. */
   tokenSeconds = 3600;
   matches: FakeMatch[] = [];
@@ -83,13 +126,48 @@ export class FakeEsportra {
     ];
   }
 
+  /** Edits the stage as an organiser would on Esportra: `shift` moves a group's games (minutes), `map` changes one game's map. */
+  editStage(edit: { shift?: { group: number; minutes: number }; map?: { group: number; game: number; name: string }; placements?: number[]; addTeam?: { group: number; name: string } }) {
+    const b = this.brStage;
+    if (edit.shift) for (const g of b.lobbies[edit.shift.group]?.games ?? []) if (g.scheduledAt) g.scheduledAt = new Date(Date.parse(g.scheduledAt) + edit.shift.minutes * 60_000).toISOString();
+    if (edit.map) { const g = b.lobbies[edit.map.group]?.games[edit.map.game - 1]; if (g) g.map = edit.map.name; }
+    if (edit.placements) b.config.placements = edit.placements;
+    if (edit.addTeam) { const grp = b.groups[edit.addTeam.group]; if (grp) { const n = 900 + grp.teams.length; grp.teams.push({ teamId: uid(1000 + n), name: edit.addTeam.name, tag: 'NEW', logoUrl: null, players: ['One', 'Two', 'Three', 'Four'].map((p, k) => ({ id: uid(5000 + n * 10 + k), name: `NEW ${p}`, ign: `NEW_${p}`, role: 'starter' as const })) }); } }
+  }
+
+  /** Line-ups set by `showcase` (reels and walkthroughs): registered names with verified Riot IDs. */
+  private readonly showcaseLineups = new Map<string, Array<{ name: string; riot: string }>>();
+
+  /**
+   * Replaces the schedule with one tournament's matches, line-ups (every player verified), talent and sponsors, so a
+   * reel or walkthrough shows its own teams. Dev host: `POST /dev/esportra` with `{ "showcase": … }`.
+   */
+  showcase(spec: { tournamentName: string; matches: Array<Pick<FakeMatch, 'teamA' | 'teamB' | 'tagA' | 'tagB' | 'logoA' | 'logoB' | 'bestOf'> & { inHours?: number; veto?: FakeVetoStep[] }>; lineups?: Record<string, Array<{ name: string; riot: string }>>; talent?: Array<{ name: string; role?: string }>; sponsors?: Array<{ name: string; logoUrl?: string; assetId?: string }> }) {
+    const tournamentId = randomUUID();
+    this.matches = spec.matches.map(({ veto: _veto, inHours, ...m }) => ({ ...m, id: randomUUID(), tournamentId, tournamentName: spec.tournamentName, game: 'valorant', scheduledAt: new Date(Date.now() + (inHours ?? 1) * 3600_000).toISOString(), status: 'scheduled' }));
+    spec.matches.forEach((m, i) => { if (m.veto?.length) this.vetoes.set(this.matches[i]!.id, { status: 'completed', steps: m.veto, sequence: null, turn: null, toss: null, step: m.veto.length }); });
+    this.showcaseLineups.clear();
+    for (const [tag, list] of Object.entries(spec.lineups ?? {})) this.showcaseLineups.set(tag, list);
+    if (spec.talent) this.draft.talent = spec.talent;
+    if (spec.sponsors) this.draft.sponsors = spec.sponsors;
+    return this.matches;
+  }
+
   /** The registered starters of a team, as `BroadcastRosterName` (camelCase). */
   lineup(tag: string) {
+    const set = this.showcaseLineups.get(tag);
+    if (set) return set.map((p) => ({ name: p.name, role: 'starter', playerId: null, inGameName: p.riot, gameId: this.puuidOf(p.riot) }));
     return ['One', 'Two', 'Three', 'Four', 'Five'].map((p) => {
       const name = `${tag} ${p}`;
       const gameId = this.riot.get(name);
       return { name, role: 'starter', playerId: null, inGameName: gameId ? `${tag}${p}#${tag}` : null, gameId: gameId ?? null };
     }).concat([{ name: `${tag} Coach`, role: 'coach', playerId: null, inGameName: null, gameId: null }]);
+  }
+
+  /** A stable stand-in PUUID for a showcase Riot ID. */
+  private puuidOf(riot: string) {
+    const h = [...riot].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16).padStart(8, '0');
+    return `${h}-${h.slice(0, 4)}-4${h.slice(1, 4)}-8${h.slice(4, 7)}-${h}${h.slice(0, 4)}`;
   }
 
   /** Esportra's default order for Valorant (VetoSequences.cs), as the veto route sends it. */
@@ -250,6 +328,16 @@ export class FakeEsportra {
       res.end(JSON.stringify(body));
     };
     const body = await this.body(req);
+    // Game pack files: the short-lived links Esportra hands out (no sign-in on the link itself).
+    const packFile = /^GET \/fake-pack\/([0-9a-f]{64})$/.exec(route);
+    if (packFile) {
+      const bytes = this.pack.files.get(packFile[1]!);
+      if (!bytes) return send(404, {});
+      res.writeHead(200, { 'Content-Type': bytes[0] === 0xff ? 'image/jpeg' : bytes[0] === 0x52 ? 'image/webp' : 'image/png', 'Content-Length': bytes.length });
+      return res.end(bytes);
+    }
+    const logo = /^GET \/fake-logo\/\d+\.png$/.test(route);
+    if (logo) { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(FAKE_PNG); }
     if (route === 'POST /api/auth/desktop-login') {
       return body.email === this.email && body.password === this.password ? send(200, this.tokens()) : send(401, { error: 'Invalid email or password.' });
     }
@@ -261,6 +349,12 @@ export class FakeEsportra {
     const auth = /^Bearer access-(\d+)$/.exec(String(req.headers.authorization ?? ''));
     if (!auth || this.expired.has(auth[1]!)) return send(401, { error: 'Unauthorized' });
     const deviceId = String(req.headers['x-air-device-id'] ?? '');
+    const packRoute = /^GET \/api\/air\/game-packs\/([a-z0-9]{2,16})$/.exec(route);
+    if (packRoute) {
+      if (!this.allowed) return send(403, { error: 'An active Air account is required.' });
+      if (packRoute[1] !== 'pubgm') return send(404, { error: 'There is no pack for this game yet.' });
+      return send(200, { manifest: this.pack.manifest, urls: Object.fromEntries([...this.pack.files.keys()].map((sha) => [sha, `${this.url}/fake-pack/${sha}`])) });
+    }
     if (/^GET \/api\/air\/assets\/[0-9a-f-]{36}$/.test(route)) {
       if (!this.draft.sponsors.some((s) => route.endsWith(String(s.assetId)))) return send(404, {});
       res.writeHead(200, { 'Content-Type': 'image/png' });
@@ -309,6 +403,17 @@ export class FakeEsportra {
       return send(200, { acknowledged: true });
     }
     if (!this.allowed || !this.devices.has(deviceId)) return send(403, { error: 'An active Air account and registered production PC are required.' });
+    if (route === 'GET /api/air/br/stages') {
+      if (!this.brAllowed) return send(403, { error: 'This account cannot produce stages.' });
+      const b = this.brStage;
+      return send(200, { stages: this.stageGone ? [] : [{ ...b.stage, groupCount: b.groups.length, lobbyCount: b.lobbies.length }, { stageId: uid(20), stageName: 'Finals', tournamentId: b.stage.tournamentId, tournamentName: b.stage.tournamentName, game: 'pubgm', startsAt: null, groupCount: 1, lobbyCount: 1 }, { stageId: uid(30), stageName: 'Open stage', tournamentId: uid(31), tournamentName: 'Weekend Cup', game: 'valorant', startsAt: null, groupCount: 0, lobbyCount: 0 }] });
+    }
+    const st = /^GET \/api\/air\/br\/stages\/([0-9A-Za-z_-]+)$/.exec(route);
+    if (st) {
+      if (!this.brAllowed) return send(403, { error: 'This account cannot produce stages.' });
+      if (this.stageGone || st[1] !== this.brStage.stage.stageId) return send(404, { error: 'Stage not found.' });
+      return send(200, JSON.parse(JSON.stringify(this.brStage).replaceAll('__LOGO__', this.url)));
+    }
     const m = /^(GET|POST) \/api\/air\/broadcast\/matches\/([0-9a-f-]{36})\/(roster|prepare|veto|veto\/actions|bracket)$/.exec(route);
     if (m) {
       const match = this.matches.find((x) => x.id === m[2]);

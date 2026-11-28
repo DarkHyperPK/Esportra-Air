@@ -1,0 +1,75 @@
+/* Esportra AIR loop reel v2 · the design system every frame scene shares (spec sections 1 and 2).
+ * Colour: stage black, surfaces with a hairline border, one accent (Esportra's rose cue). Shapes: square. Type: Inter
+ * for display, JetBrains Mono for labels and numbers. Grid: asymmetric Swiss 12 columns on 1920x1080 (margins 96,
+ * gutter 24, column 122). Motion: entrance and exit curves only, clip + translate + scale reveals, 40 ms staggers.
+ * Banned: glows, text-shadow, blur, gradient blobs, pills, centred stacks, bounce.
+ * Fonts are declared by the page that loads this file (the reel serves them through http://reel.local/). */
+:root {
+  --bg: #09090B; --surface: #121215; --line: #27272A; --text: #FAFAFA; --muted: #A1A1AA; --rose: #F43F5E;
+  --hair: rgba(250, 250, 250, .15);
+  --in: cubic-bezier(0.16, 1, 0.3, 1); --out: cubic-bezier(0.7, 0, 0.84, 0);
+}
+* { box-sizing: border-box; border-radius: 0; }
+html, body { margin: 0; padding: 0; }
+body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--text); font: 400 16px/1.2 Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+#st { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+.layer { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 50% 50%; }
+
+/* Camera: a continuous linear drift, three parallax layers (grid x0.4, UI x1, foreground accents x1.3). */
+.dr { animation: drift var(--dur, 6s) linear both; }
+@keyframes drift { from { transform: scale(1); } to { transform: scale(calc(1 + var(--dz, .035) * var(--k, 1))); } }
+
+/* Grid: hairlines at the column edges and one under the header band. */
+.vl { position: absolute; top: 132px; height: 900px; width: 1px; background: var(--hair); }
+.hl { position: absolute; left: 96px; top: 132px; width: 1728px; height: 1px; background: var(--hair); }
+
+/* Type */
+.d132 { font: 700 132px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.d96 { font: 700 96px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.d72 { font: 700 72px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.d60 { font: 700 60px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.d56 { font: 700 56px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.d64 { font: 700 64px/.95 Inter, sans-serif; letter-spacing: -.04em; }
+.wd { display: inline-block; white-space: pre; padding: .12em .06em .22em 0; margin: -.12em -.06em -.22em 0; }
+.m { font: 500 16px/1 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+.mu { color: var(--muted); }
+.sf { background: var(--surface); border: 1px solid var(--line); }
+
+/* Reveals: never a plain fade. clip + translate + scale, 0.6 s, entrance curve; exits on the exit curve. */
+.rv { animation: rv .6s var(--in) calc(var(--b, 0s) + var(--d, 0s)) both; }
+@keyframes rv {
+  from { clip-path: inset(0 0 100% 0); transform: translateY(20px) scale(.96); }
+  to { clip-path: inset(0 0 0 0); transform: translateY(0) scale(1); }
+}
+.xu { animation: xu var(--xd, .35s) var(--out) var(--x, 0s) forwards; }
+@keyframes xu { from { clip-path: inset(0 0 0 0); transform: translateY(0) scale(1); } to { clip-path: inset(0 0 100% 0); transform: translateY(-40px) scale(.985); } }
+.xd { animation: xd var(--xd, .35s) var(--out) var(--x, 0s) forwards; }
+@keyframes xd { from { clip-path: inset(0 0 0 0); transform: translateY(0); } to { clip-path: inset(100% 0 0 0); transform: translateY(20px); } }
+.wipe { animation: wipe .5s var(--in) calc(var(--b, 0s) + var(--d, 0s)) both; }
+@keyframes wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+
+/* Scene crossover (spec 7): the frame before exits over 600 ms (clip bottom to top, translateY(-40px), scale 1 to
+ * 0.985, exit curve); the new scene's elements start 150 ms before that ends (--b is .45 s on the stage). */
+.out { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 80; pointer-events: none; animation: outgo .6s var(--out) both; }
+@keyframes outgo { from { clip-path: inset(0 0 0 0); transform: translateY(0) scale(1); } to { clip-path: inset(0 0 100% 0); transform: translateY(-40px) scale(.985); } }
+
+/* Persistent chrome: chapter index (top left), running timecode (top right), progress hairline (bottom). */
+.chrome { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 90; pointer-events: none; color: var(--muted);
+  font: 500 16px/1 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+.ch-tag { position: absolute; left: 96px; top: 56px; white-space: pre; transform-origin: 0 50%; }
+.ch-n { color: var(--text); }
+.ch-sub { position: absolute; left: 96px; top: 88px; padding: 6px 10px; border: 1px solid var(--line); color: var(--text); display: none; }
+.ch-tc { position: absolute; right: 96px; top: 56px; white-space: pre; }
+.ch-prog { position: absolute; left: 96px; top: 1030px; width: 1728px; height: 2px; display: flex; gap: 24px; }
+.ch-prog i { position: relative; flex: 1 1 0; height: 2px; background: var(--hair); }
+.ch-prog b { position: absolute; left: 0; top: 0; width: 100%; height: 2px; transform-origin: 0 50%; transform: scaleX(0); background: var(--muted); }
+.ch-prog b.cur { background: var(--rose); }
+.chrome.over .ch-tag, .chrome.over .ch-tc { padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); margin: -9px -11px; }
+.chrome.over .ch-sub { background: var(--bg); top: 984px; left: 262px; }
+/* full-bleed scenes: the chapter tag and timecode sit on the bottom row above the progress hairline, clear of the graphics' own headers */
+.chrome.over .ch-tag, .chrome.over .ch-tc { top: 992px; }
+
+/* Texture: feTurbulence grain over the whole viewport, 3.5 %, the top layer of every scene. */
+.grain { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 100; pointer-events: none; opacity: .035;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512'><filter id='n' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='512' height='512' filter='url(%23n)'/></svg>");
+  background-size: 512px 512px; }

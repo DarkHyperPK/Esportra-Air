@@ -4,9 +4,11 @@ import type { Snapshot } from '../../shared/api.ts';
 import type { Run } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
 import { air } from '../bridge.ts';
+import { LAN_EXPLAIN, LAN_SWITCH_LABEL } from '../../shared/graphics-lan.ts';
 import { Cap, Tally } from '../components/ui.tsx';
 import { PcModeCard } from '../components/Join.tsx';
 import { ProfilePicker } from '../components/FirstRun.tsx';
+import { BackupsPanel } from '../components/EventFileUi.tsx';
 import { SyncScreen } from './SyncScreen.tsx';
 import type { PageProps } from '../App.tsx';
 
@@ -14,6 +16,8 @@ const SECTIONS = [
   ['setup', 'Setup'],
   ['pc', 'This PC'],
   ['account', 'Esportra account'],
+  ['backups', 'Backups'],
+  ['graphics', 'Graphics'],
   ['keys', 'Keyboard'],
   ['moments', 'Moments on Live'],
   ['about', 'About'],
@@ -81,6 +85,24 @@ function useSection(): [string, (id: string) => void] {
 }
 
 /** Rebind any key: Change, then press the new key. A key in use is offered as a swap. Saved on this PC. */
+/** Settings › Graphics (28 Nov): let OBS or vMix on another PC load the pages (read only). */
+function GraphicsSettings({ s, run }: { s: Snapshot; run: Run }) {
+  const lan = s.graphicsLan;
+  return (
+    <section className="panel" aria-label="Graphics">
+      <div className="head"><Cap>Graphics</Cap></div>
+      <div className="body-pad stack" style={{ gap: 8 }}>
+        <label className="li between">
+          <span>{LAN_SWITCH_LABEL}</span>
+          <button type="button" role="switch" className="switch" aria-checked={lan.on} aria-label={LAN_SWITCH_LABEL} onClick={() => void run(() => air.setGraphicsLan(!lan.on))} />
+        </label>
+        <p className="faint t-sm">{LAN_EXPLAIN}</p>
+        {lan.on && <p className="muted t-sm">{lan.address ? <>Other PCs use <span className="mono">{lan.address}</span> instead of 127.0.0.1.</> : 'This PC has no network address right now.'}</p>}
+      </div>
+    </section>
+  );
+}
+
 function KeyboardSettings({ s, run }: { s: Snapshot; run: Run }) {
   const [listening, setListening] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ id: string; key: string; text: string } | null>(null);
@@ -193,6 +215,8 @@ export function SettingsScreen(props: PageProps) {
         </section>
         <div id="set-pc"><PcModeCard s={s} run={run} /></div>
         <div id="set-account"><SyncScreen {...props} /></div>
+        <div id="set-backups"><BackupsPanel s={s} run={run} /></div>
+        <div id="set-graphics"><GraphicsSettings s={s} run={run} /></div>
         <div id="set-keys"><KeyboardSettings s={s} run={run} /></div>
         <div id="set-moments"><MomentSettings s={s} run={run} /></div>
         <section className="panel" id="set-about">

@@ -14,9 +14,9 @@ export interface SourceLinks {
   always: string | null;
 }
 
-export function browserSource(port: number, screens: Screen[], row: { show?: string | null; style?: 'full' | 'band' }): SourceLinks | null {
+export function browserSource(port: number, screens: Screen[], row: { show?: string | null; style?: 'full' | 'band' }, host = '127.0.0.1'): SourceLinks | null {
   if (!row.show || !port) return null;
-  const base = `http://127.0.0.1:${port}/o/`;
+  const base = `http://${host}:${port}/o/`;
   const own = row.show.startsWith('own:');
   const screen = screens.find((x) => x.id === row.show);
   if (!own && !screen) return null;

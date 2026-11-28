@@ -3,14 +3,16 @@
 // working) and that copy follows the library: `teamIds` per side, `libraryId` per lineup entry.
 
 import { randomUUID } from 'node:crypto';
-import { PLAYER_ROLES, type LibPlayer, type LibTeam, type Library, type Match, type PlayerInfo } from '../shared/api.ts';
+import type { LibPlayer, LibTeam, Library, Match, PlayerInfo } from '../shared/api.ts';
 import { HEX, IMAGE, text } from './validate.ts';
 import { RIOT_ID, isPuuid } from '../shared/riot.ts';
+import { playerRoles } from '../shared/games.ts';
+import { cleanUid } from '../shared/uid.ts';
 
 const COLORS = ['#22d3ee', '#f43f5e'];
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 /** A short tag from a name: initials of several words, or the first three letters of one. */
-const tagOf = (name: string) => {
+export const tagOf = (name: string) => {
   const words = name.toUpperCase().match(/[A-Z0-9]+/g) ?? ['TEAM'];
   return (words.length > 1 ? words.map((w) => w[0]).join('') : words[0]!).slice(0, 3);
 };
@@ -26,32 +28,44 @@ export function validTeam(input: Partial<LibTeam>, lib: Library): LibTeam {
   const color = typeof input?.color === 'string' && HEX.test(input.color) ? input.color.toLowerCase() : COLORS[lib.teams.length % 2]!;
   const logo = typeof input?.logo === 'string' ? input.logo : '';
   if (logo && !IMAGE.test(logo)) throw new Error('Choose the logo again.');
-  return { id, name, tag, color, logo };
+  const had = lib.teams.find((t) => t.id === id);
+  return { id, name, tag, color, logo, ...(had?.esportraId ? { esportraId: had.esportraId } : {}), ...(had?.esportraLogo ? { esportraLogo: had.esportraLogo } : {}) };
 }
 
-/** A player from the interface; throws a plain message when it cannot be used. */
-export function validPlayer(input: Partial<LibPlayer>, lib: Library): LibPlayer {
+/** A player from the interface; throws a plain message when it cannot be used. The in-game id is a Riot ID
+ *  (`Name#TAG`) for Valorant; for other games (PUBG MOBILE, Free Fire) it is the name as the game shows it. */
+export function validPlayer(input: Partial<LibPlayer>, lib: Library, game: string | null = 'valorant'): LibPlayer {
   const id = typeof input?.id === 'string' && lib.players.some((p) => p.id === input.id) ? input.id : randomUUID();
   const name = text(input?.name, 32, 'Name on air');
   const gameId = typeof input?.gameId === 'string' ? input.gameId.trim() : '';
-  if (gameId && !RIOT_ID.test(gameId)) throw new Error('Write the Riot ID as Name#TAG.');
+  const riot = !game || game === 'valorant';
+  if (gameId && riot && !RIOT_ID.test(gameId)) throw new Error('Write the Riot ID as Name#TAG.');
+  if (gameId && !riot && (gameId.length > 32 || /[<>]/.test(gameId))) throw new Error('Write the in-game name as the game shows it (32 characters at most).');
   if (gameId && lib.players.some((p) => p.id !== id && p.gameId && same(p.gameId, gameId))) throw new Error(`${gameId} is already a player.`);
   const photo = typeof input?.photo === 'string' ? input.photo : '';
   if (photo && !IMAGE.test(photo)) throw new Error('Choose the photo again.');
-  const role = typeof input?.role === 'string' && (PLAYER_ROLES as readonly string[]).includes(input.role) ? input.role : '';
+  const role = typeof input?.role === 'string' && playerRoles(game).includes(input.role) ? input.role : '';
   const teamId = typeof input?.teamId === 'string' && lib.teams.some((t) => t.id === input.teamId) ? input.teamId : null;
   // The PUUID comes from Esportra, never from the form: an edit keeps the one already known.
   const known = lib.players.find((p) => p.id === id)?.puuid;
   const puuid = isPuuid(input?.puuid) ? input.puuid.trim() : known;
   const esportraId = lib.players.find((p) => p.id === id)?.esportraId;
-  return { id, name, realName: input?.realName ? text(input.realName, 60, 'Real name') : '', gameId, ...(puuid ? { puuid } : {}), ...(esportraId ? { esportraId } : {}), photo, role, teamId };
+  // The Character ID (PUBG MOBILE `uID`): digits only, and one player each, so a typo can never place the wrong person.
+  const { uid, problem } = cleanUid(input?.uid);
+  if (problem) throw new Error(problem);
+  const owner = uid ? lib.players.find((p) => p.id !== id && p.uid === uid) : undefined;
+  if (owner) throw new Error(`${uid} is already ${owner.name}’s UID.`);
+  const openId = lib.players.find((p) => p.id === id)?.openId;
+  return { id, name, realName: input?.realName ? text(input.realName, 60, 'Real name') : '', gameId, ...(puuid ? { puuid } : {}), ...(esportraId ? { esportraId } : {}), ...(openId ? { openId } : {}), ...(uid ? { uid } : {}), photo, role, teamId };
 }
 
 const entry = (p: LibPlayer, id: string = randomUUID()): PlayerInfo => ({ id, name: p.name, realName: p.realName, gameId: p.gameId, ...(p.puuid ? { puuid: p.puuid } : {}), ...(p.esportraId ? { esportraId: p.esportraId } : {}), photo: p.photo, libraryId: p.id });
 
 /**
  * Links a match to the library: each team by name, each player by Riot ID (or by name within that
- * team). Anything not there yet is added. Changes `match` and `lib` in place.
+ * team). Anything not there yet is added. Gaps are filled both ways: a photo or logo the match brings
+ * goes to the library, and one only the library has comes to the match (an Esportra match arrives
+ * without player photos). Changes `match` and `lib` in place.
  */
 export function linkMatch(match: Match, lib: Library) {
   const ids: [string | null, string | null] = [null, null];
@@ -62,6 +76,7 @@ export function linkMatch(match: Match, lib: Library) {
       team = { id: randomUUID(), name: copy.name, tag: copy.tag, color: copy.color, logo: copy.logo };
       lib.teams.push(team);
     } else if (!team.logo && copy.logo) team.logo = copy.logo;
+    else if (!copy.logo && team.logo) copy.logo = team.logo;
     ids[t] = team.id;
     for (const p of match.players[t]) {
       let found = (p.libraryId && lib.players.find((x) => x.id === p.libraryId))
@@ -74,6 +89,7 @@ export function linkMatch(match: Match, lib: Library) {
         lib.players.push(found);
       } else {
         if (!found.photo && p.photo) found.photo = p.photo;
+        else if (!p.photo && found.photo) p.photo = found.photo;
         if (!found.gameId && p.gameId) found.gameId = p.gameId;
         if (!found.puuid && p.puuid) found.puuid = p.puuid;
         if (!found.esportraId && p.esportraId) found.esportraId = p.esportraId;

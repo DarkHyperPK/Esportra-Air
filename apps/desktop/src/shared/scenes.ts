@@ -3,6 +3,10 @@
 
 export const SCENE_KEYS = ['holding', 'gameplay', 'fullscreen', 'replay', 'casters'] as const;
 export type SceneKey = (typeof SCENE_KEYS)[number];
+/** The scenes Air builds for a lobby game (PUBG MOBILE, Free Fire): no Replay or Desk; the crew's own scenes cover those. */
+export const LOBBY_SCENE_KEYS: SceneKey[] = ['holding', 'gameplay', 'fullscreen'];
+/** A lobby has no Break windows, desk cameras or replay: only the game feed holder. */
+export const lobbySlotWanted = (id: string) => id === 'game';
 
 export type SlotId = 'game' | 'cam1' | 'cam2' | 'break1' | 'break2';
 

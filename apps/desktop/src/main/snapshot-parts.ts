@@ -1,6 +1,6 @@
 // Pure parts of the snapshot Air's interface reads: the game readout from the room, and what Air's
 // OBS scenes look like against its plan. No state of their own, so each can be tested alone.
-import { SCENE_KEYS, SCENES } from '../shared/scenes.ts';
+import { SCENE_KEYS, SCENES, type SceneKey } from '../shared/scenes.ts';
 import type { SceneStatus, Snapshot } from '../shared/api.ts';
 import type { ObsStatus } from './obs.ts';
 import type { BuildScene } from './scene-build.ts';
@@ -34,13 +34,13 @@ export function roomReadout(room: any, observed: Readout['observed']): Readout {
 }
 
 /** Air's scenes in OBS: which are missing, which of its sources are gone (drift), and each scene's slots. */
-export function obsSceneView(status: ObsStatus, plan: BuildScene[], slotWanted: (id: string) => boolean) {
-  const wanted = SCENE_KEYS.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.filter((slot) => slotWanted(slot.id)).map((slot) => slot.scene)]);
+export function obsSceneView(status: ObsStatus, plan: BuildScene[], slotWanted: (id: string) => boolean, keys: readonly SceneKey[] = SCENE_KEYS) {
+  const wanted = keys.flatMap((k) => [SCENES[k].name, ...SCENES[k].slots.filter((slot) => slotWanted(slot.id)).map((slot) => slot.scene)]);
   const missingScenes = wanted.filter((n) => !status.scenes.includes(n));
   // Drift: a source Air put in one of its scenes that is no longer there (deleted or renamed in OBS).
   const missingSources = status.state === 'connected' ? sourcesMissing(plan, status.items ?? {}) : [];
   const installed = status.state === 'connected' && missingScenes.length === 0 && missingSources.length === 0;
-  const sceneStatus: SceneStatus[] = SCENE_KEYS.map((k) => ({
+  const sceneStatus: SceneStatus[] = keys.map((k) => ({
     key: k,
     name: SCENES[k].name,
     inObs: status.scenes.includes(SCENES[k].name),

@@ -69,7 +69,7 @@ export function TeamsScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
                   <div key={p.id} className="li tp-player">
                     <Face s={s} photo={p.photo} name={p.name} size={34} />
                     <b>{p.name}</b>
-                    <span className="mono faint t-xs">{riotLabel(p)}</span>
+                    <span className="mono faint t-xs">{s.game?.shape === 'lobby' ? <>{p.gameId || '—'} · {p.uid ? p.uid : <span className="warn-text">No UID</span>}</> : riotLabel(p)}</span>
                     <span className="muted t-sm">{p.role || '—'}</span>
                     <span className="row-gap">
                       <button className="btn quiet small" onClick={() => setPlayerEdit({ player: p })}>Edit</button>
@@ -78,7 +78,7 @@ export function TeamsScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
                   </div>
                 ))}
               </div>
-              <span className="faint t-xs">The Riot ID links the player to the game. Photos show on player cards and lower thirds.</span>
+              <span className="faint t-xs">{s.game?.shape === 'lobby' ? 'The in-game name links the player to the game. Photos show on the squad graphics; without one, a grey player shadow.' : 'The Riot ID links the player to the game. Photos show on player cards and lower thirds.'}</span>
             </section>
           )}
         </div>
@@ -99,7 +99,7 @@ export function TeamsScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
               <div key={p.id} className="li tp-row">
                 <Face s={s} photo={p.photo} name={p.name} size={34} />
                 <b>{p.name}</b>
-                <span className="mono faint t-xs">{riotLabel(p)}</span>
+                <span className="mono faint t-xs">{s.game?.shape === 'lobby' ? <>{p.gameId || '—'} · {p.uid ? p.uid : <span className="warn-text">No UID</span>}</> : riotLabel(p)}</span>
                 <span className="muted t-sm">{p.role || '—'}</span>
                 <select className="cell" aria-label={`Team of ${p.name}`} value={p.teamId ?? ''} onChange={(e) => void run(() => air.savePlayer({ ...p, teamId: e.target.value || null }))}>
                   <option value="">No team</option>

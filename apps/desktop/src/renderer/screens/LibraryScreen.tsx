@@ -1,21 +1,25 @@
+import { BrThemeEditor } from '../components/BrThemeEditor.tsx';
 import { useEffect, useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
+import { gameOf } from '../../shared/games.ts';
 import { LIBRARY, inShow } from '../../shared/library.ts';
 import { PackWindow } from '../components/PackWindow.tsx';
+import { BrPackWindow } from '../components/BrPackWindow.tsx';
 import { air } from '../bridge.ts';
-import { Preview, overlayUrl, StillPreview, stillKey } from '../components/Preview.tsx';
+import { overlayUrl, StillPreview, stillKey } from '../components/Preview.tsx';
 import type { PageProps, Run } from '../App.tsx';
 import { PageHeader } from '../components/Chrome.tsx';
-import { GRAPHICS, graphicTitle, type BrandKit, type Template } from '../../shared/templates.ts';
+import { BUILTIN_BR_HUD, GRAPHICS, graphicTitle, graphicsFor, type BrandKit, type Template } from '../../shared/templates.ts';
 import { brandOfMatch, openTemplateEditor, templatePreviewUrl } from '../components/TemplateEditor.tsx';
 import { OwnGraphicEditor, blankOwn } from '../components/OwnGraphicEditor.tsx';
 import { OWN_PURPOSES, ownScreenId, type OwnGraphic } from '../../shared/own-graphics.ts';
 import { ShowTemplateManager } from '../components/ShowTemplates.tsx';
+import { GameAssets } from '../components/GameAssets.tsx';
 
 /** A live thumbnail of a graphic with a template (or its default look). */
-export function TemplateThumb({ s, graphic, template, label, brand: kit }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit }) {
+export function TemplateThumb({ s, graphic, template, label, brand: kit, mode }: { s: Snapshot; graphic: string; template: Template | null; label: string; brand?: BrandKit; mode?: string }) {
   const brand = kit ?? brandOfMatch(s);
-  const extra: Record<string, string> = { ...(graphic.endsWith('|full') ? {} : { bg: '1' }), ...(template ? { template: JSON.stringify(template) } : {}), ...(brand ? { brand: JSON.stringify(brand) } : {}) };
+  const extra: Record<string, string> = { ...(graphic.endsWith('|full') ? {} : { bg: '1' }), ...(mode ?? template?.layout ? { mode: (mode ?? template?.layout)! } : {}), ...(template ? { template: JSON.stringify(template) } : {}), ...(brand ? { brand: JSON.stringify(brand) } : {}) };
   return <StillPreview src={templatePreviewUrl(s, graphic, extra)} label={label} backdrop={false} stamp={stillKey(s)} />;
 }
 
@@ -24,7 +28,7 @@ const GROUPS: Array<[string, string, (g: string) => boolean]> = [
   ['band', 'Overlay bar', (g) => g.endsWith('|band') && !SCENE(g)],
   ['full', 'Full screen', (g) => g.endsWith('|full') && !SCENE(g)],
   ['scene', 'Scene screens', SCENE],
-  ['hud', 'In-game HUD', (g) => g === 'hud'],
+  ['hud', 'In-game HUD', (g) => g === 'hud' || g === 'brhud'],
 ];
 
 /** Graphics › Templates: your saved looks by graphic, the built-in looks to start from, and New template. */
@@ -66,7 +70,8 @@ function OwnTab({ s, run }: { s: Snapshot; run: Run }) {
 }
 
 function TemplatesTab({ s }: { s: Snapshot }) {
-  const [graphic, setGraphic] = useState('map-veto|band');
+  const shown = graphicsFor(gameOf(s.setup.game)?.shape ?? 'versus');
+  const [graphic, setGraphic] = useState(() => shown[0] ?? 'map-veto|band');
   const [show, setShow] = useState<'all' | 'builtin' | 'yours'>('all');
   const uses = (id: string) => s.templateUse?.[id] ?? 0;
   return (
@@ -78,14 +83,15 @@ function TemplatesTab({ s }: { s: Snapshot }) {
             {([['all', 'All'], ['builtin', 'Built in'], ['yours', 'Yours']] as const).map(([v, l]) => <button key={v} aria-pressed={show === v} onClick={() => setShow(v)}>{l}</button>)}
           </div>
           <select className="cell" aria-label="Graphic for a new template" value={graphic} onChange={(e) => setGraphic(e.target.value)}>
-            {GROUPS.map(([k, label, fits]) => <optgroup key={k} label={label}>{Object.keys(GRAPHICS).filter(fits).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>)}
+            {GROUPS.map(([k, label, fits]) => <optgroup key={k} label={label}>{shown.filter(fits).map((g) => <option key={g} value={g}>{GRAPHICS[g]!.title}</option>)}</optgroup>)}
           </select>
           <button className="btn primary" onClick={() => openTemplateEditor({ graphic })}>+ New template</button>
         </span>
       </div>
       {GROUPS.map(([k, label, fits]) => {
-        const mine = show === 'builtin' ? [] : s.templates.filter((t) => fits(t.graphic));
-        const builtin = show === 'yours' ? [] : Object.keys(GRAPHICS).filter(fits);
+        const mine = show === 'builtin' ? [] : s.templates.filter((t) => fits(t.graphic) && shown.includes(t.graphic));
+        const builtin = show === 'yours' ? [] : shown.filter(fits);
+        if (!mine.length && !builtin.length) return null;
         return (
           <section key={k} className="stack g-2" aria-label={label}>
             <span className="cap">{label}</span>
@@ -100,7 +106,17 @@ function TemplatesTab({ s }: { s: Snapshot }) {
                   </div>
                 </div>
               ))}
-              {builtin.map((g) => (
+              {k === 'hud' && builtin.includes('brhud') && BUILTIN_BR_HUD.map((b) => (
+                <div key={b.id} className="card tpl-card builtin">
+                  <TemplateThumb s={s} graphic="brhud" template={null} mode={b.layout} label={`${b.name}, built in`} />
+                  <div className="tpl-meta">
+                    <span className="between"><b>{b.name}</b><span className="tally off"><span aria-hidden="true">🔒 </span>Built in</span></span>
+                    <span className="faint t-xs">{b.line}</span>
+                    <span className="row g-1"><button className="btn small" aria-label={`Make a copy of ${b.name} to edit`} onClick={() => openTemplateEditor({ graphic: 'brhud', layout: b.layout })}>Make a copy to edit</button></span>
+                  </div>
+                </div>
+              ))}
+              {builtin.filter((g) => g !== 'brhud').map((g) => (
                 <div key={g} className="card tpl-card builtin">
                   <TemplateThumb s={s} graphic={g} template={null} label={`${GRAPHICS[g]!.title}, built in`} />
                   <div className="tpl-meta">
@@ -128,42 +144,54 @@ export function LibraryScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
   const items = LIBRARY[game?.id ?? 'valorant'];
   const chosen = items.filter((i) => inShow(s.setup, i)).length;
   const theme = s.match?.theme ?? s.setup.package;
+  const lobbyGame = game?.shape === 'lobby';
   // The sample room follows the selected match's teams, players and banner style.
   useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id, theme, s.match?.teams.map((t) => t.name + t.logo + t.color).join()]);
   return (
     <div className="stack" style={{ gap: 26 }}>
       <PageHeader eyebrow={`HUD library · ${game?.name ?? 'no game chosen'}`} title="Choose what your shows use">
-        Pick a show template for {s.match ? <b>{s.match.title}</b> : 'a match'}, or open the HUD to preview and choose graphic by graphic. Editing a look happens in Graphics studio.
+        {lobbyGame ? <>Open the HUD to preview each graphic and choose the HUD&rsquo;s layout for {s.lobbies.find((l) => l.id === s.selectedLobbyId)?.title ?? 'your lobby'}. Graphics go on air from Live; editing a look happens in Graphics studio.</> : <>Pick a show template for {s.match ? <b>{s.match.title}</b> : 'a match'}, or open the HUD to preview and choose graphic by graphic. Editing a look happens in Graphics studio.</>}
       </PageHeader>
-      <ShowTemplateManager s={s} run={run} />
+      {!lobbyGame && <ShowTemplateManager s={s} run={run} />}
       <section className="stack" style={{ gap: 10 }}>
         <h2 className="title-sm">Graphics</h2>
         <div className="packs">
-          <button className="pack-card" onClick={() => setOpen(true)} aria-label="Open ESPORTRA HUD: preview every graphic">
-            <Preview src={overlayUrl(s, 'ingame')} label="ESPORTRA HUD" />
-            <span className="between"><span><b>ESPORTRA HUD</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in this show · open to preview each one</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
-          </button>
+          {lobbyGame ? (
+            <button className="pack-card" onClick={() => setOpen(true)} aria-label="Open ESPORTRA HUD: preview every graphic">
+              <StillPreview src={templatePreviewUrl(s, 'brhud', { mode: s.lobbies.find((l) => l.id === s.selectedLobbyId)?.look?.hud ?? 'rail' })} label="ESPORTRA HUD" stamp="br" />
+              <span className="between"><span><b>ESPORTRA HUD</b><br /><span className="muted t-sm">8 graphics · the HUD in three layouts and seven full screens · open to preview and choose</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
+            </button>
+          ) : (
+            <button className="pack-card" onClick={() => setOpen(true)} aria-label="Open ESPORTRA HUD: preview every graphic">
+              <StillPreview src={overlayUrl(s, 'ingame')} label="ESPORTRA HUD" stamp={stillKey(s)} />
+              <span className="between"><span><b>ESPORTRA HUD</b><br /><span className="muted t-sm">{items.length} graphics · {chosen} in this show · open to preview each one</span></span><span className="state ok"><i className="dot ok" />In use</span></span>
+            </button>
+          )}
         </div>
       </section>
-      {open && <PackWindow s={s} run={run} close={() => setOpen(false)} />}
+      {open && (lobbyGame ? <BrPackWindow s={s} run={run} close={() => setOpen(false)} /> : <PackWindow s={s} run={run} close={() => setOpen(false)} />)}
     </div>
   );
 }
 
 /** Graphics studio (16 Nov): editing only. Looks for Air's graphics, and your own designs. */
 export function StudioScreen({ s, run }: Pick<PageProps, 's' | 'run'>) {
-  const [tab, setTab] = useState<'templates' | 'own'>('templates');
+  const lobbyGame = s.game?.shape === 'lobby';
+  const [tab, setTab] = useState<'templates' | 'own' | 'assets' | 'theme'>(lobbyGame ? 'theme' : 'templates');
   useEffect(() => { void run(() => air.librarySeed()); }, [s.match?.id]);
+  useEffect(() => { if (!lobbyGame && tab === 'theme') setTab('templates'); }, [lobbyGame]);
   return (
     <div className="stack" style={{ gap: 26 }}>
-      <PageHeader eyebrow="Graphics studio" title={tab === 'own' ? 'Your designs' : 'Looks'}>
-        {tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : 'Change how Air’s graphics look. A look is used wherever a show picks it; saving updates every match using it.'}
+      <PageHeader eyebrow="Graphics studio" title={tab === 'theme' ? 'Event theme' : tab === 'own' ? 'Your designs' : tab === 'assets' ? 'Game assets' : 'Looks'}>
+        {tab === 'theme' ? 'The colour world of a lobby’s graphics: a theme or your own colours, the background picture, the emblem and the props. Every graphic follows it.' : tab === 'own' ? 'Your own designs from Photoshop, filled with live data from the game, Esportra and Air.' : tab === 'assets' ? 'The game’s official pictures (characters, maps, vehicles, items, logos), ready to put on any graphic.' : 'Change how Air’s graphics look. A look is used wherever a show picks it; saving updates every match using it.'}
       </PageHeader>
       <div className="seg tabs-seg" role="tablist" aria-label="Graphics studio">
+        {lobbyGame && <button role="tab" aria-selected={tab === 'theme'} aria-pressed={tab === 'theme'} onClick={() => setTab('theme')}>Event theme</button>}
         <button role="tab" aria-selected={tab === 'templates'} aria-pressed={tab === 'templates'} onClick={() => setTab('templates')}>Looks{s.templates.length ? ` · ${s.templates.length}` : ''}</button>
         <button role="tab" aria-selected={tab === 'own'} aria-pressed={tab === 'own'} onClick={() => setTab('own')}>Your designs{s.ownGraphics.length ? ` · ${s.ownGraphics.length}` : ''}</button>
+        <button role="tab" aria-selected={tab === 'assets'} aria-pressed={tab === 'assets'} onClick={() => setTab('assets')}>Game assets</button>
       </div>
-      {tab === 'own' ? <OwnTab s={s} run={run} /> : <TemplatesTab s={s} />}
+      {tab === 'theme' ? <BrThemeEditor s={s} run={run} /> : tab === 'own' ? <OwnTab s={s} run={run} /> : tab === 'assets' ? <GameAssets s={s} run={run} /> : <TemplatesTab s={s} />}
     </div>
   );
 }

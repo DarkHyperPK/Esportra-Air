@@ -8,7 +8,7 @@
 //!   POST /api/<match>/map-result              operator map correction
 //!   POST /api/<match>/pause-panel             technical pause / timeout panel
 //!   GET/POST /api/<match>/display-fixes       on-air corrections
-//!   GET /health, GET /o/<output>, GET /air-assets/<uuid>, static files under the HUD root
+//!   GET /health, GET /o/<output>, GET /air-assets/<uuid>, GET /packs/<game>/<sha256>.<ext>, static files under the HUD root
 //! New for the separate engine process (write key required):
 //!   GET /control/status, PUT /control/outputs, PUT /control/assets/<uuid>, POST /control/shutdown
 
@@ -199,6 +199,7 @@ pub async fn handle(State(app): State<AppState>, req: Request) -> Response {
         }
         Some("air-assets") => asset(engine, &parts.method, &segments).await,
         Some("art") => art(engine, &parts.method, &segments).await,
+        Some("packs") => pack_file(engine, &parts.method, &segments).await,
         Some("o") => output_page(engine, &segments).await,
         _ => static_file(engine, &path).await,
     }
@@ -254,6 +255,39 @@ async fn art(engine: &Engine, method: &Method, segments: &[&str]) -> Response {
                 "x-content-type-options",
                 HeaderValue::from_static("nosniff"),
             );
+            res
+        }
+        Err(_) => status(StatusCode::NOT_FOUND),
+    }
+}
+
+/// `packs/<game>/<sha256>.<png|jpg|webp>`: a game pack picture Air downloaded and checked (20 Nov).
+/// Files are named by their content hash, so a name can only ever mean one picture.
+pub fn pack_path(segments: &[&str]) -> Option<(PathBuf, &'static str)> {
+    let [_, game, file] = segments else { return None };
+    let game_ok = (2..=16).contains(&game.len()) && game.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit());
+    let (hash, ext) = file.split_once('.')?;
+    let mime = match ext {
+        "png" => "image/png",
+        "jpg" => "image/jpeg",
+        "webp" => "image/webp",
+        _ => return None,
+    };
+    let hash_ok = hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    (game_ok && hash_ok).then(|| (PathBuf::from(game).join(file), mime))
+}
+
+async fn pack_file(engine: &Engine, method: &Method, segments: &[&str]) -> Response {
+    let Some((rel, mime)) = pack_path(segments).filter(|_| method == Method::GET) else {
+        return status(StatusCode::NOT_FOUND);
+    };
+    match tokio::fs::read(engine.data.join("packs").join(rel)).await {
+        Ok(bytes) => {
+            let mut res = Body::from(bytes).into_response();
+            let h = res.headers_mut();
+            h.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
+            h.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=604800, immutable"));
+            h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
             res
         }
         Err(_) => status(StatusCode::NOT_FOUND),
@@ -844,6 +878,24 @@ fn control_status(engine: &Engine) -> Value {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn pack_paths_are_only_hashed_pictures() {
+        let h = "a".repeat(64);
+        let ok = format!("{h}.png");
+        assert_eq!(pack_path(&["packs", "pubgm", &ok]), Some((PathBuf::from("pubgm").join(&ok), "image/png")));
+        assert!(pack_path(&["packs", "pubgm", &format!("{h}.jpg")]).is_some());
+        for bad in [
+            vec!["packs", "pubgm", "logo.png"],
+            vec!["packs", "PUBGM", ok.as_str()],
+            vec!["packs", "..", ok.as_str()],
+            vec!["packs", "pubgm", &format!("{h}.svg")],
+            vec!["packs", "pubgm", "x", ok.as_str()],
+            vec!["packs", "pubgm", &format!("{}.png", "A".repeat(64))],
+        ] {
+            assert_eq!(pack_path(&bad), None, "{bad:?}");
+        }
+    }
 
     #[test]
     fn art_paths_are_only_catalogue_pictures() {

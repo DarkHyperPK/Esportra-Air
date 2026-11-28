@@ -1,9 +1,9 @@
 // Esportra Air main process (ow-electron). Kept thin: the graphics engine is a separate process.
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, nativeImage, safeStorage, shell } from 'electron';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
-import { mkdirSync, statSync, writeFileSync } from 'node:fs';
-import { Thumbnails } from './thumbnails.ts';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { Thumbnails, pruneStills } from './thumbnails.ts';
 import { manualHtml } from '../shared/manual.ts';
 import { gameOf } from '../shared/games.ts';
 import { join, resolve } from 'node:path';
@@ -46,7 +46,7 @@ async function main() {
   const store = new Store(join(app.getPath('userData'), 'air.json'));
   // The engine binary's size and date tell an engine left running by an older Air from this one.
   const buildId = (() => { try { const st = statSync(paths.engine); return `${st.size}-${Math.round(st.mtimeMs)}`; } catch { return undefined; } })();
-  const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, env: engineEnv(), buildId, ...realProcess });
+  const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, host: store.data.graphicsLan ? '0.0.0.0' : '127.0.0.1', env: engineEnv(), buildId, ...realProcess });
   const ingest = wsIngest();
   // A capture-only PC sends its game data to a producer's Air instead of to its own engine.
   const linkIngest = wsIngest();
@@ -71,7 +71,7 @@ async function main() {
     const { width } = image.getSize();
     return (width > 512 ? image.resize({ width: 512, quality: 'best' }) : image).toPNG();
   };
-  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, toPng, version: app.getVersion() });
+  const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, secrets, linkIngest, toPng, recordingsDir: join(app.getPath('documents'), 'Esportra Air recordings'), journalDir: join(app.getPath('userData'), 'events'), version: app.getVersion() });
   void esportra.start();
   if (store.data.mode === 'capture') production.link.resume();
   // The manual as a PDF: the same source as Help, printed in a hidden window, saved where the producer chooses.
@@ -93,22 +93,61 @@ async function main() {
     const choice = await dialog.showOpenDialog(window!, { title: 'Choose the sponsor video', properties: ['openFile'], filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'flv', 'ts', 'm4v'] }] });
     return choice.canceled ? null : choice.filePaths[0] ?? null;
   };
+  // Event files (27 Nov): Save event file…, Open event file… and the auto-backup folder.
+  const pickEventSave = async (defaultName: string) => {
+    const target = await dialog.showSaveDialog(window!, { title: 'Save event file', defaultPath: join(app.getPath('documents'), defaultName), filters: [{ name: 'Esportra Air event file', extensions: ['airevent'] }] });
+    if (target.canceled || !target.filePath) return null;
+    return /\.airevent$/i.test(target.filePath) ? target.filePath : `${target.filePath}.airevent`;
+  };
+  const pickEventOpen = async () => {
+    const choice = await dialog.showOpenDialog(window!, { title: 'Open event file', defaultPath: app.getPath('documents'), properties: ['openFile'], filters: [{ name: 'Esportra Air event file', extensions: ['airevent'] }] });
+    return choice.canceled ? null : choice.filePaths[0] ?? null;
+  };
+  const pickFolder = async () => {
+    const choice = await dialog.showOpenDialog(window!, { title: 'Choose the auto-backup folder', defaultPath: app.getPath('documents'), properties: ['openDirectory', 'createDirectory'] });
+    return choice.canceled ? null : choice.filePaths[0] ?? null;
+  };
+  const pickPictures = async () => {
+    const choice = await dialog.showOpenDialog(window!, { title: 'Choose the folder with the logos and photos', defaultPath: app.getPath('pictures'), properties: ['openDirectory'] });
+    return choice.canceled ? null : choice.filePaths[0] ?? null;
+  };
   // Still pictures for list cards: each preview page is rendered once in a hidden 1280×720 window (thumbnails.ts).
-  const thumbs = new Thumbnails(async (url) => {
-    const page = new BrowserWindow({ show: false, width: 1280, height: 720, useContentSize: true, transparent: true, backgroundColor: '#00000000', webPreferences: { offscreen: true, sandbox: true, backgroundThrottling: false } });
+  // 19 Nov: an offscreen window's capturePage can come back blank on some Windows GPUs, so the picture is taken from
+  // its own paint events first, then capturePage, then once more from a hidden normal window. Pictures are kept on
+  // disk, and a page that cannot be pictured shows a plain card, never the live page.
+  const settle = async (page: BrowserWindow) => {
+    for (let i = 0; i < 40 && !(await page.webContents.executeJavaScript('!!window.HUD_READY').catch(() => false)); i++) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 1300));
+  };
+  const shoot = async (url: string, offscreen: boolean) => {
+    const page = new BrowserWindow({ show: false, width: 1280, height: 720, useContentSize: true, transparent: true, frame: false, skipTaskbar: true, paintWhenInitiallyHidden: true, backgroundColor: '#00000000', webPreferences: { offscreen, sandbox: true, backgroundThrottling: false } });
+    let painted: Electron.NativeImage | null = null;
+    if (offscreen) page.webContents.on('paint', (_e, _dirty, image) => { if (!image.isEmpty()) painted = image; });
     try {
-      page.webContents.setFrameRate(10);
+      if (offscreen) page.webContents.setFrameRate(10);
       await page.loadURL(url);
-      // Ready once the page drew its graphic, then a moment for pictures, fonts and entrances.
-      for (let i = 0; i < 40 && !(await page.webContents.executeJavaScript('!!window.HUD_READY').catch(() => false)); i++) await new Promise((r) => setTimeout(r, 100));
-      await new Promise((r) => setTimeout(r, 1300));
-      const image = await page.webContents.capturePage();
+      await settle(page);
+      let image = await page.webContents.capturePage();
+      if (image.isEmpty() && painted) image = painted;
+      if (image.isEmpty()) throw new Error(`blank picture (${offscreen ? 'offscreen' : 'hidden window'})`);
       return `data:image/png;base64,${image.toPNG().toString('base64')}`;
     } finally {
       page.destroy();
     }
+  };
+  const stillDir = join(app.getPath('userData'), 'thumbs');
+  mkdirSync(stillDir, { recursive: true });
+  pruneStills(stillDir, 600);
+  // The app version is part of the name: a new version redraws graphics that may have changed.
+  const stillFile = (id: string) => join(stillDir, `${createHash('sha1').update(`${app.getVersion()}\n${id}`).digest('hex')}.png`);
+  const thumbs = new Thumbnails(async (url) => shoot(url, true).catch(() => shoot(url, false)), {
+    store: {
+      read: (id) => { try { return `data:image/png;base64,${readFileSync(stillFile(id)).toString('base64')}`; } catch { return null; } },
+      write: (id, data) => writeFileSync(stillFile(id), Buffer.from(data.slice(data.indexOf(',') + 1), 'base64')),
+    },
+    log: (url, e) => console.warn(`[thumbnails] ${url.replace(/key=[^&]+/, 'key=…')}: ${e instanceof Error ? e.message : String(e)}`),
   });
-  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), saveManualPdf, pickVideo, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
+  const ctx = { production, obs, secrets, copy: (text: string) => clipboard.writeText(text), showFile: (path: string) => shell.showItemInFolder(path), saveManualPdf, pickVideo, pickEventSave, pickEventOpen, pickFolder, pickPictures, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 
   // Keys over the game (F-keys and Ctrl/Alt keys): a press runs the same call as inside Air.
   production.attachKeys(globalShortcut, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });

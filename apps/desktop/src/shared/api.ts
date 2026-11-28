@@ -38,9 +38,11 @@ export interface PlayerInfo {
 /** A team in Teams/Players: matches pick from these. */
 export interface LibTeam extends Team {
   id: string;
+  /** The team's id on Esportra, when a stage from Esportra brought it in (28 Nov). */
+  esportraId?: string;
+  /** The logo address last fetched from Esportra, so a logo is fetched again only when Esportra's changes. */
+  esportraLogo?: string;
 }
-
-export const PLAYER_ROLES = ['', 'Duelist', 'Initiator', 'Controller', 'Sentinel', 'Flex', 'Substitute', 'Coach'] as const;
 
 /** A player in Teams/Players, on a team or on none. */
 export interface LibPlayer {
@@ -56,6 +58,10 @@ export interface LibPlayer {
   photo: string;
   role: string;
   teamId: string | null;
+  /** The player's PUBG MOBILE OpenID, learned from the observer feed (seats their team in later lobbies). */
+  openId?: string;
+  /** PUBG MOBILE Character ID, digits (28 Nov). The observer API's `uID` is this same value, so it places the player in the game. */
+  uid?: string;
 }
 
 export interface Library {
@@ -100,6 +106,34 @@ export interface Match {
     teams?: [string, string];
   };
 }
+
+/** A battle royale lobby (20 Nov): many teams, several games, scored by placement and eliminations (src/shared/br.ts). */
+export interface Lobby {
+  id: string;
+  /** Room code on the engine; the lobby's graphics read this room. */
+  code: string;
+  eventId: string;
+  game: GameId;
+  title: string;
+  stage: string;
+  teams: import('./br.ts').LobbyTeam[];
+  games: import('./br.ts').LobbyGame[];
+  scoring: import('./br.ts').Scoring;
+  /** How the lobby's graphics look (22 Nov): the HUD layout, the strip's pop-up, a template per graphic. */
+  look?: LobbyLook;
+  /** The producer's pairs of PCOB team slots (by PCOB team id) to lobby teams. */
+  pcobSeats?: Record<string, string>;
+  /** What runs by itself (24 Nov): moments, the Rundown and autopilot, the post-game pick (src/shared/br-rundown.ts). */
+  show?: Partial<import('./br-rundown.ts').BrShow>;
+  /** Days of matches (27 Nov): a broadcast session each; every match belongs to one. Filled in for older lobbies on load. */
+  days?: import('./br.ts').LobbyDay[];
+  /** Points added or taken away with a reason; they count in the official standings. */
+  adjustments?: import('./br.ts').Adjustment[];
+  /** Where this lobby came from, when it was read from an Esportra stage (28 Nov, read only). */
+  source?: import('./br.ts').LobbySource;
+  createdAt: number;
+}
+export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; /** The HUD takes the event's brand colours and logo (28 Nov). */ hudBrand?: boolean; /** Standings graphics count matches that are saved but not confirmed, marked PROVISIONAL (28 Nov). Off by default. */ markProvisional?: boolean; templates: Record<string, string>; theme?: import('./br-screens.ts').BrTheme }
 
 export interface Screen {
   /** Stable id for the screen in Air. */
@@ -279,6 +313,8 @@ export interface CamsView {
 }
 
 export interface Snapshot {
+  /** Counts up with every snapshot, so the interface never replaces a newer one with an older reply. */
+  seq?: number;
   version: string;
   engine: { state: 'starting' | 'running' | 'restarting' | 'failed'; port: number | null; reattached: boolean; error: string | null };
   setup: Setup;
@@ -354,6 +390,10 @@ export interface Snapshot {
   templateUse: Record<string, number>;
   /** Show templates (built in and yours), and the one the selected match's show was last set from. */
   showTemplates: import('./show-templates.ts').ShowTemplateView[];
+  /** The points tables saved on this PC (28 Nov). */
+  pointsTables: import('./br.ts').SavedPointsTable[];
+  /** The test-game roster check (28 Nov): set while the observer feed is in a game. */
+  rosterCheck: import('../main/br-roster-view.ts').RosterView | null;
   showTemplateOf: string | null;
   /** Teams/Players. */
   library: Library;
@@ -367,6 +407,8 @@ export interface Snapshot {
   esportraResults: import('./esportra-package.ts').EsportraResultsView | null;
   /** The selected Esportra match's veto: followed or entered here, its status on Esportra, warnings. */
   esportraVeto: import('./esportra-package.ts').EsportraVetoView | null;
+  /** Stages read from Esportra for lobby games, with their sync state (28 Nov, read only). */
+  esportraStages: import('../main/esportra-stages.ts').StagesView;
   /** The selected match's map records, and which one the post-game graphics show. */
   /** The buy phase has run long: maybe a timeout. Null when not, or while a pause is on air. */
   pauseHint: { seconds: number } | null;
@@ -393,8 +435,33 @@ export interface Snapshot {
   checks: CheckItem[];
   /** Agent, weapon and map pictures on this PC (downloaded once from media.valorant-api.com). */
   art: { total: number; have: number; downloading: boolean; lastError: string | null; unavailable: string[] };
+  /** Game packs (official pictures hosted by Esportra) and whether an event confirmed their licence. */
+  /** Battle royale lobbies and the selected one (src/shared/br.ts works out their standings). */
+  lobbies: Lobby[];
+  selectedLobbyId: string | null;
+  /** The full screen Air last took on the selected lobby's room (src/main/br-graphics.ts). */
+  lobbyOnAir: string | null;
+  /** Air closed while a match was live (27 Nov): what Live offers to resume. */
+  brResume: import('./br-run.ts').BrResume | null;
+  /** The lobby's autopilot: the graphic it runs now and the ones after it. */
+  brAuto: import('./br-rundown.ts').BrAutoStatus;
+  /** The match being played, as the observer feed last read it (Live › Insights › Now). */
+  pcobLive?: import('./pcob.ts').BrLive | null;
+  /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
+  pcob: import('./pcob-status.ts').PcobStatus;
+  /** vMix (28 Nov): the connection and the pages this show needs in its Web Browser inputs (src/main/vmix.ts). */
+  vmix: import('./vmix.ts').VmixView;
+  /** Graphics on the local network (28 Nov): whether other PCs may load the pages, and this PC's address for them. */
+  graphicsLan: import('./graphics-lan.ts').GraphicsLan;
+  /** Record PCOB (27 Nov): the raw PCOB answers being saved to a file on this PC (src/main/pcob-recorder.ts). */
+  pcobRecording: import('../main/pcob-recorder.ts').PcobRecordingView;
+  packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
   /** After Air or the graphics engine restarted mid-show: one sentence for the producer, until dismissed. */
   recovery: string | null;
+  /** Air could not read its saved data on start (27 Nov): what it loaded instead. Shown once, until dismissed. */
+  recovered: { from: string | null; fromAt: number | null; at: number; brokenFile: string } | null;
+  /** The auto-backup folder (27 Nov): where the selected event's file is written after changes. */
+  autoBackup: { folder: string | null; lastAt: number | null; file: string | null; error: string | null };
   /** The private rehearsal of the selected match (never on air). */
   rehearsal: RehearsalView;
 }
@@ -481,6 +548,8 @@ export interface AirApi {
   resetKeys(): Promise<Snapshot>;
   setMoments(ids: string[]): Promise<Snapshot>;
   setGlobalKeys(on: boolean): Promise<Snapshot>;
+  /** Let other PCs on the network load the graphics (restarts the graphics engine; refused while game data or a test runs). */
+  setGraphicsLan(on: boolean): Promise<Snapshot>;
   /** Settings is waiting for a new key: release keys over the game until it has it. */
   holdGlobalKeys(listening: boolean): Promise<Snapshot>;
   /** Saves the manual as a PDF (the app asks where); resolves to where it went, or null if cancelled. */
@@ -565,9 +634,92 @@ export interface AirApi {
   libraryPlay(on: boolean): Promise<Snapshot>;
   /** Downloads any agent, weapon and map pictures not yet on this PC. */
   artDownload(): Promise<Snapshot>;
+  eventLicence(eventId: string, game: string, input: { confirmed?: boolean; number?: string }): Promise<Snapshot>;
+  packDownload(game: string): Promise<Snapshot>;
+  lobbyCreate(input: { eventId: string; game: GameId; title?: string; games?: number; maps?: string[] }): Promise<Snapshot>;
+  lobbyUpdate(id: string, patch: { title?: string; stage?: string; scoring?: import('./br.ts').Scoring; games?: Array<{ map: string; startsAt?: string }> }): Promise<Snapshot>;
+  lobbyTeams(id: string, teamIds: string[]): Promise<Snapshot>;
+  lobbyResult(id: string, game: number, rows: import('./br.ts').TeamResult[]): Promise<Snapshot>;
+  lobbyClearResult(id: string, game: number): Promise<Snapshot>;
+  lobbySelect(id: string | null): Promise<Snapshot>;
+  lobbyDelete(id: string): Promise<Snapshot>;
+  /** Import (28 Nov): looks through a pictures folder (asked for when `folder` is null; later calls pass the `token`) and matches what it finds. Null when cancelled. */
+  sheetPictures(input: import('../main/sheet-import.ts').PictureInput): Promise<import('../main/sheet-import.ts').PictureScan | null>;
+  /** Saves an import into Teams/Players (and lobbies). Refused while a match is live. */
+  sheetImport(input: import('../main/sheet-import.ts').ImportInput): Promise<import('../main/sheet-import.ts').ImportResult>;
+  /** Use a stage from Esportra (28 Nov, read only; nothing is sent back). The stages this producer can run, one stage in full, using it, reading it again, and following it again or stopping. */
+  esportraStages(): Promise<import('../main/esportra-stages.ts').StageList>;
+  esportraStageRead(stageId: string): Promise<import('../main/esportra-stages.ts').StageDetail>;
+  esportraStageUse(stageId: string, eventId?: string | null): Promise<Snapshot>;
+  esportraStageRefresh(stageId: string): Promise<Snapshot>;
+  esportraStageFollow(stageId: string, part?: import('./br.ts').StagePart | 'all' | 'off'): Promise<Snapshot>;
+  /** Saved points tables on this PC. */
+  pointsTableSave(input: { id?: string; name: string; scoring: import('./br.ts').Scoring }): Promise<import('./br.ts').SavedPointsTable>;
+  pointsTableDelete(id: string): Promise<Snapshot>;
+  /** The match generator: fills a day with matches (count, first start, gap in minutes, map rotation). */
+  lobbyFormat(id: string, dayId: string, spec: import('./br-format.ts').FormatSpec): Promise<Snapshot>;
+  /** A new lobby with this one's format and points, no teams or results (Group A → Group B). */
+  lobbyCopy(id: string, title?: string): Promise<Snapshot>;
+  /** The roster check: this UID is that Teams/Players player's. Refused while a match is live. */
+  rosterUid(lobbyId: string, playerId: string, uid: string): Promise<Snapshot>;
+  lobbyLook(id: string, look: Partial<LobbyLook>): Promise<Snapshot>;
+  /** Moments, Rundown (`preset` or `rows`), autopilot, the top fraggers band and the post-game pick. */
+  lobbyShow(id: string, patch: Partial<Omit<import('./br-rundown.ts').BrShow, 'moments'>> & { preset?: import('./br-rundown.ts').BrPreset; moments?: Partial<Record<import('./br-rundown.ts').BrMomentKind, boolean>> }): Promise<Snapshot>;
+  /** What the lobby's graphics read (pictures, theme, emblem, sponsors), with a draft theme, for the theme editor's preview. */
+  lobbyPreview(id: string, theme?: unknown): Promise<Record<string, unknown>>;
+  /** Reads the PUBG MOBILE observer client's API (PCOB) on this PC or the local network; consent every time. */
+  pcobConnect(host: string, consent: boolean): Promise<Snapshot>;
+  pcobDisconnect(): Promise<Snapshot>;
+  /** vMix's Web API on this PC or the local network (port 8088 unless given). Air only reads it and renames/points the inputs you pair. */
+  vmixConnect(address: string): Promise<Snapshot>;
+  vmixDisconnect(): Promise<Snapshot>;
+  /** Pairs an Air page with a vMix Web Browser input (null forgets the pairing). */
+  vmixPair(pageId: string, inputKey: string | null): Promise<Snapshot>;
+  vmixReload(pageId: string): Promise<Snapshot>;
+  /** Saves every raw answer of PCOB to a file on this PC while on (needs the connection and its consent). */
+  pcobRecord(on: boolean): Promise<Snapshot>;
+  /** Shows the recording in its folder. */
+  pcobShowRecording(): Promise<void>;
+  /** Pairs a PCOB team slot with a lobby team (null: automatic). */
+  pcobSeat(lobbyId: string, pcobTeamId: number, team: string | null): Promise<Snapshot>;
+  /** Take one of the lobby's full screens on its room, or clear with null. */
+  lobbyTake(id: string, screen: string | null): Promise<Snapshot>;
+  /** The run sheet (27 Nov): arm a match, remake, void with a reason, end it, confirm, edit a confirmed one with a reason. */
+  lobbyArm(lobbyId: string, matchId: string): Promise<Snapshot>;
+  lobbyDisarm(lobbyId: string): Promise<Snapshot>;
+  lobbyRemake(lobbyId: string, matchId: string): Promise<Snapshot>;
+  lobbyVoid(lobbyId: string, matchId: string, reason: string): Promise<Snapshot>;
+  lobbyEndMatch(lobbyId: string, matchId: string): Promise<Snapshot>;
+  /** Refills a provisional match's after-match numbers from the game (never places or kills); until Confirm. */
+  lobbyUpdateFromGame(matchId: string): Promise<Snapshot>;
+  lobbyConfirm(lobbyId: string, matchId: string): Promise<Snapshot>;
+  lobbyEditConfirmed(lobbyId: string, matchId: string, results: import('./br.ts').TeamResult[], reason: string): Promise<Snapshot>;
+  lobbyAdjust(lobbyId: string, team: string, points: number, reason: string): Promise<Snapshot>;
+  lobbyAdjustRemove(lobbyId: string, id: string): Promise<Snapshot>;
+  lobbyDayAdd(lobbyId: string, input: { date?: string; title?: string; opensAt?: string }): Promise<Snapshot>;
+  lobbyDayEdit(lobbyId: string, dayId: string, patch: { date?: string; title?: string; opensAt?: string; matchIds?: string[]; reopen?: boolean }): Promise<Snapshot>;
+  /** Start day: the checklist (go false), or start it and arm its first match (go true). */
+  lobbyDayStart(lobbyId: string, dayId: string, go?: boolean): Promise<import('../main/br-run.ts').DayStart>;
+  /** Close day: the summary and what stops it (close false), or close it (close true; refused while a match is open). */
+  lobbyDayClose(lobbyId: string, dayId: string, close?: boolean): Promise<import('./br-run.ts').DaySummary & { problems: string[] }>;
+  /** After a restart: carry on with the live match and the autopilot run that was in progress, or not. */
+  lobbyResume(): Promise<Snapshot>;
+  lobbyResumeDismiss(): Promise<Snapshot>;
+  packAssets(game: string): Promise<Array<import('./game-assets.ts').GameAsset & { src: string; thumbSrc: string }>>;
   /** Forgets this match's autopilot progress so the rundown starts again from the first step. */
   autopilotRestart(): Promise<Snapshot>;
   recoveryDismiss(): Promise<Snapshot>;
+  recoveredDismiss(): Promise<Snapshot>;
+  /** Save event file… (null: cancelled). */
+  eventExport(eventId: string): Promise<import('../main/event-files.ts').EventFileSaved | null>;
+  /** Open event file…: reads the file the producer picks and says what is in it (null: cancelled). Nothing changes yet. */
+  eventImportOpen(): Promise<import('../main/event-files.ts').EventFileCheck | null>;
+  eventImportConfirm(token: string, mode: 'copy' | 'replace'): Promise<{ eventId: string; name: string }>;
+  backupList(): Promise<Array<{ name: string; at: number; bytes: number }>>;
+  backupRestore(name: string): Promise<Snapshot>;
+  autoBackupChoose(): Promise<Snapshot>;
+  autoBackupOff(): Promise<Snapshot>;
+  autoBackupNow(): Promise<string | null>;
   /** Plays the match privately inside Air, with autopilot firing. Nothing reaches OBS. */
   rehearsalStart(options: Partial<RehearsalOptions>): Promise<Snapshot>;
   rehearsalStop(): Promise<Snapshot>;

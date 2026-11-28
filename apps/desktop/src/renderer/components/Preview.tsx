@@ -88,12 +88,14 @@ export function stillKey(s: Snapshot) {
 
 /**
  * A list card's preview as a still picture (17 Nov): the page is rendered once by Air off screen and kept, so a
- * long list scrolls like any other. It falls back to the live page when no picture can be made.
+ * long list scrolls like any other. 19 Nov: a list never runs the live page. When no picture can be made the card
+ * says so, with Try again; a graphic runs live only where the producer opens it.
  */
 export function StillPreview({ src, label, backdrop = true, stamp = '' }: { src: string; label: string; backdrop?: boolean; stamp?: string }) {
   const box = useRef<HTMLDivElement>(null);
-  const [image, setImage] = useState<string | null | 'live'>(null);
+  const [image, setImage] = useState<string | null | 'failed'>(null);
   const [near, setNear] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -104,13 +106,20 @@ export function StillPreview({ src, label, backdrop = true, stamp = '' }: { src:
   useEffect(() => {
     if (!near) return;
     let gone = false;
-    air.thumbnail(src, stamp).then((data) => { if (!gone) setImage(data ?? 'live'); }, () => { if (!gone) setImage('live'); });
+    setImage(null);
+    air.thumbnail(src, stamp).then((data) => { if (!gone) setImage(data ?? 'failed'); }, () => { if (!gone) setImage('failed'); });
     return () => { gone = true; };
-  }, [near, src, stamp]);
-  if (image === 'live') return <Preview src={src} label={label} backdrop={backdrop} />;
+  }, [near, src, stamp, attempt]);
   return (
     <div ref={box} className={`pv ${backdrop ? 'pv-bg' : ''} pv-still`} aria-label={`Preview: ${label}`} role="img">
-      {image && <img src={image} alt="" draggable={false} />}
+      {image && image !== 'failed' && <img src={image} alt="" draggable={false} />}
+      {image === 'failed' && (
+        <span className="pv-none">
+          <b>{label}</b>
+          <span>No picture yet</span>
+          <span role="button" tabIndex={0} className="pv-retry" onClick={(e) => { e.stopPropagation(); setAttempt((n) => n + 1); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setAttempt((n) => n + 1); } }}>↻ Try again</span>
+        </span>
+      )}
     </div>
   );
 }

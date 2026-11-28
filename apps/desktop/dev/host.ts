@@ -3,12 +3,14 @@
 // walked through in a normal browser on any OS (no ow-electron, OBS or Valorant needed).
 //
 //   node dev/host.ts [--port 5320]      then open http://127.0.0.1:5320/
+import { FakePcob, parseVariants } from './fake-pcob.ts';
+import { FakeVmix } from './fake-vmix.ts';
 import { createRequire } from 'node:module';
 import { manualHtml } from '../src/shared/manual.ts';
 import { gameOf } from '../src/shared/games.ts';
 import { createServer } from 'node:http';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { dispatch } from '../src/main/api.ts';
@@ -66,7 +68,10 @@ class SimulatedCapture extends EventEmitter {
   }
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'air-dev-'));
+// --data-dir <folder> keeps a profile between runs (the broadcast walk restarts Air on the same data).
+const dataArg = process.argv.indexOf('--data-dir') >= 0 ? process.argv[process.argv.indexOf('--data-dir') + 1] : '';
+const dir = dataArg ? resolve(dataArg) : mkdtempSync(join(tmpdir(), 'air-dev-'));
+mkdirSync(dir, { recursive: true });
 const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: dir, port: ENGINE_PORT, key: 'dev-host-key-0123456789abcdef', env: engineEnv(), ...realProcess });
 await engine.start();
 const fakeObs = new FakeObs();
@@ -82,8 +87,10 @@ const backend = await new FakeEsportra().start();
 console.log(JSON.stringify({ esportra: backend.url, email: backend.email, password: backend.password }));
 store.data.deviceId ??= randomUUID();
 const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets, deviceId: store.data.deviceId, deviceName: 'DEV-PC', changed: () => production.emit('change') });
-const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, version: 'dev' });
+const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, recordingsDir: join(dir, 'Esportra Air recordings'), journalDir: join(dir, 'events'), version: 'dev' });
 let clipboard = '';
+let fakePcob: FakePcob | null = null;
+let fakeVmix: FakeVmix | null = null;
 // The manual as a PDF, printed by the same Chromium the walkthrough uses (no save dialog in the dev host).
 const saveManualPdf = async () => {
   const { chromium } = createRequire(import.meta.url)('playwright');
@@ -113,7 +120,13 @@ const thumbs = new Thumbnails(async (url) => {
     await page.close();
   }
 });
-const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; }, saveManualPdf, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
+// Event files: the dev host has no dialogs. Save writes into <data>/Event files, Open reads the newest file there,
+// and the auto-backup folder is <data>/Auto backup.
+const eventFolder = join(dir, 'Event files');
+const pickEventSave = async (name: string) => { mkdirSync(eventFolder, { recursive: true }); return join(eventFolder, name); };
+const pickEventOpen = async () => { try { return readdirSync(eventFolder).filter((f) => f.endsWith('.airevent')).map((f) => join(eventFolder, f)).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0] ?? null; } catch { return null; } };
+const pickFolder = async () => join(dir, 'Auto backup');
+const ctx = { production, obs, secrets, copy: (text: string) => { clipboard = text; }, saveManualPdf, pickEventSave, pickEventOpen, pickFolder, thumbnail: (url: string, key: string) => thumbs.get(url, key) };
 // Keys over the game: F12 stands for a key another app holds (Windows keeps F12 for debuggers).
 const shortcuts = new FakeShortcuts(new Set(['F12']));
 production.attachKeys(shortcuts, async (method, args) => { await dispatch(ctx, method, args); production.emit('change'); });
@@ -162,13 +175,54 @@ createServer(async (req, res) => {
     return;
   }
   if (url.pathname === '/dev/esportra' && req.method === 'POST') {
-    // Plays the Esportra admin: ?access=off|grant, or ?decline=<reason> for the open request.
+    // Plays the Esportra admin: ?access=off|grant, or ?decline=<reason> for the open request. A JSON body
+    // `{ "showcase": … }` replaces the schedule with a reel's tournament (FakeEsportra.showcase).
+    const raw = await new Promise<string>((done) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => done(b)); });
+    if (raw.trim()) { const body = JSON.parse(raw) as { showcase?: Parameters<FakeEsportra['showcase']>[0] }; if (body.showcase) backend.showcase(body.showcase); }
     const access = url.searchParams.get('access');
     if (access === 'off') backend.allowed = false;
     if (access === 'grant') backend.grant();
+    const stage = url.searchParams.get('stage');
+    // The organiser edits the stage on Esportra: ?stage=shift&group=0&min=30, ?stage=map&group=0&game=3&name=Sanhok, ?stage=team&group=0&name=New Team, ?stage=gone, ?stage=back.
+    if (stage === 'shift') backend.editStage({ shift: { group: Number(url.searchParams.get('group')) || 0, minutes: Number(url.searchParams.get('min')) || 30 } });
+    if (stage === 'map') backend.editStage({ map: { group: Number(url.searchParams.get('group')) || 0, game: Number(url.searchParams.get('game')) || 1, name: url.searchParams.get('name') ?? 'Erangel' } });
+    if (stage === 'team') backend.editStage({ addTeam: { group: Number(url.searchParams.get('group')) || 0, name: url.searchParams.get('name') ?? 'New Team' } });
+    if (stage === 'gone') backend.stageGone = true;
+    if (stage === 'back') backend.stageGone = false;
     const reason = url.searchParams.get('decline');
     if (reason) backend.decline(reason);
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ allowed: backend.allowed, request: backend.request }));
+    return;
+  }
+  if (url.pathname === '/dev/pcob' && req.method === 'POST') {
+    // A stand-in PUBG MOBILE observer client (dev/fake-pcob.ts) for the selected lobby's teams:
+    // ?do=start[&speed=N&generic=1&variant=noGameId,finishedZero,…] serves it on 127.0.0.1:<port>, ?do=begin plays a game, ?do=stop ends it.
+    const act = url.searchParams.get('do');
+    const lobby = production.lobbies.selected;
+    if (act === 'start') {
+      await fakePcob?.close();
+      if (!lobby?.teams.length) { res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Choose a lobby with teams first.' })); return; }
+      fakePcob = await new FakePcob({ teams: lobby.teams.map((t) => ({ name: t.name, players: t.players, ...(t.uids?.some(Boolean) ? { uids: t.uids.map((u) => Number(u)) } : {}) })), speed: Number(url.searchParams.get('speed')) || 1, genericNames: url.searchParams.get('generic') === '1', length: Number(url.searchParams.get('length')) || 1500, variants: parseVariants(url.searchParams.get('variant')) }).listen();
+    }
+    if (act === 'begin') fakePcob?.begin();
+    if (act === 'stop') fakePcob?.stop();
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ port: fakePcob?.port ?? null, time: fakePcob?.time() ?? null, end: fakePcob?.gameEnd ?? null }));
+    return;
+  }
+  if (url.pathname === '/dev/vmix' && req.method === 'POST') {
+    // A stand-in vMix (dev/fake-vmix.ts) on 127.0.0.1:<port>: ?do=start serves it with two Web Browser inputs and a camera,
+    // ?do=add&title=… adds a Web Browser input, ?do=remove&title=… deletes one; the answer lists its inputs and the calls it accepted.
+    const act = url.searchParams.get('do');
+    if (act === 'start') { await fakeVmix?.close(); fakeVmix = await new FakeVmix().listen(); fakeVmix.addInput('Browser', 'Browser 1'); fakeVmix.addInput('Browser', 'Browser 2'); fakeVmix.addInput('Video', 'Camera'); }
+    if (act === 'add') fakeVmix?.addInput('Browser', url.searchParams.get('title') ?? 'Browser');
+    if (act === 'remove') { const i = fakeVmix?.inputs.find((x) => x.title === url.searchParams.get('title')); if (i) fakeVmix?.removeInput(i.key); }
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ port: fakeVmix?.port ?? null, inputs: fakeVmix?.inputs ?? [], calls: fakeVmix?.calls ?? [], refused: fakeVmix?.refused ?? [] }));
+    return;
+  }
+  if (url.pathname === '/dev/quit' && req.method === 'POST') {
+    // Stops the host the way Ctrl C does (the broadcast walk restarts Air on the same data folder).
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"quit":true}');
+    setTimeout(() => void stop(), 50);
     return;
   }
   if (url.pathname === '/dev/state') {

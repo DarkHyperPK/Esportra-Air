@@ -35,6 +35,8 @@
     sponsor: v => { v.show = { ...v.show, lowerThird: true }; v.lowerThird = { kind: 'generic', title: (v.sponsors && v.sponsors[0] && v.sponsors[0].name) || 'SPONSOR', sub: 'Presented by', team: -1, player: 0 }; },
     starting: v => { v.holding = { ...v.holding, mode: 'starting' }; },
     brb: v => { v.holding = { ...v.holding, mode: 'brb' }; },
+    // Battle royale HUD layouts (core/br.js); strip shows its standings pop-up.
+    rail: v => { v.layout = { ...v.layout, brHud: 'rail' }; }, grid: v => { v.layout = { ...v.layout, brHud: 'grid' }; }, strip: v => { v.layout = { ...v.layout, brHud: 'strip' }; v.brPopup = true; },
     ending: v => { v.holding = { ...v.holding, mode: 'ending' }; },
   };
   try { if(Q.has('hudSettings'))previewPatch=window.AirHudSettings.validate(JSON.parse(Q.get('hudSettings'))); } catch (_) { /* Invalid preview settings never enter the match state. */ }
@@ -1211,7 +1213,7 @@
   // A browser source for one graphic (Air's Rundown › Copy browser source, 17 Nov): ?only=<screen> shows that
   // graphic alone, only while Air has it on air (or always with &always=1), in &style=full|band (else the Take's).
   const ONLY = Q.get('only'), ALWAYS = Q.get('always') === '1', ONLY_STYLE = Q.get('style');
-  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'map-breakdown': 'mapbreakdown', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup' };
+  const FULLSCREEN = { 'match-intro': 'intro', 'map-veto': 'veto', 'agent-select': 'lineups', 'map-result': 'mapresult', series: 'series', halftime: 'halftime', standings: 'standings', 'player-profile': 'profile', champion: 'champion', 'cam-grid': 'camgrid', schedule: 'schedule', bracket: 'bracket', 'map-breakdown': 'mapbreakdown', 'postgame-player': 'pgplayer', 'postgame-matchup': 'matchup', 'br-lobby': 'brlobby', 'br-today': 'brtoday', 'br-rankings': 'brrankings', 'br-overall': 'broverall', 'br-day': 'brday', 'br-wwcd': 'brwwcd', 'br-mvp': 'brmvp', 'br-champion': 'brchampion', 'br-teams': 'brteams', 'br-drop': 'brdrop', 'br-fraggers': 'brfraggers', 'br-tom': 'brtom', 'br-profile': 'brprofile', 'br-mstats': 'brmstats', 'br-pvp': 'brpvp' };
   M.fullscreen = root => {
     const slots = {};
     let shown = null, fsSp = null;
@@ -1415,7 +1417,7 @@
   function templates(root, list) {
     const T = window.AirTemplates; if (!T) return;
     const byModule = {}; Object.entries(FULLSCREEN).forEach(([id, m]) => { byModule[m] = id + '|full'; }); Object.entries(HUD.BANDS || {}).forEach(([id, m]) => { byModule[m] = id + '|band'; });
-    byModule.holding = 'holding|full'; byModule.casters = 'casters|full';
+    byModule.holding = 'holding|full'; byModule.casters = 'casters|full'; byModule.brhud = 'brhud';
     const host = list.includes('fullscreen'), page = list.length === 1 && byModule[list[0]] ? byModule[list[0]] : 'hud';
     const find = (s, id) => (Array.isArray(s.airTemplates) ? s.airTemplates : []).find(t => t && t.id === id) || null;
     let queued = false, entered = false, first = true;
@@ -1479,9 +1481,9 @@
     // Air's app page is a file, so its origin is not usable: the parent and a one-off key in the URL are checked.
     if (/^AIR_TEMPLATE_/.test(event.data?.type || '') && !OUTPUT && PREVIEW && Q.get('editorKey') && event.data.key === Q.get('editorKey')) {
       const d = event.data;
-      if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template || null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
+      if (d.type === 'AIR_TEMPLATE_DRAFT') { tplDraft = d.template || d.brand ? { template: d.template ? Object.assign(d.template, { draft: true }) : null, brand: d.brand || null } : null; HUD.templateRefresh && HUD.templateRefresh(); }
       if (d.type === 'AIR_TEMPLATE_PLAY' && HUD.templatePlay) HUD.templatePlay();
-      if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); }
+      if (d.type === 'AIR_TEMPLATE_SAMPLE') { tplSample = SAMPLES[d.sample] ? d.sample : null; HUD.brSample = /^(rail|grid|strip|moments)$/.test(d.sample || '') ? d.sample : null; HUD.templateRefresh && HUD.templateRefresh(); HUD.subs.forEach(f => f(HUD.state)); }
       if ((d.type === 'AIR_TEMPLATE_DRAFT' || d.type === 'AIR_TEMPLATE_RECTS' || d.type === 'AIR_TEMPLATE_SAMPLE') && HUD.templateRects) { sendRects(d.id); watchRects(); }
       return;
     }
@@ -1489,6 +1491,13 @@
     if (event.data?.type === 'AIR_SHOW_DRAFT' && SHOW_EDIT && !OUTPUT && event.data.key === Q.get('editorKey')) {
       const d = event.data;
       receive(mergePatch(clone(sourceState), { holding: d.holding || {}, ...(d.teams ? { teams: d.teams } : {}), ...(d.event ? { event: d.event } : {}) }));
+      return;
+    }
+    // Battle royale theme editor (23 Nov): the draft theme and the lobby's pictures, on preview pages only.
+    if (event.data?.type === 'AIR_BR_DRAFT' && PREVIEW && !OUTPUT && Q.get('editorKey') && event.data.key === Q.get('editorKey')) {
+      const d = event.data.fields || {}, keep = {};
+      ['airBrTheme', 'airPack', 'brEmblem', 'brEvent', 'brSponsors'].forEach(k => { if (k in d) keep[k] = d[k]; });
+      receive(Object.assign(clone(sourceState), keep));
       return;
     }
     if (event.data?.type === 'AIR_HUD_PREVIEW_PROBE' && window.HUD_READY)

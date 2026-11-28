@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import { browserSource } from '../../shared/browser-source.ts';
+import { pageHost } from '../../shared/graphics-lan.ts';
 import { air } from '../bridge.ts';
 
 export function CopySourceButton({ open, toggle, name }: { open: boolean; toggle: () => void; name: string }) {
@@ -11,7 +12,7 @@ export function CopySourceButton({ open, toggle, name }: { open: boolean; toggle
 
 /** The addresses for a row, each with a copy button; shown under the row while open. */
 export function CopySourcePanel({ s, row }: { s: Snapshot; row: { show?: string | null; style?: 'full' | 'band'; enabled: boolean } }) {
-  const links = browserSource(s.engine.port ?? 0, s.setup.screens, row);
+  const links = browserSource(s.engine.port ?? 0, s.setup.screens, row, pageHost(s.graphicsLan));
   const [copied, setCopied] = useState<string | null>(null);
   if (!links) return <div className="rd-src faint t-sm">This row has no graphic of its own to add to OBS.</div>;
   const copy = async (which: string, url: string) => {

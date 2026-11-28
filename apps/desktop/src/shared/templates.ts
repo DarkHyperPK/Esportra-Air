@@ -2,6 +2,7 @@
 // moved, scaled, layered, hidden, faded, filled, re-typed, bordered, rounded, given depth, re-worded (fixed
 // labels only) and given an entrance. The HUD applies them as inline styles only
 // (esportra-valorant-hud/core/templates.js, which lists the same graphics and parts with their selectors).
+import { HUD_LAYOUTS, type HudLayout } from './br-screens.ts';
 
 /** A colour: #rrggbb, a brand-kit swatch (`brand.primary` …) or a team's colour (`team.a`, `team.b`). */
 export type ColorRef = string;
@@ -23,13 +24,19 @@ export interface Entrance { kind: 'rise' | 'fade' | 'slide' | 'wipe'; ms: number
 
 /** The settings for one part; anything left out keeps the graphic's own look. */
 export interface PartStyle {
-  x?: number; y?: number; scale?: number; z?: number;
+  x?: number; y?: number; scale?: number;
+  /** Layer order among its siblings (higher is in front), set by dragging in the Layers panel. */
+  z?: number;
   hidden?: boolean; opacity?: number;
+  /** Editor only: a locked layer can't be picked on the picture (20 Nov). */
+  locked?: boolean;
   fill?: Fill;
   color?: ColorRef; font?: FontId; weight?: number; size?: number; spacing?: number; caps?: 'upper' | 'none';
   border?: Border; radius?: number; depth?: 'none' | 'soft' | 'strong';
   /** New words for a fixed label (parts marked `words`). */
   label?: string;
+  /** A picture from a game pack or the producer's uploads, on a part listed in SLOTS (20 Nov). */
+  picture?: PartPicture;
   entrance?: Entrance;
 }
 
@@ -43,6 +50,8 @@ export interface Template {
   graphic: string;
   parts: Record<string, PartStyle>;
   timer?: TimerWindow;
+  /** Battle royale HUD only (28 Nov): which of the three layouts this look is made for; choosing the template sets the lobby's layout. */
+  layout?: HudLayout;
   createdAt: number;
   updatedAt: number;
 }
@@ -64,6 +73,7 @@ export const SAMPLES: Record<string, Array<{ id: string; name: string }>> = {
     { id: 'recap', name: 'Round recap' }, { id: 'duel', name: 'Duel' }, { id: 'compare', name: 'Team compare' }, { id: 'lowerthird', name: 'Lower third' }, { id: 'sponsor', name: 'Sponsor read' },
   ],
   'holding|full': [{ id: 'starting', name: 'Starting soon' }, { id: 'brb', name: 'Break' }, { id: 'ending', name: 'Ending' }],
+  brhud: [{ id: 'rail', name: 'Points rail' }, { id: 'grid', name: 'Points grid' }, { id: 'strip', name: 'Top strip' }, { id: 'moments', name: 'Moments' }],
 };
 /** The sample a HUD part shows in, for parts that are not on screen all the time. */
 export const SHOWS_IN: Record<string, string> = {
@@ -117,19 +127,37 @@ export const GRAPHICS: Record<string, { title: string; parts: Part[] }> = {
   ] },
 };
 
+/** The three ready-made battle royale HUDs (28 Nov). They are layouts of core/br.js, never saved or edited: "Make a copy to edit"
+ *  starts a template of the producer's own on the same layout. Choosing one for a lobby sets its layout and no template. */
+export const BUILTIN_BR_HUD: ReadonlyArray<{ id: string; layout: HudLayout; name: string; line: string }> = [
+  { id: 'builtin-br-rail', layout: 'rail', name: 'Pro Rail', line: 'Right edge under the minimap. Compact alive marks, elims and live points.' },
+  { id: 'builtin-br-grid', layout: 'grid', name: 'Broadcast Grid', line: 'Bottom right, all teams in a grid of light tiles, sorted by rank.' },
+  { id: 'builtin-br-strip', layout: 'strip', name: 'Strip', line: 'One thin bar under the compass. Standings roll in on a pop-up.' },
+];
+
+/** The parts that belong to one layout of the battle royale HUD; elim, moment and ltf are common to all three. */
+const LAYOUT_ROOTS: Record<HudLayout, string[]> = { rail: ['rail', 'chip'], grid: ['grid'], strip: ['strip', 'popup'] };
+/** A layout template's parts: its own layout's and the common ones, so a copy of Strip never lists the rail. */
+export function partsForLayout(parts: ReadonlyArray<Part>, layout: HudLayout | undefined): ReadonlyArray<Part> {
+  if (!layout) return parts;
+  const others = HUD_LAYOUTS.filter((l) => l !== layout).flatMap((l) => LAYOUT_ROOTS[l]);
+  return parts.filter((p) => !others.includes(p[0].split('.')[0]!));
+}
+
 /** The overlay page the editor previews for a graphic. */
 export function graphicPage(graphic: string): string {
   if (graphic === 'hud') return 'ingame';
+  if (graphic === 'brhud') return 'br-hud';
   const [screen, style] = graphic.split('|');
   return style === 'band' ? `${screen === 'holding' ? 'break-frame' : `${screen}-band`}` : screen!;
 }
 export const graphicKey = (screen: string, style: 'full' | 'band') => `${screen}|${style}`;
-export const graphicScreen = (graphic: string) => (graphic === 'hud' ? null : graphic.split('|')[0]!);
+export const graphicScreen = (graphic: string) => (graphic === 'hud' || graphic === 'brhud' ? null : graphic.split('|')[0]!);
 export const graphicStyle = (graphic: string): 'full' | 'band' => (graphic.endsWith('|band') ? 'band' : 'full');
 export const graphicTitle = (graphic: string) => {
   const g = GRAPHICS[graphic];
   if (!g) return 'Unknown graphic';
-  return graphic === 'hud' || graphic.startsWith('holding|') || graphic.startsWith('casters|') ? g.title : `${g.title} · ${graphicStyle(graphic) === 'band' ? 'Overlay bar' : 'Full screen'}`;
+  return graphic === 'hud' || graphic === 'brhud' || graphic.startsWith('holding|') || graphic.startsWith('casters|') ? g.title : `${g.title} · ${graphicStyle(graphic) === 'band' ? 'Overlay bar' : 'Full screen'}`;
 };
 // FINE LAYERS (generated by dev/parts-extra.py) ›
 /** Every visible text, picture and shape of each graphic has its own part (17 Nov parts audit). */
@@ -155,7 +183,65 @@ const EXTRA: Record<string, Part[]> = {
 };
 for (const [g, parts] of Object.entries(EXTRA)) GRAPHICS[g]!.parts.push(...parts);
 // ‹ FINE LAYERS
+/** Battle royale graphics (core/br.js) belong to lobby games; every other graphic to versus games. */
+export const isLobbyGraphic = (graphic: string) => graphic === 'brhud' || graphic.startsWith('br-');
+export const graphicsFor = (shape: 'versus' | 'lobby') => Object.keys(GRAPHICS).filter((g) => isLobbyGraphic(g) === (shape === 'lobby'));
 export const partsOf = (graphic: string) => GRAPHICS[graphic]?.parts ?? [];
+
+// ── Picture slots (20 Nov): parts whose picture a template may replace. Same as SLOTS in core/templates.js. ──
+export type SlotKind = 'character' | 'map' | 'vehicle' | 'item' | 'background' | 'logo-esports' | 'logo-game' | 'logo-ci' | 'any';
+export interface PartPicture { src: string; kind: import('./game-assets.ts').AssetKind; fit?: 'cover' | 'contain'; flip?: boolean }
+export const SLOTS: Record<string, Record<string, SlotKind>> = {};
+// BR PARTS (generated by dev/br-parts.py) ›
+/** Battle royale graphics (22 Nov, core/br.js). */
+GRAPHICS["brhud"] = { title: "Battle royale HUD", parts: [['rail', 'Points rail'], ['rail.head', 'Rail header'], ['rail.title', 'Rail title', 1], ['rail.match', 'Rail match line'], ['rail.sub', 'Rail info bar'], ['rail.subtext', 'Rail info line'], ['rail.rows', 'Rail rows'], ['rail.bars', 'Points bars'], ['rail.mpline', 'Match point line'], ['rail.emblem', 'Event logo'], ['rail.rank', 'Ranks'], ['rail.logo', 'Team logos'], ['rail.name', 'Team tags'], ['rail.mp', 'Match point tag', 1], ['rail.pips', 'Alive marks'], ['rail.elims', 'Elims'], ['rail.points', 'Points'], ['rail.key', 'Key'], ['chip', 'Match chip'], ['chip.match', 'Match block'], ['chip.number', 'Match number'], ['chip.of', 'Match count'], ['chip.map', 'Map picture'], ['chip.event', 'Map and event'], ['chip.mapname', 'Map name'], ['chip.line', 'Event line'], ['grid', 'Points grid'], ['grid.head', 'Grid header'], ['grid.title', 'Grid title', 1], ['grid.match', 'Grid match line'], ['grid.count', 'Alive count'], ['grid.tiles', 'Tiles'], ['grid.lead', 'Leader tile'], ['grid.rank', 'Ranks'], ['grid.name', 'Team tags'], ['grid.points', 'Points'], ['grid.pips', 'Alive marks'], ['grid.elims', 'Elims'], ['grid.out', 'Out tiles'], ['strip', 'Top strip'], ['strip.match', 'Strip match'], ['strip.teams', 'Strip teams'], ['strip.rank', 'Strip ranks'], ['strip.logo', 'Strip logos'], ['strip.name', 'Strip tags'], ['strip.points', 'Strip points'], ['strip.alive', 'Teams left'], ['strip.alivenum', 'Teams left number'], ['popup', 'Standings pop-up'], ['popup.title', 'Pop-up title', 1], ['popup.line', 'Pop-up line'], ['popup.match', 'Pop-up match'], ['popup.body', 'Pop-up table'], ['popup.rows', 'Pop-up rows'], ['popup.rank', 'Pop-up ranks'], ['popup.logo', 'Pop-up logos'], ['popup.name', 'Pop-up names'], ['popup.pips', 'Pop-up alive marks'], ['popup.foot', 'Pop-up footer'], ['popup.footline', 'Pop-up footer line'], ['popup.pages', 'Page marks'], ['popup.points', 'Pop-up points'], ['elim', 'Team eliminated'], ['elim.cam', 'Kill-cam frame'], ['elim.corners', 'Frame corners'], ['elim.logo', 'Team logo'], ['elim.text', 'Text plate'], ['elim.word', 'Eliminated word', 1], ['elim.name', 'Team name'], ['elim.line', 'Points and teams left'], ['elim.tick', 'Marker'], ['elim.place', 'Place'], ['elim.hazard', 'Hazard stripe'], ['moment', 'Moments'], ['moment.word', 'Moment word'], ['moment.logo', 'Moment team logo'], ['moment.name', 'Moment name'], ['moment.line', 'Moment line'], ['moment.bar', 'Zone bar'], ['ltf', 'Live top fraggers'], ['ltf.word', 'Top fraggers word', 1], ['ltf.players', 'Top fragger rows'], ['ltf.rank', 'Top fragger ranks'], ['ltf.logo', 'Top fragger logos'], ['ltf.name', 'Top fragger names'], ['ltf.kills', 'Top fragger elims']] };
+SLOTS["brhud"] = {"chip.map": "map"};
+GRAPHICS["br-lobby|full"] = { title: "Starting soon", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['emblem', 'Event emblem'], ['emblem.picture', 'Emblem picture'], ['emblem.text', 'Emblem name'], ['emblem.name', 'Emblem words'], ['countdown.label', 'Countdown label'], ['countdown', 'Countdown digits'], ['countdown.colon', 'Colon'], ['facts', 'Facts'], ['facts.label', 'Fact labels'], ['facts.value', 'Fact values'], ['facts.small', 'Fact small text'], ['standings.title', 'Standings title'], ['standings', 'Standings rows'], ['standings.rank', 'Ranks'], ['standings.logo', 'Team logos'], ['standings.name', 'Team names'], ['standings.points', 'Points'], ['standings.unit', 'Points word'], ['map', 'Tactical map'], ['map.picture', 'Map picture'], ['map.letters', 'Grid letters'], ['map.numbers', 'Grid numbers'], ['map.jump', 'Jump marker'], ['map.north', 'North arrow'], ['map.n', 'North letter']] };
+SLOTS["br-lobby|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item", "emblem.picture": "any", "map.picture": "map"};
+GRAPHICS["br-today|full"] = { title: "Today's matches", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['day.label', 'Day labels'], ['day.number', 'Day number'], ['stops', 'Matches'], ['stops.disc', 'Map discs'], ['stops.picture', 'Map pictures'], ['stops.number', 'Match numbers'], ['stops.name', 'Map names'], ['stops.status', 'Status tags'], ['stops.winner', 'Winner tags'], ['stops.logo', 'Winner logos'], ['stops.team', 'Winner names'], ['stops.win', 'Winner word']] };
+SLOTS["br-today|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item", "stops.picture": "map"};
+GRAPHICS["br-rankings|full"] = { title: "Match results", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title'], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['mapcard', 'Map card'], ['mapcard.picture', 'Map picture'], ['mapcard.name', 'Map name'], ['table', 'Table'], ['table.head', 'Column heads'], ['table.rows', 'Rows'], ['table.rank', 'Ranks'], ['table.logo', 'Team logos'], ['table.name', 'Team names'], ['table.mp', 'Match point tags'], ['table.cols', 'Numbers'], ['table.bar', 'Bars'], ['table.fill', 'Bar fills'], ['table.elims', 'Elimination marks'], ['table.mpline', 'Match point line'], ['table.total', 'Points'], ['players', 'Players'], ['players.photo', 'Player photos'], ['players.shadow', 'No-photo shadows'], ['winner', 'Winner block'], ['badge.place', 'Winner place'], ['badge', 'Winner plate'], ['badge.name', 'Winner name'], ['badge.line', 'Winner line'], ['key', 'Key'], ['key.marks', 'Key marks'], ['empty', 'Waiting note', 1]] };
+SLOTS["br-rankings|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item", "mapcard.picture": "map"};
+GRAPHICS["br-overall|full"] = { title: "Overall standings", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['table', 'Table'], ['table.head', 'Column heads'], ['table.rows', 'Rows'], ['table.rank', 'Ranks'], ['table.logo', 'Team logos'], ['table.name', 'Team names'], ['table.mp', 'Match point tags'], ['table.cols', 'Numbers'], ['table.bar', 'Bars'], ['table.fill', 'Bar fills'], ['table.elims', 'Elimination marks'], ['table.mpline', 'Match point line'], ['table.total', 'Points'], ['leader', 'Leader card'], ['leader.label', 'Leader label', 1], ['leader.name', 'Leader name'], ['leader.line', 'Leader points'], ['header.mp', 'Match point tag']] };
+SLOTS["br-overall|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item"};
+GRAPHICS["br-day|full"] = { title: "Day standings", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['table', 'Table'], ['table.head', 'Column heads'], ['table.rows', 'Rows'], ['table.rank', 'Ranks'], ['table.logo', 'Team logos'], ['table.name', 'Team names'], ['table.mp', 'Match point tags'], ['table.cols', 'Numbers'], ['table.bar', 'Bars'], ['table.fill', 'Bar fills'], ['table.elims', 'Elimination marks'], ['table.mpline', 'Match point line'], ['table.total', 'Points'], ['leader', 'Leader card'], ['leader.label', 'Leader label', 1], ['leader.name', 'Leader name'], ['leader.line', 'Leader points'], ['header.tag', 'Provisional tag', 1], ['header.tagdot', 'Provisional dot'], ['move', 'Place changes'], ['move.arrows', 'Arrows'], ['days', 'Day bars'], ['days.before', 'Earlier days'], ['days.today', 'This day'], ['days.pending', 'Unconfirmed points'], ['key.days', 'Key marks'], ['key.line', 'Key words'], ['key.arrows', 'Key arrows'], ['empty', 'Waiting note', 1]] };
+SLOTS["br-day|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item"};
+GRAPHICS["br-wwcd|full"] = { title: "WWCD", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['logo', 'Esports logo'], ['players', 'Players'], ['players.photo', 'Player photos'], ['players.shadow', 'No-photo shadows'], ['flares', 'Flares'], ['shards', 'Shards'], ['word', 'Winner word'], ['word.depth', 'Word depth'], ['word.face', 'Word face'], ['subline', 'Winner line', 1], ['team', 'Team plate'], ['team.match', 'Match'], ['team.name', 'Team name'], ['team.logo', 'Team logo'], ['team.points', 'Points block'], ['team.value', 'Points number'], ['team.unit', 'Points word', 1], ['stats', 'Player plates'], ['stats.name', 'Player names'], ['stats.label', 'Stat labels'], ['stats.value', 'Stat numbers']] };
+SLOTS["br-wwcd|full"] = {"logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item"};
+GRAPHICS["br-mvp|full"] = { title: "Match MVP", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['mapcard', 'Map card'], ['mapcard.picture', 'Map picture'], ['mapcard.name', 'Map name'], ['hero', 'MVP'], ['hero.number', 'Big 1'], ['hero.dials', 'Dials'], ['hero.photo', 'MVP photo'], ['hero.photoimg', 'MVP photo picture'], ['hero.shadow', 'MVP shadow'], ['hero.stats', 'Stat plates'], ['hero.values', 'Stat numbers'], ['hero.name', 'Player name'], ['hero.team', 'Team line'], ['hero.logo', 'Team logo'], ['others', 'Players 2 to 4'], ['others.rank', 'Ranks'], ['others.photo', 'Photos'], ['others.photoimg', 'Photo pictures'], ['others.shadow', 'Shadows'], ['others.name', 'Names'], ['others.line', 'Team and numbers'], ['others.values', 'Numbers'], ['empty', 'Waiting note', 1]] };
+SLOTS["br-mvp|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item", "mapcard.picture": "map"};
+GRAPHICS["br-champion|full"] = { title: "Champions", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['logo', 'Esports logo'], ['emblem', 'Event emblem'], ['emblem.picture', 'Emblem picture'], ['emblem.text', 'Emblem name'], ['emblem.name', 'Emblem words'], ['players', 'Players'], ['players.photo', 'Player photos'], ['players.shadow', 'No-photo shadows'], ['rays', 'Rays'], ['word', 'Champions word'], ['word.depth', 'Word depth'], ['word.face', 'Word face'], ['team', 'Team plate'], ['team.logo', 'Team logo'], ['team.name', 'Team name'], ['stats', 'Stats'], ['stats.value', 'Stat numbers'], ['journey', 'Journey'], ['journey.label', 'Journey title'], ['journey.sub', 'Journey line'], ['journey.marks', 'Match labels']] };
+SLOTS["br-champion|full"] = {"logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item", "emblem.picture": "any"};
+GRAPHICS["br-teams|full"] = { title: "Teams in this lobby", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['cards', 'Team cards'], ['cards.head', 'Card heads'], ['cards.logo', 'Team logos'], ['cards.name', 'Team names'], ['cards.seed', 'Seeds'], ['cards.players', 'Players']] };
+SLOTS["br-teams|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item"};
+GRAPHICS["br-drop|full"] = { title: "Drop map", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['map', 'Tactical map'], ['map.picture', 'Map picture'], ['map.letters', 'Grid letters'], ['map.numbers', 'Grid numbers'], ['map.jump', 'Jump marker'], ['map.north', 'North arrow'], ['map.n', 'North letter'], ['side.label', 'Flight path label', 1], ['side.map', 'Map name'], ['side.line', 'Match line'], ['side.legend', 'Legend'], ['side.keys', 'Legend marks']] };
+SLOTS["br-drop|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item", "map.picture": "map"};
+GRAPHICS["br-fraggers|full"] = { title: "Top fraggers", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['cards', 'Player cards'], ['cards.top', 'Top card'], ['cards.rank', 'Ranks'], ['cards.photo', 'Photos'], ['cards.photoimg', 'Photo pictures'], ['cards.shadow', 'No-photo shadows'], ['cards.kills', 'Elims'], ['cards.word', 'Elims word'], ['cards.name', 'Player names'], ['cards.team', 'Team lines'], ['cards.logo', 'Team logos'], ['cards.stats', 'Damage and knocks'], ['cards.values', 'Numbers']] };
+SLOTS["br-fraggers|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item"};
+GRAPHICS["br-tom|full"] = { title: "Team of the match", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['team', 'Team plate'], ['team.logo', 'Team logo'], ['team.name', 'Team name'], ['team.points', 'Points'], ['team.value', 'Points number'], ['players', 'Player cards'], ['players.photo', 'Photos'], ['players.photoimg', 'Photo pictures'], ['players.shadow', 'No-photo shadows'], ['players.name', 'Player names'], ['players.stats', 'Player numbers'], ['players.values', 'Numbers'], ['totals', 'Team numbers'], ['totals.value', 'Team values']] };
+SLOTS["br-tom|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item"};
+GRAPHICS["br-profile|full"] = { title: "Player profile", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title', 1], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['photo', 'Photo'], ['photo.img', 'Photo picture'], ['photo.shadow', 'No-photo shadow'], ['team', 'Team line'], ['team.logo', 'Team logo'], ['name', 'Player name'], ['tiles', 'Stat tiles'], ['tiles.value', 'Stat numbers'], ['bars.label', 'Bars title', 1], ['bars', 'Match rows'], ['bars.match', 'Match labels'], ['bars.fill', 'Bars'], ['bars.value', 'Damage'], ['bars.elims', 'Elims'], ['rating', 'Rating'], ['rating.word', 'Rating word', 1], ['rating.value', 'Rating number']] };
+SLOTS["br-profile|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item"};
+GRAPHICS["br-mstats|full"] = { title: "Match stats", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title'], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['mapcard', 'Map card'], ['mapcard.picture', 'Map picture'], ['mapcard.name', 'Map name'], ['table', 'Table'], ['table.head', 'Column heads'], ['table.rows', 'Rows'], ['table.rank', 'Ranks'], ['table.logo', 'Team logos'], ['table.name', 'Team names'], ['table.bar', 'Damage bars'], ['table.fill', 'Bar fills'], ['table.damage', 'Damage'], ['table.cols', 'Numbers']] };
+SLOTS["br-mstats|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item", "mapcard.picture": "map"};
+GRAPHICS["br-pvp|full"] = { title: "Player vs player", parts: [['field', 'Colour field'], ['background', 'Background picture'], ['veil', 'Colour veil'], ['chutes', 'Parachutes'], ['crate', 'Airdrop crate'], ['footer', 'Footer'], ['footer.ci', 'Partner logos'], ['footer.line', 'Footer line'], ['footer.sponsors', 'Sponsors'], ['footer.sponsor', 'Sponsor logos'], ['header', 'Header'], ['header.logo', 'Esports logo'], ['header.rule', 'Header line'], ['header.event', 'Event line'], ['header.eventmark', 'Event line marks'], ['header.title', 'Title'], ['header.context', 'Context'], ['header.dots', 'Context dots'], ['header.progress', 'Progress marks'], ['header.card', 'Context card'], ['mapcard', 'Map card'], ['mapcard.picture', 'Map picture'], ['mapcard.name', 'Map name'], ['players', 'Player cards'], ['players.photo', 'Photos'], ['players.photoimg', 'Photo pictures'], ['players.shadow', 'No-photo shadows'], ['players.team', 'Team lines'], ['players.logo', 'Team logos'], ['players.name', 'Player names'], ['players.rating', 'Rating lines', 1], ['players.ratingvalue', 'Ratings'], ['vs', 'VS mark', 1], ['rows', 'Stat rows'], ['rows.values', 'Numbers'], ['rows.label', 'Stat names'], ['rows.bars', 'Bar tracks'], ['rows.fill', 'Bars']] };
+SLOTS["br-pvp|full"] = {"header.logo": "logo-esports", "footer.ci": "logo-ci", "crate": "item", "mapcard.picture": "map"};
+// ‹ BR PARTS
+export function slotsOf(graphic: string): Record<string, SlotKind> {
+  const auto: Record<string, SlotKind> = graphic.endsWith('|full') && partsOf(graphic).some((p) => p[0] === 'background') ? { background: 'background' } : {};
+  return { ...auto, ...(SLOTS[graphic] ?? {}) };
+}
+/** Only pack files and the producer's uploads, both served by the graphics engine. */
+export const PICTURE_SRC = /^\/(packs\/[a-z0-9]{2,16}\/[0-9a-f]{64}\.(png|jpg|webp)|air-assets\/[0-9a-f-]{36})$/;
+/** Which asset kinds fit a slot: logos only in their own slot; a background takes wallpapers, maps and the producer's own. */
+export function slotFits(slot: SlotKind, kind: import('./game-assets.ts').AssetKind): boolean {
+  if (slot.startsWith('logo-') || kind.startsWith('logo-')) return slot === kind;
+  if (slot === 'any') return true;
+  if (slot === 'background') return kind === 'wallpaper' || kind === 'map' || kind === 'other';
+  return slot === kind || kind === 'other';
+}
+/** Kit art (from a game pack) is used as it is: no fill, colour or fading over it; logos never shrink below half. */
+export const isKitPicture = (p: PartPicture | undefined) => !!p && p.src.startsWith('/packs/');
 /** Layers drawn inside another (17 Nov): "agents.picture" sits under "agents" in the layers list. */
 export const parentOf = (id: string) => (id.includes('.') ? id.split('.')[0]! : id === 'agentnames' ? 'agents' : null);
 
@@ -178,18 +264,19 @@ function colorOf(v: unknown, what: string): ColorRef | undefined {
 const drop = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
 /** One part's settings, checked and trimmed to what the HUD understands. */
-export function validPart(input: unknown, label: string, words: boolean): PartStyle {
+export function validPart(input: unknown, label: string, words: boolean, slot?: SlotKind): PartStyle {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(`${label}: settings are missing.`);
   const p = input as Record<string, unknown>;
-  const known = new Set(['x', 'y', 'scale', 'z', 'hidden', 'opacity', 'fill', 'color', 'font', 'weight', 'size', 'spacing', 'caps', 'border', 'radius', 'depth', 'label', 'entrance']);
+  const known = new Set(['x', 'y', 'scale', 'z', 'hidden', 'locked', 'opacity', 'fill', 'color', 'font', 'weight', 'size', 'spacing', 'caps', 'border', 'radius', 'depth', 'label', 'entrance', 'picture']);
   for (const k of Object.keys(p)) if (!known.has(k)) throw new Error(`${label}: unknown setting “${k}”.`);
   const out: PartStyle = {
     x: range(p.x, -1920, 1920, `${label} · X`), y: range(p.y, -1080, 1080, `${label} · Y`), scale: range(p.scale, 0.25, 3, `${label} · scale`),
-    z: p.z === undefined ? undefined : Math.round(range(p.z, -9, 9, `${label} · layer`)!), opacity: range(p.opacity, 0, 1, `${label} · opacity`),
+    z: p.z === undefined ? undefined : Math.round(range(p.z, -99, 99, `${label} · layer`)!), opacity: range(p.opacity, 0, 1, `${label} · opacity`),
     color: colorOf(p.color, `${label} · text colour`), weight: range(p.weight, 400, 900, `${label} · weight`), size: range(p.size, 6, 240, `${label} · size`),
     spacing: range(p.spacing, -0.1, 0.6, `${label} · spacing`), radius: range(p.radius, 0, 80, `${label} · corners`),
   };
   if (p.hidden !== undefined) { if (typeof p.hidden !== 'boolean') throw new Error(`${label}: shown or hidden.`); if (p.hidden) out.hidden = true; }
+  if (p.locked !== undefined) { if (typeof p.locked !== 'boolean') throw new Error(`${label}: locked or not.`); if (p.locked) out.locked = true; }
   if (p.font !== undefined) { if (!FONTS.some((f) => f.id === p.font)) throw new Error(`${label}: choose one of the fonts Air has.`); out.font = p.font as FontId; }
   if (out.weight !== undefined) out.weight = snapWeight(out.font, Math.round(out.weight / 100) * 100);
   if (p.caps !== undefined) { if (p.caps !== 'upper' && p.caps !== 'none') throw new Error(`${label}: capitals or as typed.`); out.caps = p.caps; }
@@ -214,6 +301,19 @@ export function validPart(input: unknown, label: string, words: boolean): PartSt
     if (typeof p.label !== 'string' || p.label.length > 40 || /[<>]/.test(p.label)) throw new Error(`${label}: up to 40 characters, without < or >.`);
     out.label = p.label;
   }
+  if (p.picture !== undefined) {
+    const pic = p.picture as Record<string, unknown>;
+    if (!slot) throw new Error(`${label}: this part's picture comes from the graphic and can't be changed.`);
+    if (!pic || typeof pic !== 'object' || typeof pic.src !== 'string' || !PICTURE_SRC.test(pic.src)) throw new Error(`${label}: choose a picture from the game pack or your uploads.`);
+    const kind = pic.kind as import('./game-assets.ts').AssetKind;
+    if (typeof kind !== 'string' || !slotFits(slot, kind)) throw new Error(`${label}: that kind of picture doesn't fit here.`);
+    out.picture = drop({ src: pic.src, kind, fit: pic.fit === 'contain' ? 'contain' as const : pic.fit === 'cover' ? 'cover' as const : undefined, flip: pic.flip === true ? true : undefined });
+    if (isKitPicture(out.picture)) {
+      if (out.fill && out.fill.kind !== 'none') throw new Error(`${label}: kit pictures are used as they are (no fill over them).`);
+      if (out.color || (out.opacity !== undefined && out.opacity < 1)) throw new Error(`${label}: kit pictures are used as they are (no colour or fading).`);
+      if (kind.startsWith('logo-') && out.scale !== undefined && out.scale < 0.5) throw new Error(`${label}: the logo can't be made that small.`);
+    }
+  }
   if (p.entrance !== undefined) {
     const e = p.entrance as Record<string, unknown>;
     if (!e || typeof e !== 'object' || !['rise', 'fade', 'slide', 'wipe'].includes(e.kind as string)) throw new Error(`${label}: choose rise, fade, slide or wipe.`);
@@ -235,7 +335,7 @@ export function validTemplate(input: unknown, now = Date.now()): Template {
   for (const [id, v] of Object.entries(raw)) {
     const part = partsOf(t.graphic).find((p) => p[0] === id);
     if (!part) throw new Error(`“${id}” is not a part of ${graphicTitle(t.graphic)}.`);
-    const style = validPart(v, part[1], !!part[2]);
+    const style = validPart(v, part[1], !!part[2], slotsOf(t.graphic)[id]);
     if (Object.keys(style).length) parts[id] = style;
   }
   const out: Template = { id: t.id, name, graphic: t.graphic, parts, createdAt: typeof t.createdAt === 'number' ? t.createdAt : now, updatedAt: now };
@@ -243,6 +343,10 @@ export function validTemplate(input: unknown, now = Date.now()): Template {
     if (t.graphic !== 'hud') throw new Error('Only the in-game HUD has a timer window.');
     const w = t.timer as Record<string, unknown>;
     out.timer = { dx: Math.round(range(w.dx ?? 0, -200, 200, 'Timer window position')!), width: Math.round(range(w.width ?? 160, 100, 240, 'Timer window width')!), plate: typeof w.plate === 'string' && HEX.test(w.plate) ? w.plate.toLowerCase() : '#17181e' };
+  }
+  if (t.layout !== undefined && t.layout !== null) {
+    if (t.graphic !== 'brhud' || !HUD_LAYOUTS.includes(t.layout as HudLayout)) throw new Error('Only the battle royale HUD has a layout: rail, grid or strip.');
+    out.layout = t.layout as HudLayout;
   }
   return out;
 }

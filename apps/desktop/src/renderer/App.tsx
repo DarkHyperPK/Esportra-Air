@@ -7,6 +7,7 @@ import { LOGO } from './components/ui.tsx';
 import { ConsentDialog, Drawer, SignInDialog, StatusDrawer, type StatusId } from './components/Dialogs.tsx';
 import { FixData } from './components/FixData.tsx';
 import { ConsoleScreen } from './screens/ConsoleScreen.tsx';
+import { LobbyLive } from './components/LobbyLive.tsx';
 import { ReadyScreen } from './screens/ReadyScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { LibraryScreen, StudioScreen } from './screens/LibraryScreen.tsx';
@@ -18,6 +19,7 @@ import { HelpScreen } from './screens/HelpScreen.tsx';
 import { TeamsScreen } from './screens/TeamsScreen.tsx';
 import { CaptureOnlyScreen } from './components/Join.tsx';
 import { FirstRun } from './components/FirstRun.tsx';
+import { RecoveredNotice } from './components/EventFileUi.tsx';
 
 export type Run = (action: () => Promise<Snapshot | void>) => Promise<boolean>;
 
@@ -35,7 +37,9 @@ export interface PageProps {
 }
 
 export function App() {
-  const [s, setSnapshot] = useState<Snapshot | null>(null);
+  const [s, setLatest] = useState<Snapshot | null>(null);
+  // A call's reply can arrive after a newer snapshot from the stream: keep whichever is newer.
+  const setSnapshot = useCallback((next: Snapshot) => setLatest((cur) => (cur && cur.seq !== undefined && next.seq !== undefined && next.seq < cur.seq ? cur : next)), []);
   const [page, setPage] = useState<Page>('event');
   // Which event is open on Events (none: the list of events).
   const [eventView, setEventView] = useState<EventView>({ id: null, tab: 'matches' });
@@ -210,6 +214,7 @@ export function App() {
               {s.engine.state === 'starting' ? 'Starting the graphics engine…' : s.engine.error}
             </div>
           )}
+          <RecoveredNotice s={s} run={run} />
           {s.recovery && (
             <div className="notice info" role="status" style={{ margin: '12px 24px 0' }}>
               <span className="grow">{s.recovery}</span>
@@ -220,7 +225,7 @@ export function App() {
             {page === 'ready' && <ReadyScreen {...props} command={command} open={matchOpen} setOpen={setMatchOpen} openEvent={openEvent} start={() => { setStarted(true); setPage('console'); }} />}
             {page === 'event' && <EventsScreen s={s} run={run} openSignIn={() => setSignIn(true)} view={eventView} setView={setEventView} openMatch={(m) => void openMatch(m)} openRemote={(e) => void openRemote(e)} newMatch={newMatch} />}
             {page === 'help' && <HelpScreen s={s} run={run} />}
-            {page === 'console' && <ConsoleScreen {...props} />}
+            {page === 'console' && (s.game?.shape === 'lobby' ? <LobbyLive {...props} /> : <ConsoleScreen {...props} />)}
             {page === 'teams' && <TeamsScreen s={s} run={run} />}
             {page === 'library' && <LibraryScreen {...props} />}
             {page === 'studio' && <StudioScreen {...props} />}

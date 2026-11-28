@@ -10,8 +10,13 @@ import { air } from '../bridge.ts';
 import type { PageProps } from '../App.tsx';
 import { StageLight } from '../components/FirstRun.tsx';
 import { EventBranding, EventLogo, EventTalent } from './EventScreen.tsx';
+import { EventFileMenu, OpenEventFile } from '../components/EventFileUi.tsx';
 import { AccessRequest } from '../components/AccessRequest.tsx';
 import { TeamMark } from './MatchWorkspace.tsx';
+import { LobbyList, LobbyScreen } from './LobbyScreen.tsx';
+import { SheetImport } from '../components/br-prep/SheetImport.tsx';
+import { EsportraStage } from '../components/br-prep/EsportraStage.tsx';
+import { gameOf } from '../../shared/games.ts';
 
 export type EventTab = 'matches' | 'branding' | 'talent';
 /** Which event is open: a local event id, `esp:<tournament id>` for an Esportra tournament, or none. */
@@ -51,7 +56,7 @@ export function EventsScreen({ s, run, openSignIn, view, setView, openMatch, ope
   }
   const event = view.id ? s.events.find((e) => e.id === view.id) ?? null : null;
   if (event) {
-    return <EventDetail s={s} run={run} event={event} tab={view.tab} setTab={(tab) => setView({ id: event.id, tab })} back={() => setView({ id: null, tab: 'matches' })}
+    return <EventDetail s={s} run={run} openSignIn={openSignIn} event={event} tab={view.tab} setTab={(tab) => setView({ id: event.id, tab })} back={() => setView({ id: null, tab: 'matches' })}
       remote={remote.filter((e) => event.tournamentId && e.tournamentId === event.tournamentId)} openMatch={openMatch} openRemote={openRemote} newMatch={() => newMatch(event.id)} />;
   }
   return <EventList s={s} run={run} openSignIn={openSignIn} tournaments={tournaments} remoteCount={(tid) => remote.filter((e) => e.tournamentId === tid).length} open={(id) => setView({ id, tab: 'matches' })} />;
@@ -83,6 +88,7 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
           <h2 className="title-lg">Set up your first event</h2>
           <p className="muted">An event holds its matches, its logo, and the people and sponsors on air. Start with its name.</p>
           <div className="fr-actions" style={{ justifyContent: 'center' }}>{form}</div>
+          <OpenEventFile run={run} />
           {s.esportra.state === 'signed-out' && <button className="btn quiet" onClick={openSignIn}>Sign in to load your Esportra tournaments</button>}
           {s.esportra.state === 'denied' && <div style={{ textAlign: 'left', maxWidth: 520, margin: '0 auto' }}><AccessRequest e={s.esportra} run={run} /></div>}
         </div>
@@ -93,7 +99,7 @@ function EventList({ s, run, openSignIn, tournaments, remoteCount, open }: Pick<
     <div className="stack" style={{ gap: 20 }}>
       <div className="between">
         <div><h1 className="title-lg">Events</h1><p className="muted">Each event holds its matches, its branding, and the people and sponsors on air.</p></div>
-        {form}
+        <span className="row-gap">{form}<OpenEventFile run={run} /></span>
       </div>
       <div className="ev-cards">
         {s.events.map((e) => {
@@ -148,9 +154,19 @@ function MatchLine({ s, m, label, done }: { s: PageProps['s']; m: Match; label: 
   );
 }
 
-function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, openRemote, newMatch }: Pick<PageProps, 's' | 'run'> & {
+function EventDetail({ s, run, openSignIn, event, tab, setTab, back, remote, openMatch, openRemote, newMatch }: Pick<PageProps, 's' | 'run' | 'openSignIn'> & {
   event: EventInfo; tab: EventTab; setTab: (t: EventTab) => void; back: () => void; remote: EsportraMatch[]; openMatch: (m: Match) => void; openRemote: (e: EsportraMatch) => void; newMatch: () => void;
 }) {
+  // Battle royale games (21 Nov): the event holds lobbies, not matches.
+  const lobbyGame = gameOf(s.setup.game)?.shape === 'lobby';
+  const [lobbyId, setLobbyId] = useState<string | null>(null);
+  const lobby = lobbyId ? s.lobbies.find((l) => l.id === lobbyId) ?? null : null;
+  // Import teams and players (28 Nov): from the event's lobbies, or from inside one lobby (which then takes the teams).
+  const [importing, setImporting] = useState(false);
+  const [stageOpen, setStageOpen] = useState(false);
+  if (lobbyGame && stageOpen) return <EsportraStage s={s} run={run} eventId={event.id} back={() => setStageOpen(false)} openSignIn={openSignIn} />;
+  if (lobbyGame && importing) return <SheetImport s={s} run={run} eventId={event.id} lobby={lobby} back={() => setImporting(false)} />;
+  if (lobbyGame && lobby) return <LobbyScreen s={s} run={run} lobby={lobby} back={() => setLobbyId(null)} importList={() => setImporting(true)} />;
   // Finished matches go last; the rest by schedule, then newest first.
   const matches = s.matches.filter((m) => m.eventId === event.id).sort((a, b) => Number(!!a.finishedAt) - Number(!!b.finishedAt) || (a.source?.scheduledAt ?? '').localeCompare(b.source?.scheduledAt ?? '') || b.createdAt - a.createdAt);
   return (
@@ -162,16 +178,18 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
           <div><h1 className="title-lg">{event.name}</h1><p className="muted">{event.stages.length ? event.stages.join(' · ') : 'No stages yet'}{event.tournamentId ? ' · from Esportra' : ''}</p></div>
         </div>
         <div className="row-gap">
+          <EventFileMenu eventId={event.id} run={run} />
           <DeleteButton label="Delete event" ask={matches.length ? `Delete ${event.name} and its ${matches.length} match${matches.length === 1 ? '' : 'es'}?` : `Delete ${event.name}?`} onDelete={() => void run(async () => { await air.deleteEvent(event.id); back(); })} />
-          <button className="btn primary" onClick={newMatch}>New match</button>
+          {!lobbyGame && <button className="btn primary" onClick={newMatch}>New match</button>}
         </div>
       </header>
       <div className="tabs" role="tablist" aria-label="Event">
-        {([['matches', 'Matches'], ['branding', 'Branding'], ['talent', 'Talent and sponsors']] as Array<[EventTab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
+        {([['matches', lobbyGame ? 'Lobbies' : 'Matches'], ['branding', 'Branding'], ['talent', 'Talent and sponsors']] as Array<[EventTab, string]>).map(([id, label]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{label}</button>)}
       </div>
       {tab === 'branding' && <EventBranding s={s} run={run} event={event} />}
       {tab === 'talent' && <EventTalent s={s} run={run} event={event} />}
-      {tab === 'matches' && (
+      {tab === 'matches' && lobbyGame && <LobbyList s={s} run={run} eventId={event.id} open={setLobbyId} importList={() => setImporting(true)} openStage={() => setStageOpen(true)} />}
+      {tab === 'matches' && !lobbyGame && (
         <section className="stack" style={{ gap: 8 }}>
           {!matches.length && !remote.length && <p className="muted ap-empty">No matches in this event yet. Press New match to add one.</p>}
           <div className="lst">

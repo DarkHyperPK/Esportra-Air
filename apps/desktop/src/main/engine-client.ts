@@ -75,6 +75,18 @@ export class EngineClient {
     }
   }
 
+  /** Downloads a stored file (a picture or font from the asset store). */
+  async getBytes(path: string, timeoutMs = 10_000): Promise<Buffer> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(this.base + path, { headers: { 'X-Esportra-Key': this.key }, signal: AbortSignal.timeout(timeoutMs) });
+    } catch {
+      throw new EngineError('The graphics engine is not responding.', 0);
+    }
+    if (!response.ok) throw new EngineError(`Engine request failed (${response.status}).`, response.status);
+    return Buffer.from(await response.arrayBuffer());
+  }
+
   /** Read-only WebSocket URL: receives a room's events without being counted as an on-air viewer. */
   observeUrl(matchCode: string) {
     return `${this.base.replace(/^http/, 'ws')}/ws?match=${encodeURIComponent(matchCode)}&role=observe`;
