@@ -1,13 +1,13 @@
 // The start screen of a lobby game's event with no lobbies yet (28 Nov, approved mock "Get this event ready"): how the
-// teams, players and lobbies get into Air. "Use a stage from Esportra" is wired later: until then the card is there and
-// switched off (ESPORTRA_STAGES), and nothing here sends anything to Esportra.
+// teams, players and lobbies get into Air. "Use a stage from Esportra" reads a stage (EsportraStage.tsx, read only:
+// nothing here sends anything to Esportra).
 import type { Snapshot } from '../../../shared/api.ts';
 import { gameOf } from '../../../shared/games.ts';
 import { air } from '../../bridge.ts';
 import type { Run } from '../../App.tsx';
 
-/** Flip to true when the Esportra stage read is built (the card's button then calls `onEsportra`). */
-export const ESPORTRA_STAGES = false;
+/** The Esportra stage read is built (the card's button calls `onEsportra`). */
+export const ESPORTRA_STAGES = true;
 
 export function StartCards({ s, run, eventId, open, importList, onEsportra }: { s: Snapshot; run: Run; eventId: string; open: (lobbyId: string) => void; importList: () => void; onEsportra?: () => void }) {
   const game = gameOf(s.setup.game);
@@ -27,9 +27,9 @@ export function StartCards({ s, run, eventId, open, importList, onEsportra }: { 
           <span className="pill">{ESPORTRA_STAGES ? 'Fastest if the tournament is on Esportra' : 'Coming soon'}</span>
           <h3 className="title-md">Use a stage from Esportra</h3>
           <p className="muted">The tournament is already on Esportra. Pick its stage and Air takes what is there. Nothing to type.</p>
-          <ul className="pp-list"><li>Teams, players and their verified UIDs</li><li>Groups, lobbies and the schedule</li><li>The points table</li></ul>
+          <ul className="pp-list"><li>Teams and players (you add the game UIDs)</li><li>Groups, lobbies and the schedule</li><li>The points table</li></ul>
           <div><button className="btn primary" disabled={!ESPORTRA_STAGES} onClick={onEsportra}>Pick a stage from Esportra</button></div>
-          {!ESPORTRA_STAGES && <span className="faint t-xs">Not connected yet. Prepare the event here for now.</span>}
+          <span className="faint t-xs">Read only. Results stay in Air.</span>
         </section>
         <section className="card body-pad stack g-3 pp-start" aria-label="Prepare it here">
           <span className="pill">For events that run outside Esportra</span>

@@ -15,6 +15,7 @@ import { AccessRequest } from '../components/AccessRequest.tsx';
 import { TeamMark } from './MatchWorkspace.tsx';
 import { LobbyList, LobbyScreen } from './LobbyScreen.tsx';
 import { SheetImport } from '../components/br-prep/SheetImport.tsx';
+import { EsportraStage } from '../components/br-prep/EsportraStage.tsx';
 import { gameOf } from '../../shared/games.ts';
 
 export type EventTab = 'matches' | 'branding' | 'talent';
@@ -55,7 +56,7 @@ export function EventsScreen({ s, run, openSignIn, view, setView, openMatch, ope
   }
   const event = view.id ? s.events.find((e) => e.id === view.id) ?? null : null;
   if (event) {
-    return <EventDetail s={s} run={run} event={event} tab={view.tab} setTab={(tab) => setView({ id: event.id, tab })} back={() => setView({ id: null, tab: 'matches' })}
+    return <EventDetail s={s} run={run} openSignIn={openSignIn} event={event} tab={view.tab} setTab={(tab) => setView({ id: event.id, tab })} back={() => setView({ id: null, tab: 'matches' })}
       remote={remote.filter((e) => event.tournamentId && e.tournamentId === event.tournamentId)} openMatch={openMatch} openRemote={openRemote} newMatch={() => newMatch(event.id)} />;
   }
   return <EventList s={s} run={run} openSignIn={openSignIn} tournaments={tournaments} remoteCount={(tid) => remote.filter((e) => e.tournamentId === tid).length} open={(id) => setView({ id, tab: 'matches' })} />;
@@ -153,7 +154,7 @@ function MatchLine({ s, m, label, done }: { s: PageProps['s']; m: Match; label: 
   );
 }
 
-function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, openRemote, newMatch }: Pick<PageProps, 's' | 'run'> & {
+function EventDetail({ s, run, openSignIn, event, tab, setTab, back, remote, openMatch, openRemote, newMatch }: Pick<PageProps, 's' | 'run' | 'openSignIn'> & {
   event: EventInfo; tab: EventTab; setTab: (t: EventTab) => void; back: () => void; remote: EsportraMatch[]; openMatch: (m: Match) => void; openRemote: (e: EsportraMatch) => void; newMatch: () => void;
 }) {
   // Battle royale games (21 Nov): the event holds lobbies, not matches.
@@ -162,6 +163,8 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
   const lobby = lobbyId ? s.lobbies.find((l) => l.id === lobbyId) ?? null : null;
   // Import teams and players (28 Nov): from the event's lobbies, or from inside one lobby (which then takes the teams).
   const [importing, setImporting] = useState(false);
+  const [stageOpen, setStageOpen] = useState(false);
+  if (lobbyGame && stageOpen) return <EsportraStage s={s} run={run} eventId={event.id} back={() => setStageOpen(false)} openSignIn={openSignIn} />;
   if (lobbyGame && importing) return <SheetImport s={s} run={run} eventId={event.id} lobby={lobby} back={() => setImporting(false)} />;
   if (lobbyGame && lobby) return <LobbyScreen s={s} run={run} lobby={lobby} back={() => setLobbyId(null)} importList={() => setImporting(true)} />;
   // Finished matches go last; the rest by schedule, then newest first.
@@ -185,7 +188,7 @@ function EventDetail({ s, run, event, tab, setTab, back, remote, openMatch, open
       </div>
       {tab === 'branding' && <EventBranding s={s} run={run} event={event} />}
       {tab === 'talent' && <EventTalent s={s} run={run} event={event} />}
-      {tab === 'matches' && lobbyGame && <LobbyList s={s} run={run} eventId={event.id} open={setLobbyId} importList={() => setImporting(true)} />}
+      {tab === 'matches' && lobbyGame && <LobbyList s={s} run={run} eventId={event.id} open={setLobbyId} importList={() => setImporting(true)} openStage={() => setStageOpen(true)} />}
       {tab === 'matches' && !lobbyGame && (
         <section className="stack" style={{ gap: 8 }}>
           {!matches.length && !remote.length && <p className="muted ap-empty">No matches in this event yet. Press New match to add one.</p>}

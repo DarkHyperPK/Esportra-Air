@@ -15,6 +15,7 @@ import { FormatTab } from '../components/br-prep/FormatTab.tsx';
 import { PointsTable } from '../components/br-prep/PointsTable.tsx';
 import { ReadinessStrip } from '../components/br-prep/Readiness.tsx';
 import { StartCards } from '../components/br-prep/StartCards.tsx';
+import { StageChip } from '../components/br-prep/EsportraStage.tsx';
 
 type Tab = 'run' | 'results' | 'teams' | 'format' | 'games' | 'scoring' | 'rundown';
 type Draft = Record<string, { place: string; elims: string }>;
@@ -39,6 +40,7 @@ export function LobbyScreen({ s, run, lobby, back, importList }: { s: Snapshot; 
       <header className="between">
         <div>
           <input className="lb-title" aria-label="Lobby name" defaultValue={lobby.title} maxLength={60} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== lobby.title) void run(() => air.lobbyUpdate(lobby.id, { title: v })); }} />
+          {lobby.source?.esportra && <StageChip s={s} stageId={lobby.source.esportra.stageId} lobbyId={lobby.id} />}
           <p className="muted">{game?.name} · {lobby.teams.length} teams · {lobby.games.length} {word.toLowerCase()}es · {scoringLine(lobby.scoring)}</p>
         </div>
         <span className="row g-2">
@@ -213,12 +215,13 @@ function Games({ run, lobby, word }: { run: Run; lobby: Lobby; word: string }) {
 }
 
 /** The event's Lobbies tab (lobby games): its lobbies and New lobby. */
-export function LobbyList({ s, run, eventId, open, importList }: { s: Snapshot; run: Run; eventId: string; open: (id: string) => void; importList: () => void }) {
+export function LobbyList({ s, run, eventId, open, importList, openStage }: { s: Snapshot; run: Run; eventId: string; open: (id: string) => void; importList: () => void; openStage?: () => void }) {
   const lobbies = s.lobbies.filter((l) => l.eventId === eventId);
   const game = gameOf(s.setup.game);
   const [name, setName] = useState('');
   const [count, setCount] = useState(6);
-  if (!lobbies.length) return <StartCards s={s} run={run} eventId={eventId} open={open} importList={importList} />;
+  if (!lobbies.length) return <StartCards s={s} run={run} eventId={eventId} open={open} importList={importList} onEsportra={openStage} />;
+  const followed = s.esportraStages.followed.filter((f) => f.eventId === eventId);
   return (
     <section className="stack" style={{ gap: 10 }}>
       <div className="card body-pad row g-2" style={{ flexWrap: 'wrap' }}>
@@ -226,6 +229,8 @@ export function LobbyList({ s, run, eventId, open, importList }: { s: Snapshot; 
         <label className="row g-1"><span className="muted t-sm">{game?.words?.game ?? 'Match'}es</span><input className="cell" type="number" min={1} max={24} value={count} onChange={(e) => setCount(Math.max(1, Math.min(24, Number(e.target.value) || 1)))} style={{ width: 70 }} aria-label="Number of matches" /></label>
         <button className="btn primary" onClick={() => void run(async () => { await air.lobbyCreate({ eventId, game: s.setup.game!, title: name.trim() || 'Lobby', games: count }); setName(''); })}>New lobby</button>
         <button className="btn" onClick={importList}>Import teams and players</button>
+        {openStage && <button className="btn" onClick={openStage}>{followed.length ? 'Esportra stage' : 'Use a stage from Esportra'}</button>}
+        {followed.map((f) => <StageChip key={f.stageId} s={s} stageId={f.stageId} />)}
       </div>
       <div className="lst">
         {lobbies.map((l) => {
