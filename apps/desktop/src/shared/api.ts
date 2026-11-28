@@ -449,6 +449,8 @@ export interface Snapshot {
   pcobLive?: import('./pcob.ts').BrLive | null;
   /** The PUBG MOBILE observer feed (src/main/br-live.ts). */
   pcob: import('./pcob-status.ts').PcobStatus;
+  /** vMix (28 Nov): the connection and the pages this show needs in its Web Browser inputs (src/main/vmix.ts). */
+  vmix: import('./vmix.ts').VmixView;
   /** Record PCOB (27 Nov): the raw PCOB answers being saved to a file on this PC (src/main/pcob-recorder.ts). */
   pcobRecording: import('../main/pcob-recorder.ts').PcobRecordingView;
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
@@ -664,6 +666,12 @@ export interface AirApi {
   /** Reads the PUBG MOBILE observer client's API (PCOB) on this PC or the local network; consent every time. */
   pcobConnect(host: string, consent: boolean): Promise<Snapshot>;
   pcobDisconnect(): Promise<Snapshot>;
+  /** vMix's Web API on this PC or the local network (port 8088 unless given). Air only reads it and renames/points the inputs you pair. */
+  vmixConnect(address: string): Promise<Snapshot>;
+  vmixDisconnect(): Promise<Snapshot>;
+  /** Pairs an Air page with a vMix Web Browser input (null forgets the pairing). */
+  vmixPair(pageId: string, inputKey: string | null): Promise<Snapshot>;
+  vmixReload(pageId: string): Promise<Snapshot>;
   /** Saves every raw answer of PCOB to a file on this PC while on (needs the connection and its consent). */
   pcobRecord(on: boolean): Promise<Snapshot>;
   /** Shows the recording in its folder. */

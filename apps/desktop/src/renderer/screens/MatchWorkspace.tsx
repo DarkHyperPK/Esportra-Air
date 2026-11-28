@@ -24,6 +24,7 @@ import { PackWindow } from '../components/PackWindow.tsx';
 import { LIBRARY, inShow, showLink, showPatch } from '../../shared/library.ts';
 import { SCENE_KEYS, SCENES, sourceName } from '../../shared/scenes.ts';
 import { Preview, overlayUrl } from '../components/Preview.tsx';
+import { VmixPanel } from '../components/VmixPanel.tsx';
 
 const STEPS: Array<[MatchStep, string]> = [['ready', 'Overview'], ['teams', 'Teams/Players'], ['talent', 'Talent and sponsors'], ['matchdata', 'Match data'], ['rundown', 'Rundown'], ['obs', 'OBS'], ['devices', 'Player PCs and cameras'], ['rehearse', 'Rehearse']];
 type StepHealth = 'ok' | 'warn' | 'bad' | null;
@@ -173,6 +174,7 @@ function ObsStep(props: Pick<PageProps, 's' | 'run' | 'go'>) {
         : <ObsConnection s={s} run={run} />}
       {connected && <ScenesScreen {...page} embedded />}
       {connected && <><h3 className="title-sm">Browser sources</h3><OutputsScreen {...page} embedded /></>}
+      <VmixPanel s={s} run={run} />
     </div>
   );
 }

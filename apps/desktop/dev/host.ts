@@ -4,6 +4,7 @@
 //
 //   node dev/host.ts [--port 5320]      then open http://127.0.0.1:5320/
 import { FakePcob, parseVariants } from './fake-pcob.ts';
+import { FakeVmix } from './fake-vmix.ts';
 import { createRequire } from 'node:module';
 import { manualHtml } from '../src/shared/manual.ts';
 import { gameOf } from '../src/shared/games.ts';
@@ -86,6 +87,7 @@ const esportra = new EsportraAccount({ apiBase: backend.url, store, secrets, dev
 const production = new Production({ store, engine, obs, capture, ingest, stats, esportra, recordingsDir: join(dir, 'Esportra Air recordings'), journalDir: join(dir, 'events'), version: 'dev' });
 let clipboard = '';
 let fakePcob: FakePcob | null = null;
+let fakeVmix: FakeVmix | null = null;
 // The manual as a PDF, printed by the same Chromium the walkthrough uses (no save dialog in the dev host).
 const saveManualPdf = async () => {
   const { chromium } = createRequire(import.meta.url)('playwright');
@@ -202,6 +204,16 @@ createServer(async (req, res) => {
     if (act === 'begin') fakePcob?.begin();
     if (act === 'stop') fakePcob?.stop();
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ port: fakePcob?.port ?? null, time: fakePcob?.time() ?? null, end: fakePcob?.gameEnd ?? null }));
+    return;
+  }
+  if (url.pathname === '/dev/vmix' && req.method === 'POST') {
+    // A stand-in vMix (dev/fake-vmix.ts) on 127.0.0.1:<port>: ?do=start serves it with two Web Browser inputs and a camera,
+    // ?do=add&title=… adds a Web Browser input, ?do=remove&title=… deletes one; the answer lists its inputs and the calls it accepted.
+    const act = url.searchParams.get('do');
+    if (act === 'start') { await fakeVmix?.close(); fakeVmix = await new FakeVmix().listen(); fakeVmix.addInput('Browser', 'Browser 1'); fakeVmix.addInput('Browser', 'Browser 2'); fakeVmix.addInput('Video', 'Camera'); }
+    if (act === 'add') fakeVmix?.addInput('Browser', url.searchParams.get('title') ?? 'Browser');
+    if (act === 'remove') { const i = fakeVmix?.inputs.find((x) => x.title === url.searchParams.get('title')); if (i) fakeVmix?.removeInput(i.key); }
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ port: fakeVmix?.port ?? null, inputs: fakeVmix?.inputs ?? [], calls: fakeVmix?.calls ?? [], refused: fakeVmix?.refused ?? [] }));
     return;
   }
   if (url.pathname === '/dev/state') {

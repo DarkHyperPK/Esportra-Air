@@ -11,6 +11,7 @@ import { BR_MOMENTS, BR_MOMENT_NAME, BR_MOMENT_WHAT, showOf, type BrMomentKind }
 import { playerTotals } from '../../shared/br-stats.ts';
 import { Switch } from './Editors.tsx';
 import { ObsScenesCheck } from './ObsScenesCheck.tsx';
+import { VmixPanel } from './VmixPanel.tsx';
 import { BrInsights } from './BrInsights.tsx';
 import { gameOf } from '../../shared/games.ts';
 import { GRAPHICS } from '../../shared/templates.ts';
@@ -181,6 +182,7 @@ function Sources({ s, run, l, close, connect }: { s: Snapshot; run: Run; l: Lobb
         <header><h2 className="title-md">Browser sources</h2><button className="btn quiet small" onClick={close}>Esc</button></header>
         <div className="editor-body stack" style={{ gap: 8 }}>
           <ObsScenesCheck s={s} run={run} lobby={l} connect={connect} />
+          <VmixPanel s={s} run={run} />
           <p className="muted t-sm">Or paste into an OBS browser source at 1920×1080. They follow {l.title}.</p>
           {rows.map(([label, note, url]) => <div key={url} className="between"><span><b>{label}</b><br /><span className="faint t-xs">{note}</span></span><Copy url={url} label="Copy" /></div>)}
         </div>

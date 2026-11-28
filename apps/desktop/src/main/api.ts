@@ -58,6 +58,10 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'lobbyShow': p.lobbyShow(String(a[0]), a[1]); break;
     case 'pcobConnect': p.pcobConnect(a[0], a[1]); break;
     case 'pcobDisconnect': p.pcobDisconnect(); break;
+    case 'vmixConnect': p.vmix.connect(String(a[0] ?? '')); break;
+    case 'vmixDisconnect': p.vmix.disconnect(); break;
+    case 'vmixPair': await p.vmix.pair(String(a[0]), a[1] === null || a[1] === undefined ? null : String(a[1])); break;
+    case 'vmixReload': await p.vmix.reload(String(a[0])); break;
     case 'pcobRecord': p.pcobRecord(a[0]); break;
     case 'pcobShowRecording': { const f = p.pcobRecordingFile(); if (f && ctx.showFile) ctx.showFile(f); break; }
     case 'pcobSeat': p.pcobSeat(String(a[0]), a[1], a[2]); break;

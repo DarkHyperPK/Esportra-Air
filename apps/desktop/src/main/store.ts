@@ -32,6 +32,8 @@ export interface Saved {
   lobbies?: import('../shared/api.ts').Lobby[];
   /** The PCOB observer address last used (the consent is asked every time). */
   pcobHost?: string;
+  /** vMix (28 Nov): its address on this PC and which vMix Web Browser input shows which Air page (src/main/vmix.ts). */
+  vmix?: import('../shared/vmix.ts').SavedVmix;
   selectedLobbyId?: string | null;
   /** The live match's state, saved every 2 s while a battle royale match is live (27 Nov): a restart offers to resume it. */
   brCheckpoint?: import('../shared/br-run.ts').BrCheckpoint | null;

@@ -77,7 +77,9 @@ import { checks } from './readiness.ts';
 import { CueDeck, type GraphicAction } from './cue-deck.ts';
 import { OwnGraphics } from './own-graphics-service.ts';
 import { Looks } from './looks.ts';
-import { planLobbyScenes, planScenes, sourcesMissing } from './scene-plan.ts';
+import { planLobbyScenes, planScenes, sourcesMissing, vmixPages } from './scene-plan.ts';
+import { VmixLink } from './vmix.ts';
+import { lanAddresses } from './join.ts';
 import { PlayerCams } from './player-cams.ts';
 import { companionAct, companionHello, type CompanionTarget } from './companion-bridge.ts';
 import { obsSceneView, roomReadout } from './snapshot-parts.ts';
@@ -102,6 +104,8 @@ export interface ProductionDeps {
   artFetch?: typeof fetch;
   /** How Air reads the PUBG MOBILE observer client (tests pass their own). */
   pcobFetch?: typeof fetch;
+  /** Test hook: how vMix is reached (src/main/vmix.ts). */
+  vmixFetch?: typeof fetch;
   /** Where Record PCOB writes (Documents/Esportra Air recordings); without it recording is not available. */
   recordingsDir?: string;
   /** Where the event journals are kept (userData/events); without it no journal is written. */
@@ -182,6 +186,8 @@ export class Production extends EventEmitter {
   readonly sheets: SheetImporter;
   readonly stages: EsportraStages;
   readonly pcobRecorder: PcobRecorder;
+  /** vMix's browser inputs pointed at Air's pages (src/main/vmix.ts). */
+  readonly vmix: VmixLink;
   readonly brAuto: BrAutopilot;
   readonly rehearsal: Rehearsal;
   readonly joinHost: JoinHost;
@@ -230,6 +236,15 @@ export class Production extends EventEmitter {
       eventName: (l) => deps.store.data.events.find((e) => e.id === l.eventId)?.name ?? '',
       event: (l) => deps.store.data.events.find((e) => e.id === l.eventId) ?? null,
       persist: (shown) => { deps.store.data.lobbyShown = shown; deps.store.save(); },
+    });
+    // vMix (28 Nov): the same pages as the OBS plan, as URLs.
+    this.vmix = new VmixLink({
+      pages: () => vmixPages(this.buildPlan()),
+      load: () => deps.store.data.vmix,
+      save: (v) => { deps.store.data.vmix = v; deps.store.save(); },
+      lan: () => (deps.lanAddresses ?? lanAddresses)()[0] ?? null,
+      fetch: deps.vmixFetch,
+      log: (t) => this.log.add(t), changed: () => this.emit('change'),
     });
     // PUBG MOBILE live data (24 Nov): src/main/br-live.ts.
     this.pcobRecorder = new PcobRecorder({ dir: deps.recordingsDir ?? join(tmpdir(), 'Esportra Air recordings'), changed: () => this.emit('change'), now: deps.now });
@@ -2089,6 +2104,7 @@ export class Production extends EventEmitter {
       brAuto: this.brAuto.status(),
       pcobLive: this.brLive.live ? this.brLive.last : null,
       pcobRecording: this.pcobRecorder.view(),
+      vmix: this.vmix.view(),
       pcob: { ...this.brLive.status, host: this.brLive.status.host || this.deps.store.data.pcobHost || '127.0.0.1:10086' },
       selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),

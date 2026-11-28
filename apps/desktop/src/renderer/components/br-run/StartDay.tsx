@@ -8,6 +8,7 @@ import { air } from '../../bridge.ts';
 import type { Run } from '../../App.tsx';
 import { TeamTag, matchTime } from './parts.tsx';
 import { ObsScenesCheck } from '../ObsScenesCheck.tsx';
+import { VmixPanel } from '../VmixPanel.tsx';
 import { ReadinessStrip } from '../br-prep/Readiness.tsx';
 
 const Row = ({ ok, title, note, aside }: { ok: boolean | null; title: string; note?: string; aside?: string }) => (
@@ -41,6 +42,7 @@ export function StartDay({ s, run, lobby, dayId, close }: { s: Snapshot; run: Ru
               <section className="card run-sec"><h3 className="cap">3 · Data checks</h3>
                 <Row ok={pcobOk} title={pcobOk ? 'Game data connected' : 'Game data not connected'} note={pcobOk ? 'Reading the observer PC.' : 'Connect on Live (with the consent tick). Nothing starts by itself.'} />
                 <ObsScenesCheck s={s} run={run} lobby={lobby} />
+                <VmixPanel s={s} run={run} />
                 <Row ok={!d.data.test} title={d.data.test ? 'A test is running' : 'No test running'} note={d.data.test ? 'Stop it before the show.' : undefined} />
               </section>
               <section className="card run-sec"><h3 className="cap">3b · Ready before the show</h3>
