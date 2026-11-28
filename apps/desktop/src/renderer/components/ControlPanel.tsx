@@ -3,6 +3,7 @@
 // Esportra results on the right. Keys, Cue/Take, autopilot and moments work as before (ConsoleScreen).
 import { lookOverlay } from '../../shared/look.ts';
 import { browserSource } from '../../shared/browser-source.ts';
+import { pageHost } from '../../shared/graphics-lan.ts';
 import { useState } from 'react';
 import type { LayerRow, Snapshot } from '../../shared/api.ts';
 import { SECTION_SCREENS } from '../../shared/autopilot.ts';
@@ -233,7 +234,7 @@ function ClipSource({ s, item }: { s: Snapshot; item: Item }) {
   const [done, setDone] = useState(false);
   // In-game parts all live on the one HUD page, which Live › Sources copies; each full-screen graphic has its own.
   const screen = item.row?.id.startsWith('fs:') ? item.row.id.slice(3) : null;
-  const links = screen ? browserSource(s.engine.port ?? 0, s.setup.screens, { show: screen, style: rowStyle(s, screen) }) : null;
+  const links = screen ? browserSource(s.engine.port ?? 0, s.setup.screens, { show: screen, style: rowStyle(s, screen) }, pageHost(s.graphicsLan)) : null;
   if (!links) return null;
   const copy = () => void air.copy(links.url).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }, () => setDone(false));
   return (

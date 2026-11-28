@@ -20,6 +20,8 @@ export interface SupervisorOptions {
   dataDir: string;
   port: number;
   key: string;
+  /** Where the engine listens: 127.0.0.1 (this PC only, the default) or 0.0.0.0 (Graphics on the local network). */
+  host?: string;
   spawn: (command: string, args: string[], options: { detached: boolean; env: NodeJS.ProcessEnv; logFile: string }) => ChildHandle;
   readFile: (path: string) => Promise<string>;
   writeFile?: (path: string, data: string) => Promise<void>;
@@ -50,6 +52,7 @@ export class EngineSupervisor extends EventEmitter {
   private timer: ReturnType<typeof setInterval> | null = null;
   private failures = 0;
   private restarting = false;
+  private lockHost = '127.0.0.1';
   private stopped = false;
 
   constructor(options: SupervisorOptions) {
@@ -57,6 +60,30 @@ export class EngineSupervisor extends EventEmitter {
     this.options = options;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.client = new EngineClient(`http://127.0.0.1:${options.port}`, options.key, options.fetch);
+  }
+
+  get host() {
+    return this.options.host ?? '127.0.0.1';
+  }
+
+  /** Restarts the engine on another listening address; its saved match state comes back with it. */
+  async setHost(host: string): Promise<void> {
+    if (host === this.host) return;
+    this.restarting = true;
+    this.options.host = host;
+    this.setState('restarting', 'Restarting the graphics to change who can load them.');
+    try {
+      if (this.status?.pid && this.options.isAlive(this.status.pid)) await this.replace();
+      else await this.launch();
+      this.failures = 0;
+      this.setState('running');
+      this.emit('restarted');
+    } catch (error) {
+      this.setState('failed', error instanceof Error ? error.message : String(error));
+      throw error;
+    } finally {
+      this.restarting = false;
+    }
   }
 
   get port() {
@@ -86,7 +113,7 @@ export class EngineSupervisor extends EventEmitter {
         this.reattached = true;
         // After an update the engine left running is the old build (older limits, missing routes): replace it.
         // Its match state is saved, so overlays reconnect to the same graphics within a second or two.
-        if (await this.outdated()) {
+        if ((await this.outdated()) || this.lockHost !== this.host) {
           await this.replace();
           this.reattached = false;
         }
@@ -103,7 +130,7 @@ export class EngineSupervisor extends EventEmitter {
 
   /** Finds an engine from its lock file and confirms we can control it. */
   private async attach(): Promise<boolean> {
-    let lock: { pid?: number; port?: number };
+    let lock: { pid?: number; port?: number; host?: string };
     try {
       lock = JSON.parse(await this.options.readFile(join(this.options.dataDir, 'engine.lock')));
     } catch {
@@ -111,6 +138,7 @@ export class EngineSupervisor extends EventEmitter {
     }
     if (typeof lock.pid !== 'number' || !this.options.isAlive(lock.pid)) return false;
     if (lock.port !== this.options.port) return false;
+    this.lockHost = lock.host || '127.0.0.1';
     try {
       this.status = await this.client.get<EngineStatus>('/control/status');
       return this.status.pid === lock.pid;
@@ -152,7 +180,7 @@ export class EngineSupervisor extends EventEmitter {
   private async launch(): Promise<void> {
     const { binary, hudRoot, dataDir, port, key } = this.options;
     if (this.options.buildId && this.options.writeFile) await this.options.writeFile(join(dataDir, 'engine.build'), this.options.buildId).catch(() => undefined);
-    const child = this.options.spawn(binary, ['--root', hudRoot, '--data', dataDir, '--host', '127.0.0.1', '--port', String(port)], {
+    const child = this.options.spawn(binary, ['--root', hudRoot, '--data', dataDir, '--host', this.host, '--port', String(port)], {
       detached: true,
       env: { ...(this.options.env ?? {}), AIR_ENGINE_KEY: key },
       logFile: join(dataDir, 'engine.log'),

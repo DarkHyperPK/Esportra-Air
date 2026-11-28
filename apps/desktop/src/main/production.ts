@@ -80,6 +80,8 @@ import { Looks } from './looks.ts';
 import { planLobbyScenes, planScenes, sourcesMissing, vmixPages } from './scene-plan.ts';
 import { VmixLink } from './vmix.ts';
 import { lanAddresses } from './join.ts';
+import { pageHost, type GraphicsLan } from '../shared/graphics-lan.ts';
+import { isLoopback } from '../shared/vmix.ts';
 import { PlayerCams } from './player-cams.ts';
 import { companionAct, companionHello, type CompanionTarget } from './companion-bridge.ts';
 import { obsSceneView, roomReadout } from './snapshot-parts.ts';
@@ -90,7 +92,7 @@ import { applyEventPatch, engineConfig, newEvent, onAir, renewTalentLink, upsert
 
 export interface ProductionDeps {
   store: Store;
-  engine: Pick<EngineSupervisor, 'state' | 'error' | 'reattached' | 'status' | 'port' | 'on' | 'dataDir' | 'hudRoot'> & { client: EngineClient };
+  engine: Pick<EngineSupervisor, 'state' | 'error' | 'reattached' | 'status' | 'port' | 'on' | 'dataDir' | 'hudRoot'> & Partial<Pick<EngineSupervisor, 'host' | 'setHost'>> & { client: EngineClient };
   obs: ObsLink;
   capture: { state: GepBridge['state']; reason: string | null; start(): void; stop(): void; on(event: 'change', listener: () => void): unknown; role?: PcRole; setRole?(role: PcRole): void };
   /** Encrypted small secrets (the join code). Without it they last only for this run. */
@@ -242,7 +244,8 @@ export class Production extends EventEmitter {
       pages: () => vmixPages(this.buildPlan()),
       load: () => deps.store.data.vmix,
       save: (v) => { deps.store.data.vmix = v; deps.store.save(); },
-      lan: () => (deps.lanAddresses ?? lanAddresses)()[0] ?? null,
+      lan: () => this.graphicsLan().address,
+      lanOn: () => this.graphicsLan().on,
       fetch: deps.vmixFetch,
       log: (t) => this.log.add(t), changed: () => this.emit('change'),
     });
@@ -549,6 +552,30 @@ export class Production extends EventEmitter {
   attachKeys(registry: ShortcutRegistry, call: (method: ApiMethod, args: unknown[]) => Promise<unknown>) {
     this.globalKeys = new GlobalKeys(registry, () => this.snapshot(), call, (message) => this.emit('notice', message));
     this.applyKeys();
+  }
+
+  /** Whether other PCs may load the graphics, and this PC's network address for them. */
+  graphicsLan(): GraphicsLan {
+    return { on: this.deps.store.data.graphicsLan === true, address: (this.deps.lanAddresses ?? lanAddresses)()[0] ?? null };
+  }
+
+  /** Let other PCs on the network read the graphics: the engine restarts listening on the network (or on this PC only). */
+  async setGraphicsLan(on: boolean) {
+    const data = this.deps.store.data;
+    if ((data.graphicsLan === true) === on) return;
+    if (this.gameLocked() || this.brLive.live) throw new Error('Stop game data or the test round before changing this: the graphics restart for a moment.');
+    if (!this.deps.engine.setHost) throw new Error('The graphics engine cannot change who can load it.');
+    const before = data.graphicsLan;
+    data.graphicsLan = on;
+    try {
+      await this.deps.engine.setHost(on ? '0.0.0.0' : '127.0.0.1');
+    } catch (error) {
+      data.graphicsLan = before;
+      throw error;
+    } finally {
+      this.save();
+    }
+    this.log.add(on ? 'Other PCs on the network can now load the graphics (read only).' : 'Graphics are on this PC only again.');
   }
 
   setGlobalKeys(on: boolean) {
@@ -1499,16 +1526,21 @@ export class Production extends EventEmitter {
   // ── OBS ──
 
   /** The scenes Air builds, with each enabled graphic in its scene (PRD picture 9; src/main/scene-plan.ts). */
+  /** Pages for OBS: this PC's address, or (OBS on another PC, and only with Graphics on the local network on) this PC's network address. */
+  private obsPageHost() {
+    return isLoopback(this.setup.obs.host) ? '127.0.0.1' : pageHost(this.graphicsLan());
+  }
+
   buildPlan(): BuildScene[] {
     // A lobby game (PUBG MOBILE, Free Fire) builds from the selected lobby's pages (28 Nov); nothing without one.
     if (this.lobbyGame()) {
       const l = this.lobbies.selected;
       if (!l) return [];
       const ev = this.deps.store.data.events.find((e) => e.id === l.eventId) ?? null;
-      return planLobbyScenes({ port: this.deps.engine.port, code: l.code, sponsors: ev?.sponsors ?? [] });
+      return planLobbyScenes({ port: this.deps.engine.port, code: l.code, sponsors: ev?.sponsors ?? [], host: this.obsPageHost() });
     }
     const on = this.match ? onAir(this.match, this.eventOf(this.match)) : { talent: [], sponsors: [] };
-    return planScenes({ port: this.deps.engine.port, screens: this.setup.screens, talent: on.talent, sponsors: on.sponsors, slotWanted: (id) => this.slotWanted(id) });
+    return planScenes({ port: this.deps.engine.port, host: this.obsPageHost(), screens: this.setup.screens, talent: on.talent, sponsors: on.sponsors, slotWanted: (id) => this.slotWanted(id) });
   }
 
   /** Why the last Add to OBS failed, until one succeeds (shown on the Scenes check, not only as a toast). */
@@ -2106,6 +2138,7 @@ export class Production extends EventEmitter {
       pcobLive: this.brLive.live ? this.brLive.last : null,
       pcobRecording: this.pcobRecorder.view(),
       vmix: this.vmix.view(),
+      graphicsLan: this.graphicsLan(),
       pcob: { ...this.brLive.status, host: this.brLive.status.host || this.deps.store.data.pcobHost || '127.0.0.1:10086' },
       selectedLobbyId: this.deps.store.data.selectedLobbyId ?? null,
       rehearsal: this.rehearsal.view(),

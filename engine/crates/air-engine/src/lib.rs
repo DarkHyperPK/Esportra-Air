@@ -13,6 +13,7 @@ pub mod engine;
 pub mod features;
 pub mod fixes;
 pub mod http;
+pub mod lan;
 pub mod layers;
 pub mod ws;
 
@@ -65,6 +66,7 @@ pub async fn start(config: Config) -> std::io::Result<Running> {
     let router = Router::new()
         .route("/ws", get(ws::upgrade))
         .fallback(http::handle)
+        .layer(axum::middleware::from_fn(lan::guard))
         .with_state(app.clone());
     let listener = TcpListener::bind((config.host.as_str(), config.port)).await?;
     let addr = listener.local_addr()?;
@@ -93,7 +95,7 @@ pub async fn start(config: Config) -> std::io::Result<Running> {
 
     let finished = engine.clone();
     let task = tokio::spawn(async move {
-        let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
+        let serve = axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(async move {
             let _ = stop.wait_for(|stopped| *stopped).await;
         });
         if let Err(e) = serve.await {

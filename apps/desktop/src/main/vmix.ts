@@ -2,6 +2,7 @@
 // (docs/vmix.md). It reads GET /api/ (XML) every 3 s while connected and sends exactly three functions:
 // SetInputName, BrowserNavigate, BrowserReload. It never switches, cuts, fades, overlays or outputs anything,
 // never adds or removes an input, and only talks to this PC or the local network.
+import { VMIX_LAN_WARNING } from '../shared/graphics-lan.ts';
 import { VMIX_FUNCTIONS, VMIX_OFF, VMIX_PORT, isLoopback, parseVmixInputs, vmixAddress, type SavedVmix, type VmixFunction, type VmixInput, type VmixPage, type VmixPageView, type VmixView } from '../shared/vmix.ts';
 
 export const POLL_MS = 3000;
@@ -13,6 +14,8 @@ export interface VmixContext {
   save(v: SavedVmix): void;
   /** This PC's address on the local network, for a vMix on another PC (it cannot reach 127.0.0.1). */
   lan?: () => string | null;
+  /** Whether Graphics on the local network is on (Settings): without it another PC cannot load the pages at all. */
+  lanOn?: () => boolean;
   fetch?: typeof fetch;
   log(text: string): void;
   changed(): void;
@@ -79,8 +82,16 @@ export class VmixLink {
   /** The address a page has for this vMix: another PC cannot reach 127.0.0.1, so it gets this PC's network address. */
   private urlFor(page: VmixPage): string {
     if (!this.host || isLoopback(this.host)) return page.url;
+    if (!this.ctx.lanOn?.()) return page.url;
     const lan = this.ctx.lan?.();
     return lan ? page.url.replace('//127.0.0.1:', `//${lan}:`) : page.url;
+  }
+
+  /** vMix on another PC cannot load 127.0.0.1 pages, and the engine refuses other PCs until the Settings switch is on. */
+  private warning(): string | null {
+    const at = this.host || this.ctx.load()?.host;
+    if (!at || isLoopback(at) || this.ctx.lanOn?.()) return null;
+    return VMIX_LAN_WARNING;
   }
 
   /** One read of /api/, then pairing by title and re-pointing. Public so tests (and Air after a change) can run it now. */
@@ -178,6 +189,6 @@ export class VmixLink {
       const status = !key ? 'unpaired' : !connected ? 'unknown' : input ? 'paired' : 'missing';
       return { ...p, url: this.urlFor(p), status, key, title: input?.title ?? null };
     });
-    return { ...VMIX_OFF, ...this.status, host: this.base ? this.base.replace(/^http:\/\//, '') : cur ? `${cur.host}:${cur.port}` : VMIX_OFF.host, inputs: this.inputs.filter((i) => i.browser), pages };
+    return { ...VMIX_OFF, ...this.status, host: this.base ? this.base.replace(/^http:\/\//, '') : cur ? `${cur.host}:${cur.port}` : VMIX_OFF.host, inputs: this.inputs.filter((i) => i.browser), pages, warning: this.warning() };
   }
 }

@@ -87,6 +87,8 @@ export interface Saved {
   ownGraphics?: import('../shared/own-graphics.ts').OwnGraphic[];
   /** F-keys and Ctrl/Alt keys work over the game (absent: on). */
   globalKeys?: boolean;
+  /** Other PCs on the network may load the graphics (read only); absent: off, this PC only (28 Nov). */
+  graphicsLan?: boolean;
   /** How this PC runs graphics: Air, Stream Deck / Companion, or both (absent: Air). */
   control?: import('../shared/companion.ts').ControlMode;
   /** The Companion connection's port on this PC. */

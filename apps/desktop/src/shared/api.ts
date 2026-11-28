@@ -451,6 +451,8 @@ export interface Snapshot {
   pcob: import('./pcob-status.ts').PcobStatus;
   /** vMix (28 Nov): the connection and the pages this show needs in its Web Browser inputs (src/main/vmix.ts). */
   vmix: import('./vmix.ts').VmixView;
+  /** Graphics on the local network (28 Nov): whether other PCs may load the pages, and this PC's address for them. */
+  graphicsLan: import('./graphics-lan.ts').GraphicsLan;
   /** Record PCOB (27 Nov): the raw PCOB answers being saved to a file on this PC (src/main/pcob-recorder.ts). */
   pcobRecording: import('../main/pcob-recorder.ts').PcobRecordingView;
   packs: Array<import('./game-assets.ts').PackStatus & { licensed: boolean; licence: string; rules: string[] }>;
@@ -546,6 +548,8 @@ export interface AirApi {
   resetKeys(): Promise<Snapshot>;
   setMoments(ids: string[]): Promise<Snapshot>;
   setGlobalKeys(on: boolean): Promise<Snapshot>;
+  /** Let other PCs on the network load the graphics (restarts the graphics engine; refused while game data or a test runs). */
+  setGraphicsLan(on: boolean): Promise<Snapshot>;
   /** Settings is waiting for a new key: release keys over the game until it has it. */
   holdGlobalKeys(listening: boolean): Promise<Snapshot>;
   /** Saves the manual as a PDF (the app asks where); resolves to where it went, or null if cancelled. */

@@ -11,6 +11,8 @@ import type { VmixPage } from '../shared/vmix.ts';
 export interface PlanInput {
   /** The graphics engine's port (sources load http://127.0.0.1:<port>/o/<output>). */
   port: number;
+  /** Address of this PC in the page URLs (default 127.0.0.1; the network address for OBS on another PC). */
+  host?: string;
   screens: Screen[];
   talent: OnAir['talent'];
   sponsors: OnAir['sponsors'];
@@ -18,7 +20,7 @@ export interface PlanInput {
   slotWanted(id: string): boolean;
 }
 
-export function planScenes({ port, screens, talent, sponsors, slotWanted }: PlanInput): BuildScene[] {
+export function planScenes({ port, host: at = '127.0.0.1', screens, talent, sponsors, slotWanted }: PlanInput): BuildScene[] {
   const full = { x: 0, y: 0, width: 1920, height: 1080 };
   // Sponsor loops of the match's sponsors, hidden until shown (a break, or by autopilot).
   const sponsorVideos = sponsors.filter((x) => x.video);
@@ -31,7 +33,7 @@ export function planScenes({ port, screens, talent, sponsors, slotWanted }: Plan
     if (t.camera.kind === 'link' && t.camera.linkId) return { kind: 'link', inputName: sourceName(`Camera · ${t.name}`), url: cameraViewUrl(t.camera.linkId) };
     return null;
   };
-  const page = (x: Screen) => `http://127.0.0.1:${port}/o/${x.outputId}`;
+  const page = (x: Screen) => `http://${at}:${port}/o/${x.outputId}`;
   // Over the game and over the desk the host shows only over-the-game versions (never a graphic that covers everything).
   const over = (x: Screen) => `${page(x)}?over=1`;
   const host = screens.filter((x) => x.id === 'fullscreen' && x.enabled);
@@ -62,6 +64,8 @@ export interface LobbyPlanInput {
   port: number;
   /** The selected lobby's room code: every page follows it. */
   code: string;
+  /** Address of this PC in the page URLs (default 127.0.0.1). */
+  host?: string;
   /** The event's sponsors; those with a video get a hidden loop in Break, as for a match. */
   sponsors: OnAir['sponsors'];
 }
@@ -71,12 +75,12 @@ export interface LobbyPlanInput {
  * full-screen host showing only overlay-bar versions), Full screen (the host) and Break (Starting soon, sponsor
  * loops). The same names and rules as a match; pages come from `lobbyPage`, the function the Sources drawer uses.
  */
-export function planLobbyScenes({ port, code, sponsors }: LobbyPlanInput): BuildScene[] {
+export function planLobbyScenes({ port, code, sponsors, host: at }: LobbyPlanInput): BuildScene[] {
   const full = { x: 0, y: 0, width: 1920, height: 1080 };
-  const hud = lobbyPage(port, code, 'br-hud');
-  const host = lobbyPage(port, code, 'fullscreen');
-  const over = lobbyPage(port, code, 'fullscreen', '&over=1');
-  const startingSoon = lobbyPage(port, code, 'fullscreen', '&only=br-lobby&always=1&style=full');
+  const hud = lobbyPage(port, code, 'br-hud', '', at);
+  const host = lobbyPage(port, code, 'fullscreen', '', at);
+  const over = lobbyPage(port, code, 'fullscreen', '&over=1', at);
+  const startingSoon = lobbyPage(port, code, 'fullscreen', '&only=br-lobby&always=1&style=full', at);
   const src = (id: string, title: string, url: string) => ({ id, inputName: graphicSourceName(title), formerly: legacySourceName(title), url, frame: full, enabled: true });
   return LOBBY_SCENE_KEYS.map((key) => {
     const def = SCENES[key];

@@ -30,8 +30,10 @@ export interface VmixView {
   /** The Web Browser inputs vMix has now (the pairing choices). */
   inputs: VmixInput[];
   pages: VmixPageView[];
+  /** vMix is on another PC while Graphics on the local network is off. */
+  warning: string | null;
 }
-export const VMIX_OFF: VmixView = { state: 'off', host: `127.0.0.1:${VMIX_PORT}`, error: null, lastAt: null, inputs: [], pages: [] };
+export const VMIX_OFF: VmixView = { state: 'off', host: `127.0.0.1:${VMIX_PORT}`, error: null, lastAt: null, inputs: [], pages: [], warning: null };
 
 /** Saved per PC (`store.data.vmix`): the address, which input shows which page, and the address each was last pointed at. */
 export interface SavedVmix { host: string; port: number; pairs: Record<string, string>; pointed?: Record<string, string> }

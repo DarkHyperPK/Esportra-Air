@@ -134,13 +134,28 @@ test('a vMix on another PC gets this PC’s network address in the pages', async
   const r = await rig({ lan: '192.168.1.50' });
   const b = r.vmix.addInput('Browser', 'Browser 1');
   // The stand-in listens on this PC; call it by the network name vMix would have on another PC.
-  const link = new VmixLink({ pages: () => pagesFor('AAAA'), load: () => r.saved(), save: () => {}, lan: () => '192.168.1.50', log: () => {}, changed: () => {}, fetch: (u, i) => fetch(String(u).replace('192.168.1.30', '127.0.0.1'), i) });
+  const link = new VmixLink({ pages: () => pagesFor('AAAA'), load: () => r.saved(), save: () => {}, lan: () => '192.168.1.50', lanOn: () => true, log: () => {}, changed: () => {}, fetch: (u, i) => fetch(String(u).replace('192.168.1.30', '127.0.0.1'), i) });
   link.connect(`192.168.1.30:${r.vmix.port}`);
   await link.poll();
   const page = link.view().pages.find((p) => p.id === 'in-game')!;
   assert.ok(page.url.startsWith('http://192.168.1.50:5300/'), page.url);
   link.disconnect();
   void b;
+  await r.done();
+});
+
+test('a vMix on another PC keeps 127.0.0.1 and warns while Graphics on the local network is off', async () => {
+  const r = await rig({ lan: '192.168.1.50' });
+  const link = new VmixLink({ pages: () => pagesFor('AAAA'), load: () => r.saved(), save: () => {}, lan: () => '192.168.1.50', lanOn: () => false, log: () => {}, changed: () => {}, fetch: (u, i) => fetch(String(u).replace('192.168.1.30', '127.0.0.1'), i) });
+  link.connect(`192.168.1.30:${r.vmix.port}`);
+  await link.poll();
+  const v = link.view();
+  assert.ok(v.pages.find((p) => p.id === 'in-game')!.url.startsWith('http://127.0.0.1:5300/'));
+  assert.match(v.warning ?? '', /vMix is on another PC — turn on .Let other PCs on this network load the graphics. in Settings/);
+  link.disconnect();
+  // A vMix on this PC never warns.
+  r.link.connect(`127.0.0.1:${r.vmix.port}`);
+  assert.equal(r.link.view().warning, null);
   await r.done();
 });
 

@@ -26,6 +26,7 @@ import { Adjustments } from './br-run/Adjustments.tsx';
 import { actionFor, isTyping } from '../../shared/keymap.ts';
 import { currentMatch } from '../../shared/br-run.ts';
 import { gameState } from '../../shared/br.ts';
+import { pageHost } from '../../shared/graphics-lan.ts';
 
 const HUD_ID = 'brhud';
 
@@ -132,7 +133,7 @@ function Detail({ s, run, l, item }: { s: Snapshot; run: Run; l: Lobby; item: It
         <div className="body-pad stack" style={{ gap: 10 }}>
           <Preview key={`hud-${look.hud}`} src={lobbyPage(port, l.code, 'br-hud', '&screen=1')} label="HUD" />
           <p className="faint t-sm">On whenever the HUD source is in your gameplay scene. The layout is chosen in HUD library; alive marks, knocks and live points arrive with the observer data.</p>
-          <div className="row-gap"><Copy url={lobbyPage(port, l.code, 'br-hud')} label="Copy browser source" /></div>
+          <div className="row-gap"><Copy url={lobbyPage(port, l.code, 'br-hud', '', pageHost(s.graphicsLan))} label="Copy browser source" /></div>
         </div>
       </section>
     );
@@ -162,7 +163,7 @@ function Detail({ s, run, l, item }: { s: Snapshot; run: Run; l: Lobby; item: It
               </select>
             </label>
           )}
-          <Copy url={lobbyPage(port, l.code, 'fullscreen', `&only=${id}&style=full`)} label="Copy browser source" />
+          <Copy url={lobbyPage(port, l.code, 'fullscreen', `&only=${id}&style=full`, pageHost(s.graphicsLan))} label="Copy browser source" />
         </div>
       </div>
     </section>
@@ -172,9 +173,9 @@ function Detail({ s, run, l, item }: { s: Snapshot; run: Run; l: Lobby; item: It
 function Sources({ s, run, l, close, connect }: { s: Snapshot; run: Run; l: Lobby; close: () => void; connect: () => void }) {
   const port = s.engine.port ?? 0;
   const rows: Array<[string, string, string]> = [
-    ['In-game HUD', 'Over the game, in your gameplay scene', lobbyPage(port, l.code, 'br-hud')],
-    ['Full screen', 'Shows whichever full screen is on air', lobbyPage(port, l.code, 'fullscreen')],
-    ...BR_SCREENS.map((id): [string, string, string] => [BR_SCREEN_NAME[id], 'Only while it is on air', lobbyPage(port, l.code, 'fullscreen', `&only=${id}&style=full`)]),
+    ['In-game HUD', 'Over the game, in your gameplay scene', lobbyPage(port, l.code, 'br-hud', '', pageHost(s.graphicsLan))],
+    ['Full screen', 'Shows whichever full screen is on air', lobbyPage(port, l.code, 'fullscreen', '', pageHost(s.graphicsLan))],
+    ...BR_SCREENS.map((id): [string, string, string] => [BR_SCREEN_NAME[id], 'Only while it is on air', lobbyPage(port, l.code, 'fullscreen', `&only=${id}&style=full`, pageHost(s.graphicsLan))]),
   ];
   return (
     <div className="scrim right" onClick={(e) => e.target === e.currentTarget && close()}>
@@ -183,6 +184,7 @@ function Sources({ s, run, l, close, connect }: { s: Snapshot; run: Run; l: Lobb
         <div className="editor-body stack" style={{ gap: 8 }}>
           <ObsScenesCheck s={s} run={run} lobby={l} connect={connect} />
           <VmixPanel s={s} run={run} />
+          {s.graphicsLan.on && <p className="notice t-sm" role="status">These addresses use this PC\u2019s network address{s.graphicsLan.address ? ` (${s.graphicsLan.address})` : ''}, so OBS or vMix on another PC can load them. Other PCs can only look at graphics.</p>}
           <p className="muted t-sm">Or paste into an OBS browser source at 1920×1080. They follow {l.title}.</p>
           {rows.map(([label, note, url]) => <div key={url} className="between"><span><b>{label}</b><br /><span className="faint t-xs">{note}</span></span><Copy url={url} label="Copy" /></div>)}
         </div>

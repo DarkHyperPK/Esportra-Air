@@ -132,6 +132,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'resetKeys': await p.resetKeys(); break;
     case 'setMoments': await p.setMoments(a[0] as string[]); break;
     case 'setGlobalKeys': p.setGlobalKeys(a[0] === true); break;
+    case 'setGraphicsLan': await p.setGraphicsLan(a[0] === true); break;
     case 'holdGlobalKeys': p.holdGlobalKeys(a[0] === true); break;
     case 'saveManualPdf': return ctx.saveManualPdf ? ctx.saveManualPdf() : null;
     case 'pickVideo': return ctx.pickVideo ? ctx.pickVideo() : null;

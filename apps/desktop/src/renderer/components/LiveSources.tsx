@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { Snapshot } from '../../shared/api.ts';
 import { browserSource, type SourceLinks } from '../../shared/browser-source.ts';
+import { pageHost } from '../../shared/graphics-lan.ts';
 import { air } from '../bridge.ts';
 
 export interface SourceEntry { key: string; label: string; look: string | null; links: SourceLinks }
@@ -14,7 +15,7 @@ export function liveSources(s: Snapshot): SourceEntry[] {
   const out: SourceEntry[] = [];
   for (const r of s.rundown) {
     if (!r.enabled || !r.show) continue;
-    const links = browserSource(port, s.setup.screens, r);
+    const links = browserSource(port, s.setup.screens, r, pageHost(s.graphicsLan));
     if (!links || seen.has(links.url)) continue;
     seen.add(links.url);
     const screen = s.setup.screens.find((x) => x.id === r.show);
@@ -40,6 +41,7 @@ export function LiveSources({ s, close }: { s: Snapshot; close: () => void }) {
         <header><h2 className="title-md">Browser sources</h2><button className="btn quiet small" onClick={close}>Esc</button></header>
         <div className="editor-body">
           <p className="muted t-sm">Paste into OBS as a browser source, 1920 × 1080. Each follows the match selected in Air. <b>Copy</b> shows the graphic while Air has it on air; <b>Always on</b> shows it all the time.</p>
+          {s.graphicsLan.on && <p className="notice t-sm" role="status">These addresses use this PC\u2019s network address{s.graphicsLan.address ? ` (${s.graphicsLan.address})` : ''}, so OBS or vMix on another PC can load them. Other PCs can only look at graphics.</p>}
           {list.length === 0 && <p className="faint t-sm">This match's Rundown has no graphics yet.</p>}
           <ul className="live-src">
             {list.map((x) => (
