@@ -35,6 +35,7 @@ export function VmixPanel({ s, run }: { s: Snapshot; run: Run }) {
       ) : (
         <p className="muted t-sm">{connected ? <><span className="ok-text">✓</span> Connected to vMix at {v.host}.</> : v.state === 'connecting' ? `Connecting to ${v.host}…` : null}</p>
       )}
+      {v.warning && <div className="notice warn t-sm" role="status">{v.warning}</div>}
       {v.error && <div className="notice warn t-sm" role="status">{v.error}</div>}
       {v.state === 'off' && <p className="faint t-xs">vMix: Settings › Web, then use this PC’s or the vMix PC’s address. Port 8088 unless you changed it.</p>}
       {v.pages.length === 0 ? <p className="muted t-sm">This show has no Air pages yet.</p> : (

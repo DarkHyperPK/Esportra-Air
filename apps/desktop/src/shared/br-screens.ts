@@ -38,7 +38,7 @@ export const HUD_LAYOUT_NAME: Record<HudLayout, [string, string]> = {
   strip: ['Top strip', 'The top three under the compass; the full table pops up from Live.'],
 };
 /** The lobby room's page for a graphic, as a browser source. */
-export const lobbyPage = (port: number, code: string, page: string, extra = '') => `http://127.0.0.1:${port}/overlays/${page}.html?match=${encodeURIComponent(code)}${extra}`;
+export const lobbyPage = (port: number, code: string, page: string, extra = '', host = '127.0.0.1') => `http://${host}:${port}/overlays/${page}.html?match=${encodeURIComponent(code)}${extra}`;
 
 /** The event's colour world for the BR graphics (23 Nov): a preset, or own colours over one, a background picture,
  *  the emblem and the props. core/br.js reads it as `airBrTheme`; pictures are kit pack paths or Air uploads. */

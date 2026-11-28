@@ -1463,3 +1463,14 @@ async fn own_graphics_store_fonts_and_show_in_the_fullscreen_host() {
     assert_eq!(show(&r, "OWN").await["airFullscreen"], json!(own));
     assert_eq!(action(&r, "OWN", "fullscreen.show", json!({ "screen": "own:../../etc" })).await.status, 400);
 }
+
+#[tokio::test]
+async fn loopback_clients_are_not_limited_by_the_network_guard() {
+    let running = engine(temp_dir()).await;
+    let port = running.addr.port();
+    let mut s = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    s.write_all(b"GET /health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").await.unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).await.unwrap();
+    assert!(out.starts_with("HTTP/1.1 200"), "{out}");
+}

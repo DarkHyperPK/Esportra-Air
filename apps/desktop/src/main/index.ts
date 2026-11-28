@@ -46,7 +46,7 @@ async function main() {
   const store = new Store(join(app.getPath('userData'), 'air.json'));
   // The engine binary's size and date tell an engine left running by an older Air from this one.
   const buildId = (() => { try { const st = statSync(paths.engine); return `${st.size}-${Math.round(st.mtimeMs)}`; } catch { return undefined; } })();
-  const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, env: engineEnv(), buildId, ...realProcess });
+  const engine = new EngineSupervisor({ binary: paths.engine, hudRoot: paths.hud, dataDir: paths.data, port: store.data.enginePort, key, host: store.data.graphicsLan ? '0.0.0.0' : '127.0.0.1', env: engineEnv(), buildId, ...realProcess });
   const ingest = wsIngest();
   // A capture-only PC sends its game data to a producer's Air instead of to its own engine.
   const linkIngest = wsIngest();
