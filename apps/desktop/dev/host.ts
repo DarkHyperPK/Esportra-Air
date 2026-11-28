@@ -68,7 +68,10 @@ class SimulatedCapture extends EventEmitter {
   }
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'air-dev-'));
+// --data-dir <folder> keeps a profile between runs (the broadcast walk restarts Air on the same data).
+const dataArg = process.argv.indexOf('--data-dir') >= 0 ? process.argv[process.argv.indexOf('--data-dir') + 1] : '';
+const dir = dataArg ? resolve(dataArg) : mkdtempSync(join(tmpdir(), 'air-dev-'));
+mkdirSync(dir, { recursive: true });
 const engine = new EngineSupervisor({ binary: BINARY, hudRoot: join(ROOT, 'esportra-valorant-hud'), dataDir: dir, port: ENGINE_PORT, key: 'dev-host-key-0123456789abcdef', env: engineEnv(), ...realProcess });
 await engine.start();
 const fakeObs = new FakeObs();
@@ -199,7 +202,7 @@ createServer(async (req, res) => {
     if (act === 'start') {
       await fakePcob?.close();
       if (!lobby?.teams.length) { res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Choose a lobby with teams first.' })); return; }
-      fakePcob = await new FakePcob({ teams: lobby.teams.map((t) => ({ name: t.name, players: t.players })), speed: Number(url.searchParams.get('speed')) || 1, genericNames: url.searchParams.get('generic') === '1', length: Number(url.searchParams.get('length')) || 1500, variants: parseVariants(url.searchParams.get('variant')) }).listen();
+      fakePcob = await new FakePcob({ teams: lobby.teams.map((t) => ({ name: t.name, players: t.players, ...(t.uids?.some(Boolean) ? { uids: t.uids.map((u) => Number(u)) } : {}) })), speed: Number(url.searchParams.get('speed')) || 1, genericNames: url.searchParams.get('generic') === '1', length: Number(url.searchParams.get('length')) || 1500, variants: parseVariants(url.searchParams.get('variant')) }).listen();
     }
     if (act === 'begin') fakePcob?.begin();
     if (act === 'stop') fakePcob?.stop();
@@ -214,6 +217,12 @@ createServer(async (req, res) => {
     if (act === 'add') fakeVmix?.addInput('Browser', url.searchParams.get('title') ?? 'Browser');
     if (act === 'remove') { const i = fakeVmix?.inputs.find((x) => x.title === url.searchParams.get('title')); if (i) fakeVmix?.removeInput(i.key); }
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ port: fakeVmix?.port ?? null, inputs: fakeVmix?.inputs ?? [], calls: fakeVmix?.calls ?? [], refused: fakeVmix?.refused ?? [] }));
+    return;
+  }
+  if (url.pathname === '/dev/quit' && req.method === 'POST') {
+    // Stops the host the way Ctrl C does (the broadcast walk restarts Air on the same data folder).
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"quit":true}');
+    setTimeout(() => void stop(), 50);
     return;
   }
   if (url.pathname === '/dev/state') {

@@ -18,9 +18,11 @@ const NAMES = ['NIGHT OWLS','CRIMSON FIVE','IRON PINE','DUNE RUNNERS','SILVER FO
   await p.locator('nav.rail').getByRole('button', { name: 'Events' }).click();
   await p.locator('.ev-card').first().click();
   await p.getByRole('tab', { name: 'Lobbies' }).waitFor();
+  // 28 Nov: an event without lobbies opens a start screen (Use a stage, Paste a list, Pick teams, Start empty); Lobby name and New lobby
+  // are on the list once a lobby exists. Start empty, then rename and add the teams as before.
+  await p.getByRole('button', { name: 'Choose' }).last().click();
   await p.getByLabel('Lobby name').fill('Group A · Day 2');
-  await p.getByRole('button', { name: 'New lobby' }).click();
-  await p.getByRole('button', { name: 'Open' }).first().click();
+  await p.getByLabel('Lobby name').blur();
   await p.getByRole('tab', { name: /Teams/ }).click();
   for (const n of NAMES) await p.locator('.lb-team').filter({ hasText: n }).locator('input').check();
   await p.getByRole('button', { name: 'Save teams' }).click();
