@@ -3,7 +3,7 @@
 // (journalled there); the saved tables belong to this PC and are never part of an event.
 import { randomUUID } from 'node:crypto';
 import type { Lobby } from '../shared/api.ts';
-import { gameState, validScoring, type LobbyDay, type LobbyGame } from '../shared/br.ts';
+import { editedPart, gameState, validScoring, type LobbyDay, type LobbyGame } from '../shared/br.ts';
 import { slotsOf, validSpec, nextTitle, validTableName } from '../shared/br-format.ts';
 import { isBusy, matchesOfDay } from '../shared/br-run.ts';
 import type { Lobbies } from './br-lobbies.ts';
@@ -52,7 +52,7 @@ export class BrFormat {
     games = games.sort((a, b) => a.n - b.n).map((g, i) => ({ ...g, n: i + 1 }));
     // The tail removal above keeps earlier numbers; renumbering only closes gaps left by removed tail matches.
     const days = (l.days ?? []).map((d) => (d.id === dayId ? { ...d, matchIds: ids } : { ...d, matchIds: d.matchIds.filter((x) => games.some((g) => g.id === x)) }));
-    this.lobbies.commit({ ...l, games, days }, 'lobby.update', { fields: { games: games.map((g) => ({ n: g.n, map: g.map, startsAt: g.startsAt ?? null })) }, format: { day: day.title, ...spec } });
+    this.lobbies.commit({ ...l, ...editedPart(l, 'schedule'), games, days }, 'lobby.update', { fields: { games: games.map((g) => ({ n: g.n, map: g.map, startsAt: g.startsAt ?? null })) }, format: { day: day.title, ...spec } });
     return this.lobbies.find(lobbyId);
   }
 

@@ -285,7 +285,9 @@ export class EventFiles {
       bundle.lobbies = bundle.lobbies.map((l) => {
         const id = randomUUID();
         lobbyMap.set(l.id, id);
-        return { ...l, id, code: `L${id.replace(/-/g, '').slice(0, 7).toUpperCase()}`, eventId };
+        // A copy is no longer the Esportra stage's lobby: it must not follow it.
+        const { source: _source, ...rest } = l;
+        return { ...rest, id, code: `L${id.replace(/-/g, '').slice(0, 7).toUpperCase()}`, eventId };
       });
       const rekey = <T>(from: Record<string, T>) => Object.fromEntries(Object.entries(from).filter(([k]) => matchMap.has(k)).map(([k, v]) => [matchMap.get(k)!, v]));
       bundle.rundown = rekey(bundle.rundown); bundle.matchData = rekey(bundle.matchData); bundle.mapRecords = rekey(bundle.mapRecords);

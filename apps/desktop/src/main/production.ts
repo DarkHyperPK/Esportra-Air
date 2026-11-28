@@ -62,6 +62,7 @@ import { COLORS, tagFor, tagsFor } from './team-tags.ts';
 import { EsportraMatches } from './esportra-matches.ts';
 import { VetoOutbox } from './esportra-veto-outbox.ts';
 import { EsportraSync } from './esportra-sync.ts';
+import { EsportraStages } from './esportra-stages.ts';
 import { MapRecords, type RecordChoice } from './map-records.ts';
 import { PauseHint } from './pause-hint.ts';
 import { MatchDataService } from './match-data.ts';
@@ -179,6 +180,7 @@ export class Production extends EventEmitter {
   /** Format (match generator, copy a lobby, saved points tables) and the list import: src/main/br-format.ts, src/main/sheet-import.ts. */
   readonly brFormat: BrFormat;
   readonly sheets: SheetImporter;
+  readonly stages: EsportraStages;
   readonly pcobRecorder: PcobRecorder;
   readonly brAuto: BrAutopilot;
   readonly rehearsal: Rehearsal;
@@ -269,6 +271,12 @@ export class Production extends EventEmitter {
       store: deps.store, storeImage: (raw, type) => this.storeImage(raw, type), libraryChanged: () => this.libraryChanged(),
       lobbies: this.lobbies, game: () => this.setup.game ?? null, log: (t) => this.log.add(t),
     });
+    // Use a stage from Esportra (28 Nov, read only): src/main/esportra-stages.ts.
+    this.stages = new EsportraStages({
+      account: () => deps.esportra, store: deps.store, lobbies: this.lobbies, game: () => this.setup.game ?? null,
+      eventOpen: () => this.lobbies.selected?.eventId ?? null, storeImage: (raw, type) => this.storeImage(raw, type),
+      libraryChanged: () => this.libraryChanged(), save: () => this.save(), log: (t) => this.log.add(t), changed: () => this.emit('change'), now: () => (deps.now ?? Date.now)(),
+    });
     this.eventFiles = new EventFiles({
       store: deps.store, journal: this.journal, version: deps.version, now: deps.now, debounceMs: deps.autoBackupMs,
       assets: {
@@ -355,7 +363,7 @@ export class Production extends EventEmitter {
       store: deps.store, account: () => deps.esportra ?? null, matchData: this.matchData, flipped: (m) => this.esportraSync.flipped(m),
       save: () => this.save(), log: (text) => this.log.add(text), changed: () => this.emit('change'), now: () => (deps.now ?? Date.now)(),
     });
-    if (deps.esportra) this.esportraSync.start();
+    if (deps.esportra) { this.esportraSync.start(); this.stages.start(); }
     this.spaces = new SponsorSpaces({
       match: () => this.match, eventOf: (m) => this.eventOf(m), requireEvent: (id) => this.requireEvent(id), putEvent: (e) => this.putEvent(e),
       patch: async (fields) => { const m = this.match; if (m && this.deps.engine.status) await this.client.patch(`/api/${encodeURIComponent(m.code)}`, fields); },
@@ -1170,6 +1178,17 @@ export class Production extends EventEmitter {
     if (live || this.gameLocked()) throw new Error(live ? `Match ${live.games.find((g) => g.state === 'live' || g.state === 'finishing')?.n ?? ''} of ${live.title} is live. Import after it is confirmed, remade or ended.` : 'A test or game data is running. Stop it before importing.');
     return this.sheets.import(input);
   }
+  // ── Esportra stages (28 Nov, read only) ──
+  esportraStages() { return this.stages.list(); }
+  esportraStageRead(stageId: string) { return this.stages.detail(String(stageId)); }
+  /** Uses a stage. Refused while a match is live or a test runs: Teams/Players and lobbies must not change under a show. */
+  async esportraStageUse(stageId: string, eventId?: string | null) {
+    const live = this.lobbies.busy();
+    if (live || this.gameLocked()) throw new Error(live ? `Match ${live.games.find((g) => g.state === 'live' || g.state === 'finishing')?.n ?? ''} of ${live.title} is live. Use a stage after it is confirmed, remade or ended.` : 'A test or game data is running. Stop it before using a stage.');
+    await this.stages.use(String(stageId), eventId ? String(eventId) : null);
+  }
+  esportraStageRefresh(stageId: string) { return this.stages.refresh(String(stageId)); }
+  esportraStageFollow(stageId: string, part?: string) { return this.stages.follow(String(stageId), part === 'schedule' || part === 'roster' || part === 'scoring' || part === 'off' ? part : 'all'); }
   pointsTableSave(input: unknown) { return this.brFormat.saveTable(input); }
   pointsTableDelete(id: string) { this.brFormat.deleteTable(id); }
   lobbyFormat(id: string, dayId: string, spec: unknown) { this.brFormat.generate(id, dayId, spec); }
@@ -1273,6 +1292,7 @@ export class Production extends EventEmitter {
       if (data.autopilotProgress) delete data.autopilotProgress[m.id];
     }
     data.matches = data.matches.filter((m) => m.eventId !== id);
+    for (const [k, f] of Object.entries(data.esportraStages ?? {})) if (f.eventId === id) delete data.esportraStages![k];
     data.events = data.events.filter((e) => e.id !== id);
     if (selected?.eventId === id) {
       this.rehearsal.stop();
@@ -2036,6 +2056,7 @@ export class Production extends EventEmitter {
       esportra: this.deps.esportra?.view() ?? signedOut(),
       esportraResults: this.esportraSync.view(this.match),
       esportraVeto: this.esportraSync.vetoView(this.match),
+      esportraStages: this.stages.view(),
       mapRecords: this.mapRecords.view(this.match),
       pauseHint: this.room?.airPause ? null : this.pauseHint.view(),
       mode: this.mode,

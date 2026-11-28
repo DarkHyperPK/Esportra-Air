@@ -39,6 +39,8 @@ export interface GameChecks {
   disconnected: Array<{ team: string; name: string }>;
 }
 export interface LobbyGame {
+  /** The game's id on Esportra, when the lobby follows a stage (28 Nov). */
+  esportraId?: string;
   n: number; map: string; startsAt?: string; results?: TeamResult[]; finishedAt?: number;
   /** Stable id (27 Nov): days and the journal name matches by it, `n` is only the position. */
   id?: string; dayId?: string;
@@ -65,6 +67,12 @@ export interface LobbyDay { id: string; date: string; title: string; opensAt?: s
 export interface Adjustment { id: string; team: string; points: number; reason: string; at: number; dayId?: string }
 /** A points table the producer saved on this PC (28 Nov), picked in any event beside the PMGC and FFWS presets. */
 export interface SavedPointsTable { id: string; name: string; scoring: Scoring }
+/** A lobby read from an Esportra stage group (28 Nov, read only). `edited` parts are Air's now: the follow leaves them alone until Follow Esportra again. */
+export type StagePart = 'schedule' | 'roster' | 'scoring';
+export interface LobbySource { esportra: { stageId: string; groupId: string; readAt: number; edited?: Partial<Record<StagePart, true>> } }
+/** `{source}` for a lobby the producer just changed in `part`: if it follows Esportra, that part is Air's from now on. */
+export const editedPart = (l: { source?: LobbySource }, part: StagePart): { source?: LobbySource } =>
+  l.source?.esportra && !l.source.esportra.edited?.[part] ? { source: { esportra: { ...l.source.esportra, edited: { ...l.source.esportra.edited, [part]: true as const } } } } : {};
 export const TIEBREAK_NAME: Record<Tiebreak, string> = { wins: 'WWCD', placementPts: 'Placement points', elims: 'Kills', lastGame: 'Last match' };
 export interface LobbyCore { teams: LobbyTeam[]; games: LobbyGame[]; scoring: Scoring; adjustments?: Adjustment[] }
 

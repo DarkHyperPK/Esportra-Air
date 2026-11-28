@@ -177,6 +177,13 @@ createServer(async (req, res) => {
     const access = url.searchParams.get('access');
     if (access === 'off') backend.allowed = false;
     if (access === 'grant') backend.grant();
+    const stage = url.searchParams.get('stage');
+    // The organiser edits the stage on Esportra: ?stage=shift&group=0&min=30, ?stage=map&group=0&game=3&name=Sanhok, ?stage=team&group=0&name=New Team, ?stage=gone, ?stage=back.
+    if (stage === 'shift') backend.editStage({ shift: { group: Number(url.searchParams.get('group')) || 0, minutes: Number(url.searchParams.get('min')) || 30 } });
+    if (stage === 'map') backend.editStage({ map: { group: Number(url.searchParams.get('group')) || 0, game: Number(url.searchParams.get('game')) || 1, name: url.searchParams.get('name') ?? 'Erangel' } });
+    if (stage === 'team') backend.editStage({ addTeam: { group: Number(url.searchParams.get('group')) || 0, name: url.searchParams.get('name') ?? 'New Team' } });
+    if (stage === 'gone') backend.stageGone = true;
+    if (stage === 'back') backend.stageGone = false;
     const reason = url.searchParams.get('decline');
     if (reason) backend.decline(reason);
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ allowed: backend.allowed, request: backend.request }));

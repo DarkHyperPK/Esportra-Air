@@ -7,7 +7,7 @@
 // observer feed (src/main/br-live.ts) writes only to the armed match, and what it saves is provisional until Confirm.
 import { randomUUID } from 'node:crypto';
 import type { Lobby } from '../shared/api.ts';
-import { gameState, validResults, type Adjustment, type Attempt, type LobbyDay, type LobbyGame } from '../shared/br.ts';
+import { editedPart, gameState, validResults, type Adjustment, type Attempt, type LobbyDay, type LobbyGame } from '../shared/br.ts';
 import { closeProblems, confirmProblems, dayOf, daySummary, gameById, isBusy, liveMatch, matchesOfDay, nextOfDay, rosterChanges, standingsView, STATE_LABEL, validAdjustment, ymd, type BrCheckpoint, type BrResume, type DaySummary, type RosterChange } from '../shared/br-run.ts';
 import type { PcobStatus } from '../shared/pcob-status.ts';
 import type { GameFeed } from '../shared/br-stats.ts';
@@ -228,7 +228,7 @@ export class BrRun {
     const n = (l.days?.length ?? 0) + 1;
     const title = typeof input.title === 'string' && input.title.trim() ? input.title.replace(/[<>]/g, '').trim().slice(0, 40) : `Day ${n}`;
     const day: LobbyDay = { id: randomUUID(), date, title, ...(this.time(input.opensAt) ? { opensAt: this.time(input.opensAt)! } : {}), matchIds: [] };
-    this.lobbies.commit({ ...l, days: [...(l.days ?? []), day] }, 'day.add', { dayId: day.id, date, title });
+    this.lobbies.commit({ ...l, ...editedPart(l, 'schedule'), days: [...(l.days ?? []), day] }, 'day.add', { dayId: day.id, date, title });
     return day.id;
   }
 
@@ -254,7 +254,7 @@ export class BrRun {
       next.matchIds = ids;
     }
     const days = (l.days ?? []).map((d) => (d.id === dayId ? next : { ...d, matchIds: d.matchIds.filter((id) => !(next.matchIds ?? []).includes(id)) }));
-    this.lobbies.commit({ ...l, days, games }, 'day.edit', { dayId, fields: { date: next.date, title: next.title, opensAt: next.opensAt ?? null, matchIds: next.matchIds, reopen: patch.reopen === true } });
+    this.lobbies.commit({ ...l, ...editedPart(l, 'schedule'), days, games }, 'day.edit', { dayId, fields: { date: next.date, title: next.title, opensAt: next.opensAt ?? null, matchIds: next.matchIds, reopen: patch.reopen === true } });
   }
 
   private date(v: unknown) {

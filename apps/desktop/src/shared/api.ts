@@ -38,6 +38,10 @@ export interface PlayerInfo {
 /** A team in Teams/Players: matches pick from these. */
 export interface LibTeam extends Team {
   id: string;
+  /** The team's id on Esportra, when a stage from Esportra brought it in (28 Nov). */
+  esportraId?: string;
+  /** The logo address last fetched from Esportra, so a logo is fetched again only when Esportra's changes. */
+  esportraLogo?: string;
 }
 
 /** A player in Teams/Players, on a team or on none. */
@@ -125,6 +129,8 @@ export interface Lobby {
   days?: import('./br.ts').LobbyDay[];
   /** Points added or taken away with a reason; they count in the official standings. */
   adjustments?: import('./br.ts').Adjustment[];
+  /** Where this lobby came from, when it was read from an Esportra stage (28 Nov, read only). */
+  source?: import('./br.ts').LobbySource;
   createdAt: number;
 }
 export interface LobbyLook { hud: 'rail' | 'grid' | 'strip'; popup: boolean; templates: Record<string, string>; theme?: import('./br-screens.ts').BrTheme }
@@ -401,6 +407,8 @@ export interface Snapshot {
   esportraResults: import('./esportra-package.ts').EsportraResultsView | null;
   /** The selected Esportra match's veto: followed or entered here, its status on Esportra, warnings. */
   esportraVeto: import('./esportra-package.ts').EsportraVetoView | null;
+  /** Stages read from Esportra for lobby games, with their sync state (28 Nov, read only). */
+  esportraStages: import('../main/esportra-stages.ts').StagesView;
   /** The selected match's map records, and which one the post-game graphics show. */
   /** The buy phase has run long: maybe a timeout. Null when not, or while a pause is on air. */
   pauseHint: { seconds: number } | null;
@@ -633,6 +641,12 @@ export interface AirApi {
   sheetPictures(input: import('../main/sheet-import.ts').PictureInput): Promise<import('../main/sheet-import.ts').PictureScan | null>;
   /** Saves an import into Teams/Players (and lobbies). Refused while a match is live. */
   sheetImport(input: import('../main/sheet-import.ts').ImportInput): Promise<import('../main/sheet-import.ts').ImportResult>;
+  /** Use a stage from Esportra (28 Nov, read only; nothing is sent back). The stages this producer can run, one stage in full, using it, reading it again, and following it again or stopping. */
+  esportraStages(): Promise<import('../main/esportra-stages.ts').StageList>;
+  esportraStageRead(stageId: string): Promise<import('../main/esportra-stages.ts').StageDetail>;
+  esportraStageUse(stageId: string, eventId?: string | null): Promise<Snapshot>;
+  esportraStageRefresh(stageId: string): Promise<Snapshot>;
+  esportraStageFollow(stageId: string, part?: import('./br.ts').StagePart | 'all' | 'off'): Promise<Snapshot>;
   /** Saved points tables on this PC. */
   pointsTableSave(input: { id?: string; name: string; scoring: import('./br.ts').Scoring }): Promise<import('./br.ts').SavedPointsTable>;
   pointsTableDelete(id: string): Promise<Snapshot>;

@@ -15,6 +15,7 @@
 //   GET/POST /api/air/broadcast/packages/{id}/result-proposals (+ /{proposal}/review)
 //   POST /api/air/devices/{id}/heartbeat
 //   GET  /api/air/assets/{id}                       a sponsor logo uploaded on Esportra
+//   GET  /api/air/br/stages, /api/air/br/stages/{id}  battle royale stages to produce (read only, esportra-backend PR #12)
 // Tokens live in the OS-encrypted secrets file; everything else in the saved settings. Air never
 // writes scores: a counted map goes back as a result proposal the organizer reviews.
 
@@ -343,6 +344,41 @@ export class EsportraAccount {
       if (status === 404) throw new Error('Esportra has no pack for this game yet.');
       throw e;
     }
+  }
+
+  /** The battle royale stages this producer can run (read only). */
+  async brStages() {
+    return this.brRead<unknown>('/api/air/br/stages');
+  }
+
+  /** One stage: points table, groups with teams and players, lobbies and games (read only). */
+  async brStage(stageId: string) {
+    if (!/^[0-9A-Za-z_-]{1,64}$/.test(stageId)) throw new Error('Choose a stage.');
+    return this.brRead<unknown>(`/api/air/br/stages/${stageId}`);
+  }
+
+  private async brRead<T>(route: string): Promise<T> {
+    try {
+      return await this.json<T>(route);
+    } catch (e) {
+      const status = (e as EsportraError).status;
+      if (status === 403) await this.checkAccess().catch(() => {});
+      if (status === 404) throw new EsportraError('Esportra no longer lists this stage for you.', 404);
+      throw e;
+    }
+  }
+
+  /** A picture at the link Esportra gave for a team logo (PNG, JPEG or WebP, up to 5 MB). No sign-in is sent to it. */
+  async image(url: string): Promise<{ bytes: Buffer; type: string }> {
+    if (!/^https:\/\//i.test(url) && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(url)) throw new Error('That logo is not at an address Air can use.');
+    let response: Response;
+    try { response = await this.doFetch(url, { method: 'GET', signal: AbortSignal.timeout(TIMEOUT) }); } catch { throw new EsportraError('The logo could not be fetched.', 0); }
+    if (!response.ok) throw new EsportraError('Esportra could not send this logo.', response.status);
+    const type = String(response.headers.get('content-type') ?? '').split(';')[0]!.trim();
+    if (!/^image\/(png|jpeg|webp)$/.test(type)) throw new Error('That logo is not a PNG, JPEG or WebP picture.');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > 5_242_880) throw new Error('That logo is larger than 5 MB.');
+    return { bytes, type };
   }
 
   /** A logo uploaded on Esportra (PNG, JPEG or WebP, up to 5 MB). */

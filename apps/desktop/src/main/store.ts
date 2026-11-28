@@ -59,6 +59,8 @@ export interface Saved {
   postOptions?: Record<string, import('./map-records.ts').PostOptions>;
   /** Map results sent (or waiting to be sent) to Esportra for review, per match (src/main/esportra-sync.ts). */
   esportraResults?: Record<string, import('./esportra-sync.ts').SavedResults>;
+  /** Stages read from Esportra for lobby games (28 Nov, read only), by stage id (src/main/esportra-stages.ts). */
+  esportraStages?: Record<string, import('./esportra-stages.ts').StageFollow>;
   /** Veto steps entered in Air for the Esportra match room, per match (src/main/esportra-veto-outbox.ts). */
   esportraVetoOutbox?: Record<string, import('./esportra-veto-outbox.ts').SavedVetoOutbox>;
   /** This PC's id with Esportra (stable across sign-ins). */

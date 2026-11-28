@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { LibTeam, LibPlayer, Lobby } from '../shared/api.ts';
-import { SCORING_PRESETS, champion, gamePoints, gameState, standings, validResults, validScoring, type GameChecks, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
+import { SCORING_PRESETS, champion, editedPart, gamePoints, gameState, standings, validResults, validScoring, type GameChecks, type LobbyGame, type LobbyTeam, type Scoring, type TeamResult } from '../shared/br.ts';
 import { cleanUid } from '../shared/uid.ts';
 import { currentMatch, isBusy, liveMatch, normalizeLobby, standingsView, targetMatch } from '../shared/br-run.ts';
 import { playerTotals, teamTotals, type GameFeed } from '../shared/br-stats.ts';
@@ -131,7 +131,7 @@ export class Lobbies {
 
   update(id: string, patch: { title?: unknown; stage?: unknown; scoring?: unknown; games?: unknown }) {
     const l = this.find(id);
-    const next: Lobby = { ...l };
+    const next: Lobby = { ...l, ...(patch.scoring !== undefined ? editedPart(l, 'scoring') : {}), ...(patch.games !== undefined ? editedPart(l, 'schedule') : {}) };
     if (patch.title !== undefined) next.title = text(patch.title, 60, 'Lobby name');
     if (patch.stage !== undefined) next.stage = text(patch.stage, 40, 'Stage', false);
     if (patch.scoring !== undefined) next.scoring = validScoring(patch.scoring);
@@ -154,7 +154,7 @@ export class Lobbies {
   }
 
   /** The lobby's teams, picked from Teams/Players (in order); results for teams taken out are dropped. */
-  setTeams(id: string, teamIds: unknown) {
+  setTeams(id: string, teamIds: unknown, opts: { fromSource?: boolean } = {}) {
     const l = this.find(id);
     const held = targetMatch(l);
     if (held) throw new Error(`Match ${held.n} is ${gameState(held)}. ${gameState(held) === 'armed' ? 'Disarm it' : 'Confirm, remake or end it'} before changing the lobby’s teams.`);
@@ -168,7 +168,7 @@ export class Lobbies {
     const ids = new Set(picked.map((t) => t.id));
     const games = l.games.map((g) => (g.results ? { ...g, results: g.results.filter((r) => ids.has(r.team)) } : g));
     this.note(l, 'lobby.teams', { teams: picked.map((t) => t.id) });
-    this.put({ ...l, teams: picked, games });
+    this.put({ ...l, teams: picked, games, ...(opts.fromSource ? {} : editedPart(l, 'roster')) });
   }
 
   private lobbyTeam(t: LibTeam, keepId?: string): LobbyTeam {

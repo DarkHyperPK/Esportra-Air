@@ -81,6 +81,11 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
       return input.token || folder ? p.sheetPictures({ ...input, folder }) : null;
     }
     case 'sheetImport': return p.sheetImport(a[0]);
+    case 'esportraStages': return p.esportraStages();
+    case 'esportraStageRead': return p.esportraStageRead(String(a[0] ?? ''));
+    case 'esportraStageUse': await p.esportraStageUse(String(a[0] ?? ''), typeof a[1] === 'string' ? a[1] : null); break;
+    case 'esportraStageRefresh': await p.esportraStageRefresh(String(a[0] ?? '')); break;
+    case 'esportraStageFollow': await p.esportraStageFollow(String(a[0] ?? ''), typeof a[1] === 'string' ? a[1] : undefined); break;
     case 'pointsTableSave': return p.pointsTableSave(a[0]);
     case 'pointsTableDelete': p.pointsTableDelete(String(a[0] ?? '')); break;
     case 'lobbyFormat': p.lobbyFormat(String(a[0]), String(a[1]), a[2]); break;

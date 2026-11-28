@@ -28,7 +28,8 @@ export function validTeam(input: Partial<LibTeam>, lib: Library): LibTeam {
   const color = typeof input?.color === 'string' && HEX.test(input.color) ? input.color.toLowerCase() : COLORS[lib.teams.length % 2]!;
   const logo = typeof input?.logo === 'string' ? input.logo : '';
   if (logo && !IMAGE.test(logo)) throw new Error('Choose the logo again.');
-  return { id, name, tag, color, logo };
+  const had = lib.teams.find((t) => t.id === id);
+  return { id, name, tag, color, logo, ...(had?.esportraId ? { esportraId: had.esportraId } : {}), ...(had?.esportraLogo ? { esportraLogo: had.esportraLogo } : {}) };
 }
 
 /** A player from the interface; throws a plain message when it cannot be used. The in-game id is a Riot ID
