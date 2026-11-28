@@ -17,7 +17,7 @@ function setup(live = false) {
   const patches: Array<{ code: string; fields: any }> = [];
   const logs: string[] = [];
   const lobbies = new Lobbies({ store, patch: async (code, fields) => void patches.push({ code, fields }), live: () => live, log: (t) => logs.push(t), changed: () => {} });
-  const run = new BrRun({ lobbies, store, feed: { endNow: async () => false, remade: () => {}, partialFeed: () => null, resume: () => {} }, pcob: () => PCOB_OFF, log: () => {}, changed: () => {} });
+  const run = new BrRun({ lobbies, store, feed: { endNow: async () => false, remade: () => {}, partialFeed: () => null, resume: () => {}, readNow: async () => null }, pcob: () => PCOB_OFF, log: () => {}, changed: () => {} });
   return { store, lobbies, patches, logs, run };
 }
 

@@ -10,7 +10,8 @@ import type { Lobby } from '../shared/api.ts';
 import { editedPart, gameState, validResults, type Adjustment, type Attempt, type LobbyDay, type LobbyGame } from '../shared/br.ts';
 import { closeProblems, confirmProblems, dayOf, daySummary, gameById, isBusy, liveMatch, matchesOfDay, nextOfDay, rosterChanges, standingsView, STATE_LABEL, validAdjustment, ymd, type BrCheckpoint, type BrResume, type DaySummary, type RosterChange } from '../shared/br-run.ts';
 import type { PcobStatus } from '../shared/pcob-status.ts';
-import type { GameFeed } from '../shared/br-stats.ts';
+import { refillAfterMatch, type GameFeed } from '../shared/br-stats.ts';
+import type { PcobPlayer } from '../shared/pcob.ts';
 import type { EventJournal } from './event-journal.ts';
 import type { Lobbies } from './br-lobbies.ts';
 import type { Store } from './store.ts';
@@ -21,6 +22,8 @@ export interface FeedControl {
   endNow(): Promise<boolean>;
   remade(): void;
   partialFeed(lobby: Lobby): GameFeed | null;
+  /** A fresh reading of the game's players for Update from game; null when Air is not connected to PCOB. */
+  readNow(): Promise<{ players: PcobPlayer[]; gameId: string } | null>;
   resume(cp: Omit<BrCheckpoint, 'matchId' | 'attempt'> | null): void;
 }
 
@@ -175,6 +178,32 @@ export class BrRun {
     const attempts = open && !open.endedAt ? [...(g.attempts ?? []).slice(0, -1), { ...open, endedAt: this.now, reason: 'ended' as const }] : g.attempts ?? [];
     this.setGame(l, g, { state: 'provisional', attempts, draft: l.teams.map((t) => ({ team: t.id, place: null, elims: 0 })), checks: { unplaced: l.teams.map((t) => t.id), teamKills: [], unknown: [], disconnected: [] } }, 'match.end', { reason: 'producer, no game data' });
     this.ctx.log(`${l.title}: match ${g.n} ended without game data; type the places`);
+  }
+
+  /**
+   * Update from game (28 Nov, open question 9): while a match is provisional, re-read the game and refill only the after-match
+   * numbers (survival, damage taken, heal, headshots, assists, knockouts, rescues, distances) that PCOB fills late. Places and
+   * kills, typed or from the game, are never touched, and a 0 never replaces a saved number. Journalled as `match.update`.
+   */
+  async updateFromGame(matchId: string) {
+    const l0 = this.lobbies.list().find((x) => x.games.some((g) => g.id === matchId));
+    const g0 = l0?.games.find((g) => g.id === matchId);
+    if (!l0 || !g0) throw new Error('That match is not in any lobby.');
+    const state = gameState(g0);
+    if (state !== 'provisional') throw new Error(`Match ${g0.n} is ${STATE_LABEL[state].toLowerCase()}. Update from game works on a provisional match, until you confirm it.`);
+    if (!g0.feed) throw new Error(`Match ${g0.n} has no game data saved to update. Its numbers were typed.`);
+    let reading: Awaited<ReturnType<FeedControl['readNow']>>;
+    try { reading = await this.ctx.feed.readNow(); } catch { throw new Error('No answer from the observer PC. Check that it is on and API Enable is set, then try again.'); }
+    if (!reading) throw new Error('Game data is not connected. Connect to the observer PC (with the consent tick) and try again.');
+    const r = refillAfterMatch(g0.feed, reading.players, reading.gameId, this.now);
+    if ('problem' in r) throw new Error(r.problem);
+    // The reading took a moment: the match must still be provisional and its feed the one that was refilled.
+    const l = this.lobbies.find(l0.id);
+    const g = l.games.find((x) => x.id === matchId);
+    if (!g || gameState(g) !== 'provisional' || !g.feed) throw new Error(`Match ${g0.n} changed while Air was reading. Nothing was updated.`);
+    const feed = { ...g.feed, stats: r.feed.stats, updatedAt: r.feed.updatedAt };
+    this.setGame(l, g, { feed }, 'match.update', { players: r.players, filled: r.filled });
+    this.ctx.log(`${l.title}: match ${g.n} updated from the game (${r.filled} numbers for ${r.players} players; places and kills untouched)`);
   }
 
   /** Confirm: results must be valid and complete. Locks the match, adds it to the official standings and arms the next one. */

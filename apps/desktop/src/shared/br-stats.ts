@@ -23,6 +23,8 @@ export interface GameFeed {
   circles: Array<{ x: number; y: number; size: number }>;
   plane: { from: { x: number; y: number }; to: { x: number; y: number } } | null;
   savedAt: number;
+  /** When Update from game last refilled the after-match numbers (the producer's button, until Confirm). */
+  updatedAt?: number;
 }
 
 export function statOf(p: PcobPlayer, team: string | null): PlayerGameStat {
@@ -84,3 +86,29 @@ export function teamTotals(games: Array<{ stats: PlayerGameStat[] }>): TeamFeedT
 
 /** The single best player of a set of games (the MVP card); null without stats. */
 export const mvpOf = (games: Array<{ stats: PlayerGameStat[] }>, w: MvpWeights = MVP_WEIGHTS) => playerTotals(games, w)[0] ?? null;
+
+
+/**
+ * The numbers PCOB leaves at 0 until the game is over (28 Nov, open question 9). Update from game refills only these, never
+ * a place or a kill count, and never with a 0 (a blank or early reading cannot take a saved number away).
+ */
+export const AFTER_MATCH_FIELDS = ['knockouts', 'assists', 'damageTaken', 'heal', 'headshots', 'rescues', 'survival', 'vehicleKills', 'grenadeKills', 'driveDistance', 'walkDistance', 'outsideZoneTime'] as const;
+export type RefillResult = { feed: GameFeed; players: number; filled: number } | { problem: string };
+export function refillAfterMatch(feed: GameFeed, players: PcobPlayer[], gameId: string, at: number): RefillResult {
+  if (!players.length) return { problem: 'The game does not list any players now, so there is nothing to read. The numbers saved with the match stay as they are.' };
+  if (feed.gameId && gameId && feed.gameId !== gameId) return { problem: 'The game on now is a different game (its GameID differs). Nothing was changed.' };
+  const find = (s: PlayerGameStat) => players.find((p) => (s.uid && p.uid === s.uid) || (s.openId && p.openId === s.openId)) ?? players.find((p) => p.name.toLowerCase() === s.name.toLowerCase());
+  const hits = feed.stats.map((s) => ({ s, p: find(s) }));
+  if (hits.filter((h) => h.p).length * 2 < feed.stats.length) return { problem: 'Most of the players now in the game are not the ones saved with this match. Nothing was changed.' };
+  let filled = 0, touched = 0;
+  const stats = hits.map(({ s, p }) => {
+    if (!p) return s;
+    const fresh = statOf(p, s.team);
+    const next = { ...s };
+    let any = false;
+    for (const f of AFTER_MATCH_FIELDS) if (fresh[f] > 0 && fresh[f] !== s[f]) { next[f] = fresh[f]; filled++; any = true; }
+    if (any) touched++;
+    return next;
+  });
+  return { feed: { ...feed, stats, updatedAt: at }, players: touched, filled };
+}

@@ -35,6 +35,8 @@ export interface GameChecks {
   teamKills: Array<{ team: string; teamKills: number; playerKills: number }>;
   /** Players on a team's seat who are not on its roster (counted to the seat, flagged). */
   unknown: Array<{ team: string; name: string; uid: string }>;
+  /** Lobby team proposed 1st from the alive count because the game wrote no rank 1 (28 Nov): the producer confirms it. */
+  lastStanding?: string[];
   /** Players PCOB reported as disconnected (liveState 6) at the end. */
   disconnected: Array<{ team: string; name: string }>;
 }

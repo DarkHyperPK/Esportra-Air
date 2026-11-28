@@ -5,7 +5,7 @@
 // player's final numbers, the kill feed and the circles as the game's feed. Typing results stays as the fallback
 // and the producer's edits win (src/main/br-lobbies.ts keeps the game's own copy).
 import type { Lobby } from '../shared/api.ts';
-import { PCOB_ROUTES, finalResults, readCircle, readGlobal, readInGame, readKills, readPlayers, readTeams, seatTeams, toBrLive, type BrLive, type PcobCircle, type PcobGlobal, type PcobKill, type PcobPlayer, type PcobTeamList } from '../shared/pcob.ts';
+import { NO_META, PCOB_ROUTES, allButOnePlaced, finishedValid, hasAfterMatch, mergeKills, mergeMeta, proposeResults, readCircle, readGlobal, readInGame, readKills, readMeta, readPlayers, readTeams, seatTeams, toBrLive, weakerReading, type PcobMeta, type BrLive, type PcobCircle, type PcobGlobal, type PcobKill, type PcobPlayer, type PcobTeamList } from '../shared/pcob.ts';
 import { NO_DATA_MS, PCOB_OFF, localHost, type PcobStatus } from '../shared/pcob-status.ts';
 import type { GameChecks, MatchState } from '../shared/br.ts';
 import { gameChecks, type BrCheckpoint } from '../shared/br-run.ts';
@@ -47,8 +47,13 @@ export type BrMoment = 'game.start' | 'plane' | 'first.blood' | 'team.out' | 'zo
 
 /** Polls: players, teams and in-game every second; the kill feed, circle and map info every other second. */
 const FAST = 1000;
-/** After the winner, wait this long for the end-of-game numbers (they read 0 until the game ends). */
-const SETTLE = 5000;
+/**
+ * After the game is over, wait for the end-of-game numbers (they read 0 until the game ends): until they turn non-zero and one
+ * more reading has come (PCOB pushes every 2 s), and never longer than NUMBERS_MAX (open question 9). The match is provisional
+ * either way, and Update from game refills them later.
+ */
+const NUMBERS_SETTLE = 2000;
+const NUMBERS_MAX = 15000;
 
 export class BrLiveFeed {
   private readonly ctx: BrLiveContext;
@@ -63,6 +68,11 @@ export class BrLiveFeed {
   private inGame = false;
   private game: number | null = null;
   private gameId = '';
+  /** GameID and the times, from whichever routes carry them (open question 1). */
+  private meta: PcobMeta = NO_META;
+  private numbersAt: number | null = null;
+  private prevKills = new Map<string, number>();
+  private killsObserved = false;
   private players: PcobPlayer[] = [];
   private teams: PcobTeamList = { teams: [], gameTime: null, fightingStart: null, finishedStart: null, gameId: '', currentTime: null };
   private kills: PcobKill[] = [];
@@ -124,9 +134,9 @@ export class BrLiveFeed {
 
   get live() { return this.status.state === 'live'; }
 
-  /** The players and teams of the game being read now (the roster check), or null when no game is on. */
+  /** The players and teams of the game being read now (the roster check; no players while PCOB lists none yet), or null when no game is on. */
   gameNow(): { players: PcobPlayer[]; teams: PcobTeamList['teams'] } | null {
-    return this.status.state === 'live' && this.inGame && this.players.length ? { players: this.players, teams: this.teams.teams } : null;
+    return this.status.state === 'live' && this.inGame ? { players: this.players, teams: this.teams.teams } : null;
   }
 
   /** The producer pairs a PCOB team slot with a lobby team (null clears the pair). */
@@ -158,17 +168,24 @@ export class BrLiveFeed {
     this.busy = true;
     const slow = this.tickNo++ % 2 === 0;
     try {
-      const inGame = readInGame(await this.get(PCOB_ROUTES.inGame));
+      const inGameRaw = await this.get(PCOB_ROUTES.inGame);
+      const inGame = readInGame(inGameRaw);
+      if (inGame && !this.inGame) this.forgetReading();
       if (inGame) {
+        this.noteMeta(inGameRaw);
         const [players, teams] = await Promise.all([this.get(PCOB_ROUTES.players), this.get(PCOB_ROUTES.teams)]);
-        this.players = readPlayers(players);
-        this.teams = readTeams(teams);
+        this.noteMeta(players); this.noteMeta(teams);
+        // A blank or emptier answer (PCOB going quiet after the end) never replaces the last full reading.
+        const nextPlayers = readPlayers(players), nextTeams = readTeams(teams);
+        if (!weakerReading(this.players, nextPlayers, this.finishedAt !== null)) this.players = nextPlayers;
+        if (nextTeams.teams.length || !this.teams.teams.length) this.teams = nextTeams;
         if (slow) {
           const [kills, circle, global] = await Promise.allSettled([this.get(PCOB_ROUTES.kills), this.get(PCOB_ROUTES.circle), this.get(PCOB_ROUTES.global)]);
-          if (kills.status === 'fulfilled') this.kills = readKills(kills.value);
-          if (circle.status === 'fulfilled') this.circle = readCircle(circle.value);
-          if (global.status === 'fulfilled') this.global = readGlobal(global.value) ?? this.global;
+          if (kills.status === 'fulfilled') { this.noteMeta(kills.value); this.kills = mergeKills(this.kills, readKills(kills.value)); }
+          if (circle.status === 'fulfilled') { this.noteMeta(circle.value); this.circle = readCircle(circle.value) ?? this.circle; }
+          if (global.status === 'fulfilled') { this.noteMeta(global.value); this.global = readGlobal(global.value) ?? this.global; }
         }
+        this.teams = { ...this.teams, gameTime: this.meta.gameTime, fightingStart: this.meta.fightingStart, finishedStart: this.meta.finishedStart, gameId: this.meta.gameId };
       }
       if (this.ctx.recording?.()) await this.readRest(inGame, slow);
       this.status = { ...this.status, lastAt: this.now, error: null };
@@ -183,6 +200,32 @@ export class BrLiveFeed {
       this.busy = false;
       // Back off to 3 s while PCOB does not answer.
       this.schedule(this.status.state === 'error' ? 3000 : FAST);
+    }
+  }
+
+  /** A new game: nothing of the last one's readings is kept (an empty answer must not bring them back). */
+  private forgetReading() {
+    this.players = []; this.kills = []; this.circle = null; this.global = null;
+    this.teams = { teams: [], gameTime: null, fightingStart: null, finishedStart: null, gameId: '', currentTime: null };
+    this.meta = NO_META; this.gameId = ''; this.prevKills = new Map(); this.killsObserved = false; this.numbersAt = null;
+  }
+
+  /**
+   * GameID and the times from whichever route carries them (open question 1). A GameID that changes while the match is live
+   * only adds the remake hint (question 2), and only when a GameID was seen before; nothing is ended, saved or cleared.
+   */
+  private noteMeta(raw: unknown) {
+    this.meta = mergeMeta(this.meta, readMeta(raw));
+    const id = this.meta.gameId;
+    if (!id) return;
+    if (!this.gameId) { this.gameId = id; return; }
+    if (id !== this.gameId) {
+      this.gameId = id;
+      if (this.game !== null && !this.saved) {
+        this.status = { ...this.status, restarted: true };
+        this.ctx.log(`Game data: the game's ID changed while Match ${this.game} was live. Remake it if the earlier game was thrown away.`);
+        this.ctx.changed();
+      }
     }
   }
 
@@ -219,9 +262,12 @@ export class BrLiveFeed {
     }
     if (this.players.some((p) => p.state === 'plane')) this.moment('plane', {}, 'plane');
     const teamOf = (name: string) => seats.get(this.players.find((p) => p.name === name)?.teamId ?? -1) ?? null;
-    const firstKill = this.kills.find((k) => k.kind === 'kill');
-    if (firstKill && this.moment('first.blood', { causer: firstKill.causer, victim: firstKill.victim }, 'fb')) {
-      this.show(lobby, { kind: 'first.blood', team: teamOf(firstKill.causer) ?? undefined, causer: firstKill.causer, victim: firstKill.victim, distance: Math.round(firstKill.distance) || undefined });
+    // First blood comes from the players' killNum (verified), not from the kill feed; the feed only names the victim and distance.
+    const grew = this.noteKills();
+    if (grew.length && this.moment('first.blood', { causer: grew[0]!.name }, 'fb')) {
+      const line = this.kills.find((k) => k.kind === 'kill' && grew.some((p) => p.name === k.causer)) ?? this.kills.find((k) => grew.some((p) => p.name === k.causer));
+      const causer = line?.causer ?? grew[0]!.name;
+      this.show(lobby, { kind: 'first.blood', team: teamOf(causer) ?? undefined, causer, ...(line ? { victim: line.victim, distance: Math.round(line.distance) || undefined } : {}) });
     }
     const on = showOf(lobby).moments;
     const live = toBrLive({ game: this.game, players: this.players, teams: this.teams, kills: this.kills, circle: this.circle, global: this.global, seats, lastOut: on['team.out'] ? this.lastOut : null, rate: (p) => mvpRating(p, MVP_WEIGHTS) });
@@ -233,18 +279,45 @@ export class BrLiveFeed {
     if (z && z.status === 'move' && z.index >= 3 && this.moment('zone', { index: z.index }, `zone:${z.index}`)) this.show(lobby, { kind: 'zone' });
     this.last = { ...live, moment: this.nextMoment() };
     await this.ctx.patch(lobby.code, { brLive: this.last });
-    // The game is over when PCOB sets the WWCD time or every seated team has a place.
-    const results = finalResults(this.players, this.teams, seats);
-    if ((this.teams.finishedStart || results) && this.finishedAt === null) {
+    // The game is over when PCOB sets a valid winner time, every seated team has a place, or every team but one has one
+    // (open question 3). The producer's End match is the other way and never needs PCOB to say anything.
+    const proposal = proposeResults(this.players, this.teams, seats);
+    const complete = !!proposal.rows && !proposal.lastStanding;
+    const timeUp = finishedValid(this.teams), lastOne = allButOnePlaced(this.players, this.teams);
+    if ((timeUp || complete || lastOne) && this.finishedAt === null) {
       this.finishedAt = this.now;
       this.status = { ...this.status, noWinner: false };
       this.ctx.state(lobby.id, this.game, 'finishing', this.now);
-      const win = results?.find((r) => r.place === 1);
-      this.ctx.air?.({ name: 'game.end.detected', why: results ? (this.teams.finishedStart ? 'finishedStart and every place' : 'every place') : 'finishedStart', winner: win?.team ?? null });
-      if (win) this.moment('wwcd', { team: win.team }, 'wwcd');
+      const win = proposal.draft.find((r) => r.place === 1);
+      this.ctx.air?.({ name: 'game.end.detected', why: timeUp ? (complete ? 'finishedStart and every place' : 'finishedStart') : complete ? 'every place' : 'every team but one placed', winner: win?.team ?? null, lastStanding: proposal.lastStanding });
     }
-    if (this.finishedAt !== null && !this.saved && this.now - this.finishedAt >= SETTLE) await this.endGame(lobby, 'finished');
-    else this.checkpoint(lobby);
+    // WWCD once, as soon as the game is over and a winner is known (rank 1, or the one team left when PCOB writes no rank 1).
+    const winner = this.finishedAt !== null ? proposal.draft.find((r) => r.place === 1) : undefined;
+    if (winner) this.moment('wwcd', { team: winner.team, ...(proposal.lastStanding ? { lastStanding: true } : {}) }, 'wwcd');
+    if (this.finishedAt !== null && !this.saved) {
+      // Wait for the end-of-game numbers (they read 0 until the end): until they turn non-zero and one more reading came, 15 s at most.
+      if (this.numbersAt === null && hasAfterMatch(this.players)) this.numbersAt = this.now;
+      if ((this.numbersAt !== null && this.now - this.numbersAt >= NUMBERS_SETTLE) || this.now - this.finishedAt >= NUMBERS_MAX) await this.endGame(lobby, 'finished');
+      else this.checkpoint(lobby);
+    } else this.checkpoint(lobby);
+  }
+
+  /**
+   * Players whose killNum went up since the last reading (the verified source for First blood and kill counts). The first
+   * reading of a game that already has kills is a game joined late: nothing is announced for kills Air did not see.
+   */
+  private noteKills(): PcobPlayer[] {
+    const grew: PcobPlayer[] = [];
+    const first = !this.killsObserved;
+    for (const p of this.players) {
+      const k = p.uid || p.name;
+      if (p.kills > (this.prevKills.get(k) ?? 0)) grew.push(p);
+      this.prevKills.set(k, p.kills);
+    }
+    if (!this.players.length) return [];
+    this.killsObserved = true;
+    if (first && grew.length) { this.said.add('fb'); return []; }
+    return grew;
   }
 
   /** PCOB left the game. With a winner the match saves now; without one Air only asks whether to remake (the producer decides). */
@@ -276,7 +349,7 @@ export class BrLiveFeed {
   private checkpoint(lobby: Lobby) {
     if (this.game === null || this.saved || this.now - this.lastCp < 2000) return;
     this.lastCp = this.now;
-    this.ctx.checkpoint?.({ lobbyId: lobby.id, n: this.game, placed: [...this.placed], kills: this.kills.length, moments: [...this.said], lastDataAt: this.lastChange, savedAt: this.now });
+    this.ctx.checkpoint?.({ lobbyId: lobby.id, n: this.game, placed: [...this.placed], kills: this.players.reduce((n, p) => n + p.kills, 0), moments: [...this.said], lastDataAt: this.lastChange, savedAt: this.now });
   }
 
   /** Points the feed at the armed match (or the live one it resumes); false when nothing is armed. */
@@ -318,7 +391,7 @@ export class BrLiveFeed {
   partialFeed(lobby: Lobby): GameFeed | null {
     if (!this.players.length) return null;
     const seats = this.seatsOf(lobby);
-    return { source: 'pcob', gameId: this.teams.gameId || this.gameId, stats: this.players.map((p) => statOf(p, seats.get(p.teamId) ?? null)), kills: this.kills, circles: this.global?.circles ?? [], plane: this.global?.plane ?? null, savedAt: this.now };
+    return { source: 'pcob', gameId: this.meta.gameId || this.gameId, stats: this.players.map((p) => statOf(p, seats.get(p.teamId) ?? null)), kills: this.kills, circles: this.global?.circles ?? [], plane: this.global?.plane ?? null, savedAt: this.now };
   }
 
   /** The producer ends the match: what the feed has becomes the provisional results; teams without a place are typed. False without data. */
@@ -327,6 +400,14 @@ export class BrLiveFeed {
     if (!lobby || this.game === null || !this.players.length || this.saved) return false;
     await this.endGame(lobby, 'producer');
     return true;
+  }
+
+  /** A fresh reading of the game's players (Update from game): never stored here, null when Air is not connected. Throws when PCOB does not answer. */
+  async readNow(): Promise<{ players: PcobPlayer[]; gameId: string } | null> {
+    if (!this.base) return null;
+    const [players, teams] = await Promise.all([this.get(PCOB_ROUTES.players), this.get(PCOB_ROUTES.teams)]);
+    const meta = mergeMeta(mergeMeta(NO_META, readMeta(players)), readMeta(teams));
+    return { players: readPlayers(players), gameId: meta.gameId };
   }
 
   private seatsOf(lobby: Lobby) { return seatTeams(this.teams.teams, this.players, lobby.teams.map((t) => ({ id: t.id, name: t.name, tag: t.tag, players: t.players, openIds: t.openIds, uids: t.uids })), this.seats(lobby)); }
@@ -348,7 +429,6 @@ export class BrLiveFeed {
     this.finishedAt = null; this.saved = false;
     this.queue = []; this.current = null; this.leader = null; if (!keepMemory) this.last = null;
     this.game = null;
-    this.gameId = '';
     this.status = { ...this.status, game: null, unarmed: false, noWinner: false, restarted: false };
     if (!lobby) { this.ctx.log('Game data: a game started, but no lobby is on the graphics'); return; }
     if (!this.attach(lobby)) {
@@ -387,16 +467,16 @@ export class BrLiveFeed {
     if (this.saved || !lobby || this.game === null || !this.players.length) return;
     this.saved = true;
     const seats = this.seatsOf(lobby);
-    const results = finalResults(this.players, this.teams, seats);
+    // Rank 1 when PCOB writes it; else the one team left alive is proposed 1st and marked for the producer (open question 6).
+    const { rows: results, draft, lastStanding } = proposeResults(this.players, this.teams, seats);
     const feed = this.partialFeed(lobby)!;
-    const draft = [...seats].map(([pcobId, team]) => ({ team, place: Math.max(0, ...this.players.filter((p) => p.teamId === pcobId).map((p) => p.rank)) || null, elims: this.teams.teams.find((t) => t.teamId === pcobId)?.kills ?? this.players.filter((p) => p.teamId === pcobId).reduce((n, p) => n + p.kills, 0) }));
-    const checks = gameChecks(this.players, this.teams, seats, lobby.teams);
+    const checks = gameChecks(this.players, this.teams, seats, lobby.teams, lastStanding);
     this.ctx.save(lobby.id, this.game, results, feed, { draft, checks, at: this.now });
     this.ctx.checkpoint?.(null);
     this.ctx.learn(lobby.id, feed.stats.filter((s) => s.team && s.openId).map((s) => ({ team: s.team!, name: s.name, openId: s.openId })));
     this.status = { ...this.status, saved: { game: this.game, at: this.now }, noWinner: false, restarted: false, noData: false };
-    this.ctx.air?.({ name: 'results.saved', game: this.game, why, results: results ?? null, state: 'provisional' });
-    this.ctx.log(results ? `Game data: match ${this.game} saved from the game as provisional (places, kills and every player's numbers). Confirm it to make it official.` : `Game data: match ${this.game} ended ${why === 'finished' ? '' : 'early '}without a place for every team; it is provisional, type the missing places.`);
+    this.ctx.air?.({ name: 'results.saved', game: this.game, why, results: results ?? null, lastStanding, state: 'provisional' });
+    this.ctx.log(results ? `Game data: match ${this.game} saved from the game as provisional (places, kills and every player's numbers${lastStanding ? '; 1st place is the last team standing, from the alive count' : ''}). Confirm it to make it official.` : `Game data: match ${this.game} ended ${why === 'finished' ? '' : 'early '}without a place for every team; it is provisional, type the missing places.`);
     this.moment('game.end', { game: this.game, results: !!results }, 'end');
     this.ctx.changed();
   }

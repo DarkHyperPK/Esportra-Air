@@ -678,6 +678,8 @@ export interface AirApi {
   lobbyRemake(lobbyId: string, matchId: string): Promise<Snapshot>;
   lobbyVoid(lobbyId: string, matchId: string, reason: string): Promise<Snapshot>;
   lobbyEndMatch(lobbyId: string, matchId: string): Promise<Snapshot>;
+  /** Refills a provisional match's after-match numbers from the game (never places or kills); until Confirm. */
+  lobbyUpdateFromGame(matchId: string): Promise<Snapshot>;
   lobbyConfirm(lobbyId: string, matchId: string): Promise<Snapshot>;
   lobbyEditConfirmed(lobbyId: string, matchId: string, results: import('./br.ts').TeamResult[], reason: string): Promise<Snapshot>;
   lobbyAdjust(lobbyId: string, team: string, points: number, reason: string): Promise<Snapshot>;

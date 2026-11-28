@@ -9,6 +9,20 @@ import { createServer, type Server } from 'node:http';
 export interface FakeTeam { name: string; players: string[]; /** The uID each player sends (the Character ID); by default 510000001, 510000002… in team and player order. */ uids?: number[] }
 /** The uID the stand-in sends for the n-th player (0-based, teams in order) unless a team lists its own. */
 export const fakeUid = (index: number) => 510000001 + index;
+/**
+ * How the stand-in can behave where the official document leaves a question open (28 Nov): every one is a way PCOB might
+ * really act, so Air is tested against each (test/pcob-variants.test.ts). In the dev host: `variant=a,b` on `do=start`.
+ */
+export type PcobVariant =
+  | 'noGameId' | 'gameIdOnTeams' | 'gameIdOnGlobal' | 'gameIdOnTop' | 'gameIdChanges'
+  | 'finishedZero' | 'finishedMissing' | 'finishedEarly'
+  | 'noRank1' | 'recentKills' | 'emptyAfterEnd' | 'lateEndNumbers' | 'veryLateEndNumbers' | 'noTeamName';
+export const PCOB_VARIANTS: readonly PcobVariant[] = ['noGameId', 'gameIdOnTeams', 'gameIdOnGlobal', 'gameIdOnTop', 'gameIdChanges', 'finishedZero', 'finishedMissing', 'finishedEarly', 'noRank1', 'recentKills', 'emptyAfterEnd', 'lateEndNumbers', 'veryLateEndNumbers', 'noTeamName'];
+/** `onGlobal` for `gameIdOnGlobal`, and so on; unknown names are dropped. */
+export function parseVariants(text: string | null | undefined): PcobVariant[] {
+  return (text ?? '').split(',').map((v) => v.trim()).filter(Boolean).map((v) => (/^on[A-Z]/.test(v) ? `gameId${v[0]!.toUpperCase()}${v.slice(1)}` : v)).filter((v): v is PcobVariant => (PCOB_VARIANTS as readonly string[]).includes(v));
+}
+
 export interface FakePcobOptions {
   teams: FakeTeam[];
   seed?: number;
@@ -18,6 +32,8 @@ export interface FakePcobOptions {
   length?: number;
   /** Give PCOB's own "TeamN" names instead of the real ones (seating then goes by player names). */
   genericNames?: boolean;
+  /** Ways PCOB might behave where the document is silent (see PcobVariant). Default: the document's own sample behaviour. */
+  variants?: PcobVariant[];
   now?: () => number;
 }
 
@@ -51,8 +67,10 @@ export class FakePcob {
   readonly requests: string[] = [];
 
   constructor(o: FakePcobOptions) {
-    this.opts = { seed: 7, speed: 1, length: 1500, genericNames: false, ...o, now: o.now ?? (() => Date.now()) };
+    this.opts = { seed: 7, speed: 1, length: 1500, genericNames: false, variants: [], ...o, now: o.now ?? (() => Date.now()) };
   }
+
+  private has(v: PcobVariant) { return this.opts.variants.includes(v); }
 
   get url() { return `http://127.0.0.1:${this.port}`; }
 
@@ -69,7 +87,7 @@ export class FakePcob {
     this.port = (this.server.address() as { port: number }).port;
     return this;
   }
-  async close() { await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r())); }
+  async close() { await new Promise<void>((r) => { if (!this.server) return r(); this.server.close(() => r()); this.server.closeAllConnections?.(); }); }
 
   /** Starts a new game now (the next "match" in the lobby). */
   begin() {
@@ -152,7 +170,7 @@ export class FakePcob {
       if (!teamLeft) ranks.set(v.team, teams - ranks.size);
     }
     const alive = new Set(ps.filter((p) => p.state !== 5).map((p) => p.team));
-    if (alive.size === 1 && t >= this.end) ranks.set([...alive][0]!, 1);
+    if (alive.size === 1 && t >= this.end && !this.has('noRank1')) ranks.set([...alive][0]!, 1);
     for (const p of ps) {
       // Plane, then parachute, then on the ground.
       if (p.state === 0 && t < 60) p.state = 1; else if (p.state === 0 && t < 90) p.state = 2;
@@ -161,12 +179,36 @@ export class FakePcob {
     return { ps, ranks, feed };
   }
 
+  /** GameID, GameStartTime and FinishedStartTime as this variant sends them, and the route(s) that carry them. */
+  private meta(t: number, finished: boolean): Record<string, unknown> {
+    const out: Record<string, unknown> = { GameStartTime: String(Math.round(t)), FightingStartTime: '0' };
+    if (this.has('finishedZero')) out.FinishedStartTime = '0';
+    else if (this.has('finishedEarly')) out.FinishedStartTime = finished ? '1' : '';
+    else if (!this.has('finishedMissing')) out.FinishedStartTime = finished ? String(this.end) : '';
+    if (!this.has('noGameId')) out.GameID = this.has('gameIdChanges') && t >= 200 ? `FAKE-${this.gameNo}-b` : `FAKE-${this.gameNo}`;
+    return out;
+  }
+  /** Where the meta fields sit: the team list (default), the global info (one object down), or the top of other routes. */
+  private metaAt(): 'teams' | 'global' | 'top' { return this.has('gameIdOnGlobal') ? 'global' : this.has('gameIdOnTop') ? 'top' : 'teams'; }
+
   private route(route: string): unknown {
     const raw = this.time();
     // After the winner PCOB keeps the game for a little while, then goes back to the lobby.
     const t = raw !== null && raw < this.end + this.after ? Math.min(raw, this.end) : null;
-    if (route === 'isingame') return { isInGame: t !== null };
+    const where = this.metaAt();
+    const top = (t: number, extra: Record<string, unknown>) => (where === 'top' ? { ...this.meta(t, t >= this.end), ...extra } : extra);
+    if (route === 'isingame') return t === null ? { isInGame: false } : top(t, { isInGame: true });
     if (t === null) {
+      if (route === 'gettotalplayerlist') return { playerInfoList: [] };
+      if (route === 'getteaminfolist') return { teamInfoList: [] };
+      if (route === 'getkillinfo') return { killInfo: [] };
+      if (route === 'setcircleinfo') return {};
+      if (route === 'getgameglobalinfo') return { gameGlobalInfo: {} };
+      if (route === 'getobservingplayer') return { observingPlayer: {} };
+      return undefined;
+    }
+    // PCOB going quiet: the routes answer with empty lists while it still says it is in the game.
+    if (this.has('emptyAfterEnd') && raw !== null && raw >= this.end + 3) {
       if (route === 'gettotalplayerlist') return { playerInfoList: [] };
       if (route === 'getteaminfolist') return { teamInfoList: [] };
       if (route === 'getkillinfo') return { killInfo: [] };
@@ -177,30 +219,35 @@ export class FakePcob {
     }
     const { ps, ranks, feed } = this.at(t);
     const finished = t >= this.end;
+    // The numbers PCOB reads 0 for until the game is over, and (in a variant) for a while after it.
+    const late = this.has('veryLateEndNumbers') ? 17 : this.has('lateEndNumbers') ? 8 : 0;
+    const numbers = finished && raw !== null && raw >= this.end + late;
     const teamName = (i: number) => (this.opts.genericNames ? `Team${i}` : this.opts.teams[i - 1]!.name);
+    const named = (o: Record<string, unknown>, name: string) => (this.has('noTeamName') ? o : { ...o, teamName: name });
     if (route === 'gettotalplayerlist') {
-      return { playerInfoList: ps.map((p) => {
+      return top(t, { playerInfoList: ps.map((p) => {
         const out = p.state === 5;
         const survived = Math.round(out ? p.diedAt! : Math.min(t, this.end));
         return {
-          uID: p.uid, playerOpenId: p.openId, playerName: p.name, picUrl: '', showPicUrl: false, teamId: p.team, teamName: teamName(p.team), character: 'None',
+          ...named({ uID: p.uid, playerOpenId: p.openId, playerName: p.name, picUrl: '', showPicUrl: false, teamId: p.team }, teamName(p.team)), character: 'None',
           isFiring: false, posX: 0, posY: 0, posZ: 0, health: p.health, healthMax: 100, liveState: p.state, killNum: p.kills, killNumBeforeDie: p.kills,
           playerKey: p.key, gotAirDropNum: p.airdrops, maxKillDistance: p.maxDist * 100, damage: p.damage,
           // These read 0 until the game ends, as the document says.
-          inDamage: finished ? p.taken : 0, heal: finished ? Math.round(p.taken * 0.6) : 0, headShotNum: finished ? p.hs : 0,
-          killNumInVehicle: 0, surviceTime: finished ? survived : 0, driveDistance: finished ? 1200 + (p.uid % 7) * 300 : 0, marchDistance: finished ? 900 + (p.uid % 5) * 200 : 0,
-          assists: finished ? p.assists : 0, killNumByGrenade: 0, rank: ranks.get(p.team) ?? 0, isOutSideBlueCircle: 0, outsideBlueCircleTime: 0,
-          useFragGrenadeNum: 0, useSmokeGrenadeNum: 0, curWeaponID: 0, knockouts: finished ? p.knocks : 0, rescueTimes: finished ? p.rescues : 0,
+          inDamage: numbers ? p.taken : 0, heal: numbers ? Math.round(p.taken * 0.6) : 0, headShotNum: numbers ? p.hs : 0,
+          killNumInVehicle: 0, surviceTime: numbers ? survived : 0, driveDistance: numbers ? 1200 + (p.uid % 7) * 300 : 0, marchDistance: numbers ? 900 + (p.uid % 5) * 200 : 0,
+          assists: numbers ? p.assists : 0, killNumByGrenade: 0, rank: ranks.get(p.team) ?? 0, isOutSideBlueCircle: 0, outsideBlueCircleTime: 0,
+          useFragGrenadeNum: 0, useSmokeGrenadeNum: 0, curWeaponID: 0, knockouts: numbers ? p.knocks : 0, rescueTimes: numbers ? p.rescues : 0,
         };
-      }) };
+      }) });
     }
     if (route === 'getteaminfolist') {
       return {
-        teamInfoList: this.opts.teams.map((_, i) => ({ teamId: i + 1, teamName: teamName(i + 1), isShowLogo: false, logoPicUrl: '', killNum: ps.filter((p) => p.team === i + 1).reduce((n, p) => n + p.kills, 0), liveMemberNum: ps.filter((p) => p.team === i + 1 && p.state !== 5).length })),
-        GameStartTime: String(Math.round(t)), FightingStartTime: '0', FinishedStartTime: finished ? String(this.end) : '', GameID: `FAKE-${this.gameNo}`, CurrentTime: Math.round(this.opts.now() / 1000),
+        teamInfoList: this.opts.teams.map((_, i) => named({ teamId: i + 1, isShowLogo: false, logoPicUrl: '', killNum: ps.filter((p) => p.team === i + 1).reduce((n, p) => n + p.kills, 0), liveMemberNum: ps.filter((p) => p.team === i + 1 && p.state !== 5).length }, teamName(i + 1))),
+        ...(where === 'teams' ? this.meta(t, finished) : {}), CurrentTime: Math.round(this.opts.now() / 1000),
       };
     }
-    if (route === 'getkillinfo') return { killInfo: feed };
+    // A feed that only lists the latest lines instead of the whole game.
+    if (route === 'getkillinfo') return top(t, { killInfo: this.has('recentKills') ? feed.slice(-4) : feed });
     if (route === 'setcircleinfo') {
       // Nine circles across the game: wait, then delay, then move.
       const per = Math.max(30, (this.end - 90) / 9), since = Math.max(0, t - 90), idx = Math.min(9, Math.floor(since / per) + 1), into = since - (idx - 1) * per;
@@ -209,7 +256,7 @@ export class FakePcob {
     }
     if (route === 'getgameglobalinfo') {
       const n = Math.min(9, Math.floor(Math.max(0, t - 90) / Math.max(30, (this.end - 90) / 9)) + 1);
-      return { gameGlobalInfo: { CircleArray: Array.from({ length: n }, (_, i) => ({ X: (400000 + i * 9000).toFixed(6), Y: (380000 - i * 7000).toFixed(6), Size: (400000 * Math.pow(0.62, i)).toFixed(6) })), PlaneStartLocX: '679895.125000', PlaneStartLocY: '896956.812500', PlaneStopLocX: '181640.078125', PlaneStopLocY: '-117633.250000' } };
+      return { gameGlobalInfo: { CircleArray: Array.from({ length: n }, (_, i) => ({ X: (400000 + i * 9000).toFixed(6), Y: (380000 - i * 7000).toFixed(6), Size: (400000 * Math.pow(0.62, i)).toFixed(6) })), PlaneStartLocX: '679895.125000', PlaneStartLocY: '896956.812500', PlaneStopLocX: '181640.078125', PlaneStopLocY: '-117633.250000', ...(where === 'global' ? this.meta(t, finished) : {}) } };
     }
     if (route === 'getobservingplayer') { const p = ps.find((x) => x.state !== 5); return { observingPlayer: p ? { "WinOB's ID": String(p.uid) } : {} }; }
     return undefined;

@@ -44,7 +44,7 @@ export function ProvisionalPanel({ s, run, l, n, close, edit }: { s: Snapshot; r
           </div>
         </div>
         <footer><span className="muted t-sm">{problems[0] ?? 'Nothing here changes the official standings yet.'}</span>
-          <span className="row-gap"><button className="btn" onClick={edit}>Edit</button>
+          <span className="row-gap">{g.feed && gameState(g) === 'provisional' && <button className="btn" title="Read the game again and refill the after-match numbers (survival, damage taken, heal, assists…). Places and kills you typed are never changed." onClick={() => void run(async () => { await air.lobbyUpdateFromGame(g.id!); })}>Update from game{g.feed.updatedAt ? ` · ${new Date(g.feed.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</button>}<button className="btn" onClick={edit}>Edit</button>
             <button className="btn primary" disabled={problems.length > 0} onClick={() => void run(async () => { await air.lobbyConfirm(l.id, g.id!); close(); })}>Confirm match {n} <span className="kbd">{key}</span></button></span></footer>
       </div>
     </div>

@@ -91,12 +91,43 @@ export function readPlayers(raw: unknown): PcobPlayer[] {
 }
 
 export function readTeams(raw: unknown): PcobTeamList {
-  const o = obj(raw);
   const teams = list(raw, 'teamInfoList', 'TeamInfoList').map((x) => {
     const t = obj(x);
     return { teamId: num(pick(t, 'teamId')), name: str(pick(t, 'teamName')).trim(), kills: num(pick(t, 'killNum')), alive: num(pick(t, 'liveMemberNum')), logo: str(pick(t, 'logoPicUrl')) };
   });
-  return { teams, gameTime: optNum(pick(o, 'GameStartTime')), fightingStart: optNum(pick(o, 'FightingStartTime')), finishedStart: optNum(pick(o, 'FinishedStartTime')), gameId: str(pick(o, 'GameID')), currentTime: optNum(pick(o, 'CurrentTime')) };
+  const m = readMeta(raw);
+  return { teams, gameTime: m.gameTime, fightingStart: m.fightingStart, finishedStart: m.finishedStart, gameId: m.gameId, currentTime: optNum(pick(obj(raw), 'CurrentTime')) };
+}
+
+/**
+ * GameID, GameStartTime, FightingStartTime and FinishedStartTime (28 Nov, open question 1): the document does not say
+ * which route carries them, so any route's answer is read for them: at the top level, or one object down (for example
+ * under `gameGlobalInfo`). Each one is optional; what is missing is null or ''.
+ */
+export interface PcobMeta { gameId: string; gameTime: number | null; fightingStart: number | null; finishedStart: number | null }
+export const NO_META: PcobMeta = { gameId: '', gameTime: null, fightingStart: null, finishedStart: null };
+export function readMeta(raw: unknown): PcobMeta {
+  const top = obj(raw);
+  const levels = [top, ...Object.values(top).map(obj).filter((o) => Object.keys(o).length)];
+  const find = (...keys: string[]) => { for (const o of levels) { const v = pick(o, ...keys); if (v !== undefined && v !== null && v !== '') return v; } return undefined; };
+  return { gameId: str(find('GameID', 'GameId')), gameTime: optNum(find('GameStartTime')), fightingStart: optNum(find('FightingStartTime')), finishedStart: optNum(find('FinishedStartTime')) };
+}
+/** Newer readings win; a field a route leaves out keeps what an earlier route gave. */
+export function mergeMeta(prev: PcobMeta, next: PcobMeta): PcobMeta {
+  const gameTime = next.gameTime ?? prev.gameTime;
+  const fresh = { finishedStart: next.finishedStart, gameTime };
+  // A valid winner time stays once seen (a later route that leaves it out or says 0 does not take it back).
+  const finishedStart = finishedValid(fresh) ? next.finishedStart : finishedValid(prev) ? prev.finishedStart : next.finishedStart ?? prev.finishedStart;
+  return { gameId: next.gameId || prev.gameId, gameTime, fightingStart: next.fightingStart ?? prev.fightingStart, finishedStart };
+}
+/**
+ * Is the game finished by PCOB's own clock (open question 3)? Only a real winner time counts: 0, "", null, a missing
+ * field, or a time before GameStartTime all mean "not finished".
+ */
+export function finishedValid(m: { finishedStart: number | null; gameTime: number | null }): boolean {
+  const f = m.finishedStart;
+  if (f === null || !(f > 0)) return false;
+  return m.gameTime === null || !(m.gameTime > 0) || f >= m.gameTime;
 }
 
 export const readInGame = (raw: unknown) => bool(pick(obj(raw), 'isInGame'));
@@ -152,9 +183,9 @@ export const normName = (s: string) => norm(s);
 
 /**
  * Which lobby team each PCOB team is. The producer's own pairs win; then the Character IDs (PCOB `uID`) that a lobby
- * team's roster lists, the team with the most; then a team name or tag that matches; then the lobby team owning most
- * of that PCOB team's players, by the OpenIDs Teams/Players learned or by in-game name (two or more). Each lobby team
- * is used once.
+ * team's roster lists, the team with the most; then the OpenIDs Teams/Players learned; then a team name or tag that
+ * matches (PCOB's `teamName` is optional and never needed); then the lobby team owning most of that PCOB team's
+ * players by in-game name (two or more). Each lobby team is used once.
  */
 export function seatTeams(teams: PcobTeam[], players: PcobPlayer[], lobby: LobbyTeamRef[], manual: Record<string, string> = {}): Map<number, string> {
   const out = new Map<number, string>();
@@ -170,6 +201,18 @@ export function seatTeams(teams: PcobTeam[], players: PcobPlayer[], lobby: Lobby
     for (const t of lobby) {
       if (used.has(t.id)) continue;
       const n = (t.uids ?? []).filter((u) => u && uids.has(u)).length;
+      if (n >= 1 && (!best || n > best.n)) best = { id: t.id, n };
+    }
+    if (best) { out.set(id, best.id); used.add(best.id); }
+  }
+  // An OpenID is exact too (Teams/Players learned it from an earlier game): one shared id seats the team.
+  for (const id of pcobIds) {
+    if (out.has(id)) continue;
+    const opens = new Set(players.filter((p) => p.teamId === id).map((p) => p.openId).filter(Boolean));
+    let best: { id: string; n: number } | null = null;
+    for (const t of lobby) {
+      if (used.has(t.id)) continue;
+      const n = (t.openIds ?? []).filter((o) => o && opens.has(o)).length;
       if (n >= 1 && (!best || n > best.n)) best = { id: t.id, n };
     }
     if (best) { out.set(id, best.id); used.add(best.id); }
@@ -240,7 +283,7 @@ export function toBrLive(input: { game: number; players: PcobPlayer[]; teams: Pc
   const alivePlayers = seated.filter((p) => mark(p) !== 'd').length;
   const teamsAlive = Object.values(teams).filter((t) => t.place === null && /[ak]/.test(t.players)).length;
   const byName = new Map(players.map((p) => [p.name, p]));
-  const phase = input.teams.finishedStart ? 'finished' : players.some((p) => p.state === 'plane') ? 'plane' : input.teams.fightingStart ? 'fighting' : 'lobby';
+  const phase = finishedValid(input.teams) ? 'finished' : players.some((p) => p.state === 'plane') ? 'plane' : input.teams.fightingStart ? 'fighting' : 'lobby';
   return {
     game: input.game, teamsAlive, playersAlive: alivePlayers, teams,
     lastOut: input.lastOut,
@@ -270,4 +313,95 @@ export function finalResults(players: PcobPlayer[], teams: PcobTeamList, seats: 
   const fine = out.every((r, i) => r.place <= out.length && (i === 0 || r.place !== out[i - 1]!.place));
   if (!fine) out.forEach((r, i) => { r.place = i + 1; });
   return out.length ? out : null;
+}
+
+
+// ── open questions 5, 6, 7 and 9 (28 Nov): handled so the show works whichever way PCOB behaves ──
+
+/**
+ * The kill feed as a list: lines are kept de-duplicated by (causer, victim, game time), so a feed that repeats the whole
+ * game or only the recent lines gives the same list. A knock and a kill of the same player in the same second stay two
+ * lines. The list never drives a moment or a count: those come from the players' `killNum`.
+ */
+export function mergeKills(prev: PcobKill[], next: PcobKill[], cap = 2000): PcobKill[] {
+  const key = (k: PcobKill) => `${k.causer}|${k.victim}|${k.time}|${k.kind}`;
+  const seen = new Set(prev.map(key));
+  const out = prev.slice();
+  for (const k of next) { const id = key(k); if (!seen.has(id)) { seen.add(id); out.push(k); } }
+  return out.length > cap ? out.slice(out.length - cap) : out;
+}
+
+const teamIdsOf = (players: PcobPlayer[], teams: PcobTeamList) => [...new Set([...teams.teams.map((t) => t.teamId), ...players.map((p) => p.teamId)])];
+const rankOf = (players: PcobPlayer[], id: number) => Math.max(0, ...players.filter((p) => p.teamId === id).map((p) => p.rank));
+/** Players still in the team: the team list's `liveMemberNum` when it has one, else the players not dead. */
+const aliveIn = (players: PcobPlayer[], teams: PcobTeamList, id: number) => {
+  const t = teams.teams.find((x) => x.teamId === id);
+  const mine = players.filter((p) => p.teamId === id);
+  const listed = mine.filter((p) => p.state !== 'dead' && p.state !== 'disconnected').length;
+  return mine.length ? listed : t?.alive ?? 0;
+};
+/** PCOB teams that have no place yet and still have players (every team, seated or not). */
+export function teamsStillPlaying(players: PcobPlayer[], teams: PcobTeamList): number[] {
+  return teamIdsOf(players, teams).filter((id) => rankOf(players, id) === 0 && aliveIn(players, teams, id) > 0);
+}
+/** Every team but one has a place (open question 3): the game is over even when PCOB never sets the winner's time. */
+export function allButOnePlaced(players: PcobPlayer[], teams: PcobTeamList): boolean {
+  const ids = teamIdsOf(players, teams);
+  if (ids.length < 2) return false;
+  const open = ids.filter((id) => rankOf(players, id) === 0);
+  return open.length === 1 && aliveIn(players, teams, open[0]!) > 0;
+}
+
+export interface ResultsProposal {
+  /** Complete results (every seated team has a place), else null. */
+  rows: Array<{ team: string; place: number; elims: number }> | null;
+  /** What the game gave per seated team; place null = typed by the producer. */
+  draft: Array<{ team: string; place: number | null; elims: number }>;
+  /** The lobby team proposed 1st from the alive count because PCOB wrote no rank 1 (open question 6), or null. */
+  lastStanding: string | null;
+}
+/**
+ * Places for a game that ended. Rank 1 is used when PCOB writes it. When it does not, and exactly one team still has players
+ * while every other team that has a rank is out, that team is proposed 1st and marked as "last team standing, from alive count"
+ * for the producer to confirm. Nothing else is guessed: a seated team with no place stays to type.
+ */
+export function proposeResults(players: PcobPlayer[], teams: PcobTeamList, seats: Map<number, string>): ResultsProposal {
+  const ranks = new Map<number, number>();
+  for (const id of seats.keys()) ranks.set(id, rankOf(players, id));
+  let lastStanding: string | null = null;
+  const anyFirst = teamIdsOf(players, teams).some((id) => rankOf(players, id) === 1);
+  if (!anyFirst) {
+    const playing = teamsStillPlaying(players, teams);
+    const sole = playing.length === 1 ? playing[0]! : null;
+    if (sole !== null && seats.has(sole) && ranks.get(sole) === 0) { ranks.set(sole, 1); lastStanding = seats.get(sole)!; }
+  }
+  const elimsOf = (id: number) => teams.teams.find((t) => t.teamId === id)?.kills ?? players.filter((p) => p.teamId === id).reduce((n, p) => n + p.kills, 0);
+  const draft = [...seats].map(([id, team]) => ({ team, place: ranks.get(id) || null, elims: elimsOf(id) }));
+  let rows: ResultsProposal['rows'] = null;
+  if (draft.length && draft.every((d) => d.place !== null)) {
+    rows = draft.map((d) => ({ team: d.team, place: d.place!, elims: d.elims })).sort((a, b) => a.place - b.place);
+    // Places as the game gave them, unless one is used twice or falls outside the lobby: then the order is kept and numbered 1…n.
+    const fine = rows.every((r, i) => r.place <= rows!.length && (i === 0 || r.place !== rows![i - 1]!.place));
+    if (!fine) rows.forEach((r, i) => { r.place = i + 1; });
+  }
+  return { rows, draft, lastStanding };
+}
+
+/** The numbers PCOB leaves at 0 until the game is over (the document's list); a game that has them has its after-match numbers. */
+export function hasAfterMatch(players: PcobPlayer[]): boolean {
+  return players.some((p) => p.survival > 0 || p.damageTaken > 0 || p.heal > 0 || p.headshots > 0 || p.driveDistance > 0 || p.walkDistance > 0 || p.assists > 0 || p.knockouts > 0);
+}
+
+/**
+ * Is `next` a blank or emptier reading than `prev` for a game that is already read (open question 7)? An empty answer is PCOB
+ * going quiet, never news. Once the game is finished, places and kills only go up, so fewer placed teams or fewer kills is
+ * quiet too.
+ */
+export function weakerReading(prev: PcobPlayer[], next: PcobPlayer[], finished = false): boolean {
+  if (!prev.length) return false;
+  if (!next.length) return true;
+  if (!finished) return false;
+  const placed = (ps: PcobPlayer[]) => ps.filter((p) => p.rank > 0).length;
+  const kills = (ps: PcobPlayer[]) => ps.reduce((n, p) => n + p.kills, 0);
+  return next.length < prev.length || placed(next) < placed(prev) || kills(next) < kills(prev);
 }

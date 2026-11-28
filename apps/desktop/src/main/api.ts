@@ -67,6 +67,7 @@ export async function dispatch(ctx: ApiContext, method: ApiMethod, args: unknown
     case 'lobbyRemake': p.brRun.remake(String(a[0]), String(a[1])); break;
     case 'lobbyVoid': p.brRun.voidMatch(String(a[0]), String(a[1]), a[2]); break;
     case 'lobbyEndMatch': await p.brRun.endMatch(String(a[0]), String(a[1])); break;
+    case 'lobbyUpdateFromGame': await p.brRun.updateFromGame(String(a[0])); break;
     case 'lobbyConfirm': p.brRun.confirm(String(a[0]), String(a[1])); break;
     case 'lobbyEditConfirmed': p.brRun.editConfirmed(String(a[0]), String(a[1]), a[2], a[3]); break;
     case 'lobbyAdjust': p.brRun.adjust(String(a[0]), a[1], a[2], a[3]); break;

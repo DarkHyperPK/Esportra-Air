@@ -88,11 +88,11 @@ export function confirmProblems(l: Lobby, g: LobbyGame): string[] {
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /** What Air checks in the game's own numbers when a match ends (verified PCOB fields only). */
-export function gameChecks(players: PcobPlayer[], teams: PcobTeamList, seats: Map<number, string>, lobbyTeams: LobbyTeam[]): GameChecks {
-  const out: GameChecks = { unplaced: [], teamKills: [], unknown: [], disconnected: [] };
+export function gameChecks(players: PcobPlayer[], teams: PcobTeamList, seats: Map<number, string>, lobbyTeams: LobbyTeam[], lastStanding: string | null = null): GameChecks {
+  const out: GameChecks = { unplaced: [], teamKills: [], unknown: [], disconnected: [], ...(lastStanding ? { lastStanding: [lastStanding] } : {}) };
   for (const [pcobId, team] of seats) {
     const mine = players.filter((p) => p.teamId === pcobId);
-    if (!Math.max(0, ...mine.map((p) => p.rank))) out.unplaced.push(team);
+    if (!Math.max(0, ...mine.map((p) => p.rank)) && team !== lastStanding) out.unplaced.push(team);
     const t = teams.teams.find((x) => x.teamId === pcobId);
     const sum = mine.reduce((n, p) => n + p.kills, 0);
     if (t && t.kills !== sum) out.teamKills.push({ team, teamKills: t.kills, playerKills: sum });
@@ -122,6 +122,7 @@ export function provisionalChecks(l: Lobby, g: LobbyGame): Check[] {
   else out.push({ id: 'places', level: 'ok', title: 'Each place once', detail: `1st to ${l.teams.length}th, none missing, none twice.` });
   const c = g.checks;
   if (c) {
+    for (const t of c.lastStanding ?? []) out.push({ id: `standing:${t}`, level: 'warn', team: t, title: `${name(t)}: 1st place from the alive count`, detail: 'Last team standing, from alive count. The game wrote no rank 1, so Air counted the one team still alive as the winner. Confirm it if that is right.' });
     for (const t of c.unplaced) out.push({ id: `unplaced:${t}`, level: 'warn', team: t, title: `${name(t)}: place typed by producer`, detail: 'The game still showed this team as playing (rank 0) when it ended. Type the place, then confirm.' });
     if (c.teamKills.length) for (const k of c.teamKills) out.push({ id: `kills:${k.team}`, level: 'warn', team: k.team, title: `${name(k.team)}: team kills differ from players`, detail: `The game says ${k.teamKills} team kills; its players add up to ${k.playerKills}. Air saved the team figure.` });
     else out.push({ id: 'kills', level: 'ok', title: 'Team kills equal the players’ kills', detail: 'Each team’s kills match the sum of its players’ kills, as the game reports them.' });

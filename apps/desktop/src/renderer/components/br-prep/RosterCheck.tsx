@@ -13,7 +13,8 @@ export function RosterCheck({ s, run, l }: { s: Snapshot; run: Run; l: Lobby }) 
   const [picking, setPicking] = useState<string | null>(null);
   if (!v || v.lobbyId !== l.id) return null;
   if (v.blocked) return <section className="card body-pad stack g-1 pp-roster blocked" aria-label="Roster check"><b className="cap">Roster check</b><span className="muted t-sm">{v.blocked}</span></section>;
-  const c = v.check!;
+  if (v.empty || !v.check) return <section className="card body-pad stack g-1 pp-roster blocked" aria-label="Roster check"><b className="cap">Roster check</b><span className="muted t-sm">{v.empty ?? 'No players listed yet'}. The game lists its players once everyone has joined; the check runs as soon as it does.</span></section>;
+  const c = v.check;
   const rows = c.rows.filter((r) => !ignored.includes(`${r.slot}:${r.uid}:${r.name}`));
   const key = (r: RosterRow) => `${r.slot}:${r.uid}:${r.name}`;
   const players = l.teams.flatMap((t) => t.players.map((name, i) => ({ id: t.playerIds?.[i] ?? '', name, team: t.name, teamId: t.id })).filter((p) => p.id));

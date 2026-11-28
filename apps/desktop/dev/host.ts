@@ -3,7 +3,7 @@
 // walked through in a normal browser on any OS (no ow-electron, OBS or Valorant needed).
 //
 //   node dev/host.ts [--port 5320]      then open http://127.0.0.1:5320/
-import { FakePcob } from './fake-pcob.ts';
+import { FakePcob, parseVariants } from './fake-pcob.ts';
 import { createRequire } from 'node:module';
 import { manualHtml } from '../src/shared/manual.ts';
 import { gameOf } from '../src/shared/games.ts';
@@ -191,13 +191,13 @@ createServer(async (req, res) => {
   }
   if (url.pathname === '/dev/pcob' && req.method === 'POST') {
     // A stand-in PUBG MOBILE observer client (dev/fake-pcob.ts) for the selected lobby's teams:
-    // ?do=start[&speed=N&generic=1] serves it on 127.0.0.1:<port>, ?do=begin plays a game, ?do=stop ends it.
+    // ?do=start[&speed=N&generic=1&variant=noGameId,finishedZero,…] serves it on 127.0.0.1:<port>, ?do=begin plays a game, ?do=stop ends it.
     const act = url.searchParams.get('do');
     const lobby = production.lobbies.selected;
     if (act === 'start') {
       await fakePcob?.close();
       if (!lobby?.teams.length) { res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Choose a lobby with teams first.' })); return; }
-      fakePcob = await new FakePcob({ teams: lobby.teams.map((t) => ({ name: t.name, players: t.players })), speed: Number(url.searchParams.get('speed')) || 1, genericNames: url.searchParams.get('generic') === '1', length: Number(url.searchParams.get('length')) || 1500 }).listen();
+      fakePcob = await new FakePcob({ teams: lobby.teams.map((t) => ({ name: t.name, players: t.players })), speed: Number(url.searchParams.get('speed')) || 1, genericNames: url.searchParams.get('generic') === '1', length: Number(url.searchParams.get('length')) || 1500, variants: parseVariants(url.searchParams.get('variant')) }).listen();
     }
     if (act === 'begin') fakePcob?.begin();
     if (act === 'stop') fakePcob?.stop();

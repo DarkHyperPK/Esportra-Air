@@ -10,13 +10,13 @@ import { BrRun } from '../src/main/br-run.ts';
 import { EventJournal } from '../src/main/event-journal.ts';
 import { gameState } from '../src/shared/br.ts';
 import { targetMatch } from '../src/shared/br-run.ts';
-import { FakePcob } from '../dev/fake-pcob.ts';
+import { FakePcob, fakeUid, type PcobVariant } from '../dev/fake-pcob.ts';
 
 const NAMES = ['NIGHT OWLS', 'CRIMSON FIVE', 'IRON PINE', 'DUNE RUNNERS', 'SILVER FOX', 'NORTH TIDE', 'BLUE HARBOR', 'STONE WOLVES', 'RED KESTREL', 'LOW ORBIT', 'WILD CARD', 'GREY MOUNTAIN', 'FERAL SIX', 'ECHO VALLEY', 'QUIET STORM', 'HIGH GROUND'];
 export const tag = (i: number) => `T${String(i).padStart(2, '0')}`;
 export const roster = (i: number) => ['ACE', 'ROOK', 'VEX', 'KAI'].map((p) => `${tag(i)}_${p}`);
 
-export async function kit(opts: { teams?: number; games?: number; length?: number; generic?: boolean; dir?: string } = {}) {
+export async function kit(opts: { teams?: number; games?: number; length?: number; generic?: boolean; dir?: string; variants?: PcobVariant[]; /** Teams/Players hold each player's Character ID, as the stand-in sends it. */ uids?: boolean } = {}) {
   const n = opts.teams ?? 16;
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), 'brkit-'));
   const names = NAMES.slice(0, n);
@@ -25,7 +25,7 @@ export async function kit(opts: { teams?: number; games?: number; length?: numbe
   const store = new Store(join(dir, 'air.json'));
   store.data.events = [{ id: 'ev', name: 'Cup', stages: [], logo: '', logoLight: '', accent: '#ffb60e', talent: [], sponsors: [], tournamentId: null }];
   store.data.teams = names.map((name, i) => ({ id: `t${i}`, name, tag: tag(i), color: '#ffffff', logo: '' }));
-  store.data.players = names.flatMap((_, i) => roster(i).map((p, k) => ({ id: `p${i}-${k}`, name: p, realName: '', gameId: p, photo: '', role: '', teamId: `t${i}` })));
+  store.data.players = names.flatMap((_, i) => roster(i).map((p, k) => ({ id: `p${i}-${k}`, name: p, realName: '', gameId: p, photo: '', role: '', teamId: `t${i}`, ...(opts.uids ? { uid: String(fakeUid(i * 4 + k)) } : {}) })));
   const patches: Array<{ code: string; fields: any }> = [];
   const logs: string[] = [];
   const journal = new EventJournal(join(dir, 'events'), () => now);
@@ -33,7 +33,7 @@ export async function kit(opts: { teams?: number; games?: number; length?: numbe
   const lobbies = new Lobbies({ store, journal, patch: async (code, fields) => void patches.push({ code, fields }), live: () => busyLive, log: (t) => logs.push(t), changed: () => {} });
   const l = await lobbies.create({ eventId: 'ev', game: 'pubgm', title: 'Group A', games: opts.games ?? 3, maps: ['Erangel', 'Miramar', 'Sanhok'] });
   lobbies.setTeams(l.id, names.map((_, i) => `t${i}`));
-  const pcob = await new FakePcob({ teams: names.map((name, i) => ({ name, players: roster(i) })), genericNames: opts.generic ?? false, length: opts.length ?? 900, now: () => frozen ?? now }).listen();
+  const pcob = await new FakePcob({ teams: names.map((name, i) => ({ name, players: roster(i) })), genericNames: opts.generic ?? false, variants: opts.variants ?? [], length: opts.length ?? 900, now: () => frozen ?? now }).listen();
   const moments: Array<[BrMoment, Record<string, unknown>]> = [];
   let run!: BrRun;
   const feed = new BrLiveFeed({
