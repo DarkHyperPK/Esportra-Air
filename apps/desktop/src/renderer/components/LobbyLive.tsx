@@ -10,6 +10,7 @@ import { BR_FEED_SCREENS, BR_SCREENS, BR_SCREEN_NAME, BR_SCREEN_PHASE, BR_SCREEN
 import { BR_MOMENTS, BR_MOMENT_NAME, BR_MOMENT_WHAT, showOf, type BrMomentKind } from '../../shared/br-rundown.ts';
 import { playerTotals } from '../../shared/br-stats.ts';
 import { Switch } from './Editors.tsx';
+import { ObsScenesCheck } from './ObsScenesCheck.tsx';
 import { BrInsights } from './BrInsights.tsx';
 import { gameOf } from '../../shared/games.ts';
 import { GRAPHICS } from '../../shared/templates.ts';
@@ -167,7 +168,7 @@ function Detail({ s, run, l, item }: { s: Snapshot; run: Run; l: Lobby; item: It
   );
 }
 
-function Sources({ s, l, close }: { s: Snapshot; l: Lobby; close: () => void }) {
+function Sources({ s, run, l, close, connect }: { s: Snapshot; run: Run; l: Lobby; close: () => void; connect: () => void }) {
   const port = s.engine.port ?? 0;
   const rows: Array<[string, string, string]> = [
     ['In-game HUD', 'Over the game, in your gameplay scene', lobbyPage(port, l.code, 'br-hud')],
@@ -179,7 +180,8 @@ function Sources({ s, l, close }: { s: Snapshot; l: Lobby; close: () => void }) 
       <div className="editor all-graphics" role="dialog" aria-modal="true" aria-label="Browser sources">
         <header><h2 className="title-md">Browser sources</h2><button className="btn quiet small" onClick={close}>Esc</button></header>
         <div className="editor-body stack" style={{ gap: 8 }}>
-          <p className="muted t-sm">Paste into an OBS browser source at 1920×1080. They follow {l.title}.</p>
+          <ObsScenesCheck s={s} run={run} lobby={l} connect={connect} />
+          <p className="muted t-sm">Or paste into an OBS browser source at 1920×1080. They follow {l.title}.</p>
           {rows.map(([label, note, url]) => <div key={url} className="between"><span><b>{label}</b><br /><span className="faint t-xs">{note}</span></span><Copy url={url} label="Copy" /></div>)}
         </div>
       </div>
@@ -249,7 +251,7 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
           <button className={`btn small pcob-btn ${s.pcob.state}`} title="Read the game from the PUBG MOBILE observer client (PCOB)" onClick={() => setData(true)}><i className="dot" />Game data · {pcobLabel(s)}</button>
           <button className="btn small" title="Places and elims per match: from the game, or typed" onClick={() => setResults(true)}>Results</button>
           <button className="btn small" title="Points added or taken away, with a reason" onClick={() => setAdjust(true)}>Adjustments{(l.adjustments?.length ?? 0) > 0 ? ` · ${l.adjustments!.length}` : ''}</button>
-          <button className="btn small" onClick={() => setSources(true)}>Sources</button>
+          <button className="btn small" title="Browser sources, and Air's scenes in OBS" onClick={() => setSources(true)}>Sources · OBS</button>
           <span className="br-auto t-sm" title="Runs the lobby's Rundown (Events › lobby › Rundown) from the game"><Switch on={showOf(l).autopilot} label="Autopilot" onChange={(v) => void run(() => air.lobbyShow(l.id, { autopilot: v }))} />Autopilot</span>
           {s.lobbyOnAir && <button className="btn small" onClick={() => void run(() => air.lobbyTake(l.id, null))}>Clear full screen</button>}
         </div>
@@ -284,7 +286,7 @@ export function LobbyLive({ s, run, go }: Pick<PageProps, 's' | 'run' | 'go'>) {
       )}
       {review !== null && <ProvisionalPanel s={s} run={run} l={l} n={review} close={() => setReview(null)} edit={() => { setReview(null); setResults(true); }} />}
       {adjust && <Adjustments run={run} l={l} close={() => setAdjust(false)} />}
-      {sources && <Sources s={s} l={l} close={() => setSources(false)} />}
+      {sources && <Sources s={s} run={run} l={l} close={() => setSources(false)} connect={() => { setSources(false); go('settings'); }} />}
       {data && <PcobPanel s={s} run={run} l={l} close={() => setData(false)} />}
     </div>
   );

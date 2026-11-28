@@ -1,7 +1,8 @@
 // What Air builds in OBS, as plain data (PRD picture 9): its five scenes, the browser source of each
 // graphic in its scene, the slot scenes the crew fills, the desk cameras and the hidden sponsor loops.
 // A pure function of the setup and the match's people, so it can be checked without OBS.
-import { SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, sourceName } from '../shared/scenes.ts';
+import { LOBBY_SCENE_KEYS, SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, lobbySlotWanted, sourceName } from '../shared/scenes.ts';
+import { lobbyPage } from '../shared/br-screens.ts';
 import { cameraViewUrl, type OnAir } from '../shared/model.ts';
 import type { Screen } from '../shared/api.ts';
 import type { BuildScene, BuildSlot } from './scene-build.ts';
@@ -50,6 +51,44 @@ export function planScenes({ port, screens, talent, sponsors, slotWanted }: Plan
         // Over-the-game graphics also sit over the desk cameras (as bands over a stage shot).
         ...(key === 'casters' ? host.map((x) => ({ id: 'fullscreen-over-desk', inputName: sourceName('Full screen over desk'), formerly: legacySourceName('Full screen over desk'), url: over(x), frame: x.frame, enabled: true })) : []),
         ...(key === 'holding' ? sponsorVideos.map((x) => ({ id: `sponsor:${x.id}`, inputName: sourceName(`Sponsor video · ${x.name}`), kind: 'media' as const, url: x.video, frame: full, enabled: false })) : []),
+      ],
+    };
+  });
+}
+
+export interface LobbyPlanInput {
+  /** The graphics engine's port. */
+  port: number;
+  /** The selected lobby's room code: every page follows it. */
+  code: string;
+  /** The event's sponsors; those with a video get a hidden loop in Break, as for a match. */
+  sponsors: OnAir['sponsors'];
+}
+
+/**
+ * What Air builds in OBS for a battle royale lobby (28 Nov): Gameplay (game feed holder, the lobby's HUD and the
+ * full-screen host showing only overlay-bar versions), Full screen (the host) and Break (Starting soon, sponsor
+ * loops). The same names and rules as a match; pages come from `lobbyPage`, the function the Sources drawer uses.
+ */
+export function planLobbyScenes({ port, code, sponsors }: LobbyPlanInput): BuildScene[] {
+  const full = { x: 0, y: 0, width: 1920, height: 1080 };
+  const hud = lobbyPage(port, code, 'br-hud');
+  const host = lobbyPage(port, code, 'fullscreen');
+  const over = lobbyPage(port, code, 'fullscreen', '&over=1');
+  const startingSoon = lobbyPage(port, code, 'fullscreen', '&only=br-lobby&always=1&style=full');
+  const src = (id: string, title: string, url: string) => ({ id, inputName: graphicSourceName(title), formerly: legacySourceName(title), url, frame: full, enabled: true });
+  return LOBBY_SCENE_KEYS.map((key) => {
+    const def = SCENES[key];
+    return {
+      name: def.name,
+      formerly: def.formerly,
+      exclusive: def.exclusive,
+      slots: def.slots.filter((slot) => lobbySlotWanted(slot.id)).map((slot) => ({ id: slot.id, sceneName: slot.scene, formerly: slot.formerly, frame: slot.frame })),
+      sources: [
+        ...(key === 'gameplay' ? [src('in-game', 'In-game HUD', hud), { ...src('fullscreen-over-game', 'Full screen over game', over) }] : []),
+        ...(key === 'fullscreen' ? [src('fullscreen', 'Full screen', host)] : []),
+        ...(key === 'holding' ? [src('holding', 'Holding', startingSoon)] : []),
+        ...(key === 'holding' ? sponsors.filter((x) => x.video).map((x) => ({ id: `sponsor:${x.id}`, inputName: sourceName(`Sponsor video · ${x.name}`), kind: 'media' as const, url: x.video, frame: full, enabled: false })) : []),
       ],
     };
   });

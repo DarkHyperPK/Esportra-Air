@@ -11,7 +11,7 @@ import type { EngineSupervisor } from './engine-supervisor.ts';
 import type { GepBridge } from '../../../../packages/capture/src/gep.ts';
 import type { ObsLink } from './obs.ts';
 import type { BuildScene, BuildSlot } from './scene-build.ts';
-import { SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, sourceName, type SlotId } from '../shared/scenes.ts';
+import { LOBBY_SCENE_KEYS, SCENE_KEYS, SCENES, graphicSourceName, legacySourceName, lobbySlotWanted, sourceName, type SlotId } from '../shared/scenes.ts';
 import { AUTO_LAYERS, GAME_DRAWS, LAYER_DEFS, SETUP_LAYER_KEYS, defaultMode, type LayerMode } from '../shared/layers.ts';
 import { EventLog } from './event-log.ts';
 import { Autopilot } from './autopilot/autopilot.ts';
@@ -77,7 +77,7 @@ import { checks } from './readiness.ts';
 import { CueDeck, type GraphicAction } from './cue-deck.ts';
 import { OwnGraphics } from './own-graphics-service.ts';
 import { Looks } from './looks.ts';
-import { planScenes, sourcesMissing } from './scene-plan.ts';
+import { planLobbyScenes, planScenes, sourcesMissing } from './scene-plan.ts';
 import { PlayerCams } from './player-cams.ts';
 import { companionAct, companionHello, type CompanionTarget } from './companion-bridge.ts';
 import { obsSceneView, roomReadout } from './snapshot-parts.ts';
@@ -1484,6 +1484,13 @@ export class Production extends EventEmitter {
 
   /** The scenes Air builds, with each enabled graphic in its scene (PRD picture 9; src/main/scene-plan.ts). */
   buildPlan(): BuildScene[] {
+    // A lobby game (PUBG MOBILE, Free Fire) builds from the selected lobby's pages (28 Nov); nothing without one.
+    if (this.lobbyGame()) {
+      const l = this.lobbies.selected;
+      if (!l) return [];
+      const ev = this.deps.store.data.events.find((e) => e.id === l.eventId) ?? null;
+      return planLobbyScenes({ port: this.deps.engine.port, code: l.code, sponsors: ev?.sponsors ?? [] });
+    }
     const on = this.match ? onAir(this.match, this.eventOf(this.match)) : { talent: [], sponsors: [] };
     return planScenes({ port: this.deps.engine.port, screens: this.setup.screens, talent: on.talent, sponsors: on.sponsors, slotWanted: (id) => this.slotWanted(id) });
   }
@@ -1491,9 +1498,12 @@ export class Production extends EventEmitter {
   /** Why the last Add to OBS failed, until one succeeds (shown on the Scenes check, not only as a toast). */
   private installError: string | null = null;
 
+  private lobbyGame() { return gameOf(this.setup.game)?.shape === 'lobby'; }
+
   async installGraphics() {
     const data = this.deps.store.data;
     try {
+      if (this.lobbyGame() && !this.lobbies.selected) throw new Error('Choose or create a lobby first, then add the scenes to OBS.');
       await this.deps.obs.build(this.buildPlan(), data.owned, (owned) => {
         data.owned = owned;
         this.deps.store.save();
@@ -2003,7 +2013,9 @@ export class Production extends EventEmitter {
       const o = status?.outputs.find((x) => x.id === s.outputId);
       return { screenId: s.id, title: s.title, overlay: s.overlay, url: `http://127.0.0.1:${engine.port}/o/${s.outputId}`, connections: o?.connections ?? 0, lastFrameAt: o?.lastFrameAt ?? null };
     });
-    const { missingScenes, missingSources, installed, sceneStatus } = obsSceneView(obs.status, this.buildPlan(), (id) => this.slotWanted(id));
+    const { missingScenes, missingSources, installed, sceneStatus } = this.lobbyGame()
+      ? obsSceneView(obs.status, this.buildPlan(), lobbySlotWanted, LOBBY_SCENE_KEYS)
+      : obsSceneView(obs.status, this.buildPlan(), (id) => this.slotWanted(id));
     const feedState = capture.state === 'live' && roomStatus?.lastFeedAt == null ? 'waiting' : capture.state;
     const snapshot: Snapshot = {
       seq: ++this.snapSeq,
