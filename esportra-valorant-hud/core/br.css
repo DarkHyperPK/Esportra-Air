@@ -19,7 +19,7 @@ img.br-tl{background:rgba(17,17,17,.6)}
 .br-pips i.k{background:var(--red);animation:br-blink 1s steps(2,jump-none) infinite}.br-pips i.d{background:#3d3d3d}
 .br-slot{position:absolute;display:block;background:var(--pic) center/cover no-repeat;pointer-events:none}
 .br-slot:not([style]){background:none}
-@keyframes br-in-l{from{transform:translateX(-80px);opacity:0}to{transform:none;opacity:1}}
+@keyframes br-in-l{from{transform:translateX(-80px);opacity:0}to{transform:none}}
 @keyframes br-in-r{from{transform:translateX(80px);opacity:0}to{transform:none;opacity:1}}
 @keyframes br-in-u{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
 @keyframes br-fade{from{opacity:0}to{opacity:1}}

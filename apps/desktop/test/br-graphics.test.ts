@@ -135,7 +135,14 @@ test('the three HUD layouts: elims column, grid sorted by rank with out teams in
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
     const errors: string[] = [];
     page.on('pageerror', (e: Error) => errors.push(e.message));
-    const open = async (q: string) => { await page.goto(`file://${OVERLAYS}/br-hud.html?preview=1&${q}`); await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 }); await page.waitForTimeout(1500); };
+    const open = async (q: string) => {
+      await page.goto(`file://${OVERLAYS}/br-hud.html?preview=1&${q}`);
+      await page.waitForFunction(() => (window as any).HUD_READY === true, null, { timeout: 10_000 });
+      // The tiles and rows slide in one after another (an entrance animation, 35 ms apart); under load that runs late.
+      // Wait for every finite animation and transition to finish instead of for a fixed time, so a tile is measured at rest.
+      await page.waitForFunction(() => document.querySelector('.brh') !== null && document.getAnimations().every((a) => !a.effect || !Number.isFinite(a.effect.getComputedTiming().iterations as number) || a.playState === 'finished' || a.playState === 'idle'), null, { timeout: 20_000 });
+      await page.waitForTimeout(150);
+    };
     const teams = 16;
 
     // Pro Rail: every team, with the team's elims from the feed in their own column.
